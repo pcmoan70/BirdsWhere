@@ -3014,10 +3014,23 @@
   var mpEditPopup = null;
   function mpEditorHtml(p, isEdit) {
     var esc = escapeHtml;
+    // New points get a "Save to list" picker; the choice (the active list) is
+    // remembered, so subsequent points drop straight into the same list.
+    var listSel = isEdit ? "" :
+      '<label>' + esc(t("points.saveToList")) +
+        '<select id="mp-listsel">' +
+          '<option value=""' + (mpActiveName ? "" : " selected") + ">" + esc(t("points.listNone")) + "</option>" +
+          mpCollections.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (c) {
+            return '<option value="' + esc(c.name) + '"' + (c.name === mpActiveName ? " selected" : "") + ">" + esc(c.name) + "</option>";
+          }).join("") +
+          '<option value="__new__">' + esc(t("points.listNew")) + "</option>" +
+        "</select>" +
+      "</label>";
     return '<div class="mp-form">' +
       '<label>' + esc(t("points.name")) + '<input type="text" id="mp-name" value="' + esc(p.name || "") + '" /></label>' +
       '<label>' + esc(t("points.tags")) + '<input type="text" id="mp-tags" value="' + esc((p.tags || []).join(", ")) + '" placeholder="' + esc(t("points.tagsPh")) + '" /></label>' +
       '<label>' + esc(t("points.note")) + '<textarea id="mp-note" rows="2">' + esc(p.note || "") + '</textarea></label>' +
+      listSel +
       '<div class="mp-meta">' + p.lat.toFixed(5) + ", " + p.lon.toFixed(5) + "</div>" +
       '<div id="mp-natlist" class="mp-natlist" style="display:none"></div>' +
       '<div class="mp-actions">' +
@@ -3026,15 +3039,45 @@
       '</div>' +
     '</div>';
   }
+  // Make `name` the list new points are saved to (the active list), without
+  // moving the map. "" = unsaved/loose. Resolves false if the user cancels.
+  function activateTargetList(name) {
+    return new Promise(function (resolve) {
+      if (name === mpActiveName) { resolve(true); return; }
+      var doSwitch = function () {
+        if (!name) { mpActiveName = ""; }
+        else {
+          var ex = mpCollections.filter(function (x) { return x.name === name; })[0];
+          mapPoints = ex ? (ex.points || []).map(function (q) { return Object.assign({}, q); }) : [];
+          if (!ex) mpCollections.push({ name: name, points: [] });
+          mpActiveName = name; mpFilter = [];
+        }
+        saveMapPoints(); renderMapPoints(); resolve(true);
+      };
+      if (mpHasUnsaved()) modalConfirm(t("points.discardUnsavedPrompt")).then(function (ok) { if (ok) doSwitch(); else resolve(false); });
+      else doSwitch();
+    });
+  }
+  function resolveTargetList(target) {   // handles the "+ New list…" option
+    if (target !== "__new__") return activateTargetList(target);
+    return modalPrompt(t("points.saveAsPrompt"), "").then(function (n) {
+      n = (n || "").trim();
+      return n ? activateTargetList(n) : false;
+    });
+  }
   function wireEditorPopup(p, isEdit) {
     var save = document.getElementById("mp-save"); if (!save) return;
     save.addEventListener("click", function () {
       var name = (document.getElementById("mp-name").value || "").trim();
       var tags = mpParseTags(document.getElementById("mp-tags").value);
       var note = (document.getElementById("mp-note").value || "").trim();
-      if (isEdit) updateMapPoint(p.id, { name: name, tags: tags, note: note });
-      else addMapPoint({ lat: p.lat, lon: p.lon, name: name, tags: tags, note: note, source: "manual" });
-      map.closePopup();
+      if (isEdit) { updateMapPoint(p.id, { name: name, tags: tags, note: note }); map.closePopup(); return; }
+      var sel = document.getElementById("mp-listsel");
+      Promise.resolve(sel ? resolveTargetList(sel.value) : true).then(function (ok) {
+        if (ok === false) return;   // cancelled list choice — keep the editor open
+        addMapPoint({ lat: p.lat, lon: p.lon, name: name, tags: tags, note: note, source: "manual" });
+        map.closePopup();
+      });
     });
     var del = document.getElementById("mp-del");
     if (del) del.addEventListener("click", function () { deleteMapPoint(p.id); map.closePopup(); });
