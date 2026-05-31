@@ -4347,23 +4347,26 @@
     return top + (bot - top) * fr;
   }
 
-  // H3 resolution for the overlay. The *scale* (geographic hex size for a given
-  // on-screen size) follows the map zoom (metres-per-pixel); the *number* of
-  // hexes follows the Resolution setting — a higher setting shrinks the target
-  // on-screen edge so more cells cover the view (count ∝ hiResFactor).
+  // H3 resolution offset per Resolution setting. H3 resolutions are discrete —
+  // each finer level packs ~7x more cells — so the setting can't scale the count
+  // smoothly; it picks coarser/default/finer tiers (each step ≈ 7x the tiles).
+  var HIRES_OFFSET = { 1: -1, 2: 0, 3: 0, 5: 1, 7: 1, 9: 1, 11: 1 };
+  // H3 resolution for the overlay. The base resolution targets a fixed on-screen
+  // hex size (~15px edge) so the tile *count* stays ~constant across zoom; the
+  // Resolution setting then shifts the resolution up/down in whole H3 steps.
   function h3ResForView() {
     var c = map.getCenter(), z = map.getZoom();
     var mpp = 156543.03392 * Math.cos(c.lat * Math.PI / 180) / Math.pow(2, z);
-    var edgePx = 26 / Math.sqrt(Math.max(1, hiResFactor));
-    var targetM = Math.max(1, edgePx * mpp);
+    var targetM = Math.max(1, 15 * mpp);
     var best = 0, bestD = Infinity;
     for (var r = 0; r <= 14; r++) {
-      // Geometric (log) closeness: H3 resolutions are ~2.65x apart, so log
-      // distance centres the on-screen size symmetrically around the target.
+      // Geometric (log) closeness: H3 resolutions are ~2.65x apart in edge, so
+      // log distance centres the on-screen size symmetrically around the target.
       var d = Math.abs(Math.log(window.h3.getHexagonEdgeLengthAvg(r, "m") / targetM));
       if (d < bestD) { bestD = d; best = r; }
     }
-    return best;
+    var offset = HIRES_OFFSET[hiResFactor] != null ? HIRES_OFFSET[hiResFactor] : 0;
+    return Math.max(0, Math.min(14, best + offset));
   }
 
   // The distribution overlay is always drawn as filled H3 hexagons (the smooth
