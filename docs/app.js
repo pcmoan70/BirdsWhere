@@ -161,11 +161,15 @@
     if (!size || size.x < 50 || size.y < 50) return;   // not laid out yet
     var step = window.h3 ? H3_ZOOM_STEP : 1;
     var ladderMin = window.h3 ? Math.ceil(2 / step) * step : 2;
+    // getBoundsZoom() clamps its result to the *current* minZoom, so it can
+    // never report a value below it. Drop minZoom to 0 first to read the true
+    // world-fitting zoom (already snapped down to the ladder), then apply it.
+    var prev = map.getMinZoom();
+    map.setMinZoom(0);
     var fit;
-    try { fit = map.getBoundsZoom([[-85, -179.9], [85, 179.9]], false); } catch (e) { return; }
-    var floored = window.h3 ? Math.floor(fit / step) * step : Math.floor(fit);
-    var mz = Math.max(0, Math.min(ladderMin, floored));
-    if (map.getMinZoom() !== mz) map.setMinZoom(mz);
+    try { fit = map.getBoundsZoom([[-85, -179.9], [85, 179.9]], false); } catch (e) { map.setMinZoom(prev); return; }
+    var mz = Math.max(0, Math.min(ladderMin, fit));
+    map.setMinZoom(mz);
   }
   var animCtrlEl = null;   // the on-map migration-animation control container
   // Circular arrow to start the animation; pause bars while it's playing.
