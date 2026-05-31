@@ -152,24 +152,20 @@
     el.style.height = Math.max(320, Math.round(window.innerHeight - top - 8)) + "px";
     if (map) { map.invalidateSize(); updateWorldMinZoom(); }
   }
-  // Allow zooming out far enough to see the whole world on the current screen.
-  // The H3 ladder pins minZoom ~2.8, which on a narrow phone can't fit the
-  // world; lower minZoom (snapped down to the ladder) so the full map fits.
+  // Set minZoom so the most zoomed-out view shows the whole world exactly once —
+  // you can zoom out until the world fits, but no further (no tiny/repeated map).
   function updateWorldMinZoom() {
     if (!map) return;
     var size = map.getSize();
     if (!size || size.x < 50 || size.y < 50) return;   // not laid out yet
-    var step = window.h3 ? H3_ZOOM_STEP : 1;
-    var ladderMin = window.h3 ? Math.ceil(2 / step) * step : 2;
-    // getBoundsZoom() clamps its result to the *current* minZoom, so it can
-    // never report a value below it. Drop minZoom to 0 first to read the true
-    // world-fitting zoom (already snapped down to the ladder), then apply it.
-    var prev = map.getMinZoom();
-    map.setMinZoom(0);
-    var fit;
-    try { fit = map.getBoundsZoom([[-85, -179.9], [85, 179.9]], false); } catch (e) { map.setMinZoom(prev); return; }
-    var mz = Math.max(0, Math.min(ladderMin, fit));
-    map.setMinZoom(mz);
+    // World size in pixels at zoom 0 (CRS-aware; ~256 for the default CRS).
+    var w = Math.abs(map.project([0, 180], 0).x - map.project([0, -180], 0).x) || 256;
+    var h = Math.abs(map.project([-85.0511, 0], 0).y - map.project([85.0511, 0], 0).y) || 256;
+    // Whole world visible = the limiting dimension fills the view (not floored
+    // to the H3 ladder — flooring would allow one extra step of zoom-out).
+    var fit = Math.min(Math.log(size.x / w) / Math.LN2, Math.log(size.y / h) / Math.LN2);
+    var mz = Math.max(0, fit);
+    if (Math.abs(map.getMinZoom() - mz) > 0.01) map.setMinZoom(mz);
   }
   var animCtrlEl = null;   // the on-map migration-animation control container
   // Circular arrow to start the animation; pause bars while it's playing.
@@ -2444,7 +2440,7 @@
     if (baseLayer) map.removeLayer(baseLayer);
     // subdomains must not be undefined — Leaflet reads .length even when the
     // URL has no {s} placeholder (e.g. the Esri satellite layer).
-    baseLayer = L.tileLayer(cfg.url, { attribution: cfg.attribution, maxZoom: MAX_ZOOM, maxNativeZoom: cfg.maxNativeZoom || MAX_ZOOM, subdomains: cfg.subdomains || "abc" });
+    baseLayer = L.tileLayer(cfg.url, { attribution: cfg.attribution, maxZoom: MAX_ZOOM, maxNativeZoom: cfg.maxNativeZoom || MAX_ZOOM, subdomains: cfg.subdomains || "abc", noWrap: true });
     baseLayer.addTo(map);
     baseLayer.bringToBack();
     document.body.setAttribute("data-basemap", which);
