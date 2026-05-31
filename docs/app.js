@@ -67,7 +67,7 @@
   // ---- Species-group filter (taxonomic class) ------------------------------
   // Groups present in the model: aves, mammalia, amphibia, insecta.
   var speciesGroup = "all";   // "all" or a class_name value
-  var hiResFactor = 1;        // points-per-axis multiplier for range/richness (1 = normal)
+  var hiResFactor = 0;        // detail offset in zoom levels / H3 resolutions (0 = auto, ±N = coarser/finer)
   var distMapToken = 0;       // guards against stale distribution-map fetches
   var recentToken = 0;        // guards against stale recent-detections fetches
   var labelClass = [];        // class_name per label index (built after load)
@@ -1748,8 +1748,8 @@
               '</div>' +
               '<div class="ctrl-group" id="hires-wrap" style="display:none">' +
                 '<label for="hires-factor" data-i18n="ctrl.hires">High resolution</label>' +
-                '<select id="hires-factor" title="Resolution factor (points per axis)">' +
-                  '<option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="5">5</option><option value="7">7</option><option value="9">9</option><option value="11">11</option>' +
+                '<select id="hires-factor" title="Detail relative to zoom — each step is one zoom level (one H3 resolution, ~7x the tiles)">' +
+                  '<option value="-2">−2</option><option value="-1">−1</option><option value="0" selected>0</option><option value="1">+1</option><option value="2">+2</option>' +
                 '</select>' +
               '</div>' +
               '<div class="ctrl-group">' +
@@ -3443,8 +3443,8 @@
 
 
     document.getElementById("hires-factor").addEventListener("change", function () {
-      hiResFactor = +this.value || 1;
-      window.GeoState.save({ hiResFactor: hiResFactor });
+      hiResFactor = +this.value || 0;
+      window.GeoState.save({ hiResOffset: hiResFactor });
       if (currentMode === "range" || currentMode === "richness") { clearOverlay(); triggerRender(); }
     });
 
@@ -4347,13 +4347,10 @@
     return top + (bot - top) * fr;
   }
 
-  // H3 resolution offset per Resolution setting. H3 resolutions are discrete —
-  // each finer level packs ~7x more cells — so the setting can't scale the count
-  // smoothly; it picks coarser/default/finer tiers (each step ≈ 7x the tiles).
-  var HIRES_OFFSET = { 1: -1, 2: 0, 3: 0, 5: 1, 7: 1, 9: 1, 11: 1 };
   // H3 resolution for the overlay. The base resolution targets a fixed on-screen
   // hex size (~15px edge) so the tile *count* stays ~constant across zoom; the
-  // Resolution setting then shifts the resolution up/down in whole H3 steps.
+  // Resolution setting then shifts it by whole zoom levels (each = one H3
+  // resolution, ~7x the tiles).
   function h3ResForView() {
     var c = map.getCenter(), z = map.getZoom();
     var mpp = 156543.03392 * Math.cos(c.lat * Math.PI / 180) / Math.pow(2, z);
@@ -4365,8 +4362,7 @@
       var d = Math.abs(Math.log(window.h3.getHexagonEdgeLengthAvg(r, "m") / targetM));
       if (d < bestD) { bestD = d; best = r; }
     }
-    var offset = HIRES_OFFSET[hiResFactor] != null ? HIRES_OFFSET[hiResFactor] : 0;
-    return Math.max(0, Math.min(14, best + offset));
+    return Math.max(0, Math.min(14, best + (hiResFactor | 0)));
   }
 
   // The distribution overlay is always drawn as filled H3 hexagons (the smooth
@@ -4558,9 +4554,9 @@
     else { west = wrapLon(west); east = wrapLon(east); if (east <= west) east += 360; }
     if (north - south < 0.1) north = south + 0.1;
     if (east - west < 0.1) east = west + 0.1;
-    // High-resolution multiplies the points per axis by hiResFactor
-    // (1/hiResFactor the cell size); factor 1 = normal resolution.
-    var step = (ZOOM_STEP[Math.round(map.getZoom())] || 3) / hiResFactor;   // zoom may be fractional (H3-aligned snapping)
+    // The detail offset shifts sampling by whole zoom levels (one H3 resolution
+    // ≈ 2.6458x finer per step), matching the range overlay's resolution steps.
+    var step = (ZOOM_STEP[Math.round(map.getZoom())] || 3) / Math.pow(2.6458, hiResFactor | 0);
     south = Math.max(Math.floor(south / step) * step, -90);
     north = Math.min(Math.ceil(north / step) * step, 90);
     west = Math.floor(west / step) * step;
@@ -7105,10 +7101,10 @@
     document.getElementById("group-select").value = speciesGroup;
     updateSettingsIcon();
 
-    // Default resolution is factor 3 — gives noticeably smoother range/richness
-    // overlays out of the box without overwhelming low-end devices.
-    hiResFactor = 3;
-    document.getElementById("hires-factor").value = "3";
+    // Detail offset in zoom levels (0 = auto). Restore the user's choice,
+    // clamped to the dropdown range.
+    hiResFactor = Math.max(-2, Math.min(2, +window.GeoState.get("hiResOffset", 0) || 0));
+    document.getElementById("hires-factor").value = String(hiResFactor);
 
     // Always start with the full probability range 5%–100% on load.
     document.getElementById("prob-min").value = 5;
