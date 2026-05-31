@@ -157,6 +157,8 @@
   // world; lower minZoom (snapped down to the ladder) so the full map fits.
   function updateWorldMinZoom() {
     if (!map) return;
+    var size = map.getSize();
+    if (!size || size.x < 50 || size.y < 50) return;   // not laid out yet
     var step = window.h3 ? H3_ZOOM_STEP : 1;
     var ladderMin = window.h3 ? Math.ceil(2 / step) * step : 2;
     var fit;
@@ -2264,7 +2266,9 @@
       // scroll the page (the map fills the screen, so it would otherwise trap
       // the scroll). Zoom stays available via the +/− control and pinch.
       scrollWheelZoom: false,
-      maxBounds: [[-90, -180], [90, 180]], maxBoundsViscosity: 1.0,
+      // Soft bounds (viscosity 0) so they snap back after a gesture instead of
+      // hard-blocking it — a solid bound (1.0) fights pinch-zoom-out on touch.
+      maxBounds: [[-90, -180], [90, 180]], maxBoundsViscosity: 0.0,
       // Zoom in ~2.65x steps (one H3 resolution per level) so hex cells keep a
       // constant on-screen size; only when the H3 overlay is available.
       zoomSnap: window.h3 ? H3_ZOOM_STEP : 1,
@@ -2272,6 +2276,11 @@
     });
 
     setBasemap(window.GeoState.get("basemap", "light"));
+
+    // Whenever the map is resized (invalidateSize from any source), make sure
+    // you can still zoom out to the whole world on the current screen.
+    map.on("resize", updateWorldMinZoom);
+    map.whenReady(updateWorldMinZoom);
 
     L.control.scale({ position: "bottomleft", imperial: false, maxWidth: 140 }).addTo(map);
 
