@@ -122,6 +122,7 @@ window.GeoI18N = (function () {
       "ctrl.exportPoints": "Map points",
       "btn.exportPointsKml": "⬇ Export KML",
       "ctrl.offline": "Offline maps",
+      "ctrl.offlineZoom": "Download max zoom",
       "ctrl.downloadView": "Download this view for offline use",
       "offline.hint": "Use the ⬇ button on the map to download the current view.",
       "offline.add": "⬇ Download an area",

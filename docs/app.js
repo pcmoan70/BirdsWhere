@@ -1821,7 +1821,11 @@
                 '<button type="button" id="points-kml-export" class="demo-btn" data-i18n="btn.exportPointsKml">⬇ Export KML</button>' +
               '</div>' +
               '<div class="ctrl-group" id="offline-wrap">' +
-                '<label data-i18n="ctrl.offline">Offline maps</label>' +
+                '<label for="offline-zoom" data-i18n="ctrl.offlineZoom">Download max zoom</label>' +
+                '<select id="offline-zoom">' +
+                  '<option value="11">11 · regional</option><option value="13">13 · town</option>' +
+                  '<option value="15" selected>15 · street</option><option value="17">17 · detailed</option>' +
+                '</select>' +
                 '<p class="cu-hint" data-i18n="offline.hint">Use the ⬇ button on the map to download the current view.</p>' +
                 '<div id="offline-list"></div>' +
               '</div>' +
@@ -2517,6 +2521,7 @@
   // pinned cache (kept until the user deletes it). The SW serves them offline.
   var OFFLINE_TILE_BYTES = 22000;   // rough per-tile size for the estimate
   var OFFLINE_MAX_TILES = 12000;    // guard against an unreasonably huge download
+  var offlineMaxZoom = 15;          // max zoom for area downloads (set in Settings)
   var offlineFramesLayer = null;    // thin frames showing downloaded areas
   function getOfflineAreas() { return window.GeoState.get("offlineAreas", []) || []; }
   function saveOfflineAreas(a) { window.GeoState.save({ offlineAreas: a }); }
@@ -2543,19 +2548,33 @@
     layer._tileZoom = prev;
     return u;
   }
+  // The integer tile zooms the app actually requests = round(zoom-snap steps).
+  // zoomSnap is one H3 resolution, so it skips some integers (e.g. 16) — only
+  // cache the levels the map will ever ask for, else offline tiles never match.
+  function offlineZoomLevels(zStart, zMax) {
+    var step = window.h3 ? H3_ZOOM_STEP : 1;
+    var maxZ = map.getMaxZoom(), seen = {}, out = [];
+    for (var m = 0; m <= maxZ + 1e-6; m += step) {
+      var tz = Math.round(m);
+      if (tz < zStart || tz > zMax || seen[tz]) continue;
+      seen[tz] = 1; out.push(tz);
+    }
+    if (!out.length) out.push(zStart);
+    return out;
+  }
   function offlineTileCount(bounds, zStart, zMax) {
     var n = 0;
-    for (var z = zStart; z <= zMax; z++) { var r = tileRangeFor(bounds, z); n += (r.xMax - r.xMin + 1) * (r.yMax - r.yMin + 1); }
+    offlineZoomLevels(zStart, zMax).forEach(function (z) { var r = tileRangeFor(bounds, z); n += (r.xMax - r.xMin + 1) * (r.yMax - r.yMin + 1); });
     return n;
   }
   function buildOfflineUrls(bounds, zStart, zMax, layers) {
     var urls = [];
-    for (var z = zStart; z <= zMax; z++) {
+    offlineZoomLevels(zStart, zMax).forEach(function (z) {
       var r = tileRangeFor(bounds, z);
       for (var x = r.xMin; x <= r.xMax; x++) for (var y = r.yMin; y <= r.yMax; y++) {
         for (var li = 0; li < layers.length; li++) { var u = layerTileUrl(layers[li], x, y, z); if (u) urls.push(u); }
       }
-    }
+    });
     return urls;
   }
   function downloadOfflineArea(bounds, zStart, zMax, layers, name, onProgress) {
@@ -2593,35 +2612,30 @@
   }
   function openAreaDialog(bounds) {
     var layers = offlineLayers();
-    // Don't offer deeper than the app can actually zoom (its max tile zoom) or
-    // than the basemap provides natively — deeper tiles would never be shown.
+    // Cap at the app's max tile zoom and the basemap's native max; the chosen
+    // depth comes from the Settings "Download max zoom" option.
     var appMaxZoom = Math.round(map.getMaxZoom());
     var baseMaxNative = Math.min((baseLayer && baseLayer.options.maxNativeZoom) || MAX_ZOOM, appMaxZoom);
     var zStart = Math.max(0, Math.min(baseMaxNative, Math.round(map.getZoom())));
-    var zMaxDefault = Math.min(baseMaxNative, zStart + 2);
+    var zMax = Math.max(zStart, Math.min(baseMaxNative, offlineMaxZoom));
+    var tiles = offlineTileCount(bounds, zStart, zMax) * layers.length;
     var ov = document.createElement("div"); ov.className = "ui-modal-overlay";
     var box = document.createElement("div"); box.className = "ui-modal area-dl";
     box.innerHTML =
       '<div class="ui-modal-msg">' + escapeHtml(t("offline.title")) + "</div>" +
-      '<label class="area-dl-row">' + escapeHtml(t("offline.maxzoom")) + ' <input type="range" id="area-z" min="' + zStart + '" max="' + baseMaxNative + '" value="' + zMaxDefault + '"> <span id="area-zval">' + zMaxDefault + "</span></label>" +
+      '<div class="area-dl-row">' + escapeHtml(t("offline.maxzoom")) + ": <b>" + zMax + "</b></div>" +
       '<div class="area-dl-est" id="area-est"></div>' +
       '<input class="ui-modal-input" id="area-name" type="text" placeholder="' + escapeHtml(t("offline.namePh")) + '">' +
       '<div class="area-dl-prog" id="area-prog" style="display:none"></div>' +
       '<div class="ui-modal-btns"><button type="button" class="demo-btn demo-btn-light" id="area-cancel">' + escapeHtml(t("btn.cancel")) + '</button>' +
         '<button type="button" class="demo-btn" id="area-go">' + escapeHtml(t("offline.download")) + "</button></div>";
     document.body.appendChild(ov); ov.appendChild(box);
-    var zEl = box.querySelector("#area-z"), zVal = box.querySelector("#area-zval"), est = box.querySelector("#area-est");
-    function refreshEst() {
-      var zMax = +zEl.value; zVal.textContent = zMax;
-      var tiles = offlineTileCount(bounds, zStart, zMax) * layers.length;
-      est.textContent = t("offline.estimate", { n: tiles.toLocaleString(), mb: (tiles * OFFLINE_TILE_BYTES / 1048576).toFixed(tiles * OFFLINE_TILE_BYTES < 10485760 ? 1 : 0) });
-      est.classList.toggle("area-dl-warn", tiles > OFFLINE_MAX_TILES);
-    }
-    zEl.addEventListener("input", refreshEst); refreshEst();
+    var est = box.querySelector("#area-est");
+    est.textContent = t("offline.estimate", { n: tiles.toLocaleString(), mb: (tiles * OFFLINE_TILE_BYTES / 1048576).toFixed(tiles * OFFLINE_TILE_BYTES < 10485760 ? 1 : 0) });
+    est.classList.toggle("area-dl-warn", tiles > OFFLINE_MAX_TILES);
     function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
     box.querySelector("#area-cancel").addEventListener("click", close);
     box.querySelector("#area-go").addEventListener("click", function () {
-      var zMax = +zEl.value, tiles = offlineTileCount(bounds, zStart, zMax) * layers.length;
       if (tiles > OFFLINE_MAX_TILES) { modalConfirm(t("offline.tooMany", { n: tiles.toLocaleString() })).then(function (okc) { if (okc) run(zMax); }); }
       else run(zMax);
     });
@@ -3791,6 +3805,10 @@
 
     document.getElementById("sync-export").addEventListener("click", exportAppData);
     document.getElementById("points-kml-export").addEventListener("click", exportPointsKml);
+    document.getElementById("offline-zoom").addEventListener("change", function () {
+      offlineMaxZoom = +this.value || 16;
+      window.GeoState.save({ offlineMaxZoom: offlineMaxZoom });
+    });
     renderOfflineAreas();
     var syncFile = document.getElementById("sync-file");
     document.getElementById("sync-import").addEventListener("click", function () { syncFile.click(); });
@@ -7415,6 +7433,8 @@
 
     // H3 detail offset (-2..+2, 0 = auto), set via the on-map hexagon control.
     hiResFactor = Math.max(-2, Math.min(2, +window.GeoState.get("hiResOffset", 0) || 0));
+    offlineMaxZoom = Math.max(11, Math.min(17, +window.GeoState.get("offlineMaxZoom", 15) || 15));
+    var ozEl = document.getElementById("offline-zoom"); if (ozEl) ozEl.value = String(offlineMaxZoom);
 
     // Always start with the full probability range 5%–100% on load.
     document.getElementById("prob-min").value = 5;
