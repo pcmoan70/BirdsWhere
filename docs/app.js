@@ -2640,8 +2640,12 @@
     if (!areas.length) { list.innerHTML = '<p class="dd-empty">' + escapeHtml(t("offline.empty")) + "</p>"; return; }
     list.innerHTML = areas.map(function (a) {
       var mb = (a.bytes / 1048576).toFixed(a.bytes < 10485760 ? 1 : 0);
+      var b = a.bbox;
+      // Rough corners: lower-left (W,S) → upper-right (E,N), as lon,lat.
+      var corners = b ? b[0].toFixed(1) + "," + b[1].toFixed(1) + " → " + b[2].toFixed(1) + "," + b[3].toFixed(1) : "";
       return '<div class="offline-row"><span class="offline-name" title="z' + a.zStart + "–" + a.zMax + '">' + escapeHtml(a.name) + "</span>" +
         '<span class="offline-meta">' + a.tiles.toLocaleString() + " · ~" + mb + " MB</span>" +
+        '<span class="offline-bbox" title="lon,lat: SW → NE">' + escapeHtml(corners) + "</span>" +
         '<button type="button" class="dd-del offline-del" data-id="' + escapeHtml(a.id) + '" aria-label="' + escapeHtml(t("offline.delete")) + '">×</button></div>';
     }).join("");
     list.querySelectorAll(".offline-del").forEach(function (b) {
@@ -2660,7 +2664,7 @@
     getOfflineAreas().forEach(function (a) {
       if (!a.bbox) return;
       L.rectangle([[a.bbox[1], a.bbox[0]], [a.bbox[3], a.bbox[2]]],
-        { className: "offline-frame", color: "#0b3a3a", weight: 1.5, opacity: 0.75, dashArray: "5 4", fill: false, interactive: false }).addTo(offlineFramesLayer);
+        { className: "offline-frame", color: "#0b3a3a", weight: 0.6, opacity: 0.7, dashArray: "4 4", fill: false, interactive: false }).addTo(offlineFramesLayer);
     });
   }
   // When offline and the current view has no cached tiles, but a downloaded
