@@ -5596,10 +5596,12 @@
   // question mark sitting atop the female sign's cross — shown instead of a
   // two-character "♀?". Used wherever the glyph is rendered as HTML; text-only
   // sinks (CSV export, native <option>) fall back to sexGlyph()'s "♀?".
-  var FL_GLYPH_SVG = '<svg class="sx-fl" viewBox="0 0 14 22" aria-label="♀?" role="img">' +
-    '<text x="7" y="10.5" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">?</text>' +
-    '<line x1="7" y1="12" x2="7" y2="20.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>' +
-    '<line x1="3.6" y1="16.4" x2="10.4" y2="16.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>' +
+  var FL_GLYPH_SVG = '<svg class="sx-fl" viewBox="0 0 16 24" aria-label="♀?" role="img">' +
+    '<g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">' +
+      '<path d="M5.53 10.02 A4.3 4.3 0 1 1 10.47 10.02"/>' +    // female circle with a piece cut from the bottom (the hook)
+      '<path d="M10.47 10.02 C 10.1 12.4, 8 12.5, 8 15.8"/>' +  // tail curls to centre → question-mark stem
+    '</g>' +
+    '<circle cx="8" cy="19.8" r="1.2" fill="currentColor"/>' +  // dot below
     '</svg>';
   function sexGlyphHtml(s) {
     return s === "fl" ? FL_GLYPH_SVG : escapeHtml(sexGlyph(s));

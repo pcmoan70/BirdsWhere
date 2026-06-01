@@ -1959,9 +1959,10 @@ a.place-search-btn.is-open { background: var(--brand-soft, #e6f0ee); }
   font-variant-numeric: tabular-nums;
 }
 .fc-sex-btn.has-sex { color: var(--ink, inherit); background: var(--md-code-bg-color, #f6f8f7); border-color: var(--md-default-fg-color--light, #99a8a3); }
-/* Composed "female-like" glyph: a question mark over the female sign's cross. */
-.sx-fl { width: 0.72em; height: 1.18em; vertical-align: -0.22em; }
-.fc-sex-btn .sx-fl { width: 0.95em; height: 1.5em; vertical-align: -0.42em; }
+/* Composed "female-like" glyph: the female sign with a piece cut from its
+   circle and a dot below, so it reads as a question mark. */
+.sx-fl { width: 0.7em; height: 1.05em; vertical-align: -0.2em; }
+.fc-sex-btn .sx-fl { width: 1em; height: 1.5em; vertical-align: -0.45em; }
 /* Activity button: opens the scrollable activity picker (was a <select>). */
 .fc-act-btn { flex: 0 1 auto; max-width: 130px; height: 36px; box-sizing: border-box; cursor: pointer;
   padding: 0 10px; font-size: 0.9rem; line-height: 34px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
