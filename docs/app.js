@@ -674,6 +674,58 @@
 
   function openExternal(url) { window.open(url, "_blank", "noopener"); }
 
+  // ---- In-app screen history (browser/phone Back button) ------------------
+  // Each full-screen page or modal that opens pushes a history entry and
+  // registers a DOM-only close(). The browser Back button (popstate) closes
+  // the top-most open screen. Every explicit close (on-screen Back/Close
+  // button or programmatic) goes through navClose(id), which hides the screen
+  // now and quietly rewinds the matching history entry.
+  var navStack = [];      // [{ id, close }]
+  var navSuppress = 0;    // popstate events to ignore (from our own history.back)
+  function navOpen(id, close) {
+    for (var i = 0; i < navStack.length; i++) {
+      if (navStack[i].id === id) { navStack[i].close = close; return; }   // already open (re-render) — don't double-push
+    }
+    navStack.push({ id: id, close: close });
+    try { history.pushState({ nav: id }, ""); } catch (e) {}
+  }
+  function navClose(id) {
+    for (var i = navStack.length - 1; i >= 0; i--) {
+      if (navStack[i].id === id) {
+        var ent = navStack.splice(i, 1)[0];
+        navSuppress++;
+        try { history.back(); } catch (e) { navSuppress--; }
+        try { ent.close(); } catch (e) {}
+        return true;
+      }
+    }
+    return false;
+  }
+  function navCloseTop() { if (navStack.length) { try { history.back(); } catch (e) {} } }   // same as pressing Back
+  function onNavPop() {
+    if (navSuppress > 0) { navSuppress--; return; }
+    if (!navStack.length) return;
+    var top = navStack.pop();
+    try { top.close(); } catch (e) {}
+  }
+  // Hide whichever full-screen page (species list / migration / checklist) is
+  // open and return to the map. Used as the registered close for the "page" slot.
+  function closeAnyFullPage() {
+    var fp = document.getElementById("field-page");
+    if (fp && fp.style.display !== "none") {
+      if (typeof hideFcPicker === "function") hideFcPicker();
+      if (typeof hidePlacePicker === "function") hidePlacePicker();
+      if (typeof stopFieldGeoWatch === "function") stopFieldGeoWatch();
+      fp.style.display = "none";
+    }
+    var sp = document.getElementById("species-panel");
+    if (sp && sp.classList.contains("as-page")) { sp.classList.remove("as-page"); sp.style.display = "none"; }
+    var bc = document.getElementById("barchart-panel");
+    if (bc && bc.classList.contains("as-page")) { bc.classList.remove("as-page"); bc.style.display = "none"; }
+    saveSession({ page: "" });
+    if (map) map.invalidateSize();
+  }
+
   // Wikipedia article (chosen language) for a species; scientific name is the
   // most reliable search term and resolves to the localized article.
   function wikipediaUrl(sci) {
@@ -1441,6 +1493,7 @@
     document.getElementById("recent-title").textContent = name;
     body.innerHTML = '<div class="spinner" style="margin:24px auto"></div>';
     document.getElementById("recent-modal").style.display = "flex";
+    navOpen("recent", hideRecent);
     var token = ++recentToken;
 
     var to = new Date(), from = new Date(); from.setMonth(from.getMonth() - 2);
@@ -1563,6 +1616,7 @@
   }
 
   function hideDistMap() { document.getElementById("distmap-modal").style.display = "none"; }
+  function hideAbout() { document.getElementById("about-modal").style.display = "none"; }
 
   function showDistMap(name, sci, key) {
     var modal = document.getElementById("distmap-modal");
@@ -1570,6 +1624,7 @@
     document.getElementById("distmap-title").textContent = name;
     body.innerHTML = '<div class="spinner" style="margin:24px auto"></div>';
     modal.style.display = "flex";
+    navOpen("distmap", hideDistMap);
     var lbl = key && labelsByKey[key];
     var en = (lbl && lbl.common) || name;   // English common name helps match filenames
     var bird = key && isBirdKey(key);
@@ -2304,6 +2359,7 @@
     map.on("moveend zoomend", scheduleOfflineCheck);
     window.addEventListener("offline", scheduleOfflineCheck);
     window.addEventListener("online", refreshOfflineZoomCap);   // reconnected → fetch full-res deep tiles again
+    window.addEventListener("popstate", onNavPop);   // browser/phone Back closes the top in-app screen
 
     L.control.scale({ position: "bottomleft", imperial: false, maxWidth: 140 }).addTo(map);
 
@@ -3066,6 +3122,7 @@
     // Surface the map: close the full-screen field page so the user can see it.
     stopFieldGeoWatch();
     document.getElementById("field-page").style.display = "none";
+    navClose("page");
     if (map) map.invalidateSize();
   }
   function removeDetection(key) { if (detPlot[key]) { clearSpider(); if (detPlot[key].group) map.removeLayer(detPlot[key].group); delete detPlot[key]; delete detSelected[key]; updateDetLegend(); saveDetections(); } }
@@ -3769,6 +3826,7 @@
       bcPanel.style.display = "none";
       document.getElementById("field-page").style.display = "none";
       stopFieldGeoWatch();
+      navClose("page");   // drop the page's Back-history entry (it was just closed)
       hideCsvBtn();
       if (cachedRender) clearOverlay();
       if (marker) { map.removeLayer(marker); marker = null; }
@@ -3882,13 +3940,13 @@
     document.getElementById("perf-modal").addEventListener("click", function (e) {
       if (e.target === this) hidePerfModal();   // click outside the box
     });
-    document.getElementById("distmap-close").addEventListener("click", hideDistMap);
+    document.getElementById("distmap-close").addEventListener("click", function () { navClose("distmap"); });
     document.getElementById("distmap-modal").addEventListener("click", function (e) {
-      if (e.target === this) hideDistMap();
+      if (e.target === this) navClose("distmap");
     });
-    document.getElementById("recent-close").addEventListener("click", hideRecent);
+    document.getElementById("recent-close").addEventListener("click", function () { navClose("recent"); });
     document.getElementById("recent-modal").addEventListener("click", function (e) {
-      if (e.target === this) hideRecent();
+      if (e.target === this) navClose("recent");
     });
     document.getElementById("recent-modal").addEventListener("click", function (e) {
       if (!e.target.closest) return;
@@ -3899,7 +3957,7 @@
       } else if (e.target.closest("#recent-map")) {
         if (!lastRecentRows.length || !lastRecentMeta) return;
         plotDetections(lastRecentMeta.key, lastRecentMeta.name, lastRecentRows, true);   // plot + zoom to points
-        hideRecent();
+        navClose("recent");
       }
     });
     // Pop-up reference links: Wikipedia uses the locale→English fallback;
@@ -3912,7 +3970,7 @@
       if (bl) { e.preventDefault(); openBirdLife(bl.getAttribute("data-en"), bl.getAttribute("data-sci")); }
     });
     document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") { hidePerfModal(); hideDistMap(); hideRecent(); }
+      if (e.key === "Escape") { hidePerfModal(); navCloseTop(); }
     });
 
     document.getElementById("group-select").addEventListener("change", function () {
@@ -4172,11 +4230,7 @@
     });
 
     // Back: close the full-screen field page and return to the map.
-    document.getElementById("field-back").addEventListener("click", function () {
-      hideFcPicker(); hidePlacePicker(); stopFieldGeoWatch();
-      document.getElementById("field-page").style.display = "none";
-      if (map) map.invalidateSize();
-    });
+    document.getElementById("field-back").addEventListener("click", function () { navClose("page"); });
     // Tap the red "!" to toggle the short "far from this location" explanation.
     document.getElementById("field-far").addEventListener("click", function (e) {
       e.stopPropagation();
@@ -4208,21 +4262,9 @@
     });
 
     // Back from the full-screen Species-List page to the map.
-    document.getElementById("sp-back").addEventListener("click", function () {
-      var sp = document.getElementById("species-panel");
-      sp.classList.remove("as-page");
-      sp.style.display = "none";
-      saveSession({ page: "" });
-      if (map) map.invalidateSize();
-    });
+    document.getElementById("sp-back").addEventListener("click", function () { navClose("page"); });
     // Back from the full-screen Migration analysis page to the map.
-    document.getElementById("bc-back").addEventListener("click", function () {
-      var bc = document.getElementById("barchart-panel");
-      bc.classList.remove("as-page");
-      bc.style.display = "none";
-      saveSession({ page: "" });
-      if (map) map.invalidateSize();
-    });
+    document.getElementById("bc-back").addEventListener("click", function () { navClose("page"); });
 
     document.getElementById("an-filter").addEventListener("input", function () { renderActiveTab(); });
     document.getElementById("an-topn").addEventListener("input", function () {
@@ -4324,12 +4366,11 @@
     document.getElementById("about-open").addEventListener("click", function () {
       closeDropdowns();
       document.getElementById("about-modal").style.display = "flex";
+      navOpen("about", hideAbout);
     });
-    document.getElementById("about-close").addEventListener("click", function () {
-      document.getElementById("about-modal").style.display = "none";
-    });
+    document.getElementById("about-close").addEventListener("click", function () { navClose("about"); });
     document.getElementById("about-modal").addEventListener("click", function (e) {
-      if (e.target === this) this.style.display = "none";
+      if (e.target === this) navClose("about");
     });
 
     // Checklist actions
@@ -5788,6 +5829,7 @@
         });
       }
       document.getElementById("field-page").style.display = "flex";   // full-screen entry page
+      navOpen("page", closeAnyFullPage);
       hideFcPicker(); hidePlacePicker();
       showFieldFar(false); startFieldGeoWatch();   // re-check distance for this point
       renderFieldList();
@@ -5822,6 +5864,7 @@
     else { rec.title = name || cc; rec.kind = "country"; rec.cc = cc; rec.rows = rows; rec.accessedAt = Date.now(); }
     allFcs[id] = rec; saveFieldChecklists(allFcs);
     document.getElementById("field-page").style.display = "flex";
+    navOpen("page", closeAnyFullPage);
     hideFcPicker(); hidePlacePicker();
     showFieldFar(false); stopFieldGeoWatch();   // country-wide → no point anchor, no "far" warning
     renderFieldList();
@@ -6067,8 +6110,9 @@
   }
 
   // ---- Entry-edit page (per species) ---------------------------------------
-  function openEntryEdit(key) { entryEditKey = key; renderEntryEdit(); document.getElementById("entry-page").style.display = "flex"; }
-  function closeEntryEdit() { document.getElementById("entry-page").style.display = "none"; entryEditKey = null; renderFieldList(); }
+  function openEntryEdit(key) { entryEditKey = key; renderEntryEdit(); document.getElementById("entry-page").style.display = "flex"; navOpen("entry", hideEntryEdit); }
+  function hideEntryEdit() { document.getElementById("entry-page").style.display = "none"; entryEditKey = null; renderFieldList(); }
+  function closeEntryEdit() { navClose("entry"); }
   function renderEntryEdit() {
     var key = entryEditKey, rec = curFieldRecord(false);
     var lbl = labelsByKey[key];
@@ -6786,7 +6830,7 @@
       var sp = document.getElementById("species-panel");
       sp.classList.toggle("as-page", currentMode === "list");
       sp.style.display = "block";
-      if (currentMode === "list") sp.scrollTop = 0;
+      if (currentMode === "list") { sp.scrollTop = 0; navOpen("page", closeAnyFullPage); }
       document.getElementById("barchart-panel").style.display = "none";
       setStatus(t("status.countryDone", { country: info.name || info.cc, ns: results.length, n: cells.length }));
       // CSV download.
@@ -6884,7 +6928,7 @@
       // keep it as an inline card under the map.
       sp.classList.toggle("as-page", currentMode === "list");
       sp.style.display = "block";
-      if (currentMode === "list") sp.scrollTop = 0;
+      if (currentMode === "list") { sp.scrollTop = 0; navOpen("page", closeAnyFullPage); }
       document.getElementById("barchart-panel").style.display = "none";
       setStatus(t("status.spResult", { n: results.length, p: (pmin * 100).toFixed(0), lat: lat.toFixed(2), lon: lon.toFixed(2) }));
 
@@ -7046,6 +7090,7 @@
       bc.classList.add("as-page");   // full-screen page with a back button, like the species list
       bc.style.display = "block";
       bc.scrollTop = 0;
+      navOpen("page", closeAnyFullPage);
       updateAnalysisControls();
       renderActiveTab();
     } catch (e) { setStatus(t("status.error", { msg: e.message })); console.error(e); }
@@ -7362,7 +7407,7 @@
         e.stopPropagation();
         var pkey = this.getAttribute("data-pkey");
         var all = getFieldChecklists(); delete all[pkey]; saveFieldChecklists(all);
-        if (fieldKey === pkey) { fieldKey = null; stopFieldGeoWatch(); document.getElementById("field-page").style.display = "none"; }
+        if (fieldKey === pkey) { fieldKey = null; stopFieldGeoWatch(); document.getElementById("field-page").style.display = "none"; navClose("page"); }
         refreshChecklists();
       });
     });
