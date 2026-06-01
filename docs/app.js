@@ -1824,7 +1824,7 @@
                 '<label for="offline-zoom" data-i18n="ctrl.offlineZoom">Download max zoom</label>' +
                 '<select id="offline-zoom">' +
                   '<option value="11">11 · regional</option><option value="13">13 · town</option>' +
-                  '<option value="15" selected>15 · street</option><option value="17">17 · detailed</option>' +
+                  '<option value="15">15 · street</option><option value="17" selected>17 · detailed (full)</option>' +
                 '</select>' +
                 '<p class="cu-hint" data-i18n="offline.hint">Use the ⬇ button on the map to download the current view.</p>' +
                 '<div id="offline-list"></div>' +
@@ -2524,7 +2524,7 @@
   // pinned cache (kept until the user deletes it). The SW serves them offline.
   var OFFLINE_TILE_BYTES = 22000;   // rough per-tile size for the estimate
   var OFFLINE_MAX_TILES = 12000;    // guard against an unreasonably huge download
-  var offlineMaxZoom = 15;          // max zoom for area downloads (set in Settings)
+  var offlineMaxZoom = 17;          // max zoom for area downloads — the app's deepest tile zoom (set in Settings)
   var offlineFramesLayer = null;    // thin frames showing downloaded areas
   function getOfflineAreas() { return window.GeoState.get("offlineAreas", []) || []; }
   function saveOfflineAreas(a) { window.GeoState.save({ offlineAreas: a }); }
@@ -3850,7 +3850,7 @@
     document.getElementById("sync-export").addEventListener("click", exportAppData);
     document.getElementById("points-kml-export").addEventListener("click", exportPointsKml);
     document.getElementById("offline-zoom").addEventListener("change", function () {
-      offlineMaxZoom = +this.value || 16;
+      offlineMaxZoom = +this.value || 17;
       window.GeoState.save({ offlineMaxZoom: offlineMaxZoom });
     });
     renderOfflineAreas();
@@ -7477,7 +7477,7 @@
 
     // H3 detail offset (-2..+2, 0 = auto), set via the on-map hexagon control.
     hiResFactor = Math.max(-2, Math.min(2, +window.GeoState.get("hiResOffset", 0) || 0));
-    offlineMaxZoom = Math.max(11, Math.min(17, +window.GeoState.get("offlineMaxZoom", 15) || 15));
+    offlineMaxZoom = Math.max(11, Math.min(17, +window.GeoState.get("offlineMaxZoom", 17) || 17));
     var ozEl = document.getElementById("offline-zoom"); if (ozEl) ozEl.value = String(offlineMaxZoom);
 
     // Always start with the full probability range 5%–100% on load.
