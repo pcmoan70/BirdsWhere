@@ -5636,7 +5636,11 @@
   }
   function fcDeleteEntry(id) {
     var rec = curFieldRecord(false); if (!rec) return;
-    rec.log = rec.log.filter(function (e) { return e.id !== id; });
+    var e = rec.log.filter(function (x) { return x.id === id; })[0];
+    rec.log = rec.log.filter(function (x) { return x.id !== id; });
+    // If that was the species' last entry it's no longer "seen" — clear the
+    // flag so the card's tint goes back to white.
+    if (e && rec.seen && rec.seen[e.key] && !fcEntriesFor(rec, e.key).length) delete rec.seen[e.key];
     putFieldRecord(rec);
   }
   // Merge selected entries into one that LISTS the values (counts/activities/
