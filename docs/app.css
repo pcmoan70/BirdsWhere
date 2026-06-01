@@ -1700,8 +1700,9 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
 .leaflet-bar a.geo-locate-btn,
 .leaflet-bar a.fs-toggle-btn,
 .leaflet-bar a.place-search-btn,
-.leaflet-bar a.anim-btn { display: flex; align-items: center; justify-content: center; color: var(--brand-deep); }
-.geo-locate-btn svg, .fs-toggle-btn svg, .place-search-btn svg, .anim-btn svg { display: block; }
+.leaflet-bar a.anim-btn,
+.leaflet-bar a.h3-detail-btn { display: flex; align-items: center; justify-content: center; color: var(--brand-deep); }
+.geo-locate-btn svg, .fs-toggle-btn svg, .place-search-btn svg, .anim-btn svg, .h3-detail-btn svg { display: block; }
 /* Active state when the locate button is live-tracking */
 .leaflet-bar a.geo-locate-btn.is-active { background: var(--brand-soft, #e6f0ee); }
 /* Position indicators (plus markers) — no div-icon chrome */

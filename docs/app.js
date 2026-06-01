@@ -168,6 +168,22 @@
     if (Math.abs(map.getMinZoom() - mz) > 0.01) map.setMinZoom(mz);
   }
   var animCtrlEl = null;   // the on-map migration-animation control container
+  var h3CtrlEl = null;     // the on-map H3 detail (+/-) control container
+  // Step the H3 detail offset (range/richness overlay) finer/coarser, -2..+2.
+  function adjustH3Detail(delta) {
+    var v = Math.max(-2, Math.min(2, (hiResFactor | 0) + delta));
+    if (v === hiResFactor) return;
+    hiResFactor = v;
+    window.GeoState.save({ hiResOffset: hiResFactor });
+    updateH3DetailButtons();
+    if (currentMode === "range" || currentMode === "richness") { clearOverlay(); triggerRender(); }
+  }
+  function updateH3DetailButtons() {
+    if (!h3CtrlEl) return;
+    var finer = h3CtrlEl.querySelector(".h3-finer"), coarser = h3CtrlEl.querySelector(".h3-coarser");
+    if (finer) finer.classList.toggle("leaflet-disabled", hiResFactor >= 2);
+    if (coarser) coarser.classList.toggle("leaflet-disabled", hiResFactor <= -2);
+  }
   // Circular arrow to start the animation; pause bars while it's playing.
   function animIconSvg(playing) {
     return playing
@@ -1742,12 +1758,6 @@
                   '<option value="satellite" data-i18n="basemap.satellite">Satellite</option>' +
                 '</select>' +
               '</div>' +
-              '<div class="ctrl-group" id="hires-wrap" style="display:none">' +
-                '<label for="hires-factor" data-i18n="ctrl.hires">High resolution</label>' +
-                '<select id="hires-factor" title="Detail relative to zoom — each step is one zoom level (one H3 resolution, ~7x the tiles)">' +
-                  '<option value="-2">−2</option><option value="-1">−1</option><option value="0" selected>0</option><option value="1">+1</option><option value="2">+2</option>' +
-                '</select>' +
-              '</div>' +
               '<div class="ctrl-group">' +
                 '<label for="h3cache-mb" data-i18n="ctrl.cachemb">Map data cache</label>' +
                 '<select id="h3cache-mb">' +
@@ -2364,6 +2374,34 @@
       }
     });
     map.addControl(new AnimControl());
+
+    // H3 detail level — hexagon +/- buttons (left side), shown only with an
+    // overlay (Species distribution / richness). + = finer (more tiles), - =
+    // coarser; each step is one H3 resolution.
+    var DetailControl = L.Control.extend({
+      options: { position: "topleft" },
+      onAdd: function () {
+        var c = L.DomUtil.create("div", "leaflet-bar leaflet-control h3-detail-ctrl");
+        L.DomEvent.disableClickPropagation(c);
+        var mkBtn = function (cls, delta, sym, titleKey) {
+          var a = L.DomUtil.create("a", "h3-detail-btn " + cls, c);
+          a.href = "#"; a.title = t(titleKey); a.setAttribute("aria-label", t(titleKey));
+          a.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-linecap="round">' +
+            '<polygon points="12,2.5 20.5,7.25 20.5,16.75 12,21.5 3.5,16.75 3.5,7.25" stroke-width="1.5"/>' +
+            (sym === "+" ? '<line x1="12" y1="8.5" x2="12" y2="15.5" stroke-width="2"/><line x1="8.5" y1="12" x2="15.5" y2="12" stroke-width="2"/>'
+                         : '<line x1="8.5" y1="12" x2="15.5" y2="12" stroke-width="2"/>') + "</svg>";
+          L.DomEvent.on(a, "click", function (e) { L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e); adjustH3Detail(delta); });
+          return a;
+        };
+        mkBtn("h3-finer", 1, "+", "ctrl.detailFiner");
+        mkBtn("h3-coarser", -1, "-", "ctrl.detailCoarser");
+        h3CtrlEl = c;
+        c.style.display = (currentMode === "range" || currentMode === "richness") ? "" : "none";
+        setTimeout(updateH3DetailButtons, 0);
+        return c;
+      }
+    });
+    map.addControl(new DetailControl());
 
     // Full-screen toggle — expands the whole page (collapsing the browser's
     // address bar). Only added where the Fullscreen API is available.
@@ -3352,8 +3390,8 @@
     // so keep the controls-bar play button out of the bar.
     document.getElementById("play-btn-wrap").style.display = "none";
     if (animCtrlEl) animCtrlEl.style.display = isMap ? "" : "none";
-    // High-resolution only affects the range/richness map overlays.
-    document.getElementById("hires-wrap").style.display = isMap ? "" : "none";
+    // H3 detail control only affects (and shows with) the range/richness overlay.
+    if (h3CtrlEl) { h3CtrlEl.style.display = isMap ? "" : "none"; updateH3DetailButtons(); }
     // In Range the linked species name above the map is the only label we need,
     // so hide the status line (its "(step°) [cached]" detail just took space).
     document.getElementById("demo-status").style.display = isRange ? "none" : "";
@@ -3481,11 +3519,6 @@
     natDetails.addEventListener("toggle", function () { window.GeoState.save({ natdbOpen: natDetails.open }); });
 
 
-    document.getElementById("hires-factor").addEventListener("change", function () {
-      hiResFactor = +this.value || 0;
-      window.GeoState.save({ hiResOffset: hiResFactor });
-      if (currentMode === "range" || currentMode === "richness") { clearOverlay(); triggerRender(); }
-    });
 
     // Range cache budget (MB) → persist to localStorage; 0 disables and clears.
     h3CacheMB = +window.GeoState.get("h3CacheMB", 2) || 0;
@@ -7142,10 +7175,8 @@
     document.getElementById("group-select").value = speciesGroup;
     updateSettingsIcon();
 
-    // Detail offset in zoom levels (0 = auto). Restore the user's choice,
-    // clamped to the dropdown range.
+    // H3 detail offset (-2..+2, 0 = auto), set via the on-map hexagon control.
     hiResFactor = Math.max(-2, Math.min(2, +window.GeoState.get("hiResOffset", 0) || 0));
-    document.getElementById("hires-factor").value = String(hiResFactor);
 
     // Always start with the full probability range 5%–100% on load.
     document.getElementById("prob-min").value = 5;
