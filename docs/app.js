@@ -2652,6 +2652,14 @@
     var est = box.querySelector("#area-est");
     est.textContent = t("offline.estimate", { n: tiles.toLocaleString(), mb: (tiles * OFFLINE_TILE_BYTES / 1048576).toFixed(tiles * OFFLINE_TILE_BYTES < 10485760 ? 1 : 0) });
     est.classList.toggle("area-dl-warn", tiles > OFFLINE_MAX_TILES);
+    // Suggest the most specific place name at the view centre (locality, not
+    // country) — unless the user starts typing their own.
+    var nameInput = box.querySelector("#area-name");
+    nameInput.addEventListener("input", function () { nameInput.dataset.user = "1"; });
+    var ctr = bounds.getCenter();
+    detailedPlaceName(ctr.lat, ctr.lng).then(function (nm) {
+      if (nm && !nameInput.dataset.user && !nameInput.value) nameInput.value = nm;
+    });
     var downloading = false, aborted = false;
     function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
     // Cancel must always work — before a download it just closes; during one it
@@ -2685,12 +2693,8 @@
     if (!areas.length) { list.innerHTML = '<p class="dd-empty">' + escapeHtml(t("offline.empty")) + "</p>"; return; }
     list.innerHTML = areas.map(function (a) {
       var mb = (a.bytes / 1048576).toFixed(a.bytes < 10485760 ? 1 : 0);
-      var b = a.bbox;
-      // Rough corners: lower-left (W,S) → upper-right (E,N), as lon,lat.
-      var corners = b ? b[0].toFixed(1) + "," + b[1].toFixed(1) + " → " + b[2].toFixed(1) + "," + b[3].toFixed(1) : "";
       return '<div class="offline-row"><span class="offline-name" title="z' + a.zStart + "–" + a.zMax + '">' + escapeHtml(a.name) + "</span>" +
         '<span class="offline-meta">' + a.tiles.toLocaleString() + " · ~" + mb + " MB</span>" +
-        '<span class="offline-bbox" title="lon,lat: SW → NE">' + escapeHtml(corners) + "</span>" +
         '<button type="button" class="dd-del offline-del" data-id="' + escapeHtml(a.id) + '" aria-label="' + escapeHtml(t("offline.delete")) + '">×</button></div>';
     }).join("");
     list.querySelectorAll(".offline-del").forEach(function (b) {

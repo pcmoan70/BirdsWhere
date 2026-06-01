@@ -1159,10 +1159,10 @@ button.dd-name:hover { text-decoration: underline; }
 .area-dl-prog { margin-top: 8px; font-size: 0.82rem; color: var(--brand-deep); }
 .area-dl .ui-modal-input { margin-top: 12px; }
 #offline-list { margin-top: 6px; }
-.offline-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 0.8rem; }
-.offline-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.offline-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; font-size: 0.8rem; }
+.offline-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .offline-meta { flex: 0 0 auto; color: var(--ink-muted, #777); font-size: 0.74rem; }
-.offline-bbox { flex: 0 0 auto; color: var(--ink-muted, #777); font-size: 0.68rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.offline-del { flex: 0 0 auto; margin-left: auto; }
 .offline-pick { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
 .offline-pick-btn { text-align: left; }
 
