@@ -4391,8 +4391,10 @@
   // Resolution setting then shifts it by whole zoom levels (each = one H3
   // resolution, ~7x the tiles).
   function h3ResForView() {
-    var c = map.getCenter(), z = map.getZoom();
-    var mpp = 156543.03392 * Math.cos(c.lat * Math.PI / 180) / Math.pow(2, z);
+    var z = map.getZoom();
+    // Metres-per-pixel at the equator (no cos(lat) term): the resolution follows
+    // the zoom only, so panning north–south doesn't flip the H3 resolution.
+    var mpp = 156543.03392 / Math.pow(2, z);
     var targetM = Math.max(1, 15 * mpp);
     var best = 0, bestD = Infinity;
     for (var r = 0; r <= 14; r++) {
