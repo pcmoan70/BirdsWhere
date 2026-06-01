@@ -2272,10 +2272,10 @@
       minZoom: window.h3 ? Math.ceil(2 / H3_ZOOM_STEP) * H3_ZOOM_STEP : 2,
       maxZoom: window.h3 ? Math.floor(MAX_ZOOM / H3_ZOOM_STEP) * H3_ZOOM_STEP : MAX_ZOOM,
       worldCopyJump: true,
-      // Don't hijack wheel/two-finger trackpad scrolling for zoom — let it
-      // scroll the page (the map fills the screen, so it would otherwise trap
-      // the scroll). Zoom stays available via the +/− control and pinch.
-      scrollWheelZoom: false,
+      // Mouse wheel zooms on devices with a precise pointer (PC). On touch
+      // (coarse pointer) it stays off — zoom there is via the +/− icons / pinch,
+      // and page scrolling isn't hijacked.
+      scrollWheelZoom: !!(window.matchMedia && window.matchMedia("(pointer: fine)").matches),
       // Soft bounds (viscosity 0) so they snap back after a gesture instead of
       // hard-blocking it — a solid bound (1.0) fights pinch-zoom-out on touch.
       maxBounds: [[-90, -180], [90, 180]], maxBoundsViscosity: 0.0,
