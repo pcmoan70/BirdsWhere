@@ -1820,6 +1820,11 @@
                 '<label data-i18n="ctrl.exportPoints">Map points</label>' +
                 '<button type="button" id="points-kml-export" class="demo-btn" data-i18n="btn.exportPointsKml">⬇ Export KML</button>' +
               '</div>' +
+              '<div class="ctrl-group" id="offline-wrap">' +
+                '<label data-i18n="ctrl.offline">Offline maps</label>' +
+                '<button type="button" id="offline-add" class="demo-btn" data-i18n="offline.add">⬇ Download an area</button>' +
+                '<div id="offline-list"></div>' +
+              '</div>' +
               '<button type="button" id="about-open" class="settings-about" data-i18n="ctrl.about">About &amp; how it works</button>' +
             '</div>' +
           '</div>' +
@@ -2485,6 +2490,156 @@
     var sel = document.getElementById("maptype-select");
     if (sel) sel.value = which;
     window.GeoState.save({ basemap: which });
+  }
+
+  // ---- Offline map areas ----------------------------------------------------
+  // Download the basemap + active overlay tiles for a drawn rectangle into a
+  // pinned cache (kept until the user deletes it). The SW serves them offline.
+  var OFFLINE_TILE_BYTES = 22000;   // rough per-tile size for the estimate
+  var OFFLINE_MAX_TILES = 12000;    // guard against an unreasonably huge download
+  var areaSelecting = false, areaCorners = [];
+  function getOfflineAreas() { return window.GeoState.get("offlineAreas", []) || []; }
+  function saveOfflineAreas(a) { window.GeoState.save({ offlineAreas: a }); }
+  function tileRangeFor(bounds, z) {
+    var n = Math.pow(2, z);
+    var lon2x = function (lon) { return (lon + 180) / 360 * n; };
+    var lat2y = function (lat) { var r = lat * Math.PI / 180; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n; };
+    var clamp = function (v) { return Math.max(0, Math.min(n - 1, Math.floor(v))); };
+    return { xMin: clamp(lon2x(bounds.getWest())), xMax: clamp(lon2x(bounds.getEast())),
+             yMin: clamp(lat2y(bounds.getNorth())), yMax: clamp(lat2y(bounds.getSouth())) };
+  }
+  function activeOverlayLayers() {
+    return (typeof arcOverlays !== "undefined" ? arcOverlays : []).filter(function (o) {
+      return o.layer && o.layer._base && map.hasLayer(o.layer);
+    }).map(function (o) { return o.layer; });
+  }
+  function offlineLayers() { return [baseLayer].concat(activeOverlayLayers()).filter(Boolean); }
+  // Generate the exact tile URL Leaflet would request for (x,y,z) — set the
+  // layer's tileZoom so the base layer's getTileUrl uses z, not its live zoom.
+  function layerTileUrl(layer, x, y, z) {
+    var c = L.point(x, y); c.z = z;
+    var prev = layer._tileZoom; layer._tileZoom = z;
+    var u = null; try { u = layer.getTileUrl(c); } catch (e) {}
+    layer._tileZoom = prev;
+    return u;
+  }
+  function offlineTileCount(bounds, zStart, zMax) {
+    var n = 0;
+    for (var z = zStart; z <= zMax; z++) { var r = tileRangeFor(bounds, z); n += (r.xMax - r.xMin + 1) * (r.yMax - r.yMin + 1); }
+    return n;
+  }
+  function buildOfflineUrls(bounds, zStart, zMax, layers) {
+    var urls = [];
+    for (var z = zStart; z <= zMax; z++) {
+      var r = tileRangeFor(bounds, z);
+      for (var x = r.xMin; x <= r.xMax; x++) for (var y = r.yMin; y <= r.yMax; y++) {
+        for (var li = 0; li < layers.length; li++) { var u = layerTileUrl(layers[li], x, y, z); if (u) urls.push(u); }
+      }
+    }
+    return urls;
+  }
+  function downloadOfflineArea(bounds, zStart, zMax, layers, name, onProgress) {
+    var id = "area-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    var urls = buildOfflineUrls(bounds, zStart, zMax, layers);
+    var total = urls.length, done = 0, ok = 0;
+    return caches.open("pinned-" + id).then(function (cache) {
+      return new Promise(function (resolve) {
+        var i = 0, active = 0, CONC = 6;
+        function pump() {
+          if (i >= urls.length && active === 0) { resolve(); return; }
+          while (active < CONC && i < urls.length) {
+            var url = urls[i++]; active++;
+            fetch(url, { mode: "no-cors" }).then(function (res) { return cache.put(url, res); }).then(function () { ok++; })
+              .catch(function () {})
+              .then(function () { active--; done++; if (onProgress) onProgress(done, total); pump(); });
+          }
+        }
+        pump();
+      });
+    }).then(function () {
+      var areas = getOfflineAreas();
+      areas.push({ id: id, name: name, bbox: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
+                   zStart: zStart, zMax: zMax, tiles: ok, bytes: ok * OFFLINE_TILE_BYTES, createdAt: Date.now() });
+      saveOfflineAreas(areas);
+      return ok;
+    });
+  }
+  function deleteOfflineArea(id) {
+    return caches.delete("pinned-" + id).then(function () {
+      saveOfflineAreas(getOfflineAreas().filter(function (a) { return a.id !== id; }));
+      renderOfflineAreas();
+    });
+  }
+  function startAreaSelect() {
+    areaSelecting = true; areaCorners = [];
+    closeDropdowns();
+    setStatus(t("offline.selectHint"));
+  }
+  // Called from onMapClick while selecting: collect two opposite corners.
+  function handleAreaCorner(latlng) {
+    areaCorners.push(latlng);
+    if (areaCorners.length < 2) { setStatus(t("offline.selectHint2")); return; }
+    areaSelecting = false;
+    var b = L.latLngBounds(areaCorners[0], areaCorners[1]); areaCorners = [];
+    setStatus("");
+    openAreaDialog(b);
+  }
+  function openAreaDialog(bounds) {
+    var layers = offlineLayers();
+    var baseMaxNative = (baseLayer && baseLayer.options.maxNativeZoom) || MAX_ZOOM;
+    var zStart = Math.max(0, Math.min(baseMaxNative, Math.round(map.getZoom())));
+    var zMaxDefault = Math.min(baseMaxNative, zStart + 2);
+    var ov = document.createElement("div"); ov.className = "ui-modal-overlay";
+    var box = document.createElement("div"); box.className = "ui-modal area-dl";
+    box.innerHTML =
+      '<div class="ui-modal-msg">' + escapeHtml(t("offline.title")) + "</div>" +
+      '<label class="area-dl-row">' + escapeHtml(t("offline.maxzoom")) + ' <input type="range" id="area-z" min="' + zStart + '" max="' + baseMaxNative + '" value="' + zMaxDefault + '"> <span id="area-zval">' + zMaxDefault + "</span></label>" +
+      '<div class="area-dl-est" id="area-est"></div>' +
+      '<input class="ui-modal-input" id="area-name" type="text" placeholder="' + escapeHtml(t("offline.namePh")) + '">' +
+      '<div class="area-dl-prog" id="area-prog" style="display:none"></div>' +
+      '<div class="ui-modal-btns"><button type="button" class="demo-btn demo-btn-light" id="area-cancel">' + escapeHtml(t("btn.cancel")) + '</button>' +
+        '<button type="button" class="demo-btn" id="area-go">' + escapeHtml(t("offline.download")) + "</button></div>";
+    document.body.appendChild(ov); ov.appendChild(box);
+    var zEl = box.querySelector("#area-z"), zVal = box.querySelector("#area-zval"), est = box.querySelector("#area-est");
+    function refreshEst() {
+      var zMax = +zEl.value; zVal.textContent = zMax;
+      var tiles = offlineTileCount(bounds, zStart, zMax) * layers.length;
+      est.textContent = t("offline.estimate", { n: tiles.toLocaleString(), mb: (tiles * OFFLINE_TILE_BYTES / 1048576).toFixed(tiles * OFFLINE_TILE_BYTES < 10485760 ? 1 : 0) });
+      est.classList.toggle("area-dl-warn", tiles > OFFLINE_MAX_TILES);
+    }
+    zEl.addEventListener("input", refreshEst); refreshEst();
+    function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
+    box.querySelector("#area-cancel").addEventListener("click", close);
+    box.querySelector("#area-go").addEventListener("click", function () {
+      var zMax = +zEl.value, tiles = offlineTileCount(bounds, zStart, zMax) * layers.length;
+      if (tiles > OFFLINE_MAX_TILES) { modalConfirm(t("offline.tooMany", { n: tiles.toLocaleString() })).then(function (okc) { if (okc) run(zMax); }); }
+      else run(zMax);
+    });
+    function run(zMax) {
+      var name = (box.querySelector("#area-name").value || "").trim() || (t("offline.area") + " " + (getOfflineAreas().length + 1));
+      var prog = box.querySelector("#area-prog"); prog.style.display = "block";
+      box.querySelector("#area-go").disabled = true; box.querySelector("#area-cancel").disabled = true;
+      downloadOfflineArea(bounds, zStart, zMax, layers, name, function (d, total) {
+        prog.textContent = t("offline.downloading", { done: d.toLocaleString(), total: total.toLocaleString() });
+      }).then(function () { close(); renderOfflineAreas(); setStatus(t("offline.saved", { name: name })); });
+    }
+  }
+  function renderOfflineAreas() {
+    var list = document.getElementById("offline-list"); if (!list) return;
+    var areas = getOfflineAreas();
+    if (!areas.length) { list.innerHTML = '<p class="dd-empty">' + escapeHtml(t("offline.empty")) + "</p>"; return; }
+    list.innerHTML = areas.map(function (a) {
+      var mb = (a.bytes / 1048576).toFixed(a.bytes < 10485760 ? 1 : 0);
+      return '<div class="offline-row"><span class="offline-name" title="z' + a.zStart + "–" + a.zMax + '">' + escapeHtml(a.name) + "</span>" +
+        '<span class="offline-meta">' + a.tiles.toLocaleString() + " · ~" + mb + " MB</span>" +
+        '<button type="button" class="dd-del offline-del" data-id="' + escapeHtml(a.id) + '" aria-label="' + escapeHtml(t("offline.delete")) + '">×</button></div>';
+    }).join("");
+    list.querySelectorAll(".offline-del").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var id = this.getAttribute("data-id"), a = getOfflineAreas().filter(function (x) { return x.id === id; })[0];
+        modalConfirm(t("offline.deletePrompt", { name: a ? a.name : "" })).then(function (ok) { if (ok) deleteOfflineArea(id); });
+      });
+    });
   }
 
   // ---- Protected / priority area overlays ----------------------------------
@@ -3554,6 +3709,8 @@
 
     document.getElementById("sync-export").addEventListener("click", exportAppData);
     document.getElementById("points-kml-export").addEventListener("click", exportPointsKml);
+    document.getElementById("offline-add").addEventListener("click", startAreaSelect);
+    renderOfflineAreas();
     var syncFile = document.getElementById("sync-file");
     document.getElementById("sync-import").addEventListener("click", function () { syncFile.click(); });
     syncFile.addEventListener("change", function (e) {
@@ -4942,6 +5099,8 @@
     else bindPointPopup(marker, lat, lon);   // list (and any click-driven default)
   }
   function onMapClick(e) {
+    // While picking an offline-download area, clicks set the two corners.
+    if (areaSelecting) { handleAreaCorner(e.latlng); return; }
     // Debounce every map click: ignore any click that lands within 200 ms of the
     // previous one (rapid double-taps, or a legend re-render leaking through).
     if (Date.now() < mapClickGuardUntil) return;

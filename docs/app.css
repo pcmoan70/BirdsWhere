@@ -1148,6 +1148,17 @@ button.dd-name:hover { text-decoration: underline; }
   border: 1px solid var(--border, #ccc); border-radius: 5px;
 }
 .ui-modal-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+/* Offline-area download dialog + list */
+.area-dl .area-dl-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 0.85rem; }
+.area-dl .area-dl-row input[type=range] { flex: 1 1 auto; }
+.area-dl-est { margin-top: 8px; font-size: 0.82rem; color: var(--ink-muted, #777); }
+.area-dl-est.area-dl-warn { color: #b06a00; font-weight: 600; }
+.area-dl-prog { margin-top: 8px; font-size: 0.82rem; color: var(--brand-deep); }
+.area-dl .ui-modal-input { margin-top: 12px; }
+#offline-list { margin-top: 6px; }
+.offline-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 0.8rem; }
+.offline-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.offline-meta { flex: 0 0 auto; color: var(--ink-muted, #777); font-size: 0.74rem; }
 
 /* ---- Map Points dropdown + popup form ---- */
 .mp-head { display: flex; gap: 4px; padding: 5px 6px; align-items: center; }

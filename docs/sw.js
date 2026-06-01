@@ -14,12 +14,13 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v156";
+var VERSION = "v157";
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs
 var TILE_CACHE = "tiles-" + VERSION;    // map tiles
 var API_CACHE = "api-" + VERSION;       // geocode / overpass / species lookups
-var MAX_TILES = 1500;
+var MAX_TILES = 6000;                   // normal (LRU) tile cache cap
+var PINNED_PREFIX = "pinned-";          // explicitly downloaded offline areas (never auto-purged)
 
 // Precached on install so the very next (possibly offline) load has the shell.
 var SHELL = [
@@ -91,7 +92,8 @@ self.addEventListener("activate", function (event) {
       .then(function (names) {
         return Promise.all(
           names.map(function (n) {
-            if (keep.indexOf(n) === -1) return caches.delete(n);
+            // Keep current caches and all pinned offline areas (version-independent).
+            if (keep.indexOf(n) === -1 && n.indexOf(PINNED_PREFIX) !== 0) return caches.delete(n);
           })
         );
       })
@@ -112,7 +114,7 @@ self.addEventListener("fetch", function (event) {
     // ArcGIS "identify"/"query" calls share the tile hosts but are tiny,
     // position-specific JSON — don't let them fill (and evict) the tile cache.
     if (/\/(identify|query|find)/i.test(url.pathname)) return;
-    event.respondWith(cacheFirstCapped(req, TILE_CACHE, MAX_TILES));
+    event.respondWith(tileResponse(req));
     return;
   }
   if (API_HOSTS.test(url.hostname)) {
@@ -169,12 +171,32 @@ function networkFirst(req, cacheName) {
   });
 }
 
-// Cache-first, but keep the tile cache from growing without bound: after a
-// miss is stored, trim oldest entries (insertion order) back to the cap.
+// Tile request: serve from a pinned offline-area cache if present (never
+// purged), otherwise the normal LRU tile cache.
+function tileResponse(req) {
+  return caches.keys().then(function (names) {
+    var pinned = names.filter(function (n) { return n.indexOf(PINNED_PREFIX) === 0; });
+    return (function tryPinned(i) {
+      if (i >= pinned.length) return null;
+      return caches.open(pinned[i]).then(function (c) { return c.match(req); })
+        .then(function (hit) { return hit || tryPinned(i + 1); });
+    })(0);
+  }).then(function (pinnedHit) {
+    if (pinnedHit) return pinnedHit;
+    return cacheFirstCapped(req, TILE_CACHE, MAX_TILES);
+  });
+}
+
+// Cache-first with an LRU cap: a hit is re-stored (moved to most-recent) so a
+// revisit refreshes its timestamp; a stored miss trims the oldest back to cap.
 function cacheFirstCapped(req, cacheName, max) {
   return caches.open(cacheName).then(function (cache) {
     return cache.match(req).then(function (hit) {
-      if (hit) return hit;
+      if (hit) {
+        var fresh = hit.clone();
+        cache.delete(req).then(function () { cache.put(req, fresh); });   // re-stamp (LRU)
+        return hit;
+      }
       return fetch(req).then(function (res) {
         if (res && (res.ok || res.type === "opaque")) {
           cache.put(req, res.clone()).then(function () {
