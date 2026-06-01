@@ -1482,7 +1482,7 @@
         return '<tr><td class="rc-date">' + escapeHtml(r.date) + '</td><td class="rc-srccell">' + badge + '</td><td class="rc-place">' + clsBadge + cell + '</td><td class="rc-who">' + escapeHtml(r.who) + "</td></tr>";
       }).join("");
       body.innerHTML = '<div class="recent-head"><span class="recent-src">' + escapeHtml(cap + " · " + d1 + " – " + d2 + " · " + recentRadiusKm() + " km") + "</span>" +
-        '<span class="recent-head-btns"><button type="button" id="recent-map">' + escapeHtml(t("recent.showInMap")) + "</button>" +
+        '<span class="recent-head-btns"><button type="button" id="recent-map">' + escapeHtml(t("btn.showInMap")) + "</button>" +
         '<button type="button" id="recent-dl">' + escapeHtml(t("recent.download")) + "</button></span></div>" +
         '<table class="recent-table"><tbody>' + html + "</tbody></table>" + links();
     }
