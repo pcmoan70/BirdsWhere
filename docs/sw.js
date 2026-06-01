@@ -14,7 +14,7 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v167";
+var VERSION = "v168";
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs
 var TILE_CACHE = "tiles-" + VERSION;    // map tiles
@@ -147,6 +147,12 @@ function cacheFirst(req, cacheName) {
       return fetch(req).then(function (res) {
         if (res && res.ok) cache.put(req, res.clone());
         return res;
+      }).catch(function () {
+        // Offline and not in this cache — fall back to any other cache. The
+        // Leaflet marker/layer images are precached in the shell, so this is
+        // what lets markers and icons render offline before they were ever
+        // fetched into the data cache.
+        return caches.match(req);
       });
     });
   });
