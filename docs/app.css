@@ -1816,13 +1816,15 @@ a.place-search-btn.is-open { background: var(--brand-soft, #e6f0ee); }
 .fc-card { border-bottom: 1px solid var(--md-default-fg-color--lightest, #eee); border-left: 3px solid transparent; }
 /* A "seen" species is shown by a tinted background + accent edge (no checkbox). */
 .fc-card.fc-on { background: var(--brand-soft); border-left-color: var(--brand-strong); }
+/* Card: species name on its own top line, action buttons on the line below. */
 .fc-top {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 6px;
+  display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 8px 8px;
 }
+.fc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 /* Compose note — full-width second line, hidden until it has content or tapped. */
 .fc-note {
   display: none;
-  flex: 1 0 100%; box-sizing: border-box; margin: 2px 0 2px 6px;
+  box-sizing: border-box; margin: 2px 0;
   border: 1px solid var(--border); border-radius: var(--radius-xs);
   padding: 6px 10px; font: inherit; font-size: 0.9rem;
   background: var(--surface); color: var(--ink);
@@ -1833,7 +1835,7 @@ a.place-search-btn.is-open { background: var(--brand-soft, #e6f0ee); }
 .fc-eline { font-size: 0.78rem; color: var(--ink-muted); line-height: 1.55; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fc-entries:hover .fc-eline { color: var(--brand-strong); }
 .fc-emore { font-style: italic; opacity: 0.8; }
-.fc-name { flex: 1 1 auto; font-size: 0.95rem; }
+.fc-name { font-size: 1rem; font-weight: 600; }
 .fc-count { width: 48px; height: 36px; box-sizing: border-box; text-align: center; font-size: 1rem; cursor: pointer;
   border: 1px solid var(--md-default-fg-color--lightest, #ccc); border-radius: 6px;
   background: var(--md-default-bg-color, #fff); color: var(--md-default-fg-color--light, #999); }
@@ -1960,8 +1962,8 @@ a.place-search-btn.is-open { background: var(--brand-soft, #e6f0ee); }
 .fc-sex-btn.has-sex { color: var(--ink, inherit); background: var(--md-code-bg-color, #f6f8f7); border-color: var(--md-default-fg-color--light, #99a8a3); }
 /* Composed "female-like" glyph: a female cross with the circle opened into a
    question-mark hook off the top-left and a dot to the right. */
-.sx-fl { width: 1.18em; height: 1.08em; vertical-align: -0.16em; }
-.fc-sex-btn .sx-fl { width: 1.55em; height: 1.42em; vertical-align: -0.34em; }
+.sx-fl { width: 1.5em; height: 1.1em; vertical-align: -0.18em; }
+.fc-sex-btn .sx-fl { width: 2em; height: 1.46em; vertical-align: -0.36em; }
 /* Activity button: opens the scrollable activity picker (was a <select>). */
 .fc-act-btn { flex: 0 1 auto; max-width: 130px; height: 36px; box-sizing: border-box; cursor: pointer;
   padding: 0 10px; font-size: 0.9rem; line-height: 34px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

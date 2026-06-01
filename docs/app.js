@@ -5592,13 +5592,13 @@
   // question mark sitting atop the female sign's cross — shown instead of a
   // two-character "♀?". Used wherever the glyph is rendered as HTML; text-only
   // sinks (CSV export, native <option>) fall back to sexGlyph()'s "♀?".
-  var FL_GLYPH_SVG = '<svg class="sx-fl" viewBox="0 0 24 22" aria-label="♀?" role="img">' +
-    '<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
-      '<path d="M12 5 C 12 1.4, 5.4 0.9, 5.4 5.6 C 5.4 8.6, 7.5 9.6, 8.7 11.6"/>' +  // open hook off the top-left (circle with a piece taken out)
-      '<line x1="12" y1="5" x2="12" y2="18"/>' +        // female cross — vertical
-      '<line x1="8.2" y1="10" x2="15.8" y2="10"/>' +    // female cross — horizontal
+  var FL_GLYPH_SVG = '<svg class="sx-fl" viewBox="0 0 30 22" aria-label="♀?" role="img">' +
+    '<g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M19 6 C 19 1.5, 9 1, 7.5 6 C 6.3 9.8, 7.8 12.8, 10.2 14.8"/>' +  // large flowing hook, open at the lower-left
+      '<line x1="19" y1="6" x2="19" y2="19"/>' +       // female cross — vertical (continues the hook)
+      '<line x1="15" y1="11" x2="23" y2="11"/>' +      // female cross — horizontal
     '</g>' +
-    '<circle cx="18.6" cy="8.6" r="1.25" fill="currentColor"/>' +   // dot to the right
+    '<circle cx="26.2" cy="10.5" r="1.4" fill="currentColor"/>' +   // dot to the right
     '</svg>';
   function sexGlyphHtml(s) {
     return s === "fl" ? FL_GLYPH_SVG : escapeHtml(sexGlyph(s));
@@ -5967,10 +5967,12 @@
       return '<div class="fc-card' + (en.seen ? " fc-on" : "") + (d.note ? " fc-note-on" : "") + '" data-key="' + escapeHtml(r.key) + '">' +
         '<div class="fc-top">' +
           '<span class="fc-name sp-link" data-key="' + escapeHtml(r.key) + '" data-name="' + escapeHtml(r.name) + '" data-sci="' + escapeHtml(lbl ? (lbl.sci || "") : "") + '">' + interestingStar(r.key) + escapeHtml(r.name) + badge + "</span>" +
-          '<button type="button" class="fc-count' + (hasN ? " has-n" : "") + '" data-key="' + escapeHtml(r.key) + '">' + (hasN ? d.count : "#") + "</button>" +
-          '<button type="button" class="fc-act-btn' + (d.act ? " has-act" : "") + '" data-key="' + escapeHtml(r.key) + '" title="' + escapeHtml(t("chk.activity")) + '">' + (d.act ? escapeHtml(actName(d.act)) : "🏷") + "</button>" +
-          '<button type="button" class="fc-sex-btn' + (d.sex ? " has-sex" : "") + '" data-key="' + escapeHtml(r.key) + '" title="' + escapeHtml(t("chk.sex")) + '">' + sexGlyphHtml(d.sex || "") + "</button>" +
-          '<button type="button" class="fc-add" data-key="' + escapeHtml(r.key) + '" title="' + escapeHtml(t("fc.add")) + '" aria-label="' + escapeHtml(t("fc.add")) + '">＋</button>' +
+          '<div class="fc-actions">' +
+            '<button type="button" class="fc-count' + (hasN ? " has-n" : "") + '" data-key="' + escapeHtml(r.key) + '">' + (hasN ? d.count : "#") + "</button>" +
+            '<button type="button" class="fc-act-btn' + (d.act ? " has-act" : "") + '" data-key="' + escapeHtml(r.key) + '" title="' + escapeHtml(t("chk.activity")) + '">' + (d.act ? escapeHtml(actName(d.act)) : "🏷") + "</button>" +
+            '<button type="button" class="fc-sex-btn' + (d.sex ? " has-sex" : "") + '" data-key="' + escapeHtml(r.key) + '" title="' + escapeHtml(t("chk.sex")) + '">' + sexGlyphHtml(d.sex || "") + "</button>" +
+            '<button type="button" class="fc-add" data-key="' + escapeHtml(r.key) + '" title="' + escapeHtml(t("fc.add")) + '" aria-label="' + escapeHtml(t("fc.add")) + '">＋</button>' +
+          "</div>" +
           '<input type="text" class="fc-note" data-key="' + escapeHtml(r.key) + '" placeholder="' + escapeHtml(t("th.notes")) + '" value="' + escapeHtml(d.note || "") + '" />' +
         "</div>" + entriesBlock +
         "</div>";
