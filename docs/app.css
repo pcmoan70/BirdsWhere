@@ -709,7 +709,7 @@ input:focus-visible {
 }
 
 .bc-bar:hover {
-  background: var(--md-primary-fg-color, #1565c0);
+  filter: brightness(1.18);
 }
 
 .bc-bar::after {
@@ -1514,8 +1514,8 @@ table.chk-table .chk-text { min-width: 100px; }
 .det-nd { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .det-nd .det-d { color: var(--ink-muted, #5b6f69); font-size: 0.74rem; margin-left: 2px; }
 
-/* Timeline: highlight the current-week bar */
-.bc-bar.bc-cur { background: #d32f2f !important; opacity: 1 !important; }
+/* Timeline: ring the current-week bar (its fill stays on the red->green scale) */
+.bc-bar.bc-cur { outline: 2px solid #111; outline-offset: -1px; opacity: 1 !important; z-index: 2; }
 
 /* Performance note modal (shown on page load) */
 #perf-modal {

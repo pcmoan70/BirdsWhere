@@ -5356,17 +5356,21 @@
 
   // Cell for "Annual max" comparison: current week as a fraction of the
   // species' annual peak (0\u2013100%), tinted red(off-peak)\u2192green(at peak).
+  // Shared probability palette: red (hue 10, low) -> green (hue 130, high),
+  // matching the migration analysis heatmaps. n in [0, 1].
+  function probHueColor(n) {
+    n = Math.max(0, Math.min(1, n));
+    return "hsl(" + (10 + n * 120) + ", 60%, 42%)";
+  }
   function ratioCell(ratio) {
     var r = Math.max(0, Math.min(1, ratio));
-    var bg = "hsl(" + (10 + r * 120) + ", 60%, 42%)";
-    return '<td class="ratio-cell" style="background:' + bg + '">' + (r * 100).toFixed(0) + "%</td>";
+    return '<td class="ratio-cell" style="background:' + probHueColor(r) + '">' + (r * 100).toFixed(0) + "%</td>";
   }
 
   // Cell for the "Annual Top" comparison: focus value 0–100, tinted red→green.
   function focusCell(v) {
     var n = Math.max(0, Math.min(100, v));
-    var bg = "hsl(" + (10 + (n / 100) * 120) + ", 60%, 42%)";
-    return '<td class="ratio-cell" style="background:' + bg + '">' + Math.round(n) + "</td>";
+    return '<td class="ratio-cell" style="background:' + probHueColor(n / 100) + '">' + Math.round(n) + "</td>";
   }
 
   // Species List comparison cell as a probability-style bar (used when every
@@ -5376,7 +5380,7 @@
     var pct = Math.max(0, Math.min(100, kind === "focus" ? v : v * 100));
     var label = kind === "focus" ? String(Math.round(v))
       : Math.round(v * 100) + "%";
-    return '<td class="cmp-bar-cell"><span class="cmp-num">' + label + '</span><div class="cmp-bar" style="width:' + Math.round(pct) + '%"></div></td>';
+    return '<td class="cmp-bar-cell"><span class="cmp-num">' + label + '</span><div class="cmp-bar" style="width:' + Math.round(pct) + '%;background:' + probHueColor(pct / 100) + '"></div></td>';
   }
 
   // Reverse-geocoded place names for the coords line, cached per location.
@@ -6764,11 +6768,15 @@
       document.getElementById("sp-coords").textContent = (spp
         ? t("sp.countrySummaryMerged", { country: info.name || info.cc, n: cells.length, week: week, ns: results.length - nList, nl: nList, p: (pmin * 100).toFixed(0) })
         : t("sp.countrySummary", { country: info.name || info.cc, n: cells.length, week: week, ns: results.length, p: (pmin * 100).toFixed(0) })) + mergeHint;
+      var cProbs = results.filter(function (r) { return r.inModel; }).map(function (r) { return r.prob; });
+      var cLo = cProbs.length ? Math.min.apply(null, cProbs) : 0;
+      var cHi = cProbs.length ? Math.max.apply(null, cProbs) : 1;
+      var cRange = cHi - cLo;
       document.getElementById("sp-tbody").innerHTML = results.map(function (r) {
         var name2Cell = '<td class="name2">' + (secondLang ? escapeHtml(secondName(r.label)) : "") + "</td>";
         var pctC = r.inModel ? Math.round(r.prob * 100) : null;
         var probCell = r.inModel
-          ? '<td class="prob-cell"><span class="prob-num">' + pctC + '%</span><div class="prob-bar" style="width:' + pctC + '%"></div></td>'
+          ? '<td class="prob-cell"><span class="prob-num">' + pctC + '%</span><div class="prob-bar" style="width:' + pctC + '%;background:' + probHueColor(cRange > 0 ? (r.prob - cLo) / cRange : 1) + '"></div></td>'
           : '<td class="prob-cell prob-na">—</td>';
         var chip;
         if (!spp) chip = "";
@@ -6848,6 +6856,11 @@
       // bar; otherwise (e.g. week-over-week change) show the value with
       // negatives in red.
       var cmpAllPositive = hasCompare && results.every(function (r) { return r.cmpVal >= 0; });
+      // Probability palette is min-max stretched across the visible list (like
+      // the analysis heatmap) so the strongest species reads green, weakest red.
+      var pHi = results.length ? results[0].prob : 1;            // sorted desc → max first
+      var pLo = results.length ? results[results.length - 1].prob : 0;
+      var pRange = pHi - pLo;
 
       document.getElementById("sp-delta-head").textContent =
         !hasCompare ? "" : kind === "focus" ? cmp.refLabel : t(kind === "ratio" ? "th.ratio" : "th.delta", { ref: cmp.refLabel });
@@ -6865,7 +6878,7 @@
         var pct = Math.round(r.prob * 100);
         return '<tr><td>' + nameLinkHtml(r.label) + '</td>' + name2Cell + '<td class="sci">' +
                escapeHtml(r.label.sci) + '</td><td class="prob-cell"><span class="prob-num">' + pct +
-               '%</span><div class="prob-bar" style="width:' + pct + '%"></div></td>' +
+               '%</span><div class="prob-bar" style="width:' + pct + '%;background:' + probHueColor(pRange > 0 ? (r.prob - pLo) / pRange : 1) + '"></div></td>' +
                '<td class="num det-nd" data-key="' + dKey + '">…</td>' + cmpCell + '</tr>';
       }).join("");
       var sp = document.getElementById("species-panel");
@@ -7122,11 +7135,11 @@
         '</div><div class="bc-bars">';
       for (var w3 = 0; w3 < 48; w3++) {
         var prob = r.probs[w3];
-        var pct = (prob / globalMax) * 100;
-        var opacity = Math.max(0.15, prob / globalMax);
+        var norm = prob / globalMax;
+        var pct = norm * 100;
         var monthClass = (w3 % 4 === 0) ? " bc-month-start" : "";
         var curClass = (w3 === wkIdx) ? " bc-cur" : "";
-        html += '<div class="bc-bar' + monthClass + curClass + '" style="height:' + pct.toFixed(1) + '%;opacity:' + opacity.toFixed(2) + '" title="' + (w3 + 1) + ": " + (prob * 100).toFixed(1) + '%"></div>';
+        html += '<div class="bc-bar' + monthClass + curClass + '" style="height:' + pct.toFixed(1) + '%;background:' + probHueColor(norm) + '" title="' + (w3 + 1) + ": " + (prob * 100).toFixed(1) + '%"></div>';
       }
       html += '</div><div class="bc-months">';
       for (var m = 0; m < 12; m++) html += "<span>" + escapeHtml(MONTH_LABELS[m]) + "</span>";
