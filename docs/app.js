@@ -1822,7 +1822,7 @@
               '</div>' +
               '<div class="ctrl-group" id="offline-wrap">' +
                 '<label data-i18n="ctrl.offline">Offline maps</label>' +
-                '<button type="button" id="offline-add" class="demo-btn" data-i18n="offline.add">⬇ Download an area</button>' +
+                '<p class="cu-hint" data-i18n="offline.hint">Use the ⬇ button on the map to download the current view.</p>' +
                 '<div id="offline-list"></div>' +
               '</div>' +
               '<button type="button" id="about-open" class="settings-about" data-i18n="ctrl.about">About &amp; how it works</button>' +
@@ -2432,6 +2432,22 @@
       });
     }
 
+    // Download the current view for offline use — a save-map button on the right.
+    var DownloadControl = L.Control.extend({
+      options: { position: "topright" },
+      onAdd: function () {
+        var c = L.DomUtil.create("div", "leaflet-bar leaflet-control");
+        L.DomEvent.disableClickPropagation(c);
+        var a = L.DomUtil.create("a", "map-dl-btn", c);
+        a.href = "#"; a.title = t("ctrl.downloadView"); a.setAttribute("aria-label", t("ctrl.downloadView"));
+        a.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+          '<path d="M12 3v10"/><path d="M8 11l4 4 4-4"/><path d="M4 19h16"/></svg>';
+        L.DomEvent.on(a, "click", function (e) { L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e); openAreaDialog(map.getBounds()); });
+        return c;
+      }
+    });
+    map.addControl(new DownloadControl());
+
     // Live position: keep the plus marker on the current location. On the first
     // fix, centre the map and populate the click-driven modes at that point;
     // later fixes just move the plus (no re-centring, no re-querying).
@@ -2501,7 +2517,7 @@
   // pinned cache (kept until the user deletes it). The SW serves them offline.
   var OFFLINE_TILE_BYTES = 22000;   // rough per-tile size for the estimate
   var OFFLINE_MAX_TILES = 12000;    // guard against an unreasonably huge download
-  var areaSelecting = false, areaCorners = [];
+  var offlineFramesLayer = null;    // thin frames showing downloaded areas
   function getOfflineAreas() { return window.GeoState.get("offlineAreas", []) || []; }
   function saveOfflineAreas(a) { window.GeoState.save({ offlineAreas: a }); }
   function tileRangeFor(bounds, z) {
@@ -2575,20 +2591,6 @@
       renderOfflineAreas();
     });
   }
-  function startAreaSelect() {
-    areaSelecting = true; areaCorners = [];
-    closeDropdowns();
-    setStatus(t("offline.selectHint"));
-  }
-  // Called from onMapClick while selecting: collect two opposite corners.
-  function handleAreaCorner(latlng) {
-    areaCorners.push(latlng);
-    if (areaCorners.length < 2) { setStatus(t("offline.selectHint2")); return; }
-    areaSelecting = false;
-    var b = L.latLngBounds(areaCorners[0], areaCorners[1]); areaCorners = [];
-    setStatus("");
-    openAreaDialog(b);
-  }
   function openAreaDialog(bounds) {
     var layers = offlineLayers();
     // Don't offer deeper than the app can actually zoom (its max tile zoom) or
@@ -2647,6 +2649,18 @@
         var id = this.getAttribute("data-id"), a = getOfflineAreas().filter(function (x) { return x.id === id; })[0];
         modalConfirm(t("offline.deletePrompt", { name: a ? a.name : "" })).then(function (ok) { if (ok) deleteOfflineArea(id); });
       });
+    });
+    renderOfflineFrames();
+  }
+  // Thin frames on the map marking which areas have been downloaded.
+  function renderOfflineFrames() {
+    if (!map || !L.rectangle) return;
+    if (!offlineFramesLayer) offlineFramesLayer = L.layerGroup().addTo(map);
+    offlineFramesLayer.clearLayers();
+    getOfflineAreas().forEach(function (a) {
+      if (!a.bbox) return;
+      L.rectangle([[a.bbox[1], a.bbox[0]], [a.bbox[3], a.bbox[2]]],
+        { className: "offline-frame", color: "#0b3a3a", weight: 1.5, opacity: 0.75, dashArray: "5 4", fill: false, interactive: false }).addTo(offlineFramesLayer);
     });
   }
   // When offline and the current view has no cached tiles, but a downloaded
@@ -3773,7 +3787,6 @@
 
     document.getElementById("sync-export").addEventListener("click", exportAppData);
     document.getElementById("points-kml-export").addEventListener("click", exportPointsKml);
-    document.getElementById("offline-add").addEventListener("click", startAreaSelect);
     renderOfflineAreas();
     var syncFile = document.getElementById("sync-file");
     document.getElementById("sync-import").addEventListener("click", function () { syncFile.click(); });
@@ -5163,8 +5176,6 @@
     else bindPointPopup(marker, lat, lon);   // list (and any click-driven default)
   }
   function onMapClick(e) {
-    // While picking an offline-download area, clicks set the two corners.
-    if (areaSelecting) { handleAreaCorner(e.latlng); return; }
     // Debounce every map click: ignore any click that lands within 200 ms of the
     // previous one (rapid double-taps, or a legend re-render leaking through).
     if (Date.now() < mapClickGuardUntil) return;

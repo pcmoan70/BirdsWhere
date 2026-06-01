@@ -122,6 +122,8 @@ window.GeoI18N = (function () {
       "ctrl.exportPoints": "Map points",
       "btn.exportPointsKml": "⬇ Export KML",
       "ctrl.offline": "Offline maps",
+      "ctrl.downloadView": "Download this view for offline use",
+      "offline.hint": "Use the ⬇ button on the map to download the current view.",
       "offline.add": "⬇ Download an area",
       "offline.selectHint": "Tap one corner of the area to cache",
       "offline.selectHint2": "Now tap the opposite corner",
