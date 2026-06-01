@@ -2303,6 +2303,7 @@
     // Offline: if the view isn't cached but a downloaded area covers it, offer it.
     map.on("moveend zoomend", scheduleOfflineCheck);
     window.addEventListener("offline", scheduleOfflineCheck);
+    window.addEventListener("online", refreshOfflineZoomCap);   // reconnected → fetch full-res deep tiles again
 
     L.control.scale({ position: "bottomleft", imperial: false, maxWidth: 140 }).addTo(map);
 
@@ -2507,9 +2508,11 @@
     // subdomains must not be undefined — Leaflet reads .length even when the
     // URL has no {s} placeholder (e.g. the Esri satellite layer).
     baseLayer = L.tileLayer(cfg.url, { attribution: cfg.attribution, maxZoom: MAX_ZOOM, maxNativeZoom: cfg.maxNativeZoom || MAX_ZOOM, subdomains: cfg.subdomains || "abc", noWrap: true });
+    baseLayer._origMaxNative = cfg.maxNativeZoom || MAX_ZOOM;   // restore target when online / leaving an area
     baseLayer.on("tileerror", scheduleOfflineCheck);   // offline + uncached → suggest a downloaded area
     baseLayer.addTo(map);
     baseLayer.bringToBack();
+    refreshOfflineZoomCap();   // if offline inside a shallow download, upscale instead of fetching missing tiles
     document.body.setAttribute("data-basemap", which);
     var sel = document.getElementById("maptype-select");
     if (sel) sel.value = which;
@@ -2712,34 +2715,47 @@
   // When offline and the current view has no cached tiles, but a downloaded
   // area covers this spot, offer to switch to one of those cached maps.
   var offlinePromptBusy = false, offlineCheckTimer = null;
-  function pointTile(lat, lon, z) {
-    var n = Math.pow(2, z);
-    var x = Math.floor((lon + 180) / 360 * n);
-    var rad = lat * Math.PI / 180;
-    var y = Math.floor((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * n);
-    return { x: Math.max(0, Math.min(n - 1, x)), y: Math.max(0, Math.min(n - 1, y)) };
+  // Downloaded areas covering the map centre that use a given basemap.
+  function coveringAreas(basemap) {
+    if (!map) return [];
+    var c = map.getCenter();
+    return getOfflineAreas().filter(function (a) {
+      return a.bbox && (basemap == null || (a.basemap || "light") === basemap) &&
+        c.lng >= a.bbox[0] && c.lng <= a.bbox[2] && c.lat >= a.bbox[1] && c.lat <= a.bbox[3];
+    });
+  }
+  // When offline inside a downloaded area, cap the basemap's native zoom to the
+  // deepest cached level so Leaflet upscales those tiles (smooth/pixelated zoom)
+  // instead of requesting missing deep tiles and leaving broken holes. Restored
+  // to the layer's real native max when online or outside any download.
+  function refreshOfflineZoomCap() {
+    if (!baseLayer) return;
+    var cap = baseLayer._origMaxNative || MAX_ZOOM;
+    if (!navigator.onLine) {
+      var here = coveringAreas(window.GeoState.get("basemap", "light"));
+      if (here.length) cap = here.reduce(function (m, a) { return Math.max(m, a.zMax || 0); }, 0);
+    }
+    if (baseLayer.options.maxNativeZoom !== cap) {
+      baseLayer.options.maxNativeZoom = cap;
+      baseLayer.redraw();
+    }
   }
   function scheduleOfflineCheck() {
+    refreshOfflineZoomCap();   // immediate: upscale cached tiles rather than fetch missing ones
     if (navigator.onLine) return;
     clearTimeout(offlineCheckTimer);
     offlineCheckTimer = setTimeout(checkOfflineCoverage, 600);
   }
   function checkOfflineCoverage() {
     if (navigator.onLine || offlinePromptBusy || !map || !window.caches) return;
-    var c = map.getCenter(), z = Math.round(map.getZoom());
-    var areas = getOfflineAreas().filter(function (a) {
-      return a.bbox && c.lng >= a.bbox[0] && c.lng <= a.bbox[2] && c.lat >= a.bbox[1] && c.lat <= a.bbox[3];
-    });
-    if (!areas.length) return;
-    // Is the current view already served from a cache? (center tile of the basemap)
-    var tp = pointTile(c.lat, c.lng, z), url = layerTileUrl(baseLayer, tp.x, tp.y, z);
-    Promise.resolve(url ? caches.match(url) : null).then(function (hit) {
-      if (hit) return;   // current map is cached here — nothing to suggest
-      var curBase = window.GeoState.get("basemap", "light");
-      // Prefer suggesting areas whose basemap differs (those are the ones that
-      // would actually fill the view), but include all covering areas.
-      promptOfflineAreas(areas, curBase);
-    });
+    var covering = coveringAreas(null);
+    if (!covering.length) return;
+    var curBase = window.GeoState.get("basemap", "light");
+    // The current basemap is downloaded here → its tiles upscale (handled by the
+    // zoom cap); don't interrupt with a prompt. Only offer a switch when *only*
+    // a different basemap covers this view.
+    if (covering.some(function (a) { return (a.basemap || "light") === curBase; })) return;
+    promptOfflineAreas(covering, curBase);
   }
   function promptOfflineAreas(areas, curBase) {
     offlinePromptBusy = true;
