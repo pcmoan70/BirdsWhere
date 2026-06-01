@@ -3971,11 +3971,7 @@
       var key = el.getAttribute && el.getAttribute("data-key");
       if (!key) return;
       var card = el.closest(".fc-card");
-      if (el.classList.contains("fc-seen")) {
-        fcTick(key, el.checked);
-        if (card) card.classList.toggle("fc-on", el.checked);
-        renderFieldList();
-      } else if (el.classList.contains("fc-note")) {
+      if (el.classList.contains("fc-note")) {
         cd(key).note = el.value;
         if (card) card.classList.toggle("fc-note-on", !!el.value);
       }
@@ -4011,7 +4007,7 @@
         setFcSex(sKey, nextSex(cd(sKey).sex));
         return;
       }
-      if (e.target.closest(".fc-act-btn") || e.target.closest(".fc-sex-btn") || e.target.closest(".fc-tick") || e.target.closest(".fc-note") || e.target.closest(".fc-add")) return;
+      if (e.target.closest(".fc-act-btn") || e.target.closest(".fc-sex-btn") || e.target.closest(".fc-note") || e.target.closest(".fc-add")) return;
       var card = e.target.closest(".fc-card");
       if (card) { card.classList.add("fc-note-on"); var note = card.querySelector(".fc-note"); if (note) note.focus(); }
     });
@@ -5596,12 +5592,13 @@
   // question mark sitting atop the female sign's cross — shown instead of a
   // two-character "♀?". Used wherever the glyph is rendered as HTML; text-only
   // sinks (CSV export, native <option>) fall back to sexGlyph()'s "♀?".
-  var FL_GLYPH_SVG = '<svg class="sx-fl" viewBox="0 0 16 24" aria-label="♀?" role="img">' +
-    '<g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">' +
-      '<path d="M5.53 10.02 A4.3 4.3 0 1 1 10.47 10.02"/>' +    // female circle with a piece cut from the bottom (the hook)
-      '<path d="M10.47 10.02 C 10.1 12.4, 8 12.5, 8 15.8"/>' +  // tail curls to centre → question-mark stem
+  var FL_GLYPH_SVG = '<svg class="sx-fl" viewBox="0 0 24 22" aria-label="♀?" role="img">' +
+    '<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M12 5 C 12 1.4, 5.4 0.9, 5.4 5.6 C 5.4 8.6, 7.5 9.6, 8.7 11.6"/>' +  // open hook off the top-left (circle with a piece taken out)
+      '<line x1="12" y1="5" x2="12" y2="18"/>' +        // female cross — vertical
+      '<line x1="8.2" y1="10" x2="15.8" y2="10"/>' +    // female cross — horizontal
     '</g>' +
-    '<circle cx="8" cy="19.8" r="1.2" fill="currentColor"/>' +  // dot below
+    '<circle cx="18.6" cy="8.6" r="1.25" fill="currentColor"/>' +   // dot to the right
     '</svg>';
   function sexGlyphHtml(s) {
     return s === "fl" ? FL_GLYPH_SVG : escapeHtml(sexGlyph(s));
@@ -5630,25 +5627,6 @@
     var d = composeDraft[key] || {};
     fcAppend(key, d.count, d.note, d.act, d.sex);
     composeDraft[key] = { count: null, act: "", note: "", sex: "" };
-  }
-  // Checkbox: mark/unmark seen. Ticking a species with no entries writes a
-  // first (possibly "present"/uncounted) entry from the compose draft;
-  // unticking only clears the flag — it never deletes entries.
-  function fcTick(key, on) {
-    var rec = curFieldRecord(true); if (!rec) return;
-    rec.seen = rec.seen || {};
-    var newId = null;
-    if (on) {
-      rec.seen[key] = true;
-      if (!fcEntriesFor(rec, key).length) {
-        var d = composeDraft[key] || {}, loc = regLocation(); newId = eid();
-        rec.log.push({ id: newId, ts: Date.now(), lat: loc.lat, lon: loc.lon, key: key, count: (d.count != null && d.count !== "" ? d.count : null), act: d.act || "", note: (d.note || "").trim(), sex: d.sex || "" });
-        composeDraft[key] = { count: null, act: "", note: "", sex: "" };
-      }
-    } else { delete rec.seen[key]; }
-    rec.lat = fieldLat; rec.lon = fieldLon;
-    putFieldRecord(rec);
-    if (newId) freshenEntryLocation(newId);
   }
   function fcUpdateEntry(id, patch) {
     var rec = curFieldRecord(false); if (!rec) return;
@@ -5988,7 +5966,6 @@
       var badge = n > 1 ? '<span class="fc-ncount" title="' + n + '">×' + n + "</span>" : "";
       return '<div class="fc-card' + (en.seen ? " fc-on" : "") + (d.note ? " fc-note-on" : "") + '" data-key="' + escapeHtml(r.key) + '">' +
         '<div class="fc-top">' +
-          '<label class="fc-tick"><input type="checkbox" class="fc-seen" data-key="' + escapeHtml(r.key) + '"' + (en.seen ? " checked" : "") + "></label>" +
           '<span class="fc-name sp-link" data-key="' + escapeHtml(r.key) + '" data-name="' + escapeHtml(r.name) + '" data-sci="' + escapeHtml(lbl ? (lbl.sci || "") : "") + '">' + interestingStar(r.key) + escapeHtml(r.name) + badge + "</span>" +
           '<button type="button" class="fc-count' + (hasN ? " has-n" : "") + '" data-key="' + escapeHtml(r.key) + '">' + (hasN ? d.count : "#") + "</button>" +
           '<button type="button" class="fc-act-btn' + (d.act ? " has-act" : "") + '" data-key="' + escapeHtml(r.key) + '" title="' + escapeHtml(t("chk.activity")) + '">' + (d.act ? escapeHtml(actName(d.act)) : "🏷") + "</button>" +
