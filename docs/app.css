@@ -1820,7 +1820,7 @@ a.place-search-btn.is-open { background: var(--brand-soft, #e6f0ee); }
 .fc-top {
   display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 8px 8px;
 }
-.fc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.fc-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; }
 /* Compose note — full-width second line, hidden until it has content or tapped. */
 .fc-note {
   display: none;
@@ -1962,8 +1962,8 @@ a.place-search-btn.is-open { background: var(--brand-soft, #e6f0ee); }
 .fc-sex-btn.has-sex { color: var(--ink, inherit); background: var(--md-code-bg-color, #f6f8f7); border-color: var(--md-default-fg-color--light, #99a8a3); }
 /* Composed "female-like" glyph: a female cross with the circle opened into a
    question-mark hook off the top-left and a dot to the right. */
-.sx-fl { width: 0.7em; height: 1.1em; vertical-align: -0.3em; }
-.fc-sex-btn .sx-fl { width: 1em; height: 1.56em; vertical-align: -0.52em; }
+.sx-fl { width: 0.49em; height: 0.77em; vertical-align: -0.21em; }
+.fc-sex-btn .sx-fl { width: 0.7em; height: 1.09em; vertical-align: -0.36em; }
 /* Activity button: opens the scrollable activity picker (was a <select>). */
 .fc-act-btn { flex: 0 1 auto; max-width: 130px; height: 36px; box-sizing: border-box; cursor: pointer;
   padding: 0 10px; font-size: 0.9rem; line-height: 34px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
