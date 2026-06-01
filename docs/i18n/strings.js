@@ -137,6 +137,7 @@ window.GeoI18N = (function () {
       "offline.delete": "Delete",
       "offline.deletePrompt": "Delete offline area “{name}”?",
       "offline.tooMany": "That’s {n} tiles — a large download. Continue?",
+      "offline.coverPrompt": "You’re offline and this view isn’t cached. Open a downloaded area that covers it?",
       "points.exportEmpty": "No map points to export.",
       "sync.listMergePrompt": "A list named \"{name}\" already exists.\n\nOK = merge the imported points in.\nCancel = replace it with the imported list.",
       "ctrl.mode": "Mode",

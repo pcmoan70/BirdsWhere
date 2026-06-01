@@ -14,12 +14,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v157";
+var VERSION = "v158";
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs
 var TILE_CACHE = "tiles-" + VERSION;    // map tiles
 var API_CACHE = "api-" + VERSION;       // geocode / overpass / species lookups
-var MAX_TILES = 6000;                   // normal (LRU) tile cache cap
+var MAX_TILES = 11000;                  // normal (LRU) tile cache cap (~250 MB at ~22 KB/tile)
 var PINNED_PREFIX = "pinned-";          // explicitly downloaded offline areas (never auto-purged)
 
 // Precached on install so the very next (possibly offline) load has the shell.

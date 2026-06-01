@@ -1159,6 +1159,8 @@ button.dd-name:hover { text-decoration: underline; }
 .offline-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 0.8rem; }
 .offline-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .offline-meta { flex: 0 0 auto; color: var(--ink-muted, #777); font-size: 0.74rem; }
+.offline-pick { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.offline-pick-btn { text-align: left; }
 
 /* ---- Map Points dropdown + popup form ---- */
 .mp-head { display: flex; gap: 4px; padding: 5px 6px; align-items: center; }

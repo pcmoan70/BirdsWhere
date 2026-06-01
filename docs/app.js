@@ -2296,6 +2296,9 @@
     // you can still zoom out to the whole world on the current screen.
     map.on("resize", updateWorldMinZoom);
     map.whenReady(updateWorldMinZoom);
+    // Offline: if the view isn't cached but a downloaded area covers it, offer it.
+    map.on("moveend zoomend", scheduleOfflineCheck);
+    window.addEventListener("offline", scheduleOfflineCheck);
 
     L.control.scale({ position: "bottomleft", imperial: false, maxWidth: 140 }).addTo(map);
 
@@ -2484,6 +2487,7 @@
     // subdomains must not be undefined — Leaflet reads .length even when the
     // URL has no {s} placeholder (e.g. the Esri satellite layer).
     baseLayer = L.tileLayer(cfg.url, { attribution: cfg.attribution, maxZoom: MAX_ZOOM, maxNativeZoom: cfg.maxNativeZoom || MAX_ZOOM, subdomains: cfg.subdomains || "abc", noWrap: true });
+    baseLayer.on("tileerror", scheduleOfflineCheck);   // offline + uncached → suggest a downloaded area
     baseLayer.addTo(map);
     baseLayer.bringToBack();
     document.body.setAttribute("data-basemap", which);
@@ -2558,7 +2562,8 @@
       });
     }).then(function () {
       var areas = getOfflineAreas();
-      areas.push({ id: id, name: name, bbox: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
+      areas.push({ id: id, name: name, basemap: window.GeoState.get("basemap", "light"),
+                   bbox: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
                    zStart: zStart, zMax: zMax, tiles: ok, bytes: ok * OFFLINE_TILE_BYTES, createdAt: Date.now() });
       saveOfflineAreas(areas);
       return ok;
@@ -2586,7 +2591,10 @@
   }
   function openAreaDialog(bounds) {
     var layers = offlineLayers();
-    var baseMaxNative = (baseLayer && baseLayer.options.maxNativeZoom) || MAX_ZOOM;
+    // Don't offer deeper than the app can actually zoom (its max tile zoom) or
+    // than the basemap provides natively — deeper tiles would never be shown.
+    var appMaxZoom = Math.round(map.getMaxZoom());
+    var baseMaxNative = Math.min((baseLayer && baseLayer.options.maxNativeZoom) || MAX_ZOOM, appMaxZoom);
     var zStart = Math.max(0, Math.min(baseMaxNative, Math.round(map.getZoom())));
     var zMaxDefault = Math.min(baseMaxNative, zStart + 2);
     var ov = document.createElement("div"); ov.className = "ui-modal-overlay";
@@ -2638,6 +2646,62 @@
       b.addEventListener("click", function () {
         var id = this.getAttribute("data-id"), a = getOfflineAreas().filter(function (x) { return x.id === id; })[0];
         modalConfirm(t("offline.deletePrompt", { name: a ? a.name : "" })).then(function (ok) { if (ok) deleteOfflineArea(id); });
+      });
+    });
+  }
+  // When offline and the current view has no cached tiles, but a downloaded
+  // area covers this spot, offer to switch to one of those cached maps.
+  var offlinePromptBusy = false, offlineCheckTimer = null;
+  function pointTile(lat, lon, z) {
+    var n = Math.pow(2, z);
+    var x = Math.floor((lon + 180) / 360 * n);
+    var rad = lat * Math.PI / 180;
+    var y = Math.floor((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2 * n);
+    return { x: Math.max(0, Math.min(n - 1, x)), y: Math.max(0, Math.min(n - 1, y)) };
+  }
+  function scheduleOfflineCheck() {
+    if (navigator.onLine) return;
+    clearTimeout(offlineCheckTimer);
+    offlineCheckTimer = setTimeout(checkOfflineCoverage, 600);
+  }
+  function checkOfflineCoverage() {
+    if (navigator.onLine || offlinePromptBusy || !map || !window.caches) return;
+    var c = map.getCenter(), z = Math.round(map.getZoom());
+    var areas = getOfflineAreas().filter(function (a) {
+      return a.bbox && c.lng >= a.bbox[0] && c.lng <= a.bbox[2] && c.lat >= a.bbox[1] && c.lat <= a.bbox[3];
+    });
+    if (!areas.length) return;
+    // Is the current view already served from a cache? (center tile of the basemap)
+    var tp = pointTile(c.lat, c.lng, z), url = layerTileUrl(baseLayer, tp.x, tp.y, z);
+    Promise.resolve(url ? caches.match(url) : null).then(function (hit) {
+      if (hit) return;   // current map is cached here — nothing to suggest
+      var curBase = window.GeoState.get("basemap", "light");
+      // Prefer suggesting areas whose basemap differs (those are the ones that
+      // would actually fill the view), but include all covering areas.
+      promptOfflineAreas(areas, curBase);
+    });
+  }
+  function promptOfflineAreas(areas, curBase) {
+    offlinePromptBusy = true;
+    var ov = document.createElement("div"); ov.className = "ui-modal-overlay";
+    var box = document.createElement("div"); box.className = "ui-modal";
+    box.innerHTML = '<div class="ui-modal-msg">' + escapeHtml(t("offline.coverPrompt")) + "</div>" +
+      '<div class="offline-pick">' + areas.map(function (a) {
+        var bm = a.basemap && a.basemap !== curBase ? " (" + escapeHtml(t("basemap." + a.basemap) || a.basemap) + ")" : "";
+        return '<button type="button" class="demo-btn offline-pick-btn" data-id="' + escapeHtml(a.id) + '">' + escapeHtml(a.name) + bm + "</button>";
+      }).join("") + "</div>" +
+      '<div class="ui-modal-btns"><button type="button" class="demo-btn demo-btn-light" id="offc-cancel">' + escapeHtml(t("btn.cancel")) + "</button></div>";
+    document.body.appendChild(ov); ov.appendChild(box);
+    function close() { offlinePromptBusy = false; if (ov.parentNode) ov.parentNode.removeChild(ov); }
+    box.querySelector("#offc-cancel").addEventListener("click", close);
+    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+    box.querySelectorAll(".offline-pick-btn").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var a = getOfflineAreas().filter(function (x) { return x.id === this.getAttribute("data-id"); }.bind(this))[0];
+        close();
+        if (!a) return;
+        if (a.basemap && a.basemap !== window.GeoState.get("basemap", "light")) setBasemap(a.basemap);
+        try { map.fitBounds([[a.bbox[1], a.bbox[0]], [a.bbox[3], a.bbox[2]]], { maxZoom: a.zMax }); } catch (e) {}
       });
     });
   }
