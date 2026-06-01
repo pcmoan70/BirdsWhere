@@ -135,6 +135,7 @@ window.GeoI18N = (function () {
       "offline.download": "⬇ Download",
       "offline.downloading": "Downloading {done} / {total}…",
       "offline.saved": "Saved offline area “{name}”.",
+      "offline.failed": "Couldn’t download “{name}” — check your connection and storage.",
       "offline.area": "Area",
       "offline.empty": "No offline areas yet.",
       "offline.delete": "Delete",

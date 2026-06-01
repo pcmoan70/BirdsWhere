@@ -2577,18 +2577,33 @@
     });
     return urls;
   }
-  function downloadOfflineArea(bounds, zStart, zMax, layers, name, onProgress) {
+  // Fetch one tile for caching. Cross-origin tiles fetched no-cors come back as
+  // *opaque* responses, which browsers pad to a fixed ~7 MB each against the
+  // storage quota — a deep area would blow the quota and start failing puts.
+  // The tile CDNs send `Access-Control-Allow-Origin: *`, so try a real CORS
+  // fetch first (stored at true size) and only fall back to opaque for hosts
+  // (some overlays) that don't allow CORS.
+  function cacheOneTile(cache, url) {
+    return fetch(url).then(function (res) {
+      if (!res.ok) throw 0;
+      return cache.put(url, res);
+    }).catch(function () {
+      return fetch(url, { mode: "no-cors" }).then(function (res) { return cache.put(url, res); });
+    });
+  }
+  function downloadOfflineArea(bounds, zStart, zMax, layers, name, onProgress, isAborted) {
     var id = "area-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
     var urls = buildOfflineUrls(bounds, zStart, zMax, layers);
     var total = urls.length, done = 0, ok = 0;
+    function aborted() { return !!(isAborted && isAborted()); }
     return caches.open("pinned-" + id).then(function (cache) {
       return new Promise(function (resolve) {
         var i = 0, active = 0, CONC = 6;
         function pump() {
-          if (i >= urls.length && active === 0) { resolve(); return; }
-          while (active < CONC && i < urls.length) {
+          if ((i >= urls.length || aborted()) && active === 0) { resolve(); return; }
+          while (active < CONC && i < urls.length && !aborted()) {
             var url = urls[i++]; active++;
-            fetch(url, { mode: "no-cors" }).then(function (res) { return cache.put(url, res); }).then(function () { ok++; })
+            cacheOneTile(cache, url).then(function () { ok++; })
               .catch(function () {})
               .then(function () { active--; done++; if (onProgress) onProgress(done, total); pump(); });
           }
@@ -2596,6 +2611,7 @@
         pump();
       });
     }).then(function () {
+      if (aborted()) { return caches.delete("pinned-" + id).then(function () { return -1; }); }
       var areas = getOfflineAreas();
       areas.push({ id: id, name: name, basemap: window.GeoState.get("basemap", "light"),
                    bbox: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
@@ -2633,8 +2649,14 @@
     var est = box.querySelector("#area-est");
     est.textContent = t("offline.estimate", { n: tiles.toLocaleString(), mb: (tiles * OFFLINE_TILE_BYTES / 1048576).toFixed(tiles * OFFLINE_TILE_BYTES < 10485760 ? 1 : 0) });
     est.classList.toggle("area-dl-warn", tiles > OFFLINE_MAX_TILES);
+    var downloading = false, aborted = false;
     function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
-    box.querySelector("#area-cancel").addEventListener("click", close);
+    // Cancel must always work — before a download it just closes; during one it
+    // aborts the in-flight transfer (the button is never disabled).
+    box.querySelector("#area-cancel").addEventListener("click", function () {
+      if (downloading) aborted = true;
+      close();
+    });
     box.querySelector("#area-go").addEventListener("click", function () {
       if (tiles > OFFLINE_MAX_TILES) { modalConfirm(t("offline.tooMany", { n: tiles.toLocaleString() })).then(function (okc) { if (okc) run(zMax); }); }
       else run(zMax);
@@ -2642,10 +2664,16 @@
     function run(zMax) {
       var name = (box.querySelector("#area-name").value || "").trim() || (t("offline.area") + " " + (getOfflineAreas().length + 1));
       var prog = box.querySelector("#area-prog"); prog.style.display = "block";
-      box.querySelector("#area-go").disabled = true; box.querySelector("#area-cancel").disabled = true;
+      box.querySelector("#area-go").disabled = true;
+      downloading = true;
       downloadOfflineArea(bounds, zStart, zMax, layers, name, function (d, total) {
         prog.textContent = t("offline.downloading", { done: d.toLocaleString(), total: total.toLocaleString() });
-      }).then(function () { close(); renderOfflineAreas(); setStatus(t("offline.saved", { name: name })); });
+      }, function () { return aborted; }).then(function (res) {
+        if (aborted) return;
+        close(); renderOfflineAreas();
+        if (res === 0) setStatus(t("offline.failed", { name: name }));
+        else setStatus(t("offline.saved", { name: name }));
+      });
     }
   }
   function renderOfflineAreas() {
