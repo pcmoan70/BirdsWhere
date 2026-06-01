@@ -298,6 +298,9 @@ input:focus-visible {
   box-shadow: var(--shadow-md) !important;
   overflow: hidden;
 }
+/* Size the collapsed overlay (layers) icon to match the other map buttons. */
+.leaflet-control-layers-toggle { width: 26px; height: 26px; background-size: 18px 18px; }
+.leaflet-touch .leaflet-control-layers-toggle { width: 30px; height: 30px; background-size: 20px 20px; }
 .leaflet-bar a,
 .leaflet-bar a:hover {
   color: var(--brand-deep);
