@@ -5594,7 +5594,7 @@
   // sinks (CSV export, native <option>) fall back to sexGlyph()'s "♀?".
   var FL_GLYPH_SVG = '<svg class="sx-fl" viewBox="0 0 18 28" aria-label="♀?" role="img">' +
     '<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
-      '<path d="M4.76 9.65 A5 5 0 1 0 4.76 4.35"/>' +  // female circle, opening on the left (like a question mark)
+      '<path d="M4.67 4.5 A5 5 0 1 1 9 12"/>' +  // female circle, open ~120deg from the stem toward the left (question-mark hook)
       '<line x1="9" y1="12" x2="9" y2="21"/>' +        // female cross — vertical
       '<line x1="5" y1="16.5" x2="13" y2="16.5"/>' +   // female cross — horizontal
     '</g>' +
