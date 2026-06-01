@@ -5592,13 +5592,25 @@
   function sexGlyph(s) {
     return s === "m" ? "♂" : s === "f" ? "♀" : s === "p" ? "⚥" : s === "fl" ? "♀?" : "·";
   }
+  // Female-like ("looks female") marker: a single composed gender symbol — a
+  // question mark sitting atop the female sign's cross — shown instead of a
+  // two-character "♀?". Used wherever the glyph is rendered as HTML; text-only
+  // sinks (CSV export, native <option>) fall back to sexGlyph()'s "♀?".
+  var FL_GLYPH_SVG = '<svg class="sx-fl" viewBox="0 0 14 22" aria-label="♀?" role="img">' +
+    '<text x="7" y="10.5" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">?</text>' +
+    '<line x1="7" y1="12" x2="7" y2="20.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>' +
+    '<line x1="3.6" y1="16.4" x2="10.4" y2="16.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>' +
+    '</svg>';
+  function sexGlyphHtml(s) {
+    return s === "fl" ? FL_GLYPH_SVG : escapeHtml(sexGlyph(s));
+  }
   function nextSex(cur) {
     var i = SEX_CYCLE.indexOf(cur || ""); return SEX_CYCLE[(i + 1) % SEX_CYCLE.length];
   }
   function setFcSex(key, sex) {
     cd(key).sex = sex || "";
     var btn = document.querySelector('#field-list .fc-card[data-key="' + key + '"] .fc-sex-btn');
-    if (btn) { btn.textContent = sexGlyph(sex); btn.classList.toggle("has-sex", !!sex); }
+    if (btn) { btn.innerHTML = sexGlyphHtml(sex); btn.classList.toggle("has-sex", !!sex); }
   }
 
   // Append an observation entry to the open list (with id, time, location).
@@ -5930,13 +5942,14 @@
   function fmtClock(ts) { var d = new Date(ts || Date.now()); return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2); }
   function actLabel(act) { return String(act || "").split(" / ").filter(Boolean).map(function (a) { return actName(a); }).join(" / "); }
   // Compact one-line summary of a logged observation for the card.
-  function fcEntryStr(e) {
+  // Compact one-line summary as HTML (the sex marker is a composed SVG glyph).
+  function fcEntryHtml(e) {
     var parts = [];
-    if (e.count != null && e.count !== "") parts.push("×" + e.count);
-    if (e.sex) parts.push(sexGlyph(e.sex));
-    var al = actLabel(e.act); if (al) parts.push(al);
-    parts.push(fmtClock(e.ts));
-    if (e.note) parts.push("“" + e.note + "”");
+    if (e.count != null && e.count !== "") parts.push(escapeHtml("×" + e.count));
+    if (e.sex) parts.push(sexGlyphHtml(e.sex));
+    var al = actLabel(e.act); if (al) parts.push(escapeHtml(al));
+    parts.push(escapeHtml(fmtClock(e.ts)));
+    if (e.note) parts.push(escapeHtml("“" + e.note + "”"));
     return parts.join(" · ");
   }
 
@@ -5966,7 +5979,7 @@
       var ents = rec ? fcEntriesFor(rec, r.key) : [], n = ents.length;
       var hasN = (d.count != null && d.count !== "");
       var entLines = ents.slice(-2).reverse().map(function (e) {
-        return '<div class="fc-eline">' + escapeHtml(fcEntryStr(e)) + "</div>";
+        return '<div class="fc-eline">' + fcEntryHtml(e) + "</div>";
       }).join("");
       if (n > 2) entLines += '<div class="fc-eline fc-emore">' + escapeHtml(t("chk.more", { n: n - 2 })) + "</div>";
       var entriesBlock = n ? '<div class="fc-entries" data-key="' + escapeHtml(r.key) + '">' + entLines + "</div>" : "";
@@ -5977,7 +5990,7 @@
           '<span class="fc-name sp-link" data-key="' + escapeHtml(r.key) + '" data-name="' + escapeHtml(r.name) + '" data-sci="' + escapeHtml(lbl ? (lbl.sci || "") : "") + '">' + interestingStar(r.key) + escapeHtml(r.name) + badge + "</span>" +
           '<button type="button" class="fc-count' + (hasN ? " has-n" : "") + '" data-key="' + escapeHtml(r.key) + '">' + (hasN ? d.count : "#") + "</button>" +
           '<button type="button" class="fc-act-btn' + (d.act ? " has-act" : "") + '" data-key="' + escapeHtml(r.key) + '" title="' + escapeHtml(t("chk.activity")) + '">' + (d.act ? escapeHtml(actName(d.act)) : "🏷") + "</button>" +
-          '<button type="button" class="fc-sex-btn' + (d.sex ? " has-sex" : "") + '" data-key="' + escapeHtml(r.key) + '" title="' + escapeHtml(t("chk.sex")) + '">' + sexGlyph(d.sex || "") + "</button>" +
+          '<button type="button" class="fc-sex-btn' + (d.sex ? " has-sex" : "") + '" data-key="' + escapeHtml(r.key) + '" title="' + escapeHtml(t("chk.sex")) + '">' + sexGlyphHtml(d.sex || "") + "</button>" +
           '<button type="button" class="fc-add" data-key="' + escapeHtml(r.key) + '" title="' + escapeHtml(t("fc.add")) + '" aria-label="' + escapeHtml(t("fc.add")) + '">＋</button>' +
           '<input type="text" class="fc-note" data-key="' + escapeHtml(r.key) + '" placeholder="' + escapeHtml(t("th.notes")) + '" value="' + escapeHtml(d.note || "") + '" />' +
         "</div>" + entriesBlock +
@@ -6481,13 +6494,13 @@
     var esc = escapeHtml;
     function obsLineHtml(e) {
       var parts = [];
-      if (e.ts) parts.push(fmtClock(e.ts));
-      if (e.lat != null && e.lon != null) parts.push(e.lat.toFixed(5) + ", " + e.lon.toFixed(5));
-      if (e.count != null && e.count !== "") parts.push("×" + e.count);
-      if (e.sex) parts.push(sexGlyph(e.sex));
-      if (e.act) parts.push(actLabel(e.act));
-      if (e.note) parts.push("“" + e.note + "”");
-      return parts.map(esc).join(" · ");
+      if (e.ts) parts.push(esc(fmtClock(e.ts)));
+      if (e.lat != null && e.lon != null) parts.push(esc(e.lat.toFixed(5) + ", " + e.lon.toFixed(5)));
+      if (e.count != null && e.count !== "") parts.push(esc("×" + e.count));
+      if (e.sex) parts.push(sexGlyphHtml(e.sex));
+      if (e.act) parts.push(esc(actLabel(e.act)));
+      if (e.note) parts.push(esc("“" + e.note + "”"));
+      return parts.join(" · ");
     }
     var body = rows.map(function (r, i) {
       var obs = (r.entries || []).map(function (e) { return '<div class="obs">' + obsLineHtml(e) + "</div>"; }).join("");
