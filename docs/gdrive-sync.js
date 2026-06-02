@@ -90,48 +90,53 @@ window.GDriveSync = (function () {
     });
   }
 
-  // Resolve with a usable access token. `interactive` requests one the user can
-  // grant via the popup (a gesture); otherwise we try for a silent grant.
+  // Resolve with a usable access token. `interactive` (a user gesture) may show
+  // the Google popup with prompt:'' — chooser/consent only as needed. Otherwise
+  // use prompt:'none': Google returns a token silently if the user is already
+  // signed in and has consented, or fails WITHOUT any UI — so background syncs
+  // and page loads never pop the account chooser.
   function ensureToken(interactive) {
     return new Promise(function (resolve, reject) {
       if (accessToken && Date.now() < tokenExpiry) return resolve(accessToken);
       if (!tokenClient) return reject(new Error("not initialized"));
       tokenResolve = resolve; tokenReject = reject;
-      try { tokenClient.requestAccessToken({ prompt: interactive ? "consent" : "" }); }
+      try { tokenClient.requestAccessToken({ prompt: interactive ? "" : "none" }); }
       catch (e) { tokenResolve = tokenReject = null; reject(e); }
     });
   }
 
   // ---- Drive REST -----------------------------------------------------------
-  async function driveFetch(url, opts) {
-    var token = await ensureToken(false);
+  // `interactive` flows from the call site (gesture vs background) all the way
+  // down so a token request never shows UI during an automatic sync.
+  async function driveFetch(url, opts, interactive) {
+    var token = await ensureToken(interactive);
     opts = opts || {}; opts.headers = opts.headers || {};
     opts.headers["Authorization"] = "Bearer " + token;
     var r = await fetch(url, opts);
-    if (r.status === 401) {            // token rejected → drop it and re-auth once
+    if (r.status === 401) {            // token rejected → drop it and re-auth (same context)
       accessToken = null; tokenExpiry = 0;
-      token = await ensureToken(true);
+      token = await ensureToken(interactive);
       opts.headers["Authorization"] = "Bearer " + token;
       r = await fetch(url, opts);
     }
     return r;
   }
 
-  async function findFile() {
+  async function findFile(interactive) {
     var q = encodeURIComponent("name='" + FILE_NAME + "'");
-    var r = await driveFetch("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,modifiedTime)&q=" + q, {});
+    var r = await driveFetch("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,modifiedTime)&q=" + q, {}, interactive);
     if (!r.ok) throw new Error("Drive list failed (" + r.status + ")");
     var j = await r.json();
     return (j.files && j.files[0]) || null;
   }
 
-  async function downloadFile(id) {
-    var r = await driveFetch("https://www.googleapis.com/drive/v3/files/" + id + "?alt=media", {});
+  async function downloadFile(id, interactive) {
+    var r = await driveFetch("https://www.googleapis.com/drive/v3/files/" + id + "?alt=media", {}, interactive);
     if (!r.ok) return null;
     try { return await r.json(); } catch (e) { return null; }
   }
 
-  async function createFile(payloadStr) {
+  async function createFile(payloadStr, interactive) {
     var boundary = "migcalsyncboundary";
     var body =
       "--" + boundary + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" +
@@ -142,29 +147,29 @@ window.GDriveSync = (function () {
       method: "POST",
       headers: { "Content-Type": "multipart/related; boundary=" + boundary },
       body: body
-    });
+    }, interactive);
     if (!r.ok) throw new Error("Drive create failed (" + r.status + ")");
     return await r.json();
   }
 
-  async function updateFile(id, payloadStr) {
+  async function updateFile(id, payloadStr, interactive) {
     var r = await driveFetch("https://www.googleapis.com/upload/drive/v3/files/" + id + "?uploadType=media&fields=id", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: payloadStr
-    });
+    }, interactive);
     if (!r.ok) throw new Error("Drive update failed (" + r.status + ")");
     return await r.json();
   }
 
   // ---- sync orchestration ---------------------------------------------------
-  async function sync() {
+  async function sync(interactive) {
     if (!connected || syncing || !clientId() || !navigator.onLine) return;
     syncing = true; emit("syncing");
     try {
-      var meta = await findFile();
+      var meta = await findFile(interactive);
       if (meta && meta.id !== fileId) { fileId = meta.id; try { localStorage.setItem(LS_FILE_ID, fileId); } catch (e) {} }
-      var remote = meta ? await downloadFile(meta.id) : null;
+      var remote = meta ? await downloadFile(meta.id, interactive) : null;
 
       // Direction: let remote scalar settings win only when the remote copy has
       // advanced past what THIS device last saved (its load-time stamp) AND the
@@ -184,8 +189,8 @@ window.GDriveSync = (function () {
         (merged.ebirdKey && merged.ebirdKey !== (remote.ebirdKey || ""));
       if (needPush) {
         var str = JSON.stringify(merged);
-        if (fileId) { await updateFile(fileId, str); }
-        else { var created = await createFile(str); fileId = created.id; try { localStorage.setItem(LS_FILE_ID, fileId); } catch (e) {} }
+        if (fileId) { await updateFile(fileId, str, interactive); }
+        else { var created = await createFile(str, interactive); fileId = created.id; try { localStorage.setItem(LS_FILE_ID, fileId); } catch (e) {} }
       }
 
       localDirty = false;
@@ -212,13 +217,13 @@ window.GDriveSync = (function () {
   function scheduleSync(delay) {
     if (!connected) return;
     if (pushTimer) clearTimeout(pushTimer);
-    pushTimer = setTimeout(function () { pushTimer = null; sync(); }, delay == null ? PUSH_DEBOUNCE_MS : delay);
+    pushTimer = setTimeout(function () { pushTimer = null; sync(false); }, delay == null ? PUSH_DEBOUNCE_MS : delay);
   }
 
   function flush() {
     if (!connected) return;
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
-    sync();
+    sync(false);
   }
 
   // ---- public API -----------------------------------------------------------
@@ -232,8 +237,10 @@ window.GDriveSync = (function () {
 
       var arm = function () { armed = true; };
       if (connected) {
+        // Silent attempt on load (prompt:'none'); never pops the chooser. If a
+        // token can't be obtained without UI, sync() fails quietly → "reconnect".
         waitForGis()
-          .then(function () { initTokenClient(); return sync(); })
+          .then(function () { initTokenClient(); return sync(false); })
           .catch(function () { emit("reconnect"); })
           .then(arm, arm);
       } else {
@@ -249,7 +256,7 @@ window.GDriveSync = (function () {
         .then(function () {
           connected = true; try { localStorage.setItem(LS_CONNECTED, "1"); } catch (e) {}
           emit("idle");
-          return sync();
+          return sync(true);
         })
         .catch(function (e) { emit("reconnect"); throw e; });
     },
@@ -265,7 +272,7 @@ window.GDriveSync = (function () {
     syncNow: function () {
       if (!connected) return Promise.resolve();
       if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
-      return waitForGis().then(function () { initTokenClient(); return sync(); });
+      return waitForGis().then(function () { initTokenClient(); return sync(true); });
     },
 
     setClientId: function (id) {

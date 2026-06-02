@@ -2134,6 +2134,7 @@
       showLastChange();
       showPerfModal();
       initOfflineIndicator();
+      initInstallPrompt();
       var hasHere = false; try { hasHere = new URLSearchParams(location.search).has("here"); } catch (e) {}
       if (!hasHere) restoreSession();   // return to the view we left (reload-safe)
       maybeUrlAutoLocate();   // ?here=1 → geolocate + open species list
@@ -2162,6 +2163,43 @@
     window.addEventListener("online", sync);
     window.addEventListener("offline", sync);
     sync();
+  }
+
+  // Offer to install the app as a PWA. On Chrome/Edge/Android the browser fires
+  // `beforeinstallprompt`; we stash it and a tap on the pill triggers the native
+  // install. iOS Safari has no such event, so there the pill shows the manual
+  // "Add to Home Screen" instruction instead. Hidden once installed / standalone.
+  function initInstallPrompt() {
+    var standalone = false;
+    try { standalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true; } catch (e) {}
+    if (standalone) return;   // already installed — nothing to offer
+    var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent || "");
+    var deferred = null;
+    var pill = document.createElement("div");
+    pill.id = "install-pill"; pill.className = "install-pill"; pill.hidden = true;
+    pill.innerHTML =
+      '<button type="button" id="install-go" class="demo-btn" data-i18n="install.app">⤓ Install app</button>' +
+      '<button type="button" id="install-x" aria-label="Dismiss">×</button>';
+    document.body.appendChild(pill);
+    var goBtn = pill.querySelector("#install-go");
+    window.addEventListener("beforeinstallprompt", function (e) {
+      e.preventDefault(); deferred = e; pill.hidden = false;
+    });
+    goBtn.addEventListener("click", function () {
+      if (deferred) {
+        deferred.prompt();
+        deferred.userChoice.then(function () { deferred = null; pill.hidden = true; });
+      } else if (isIOS) {
+        goBtn.textContent = t("install.ios");   // can't auto-prompt on iOS — show how
+      } else {
+        pill.hidden = true;
+      }
+    });
+    pill.querySelector("#install-x").addEventListener("click", function () { pill.hidden = true; });
+    window.addEventListener("appinstalled", function () { pill.hidden = true; deferred = null; });
+    // iOS never fires beforeinstallprompt — surface the pill so the instruction
+    // is reachable. (Only in Safari, where Add-to-Home-Screen exists.)
+    if (isIOS && /safari/i.test(navigator.userAgent) && !/crios|fxios/i.test(navigator.userAgent)) pill.hidden = false;
   }
 
   // ---- Model & labels ------------------------------------------------------

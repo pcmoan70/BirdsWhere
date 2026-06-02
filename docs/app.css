@@ -2039,3 +2039,18 @@ a.place-search-btn.is-open { background: var(--brand-soft, #e6f0ee); }
   transition: transform 0.25s ease, opacity 0.25s ease;
 }
 #offline-badge.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+/* "Install app" pill (PWA) — bottom-centre, above the map. */
+.install-pill {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 14px; z-index: 4000;
+  display: flex; align-items: center; gap: 2px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3); padding: 4px;
+}
+.install-pill[hidden] { display: none; }
+.install-pill .demo-btn { padding: 7px 14px; font-size: 0.85rem; }
+#install-x {
+  border: none; background: transparent; color: var(--ink-muted);
+  font-size: 1.2rem; line-height: 1; cursor: pointer; padding: 2px 9px; border-radius: 999px;
+}
+#install-x:hover { color: var(--ink); }
