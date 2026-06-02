@@ -1649,7 +1649,9 @@ th.clickable-head:hover { text-decoration: underline; }
 
 /* Settings → Share between devices (Export / Import buttons side-by-side). */
 .sync-row { display: flex; gap: 8px; }
-.sync-row button { flex: 1 1 auto; }
+/* flex-basis 0 so every button gets an equal share of the row regardless of
+   label length — Export/Import and Sync/Disconnect all end up the same width. */
+.sync-row button { flex: 1 1 0; min-width: 0; }
 /* Stack the Export/Import and Google-Drive button rows with even spacing, and
    give the Drive status/hint lines room so they don't crowd the buttons. */
 .sync-row + .sync-row { margin-top: 8px; }
