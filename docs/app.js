@@ -3259,8 +3259,8 @@
     navClose("page");
     if (map) map.invalidateSize();
   }
-  function removeDetection(key) { if (detPlot[key]) { clearSpider(); if (detPlot[key].group) map.removeLayer(detPlot[key].group); delete detPlot[key]; delete detSelected[key]; updateDetLegend(); saveDetections(); } }
-  function clearDetections() { clearSpider(); Object.keys(detPlot).forEach(function (k) { if (detPlot[k].group) map.removeLayer(detPlot[k].group); }); detPlot = {}; detSelected = {}; detStarFilter = false; updateDetLegend(); saveDetections(); }
+  function removeDetection(key) { if (detPlot[key]) { clearSpider(); if (detPlot[key].group) map.removeLayer(detPlot[key].group); delete detPlot[key]; delete detSelected[key]; updateDetLegend(); saveDetections(); saveLegendState(); } }
+  function clearDetections() { clearSpider(); Object.keys(detPlot).forEach(function (k) { if (detPlot[k].group) map.removeLayer(detPlot[k].group); }); detPlot = {}; detSelected = {}; detStarFilter = false; detLegendMini = false; updateDetLegend(); saveDetections(); saveLegendState(); }
   // Re-render plotted points + legend in the current language (called on lang change).
   function refreshDetections() {
     rebuildDetLayers();
@@ -3270,20 +3270,28 @@
     var out = {}; Object.keys(detPlot).forEach(function (k) { var e = detPlot[k]; out[k] = { key: e.key, name: e.name, color: e.color, rows: e.rows }; });
     window.GeoState.save({ mapDetections: out });
   }
+  // Persist the legend's UI state — collapsed, the starred-only filter, and the
+  // row selection — so the map legend comes back the way the user left it.
+  function saveLegendState() {
+    window.GeoState.save({ mapLegend: { mini: detLegendMini, starFilter: detStarFilter, selected: Object.keys(detSelected) } });
+  }
   function loadDetections() {
     var saved = window.GeoState.get("mapDetections", {}) || {};
     Object.keys(saved).forEach(function (sk) {
       var d = saved[sk]; if (!d || !d.rows || !d.rows.length) return;
       var key = d.key || sk;   // older builds keyed by display name and had no .key
-      var e = { key: key, name: d.name || sk, color: d.color, rows: d.rows, group: null };
-      detPlot[key] = e;
-      e.group = renderDetGroup(detName(e), d.rows, d.color, detIsMuted(key)); e.group.addTo(map);
+      detPlot[key] = { key: key, name: d.name || sk, color: d.color, rows: d.rows, group: null };
     });
+    // Restore the saved legend state, then render the layers honouring it.
+    var ls = window.GeoState.get("mapLegend", {}) || {};
+    detLegendMini = !!ls.mini;
+    detStarFilter = !!ls.starFilter;
+    detSelected = {};
+    (Array.isArray(ls.selected) ? ls.selected : []).forEach(function (k) { if (detPlot[k]) detSelected[k] = true; });
+    rebuildDetLayers();
     updateDetLegend();
   }
-  // Collapsed/expanded state for the detection legend. Session-only — the
-  // legend is re-created each time detections come back, so there's nothing
-  // worth persisting.
+  // Collapsed/expanded state for the detection legend (persisted in mapLegend).
   var detLegendMini = false;
   function updateDetLegend() {
     var allKeys = Object.keys(detPlot);
@@ -3306,7 +3314,7 @@
     // Collapsed: a single pill in the corner showing the species count.
     if (detLegendMini) {
       el.innerHTML = '<button type="button" class="det-restore" title="' + escapeHtml(t("det.expand")) + '">📍 ' + detSummary + "</button>";
-      el.querySelector(".det-restore").addEventListener("click", function () { mapClickGuardUntil = Date.now() + 250; detLegendMini = false; updateDetLegend(); });
+      el.querySelector(".det-restore").addEventListener("click", function () { mapClickGuardUntil = Date.now() + 250; detLegendMini = false; saveLegendState(); updateDetLegend(); });
       return;
     }
     var rDays = detRecencyDays();
@@ -3333,7 +3341,7 @@
         return '<div class="' + rowCls + '" data-key="' + escapeHtml(k) + '"><span class="det-sw" style="background:' + sw + '"></span><span class="det-nm" title="' + nm + '">' + interestingStar(e.key) + nm + '</span><span class="det-ct">' + ct + '</span><button type="button" class="det-del" data-key="' + escapeHtml(k) + '" aria-label="remove">×</button></div>';
       }).join("");
     el.querySelector(".det-clear").addEventListener("click", clearDetections);
-    el.querySelector(".det-min").addEventListener("click", function () { mapClickGuardUntil = Date.now() + 250; detLegendMini = true; updateDetLegend(); });
+    el.querySelector(".det-min").addEventListener("click", function () { mapClickGuardUntil = Date.now() + 250; detLegendMini = true; saveLegendState(); updateDetLegend(); });
     el.querySelectorAll(".det-del").forEach(function (b) { b.addEventListener("click", function (e) { e.stopPropagation(); removeDetection(this.getAttribute("data-key")); }); });
     // Click a row to toggle its visibility selection. Stop the click here so it
     // can't leak to the map and pop the point-options popup at the legend's spot.
@@ -3343,6 +3351,7 @@
         mapClickGuardUntil = Date.now() + 250;
         var k = this.getAttribute("data-key");
         if (detSelected[k]) delete detSelected[k]; else detSelected[k] = true;
+        saveLegendState();
         rebuildDetLayers();
         updateDetLegend();
       });
@@ -3353,6 +3362,7 @@
       // turns the starred filter off.
       if (this.value === "starred") { detStarFilter = true; }
       else { detStarFilter = false; window.GeoState.save({ detRecencyDays: +this.value }); }
+      saveLegendState();
       rebuildDetLayers();   // re-render layers under the new filter (no refetch)
       updateDetLegend();
     });
