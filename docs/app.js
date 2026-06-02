@@ -3276,7 +3276,8 @@
         '<button type="button" class="det-min" title="' + escapeHtml(t("det.minimise")) + '" aria-label="' + escapeHtml(t("det.minimise")) + '">−</button>' +
         '<span class="det-sum" title="' + escapeHtml(t("det.summaryTip")) + '">' + detSummary + "</span>" +
         '<button type="button" class="det-clear">' + escapeHtml(t("det.clearAll")) + "</button>" +
-        '<select id="det-recency" title="' + escapeHtml(t("det.recency")) + '">' + recOpts + "</select>" +
+        '<select id="det-recency" title="' + escapeHtml(t("det.recency")) + '">' + recOpts +
+          '<option value="starred">★ ' + escapeHtml(t("det.starred")) + "</option>" + "</select>" +
       "</div>" +
       keys.map(function (k) {
         var e = detPlot[k], nm = escapeHtml(detName(e));
@@ -3305,10 +3306,23 @@
       });
     });
     el.querySelector("#det-recency").addEventListener("change", function () {
+      if (this.value === "starred") { selectStarredDetections(); return; }   // an action, not a recency value
       window.GeoState.save({ detRecencyDays: +this.value });
       rebuildDetLayers();   // re-render with the new recency filter (no refetch)
       updateDetLegend();
     });
+  }
+  // Legend dropdown action: show only the plotted species the user has starred
+  // (interesting). Selecting them drives the same selection used by row clicks,
+  // so the rest are hidden on the map. updateDetLegend() re-renders the dropdown
+  // back to the recency value (this is a one-shot action, not a saved setting).
+  function selectStarredDetections() {
+    var starred = Object.keys(detPlot).filter(function (k) { return isInteresting(detPlot[k].key); });
+    if (!starred.length) { updateDetLegend(); setStatus(t("det.noStarred")); return; }
+    detSelected = {};
+    starred.forEach(function (k) { detSelected[k] = true; });
+    rebuildDetLayers();
+    updateDetLegend();
   }
 
   // ---- Map points (user-added pins + named lists) ---------------------------
