@@ -1701,7 +1701,9 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
 .det-pop-link { cursor: pointer; }
 .det-pop .det-pop-go { display: block; margin-top: 5px; color: var(--brand); font-weight: 700; font-size: 0.74rem; }
 .det-pop-link:hover .det-pop-go { text-decoration: underline; }
-.det-legend-head #det-recency { font: inherit; font-size: 0.72rem; padding: 1px 3px; flex: 0 0 auto; }
+/* Keep the box narrow (it would otherwise size to the widest option, e.g.
+   "★ Starred only"); the open list still shows full labels. */
+.det-legend-head #det-recency { font: inherit; font-size: 0.72rem; padding: 1px 2px; flex: 0 1 auto; min-width: 0; max-width: 88px; text-overflow: ellipsis; }
 .det-clear { border: none; background: transparent; cursor: pointer; color: var(--danger, #c0392b); font: inherit; font-size: 0.72rem; }
 .det-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
 .det-row-click { cursor: pointer; border-radius: 4px; }
