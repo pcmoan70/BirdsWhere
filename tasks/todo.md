@@ -116,3 +116,78 @@ Shipped across **v73** (upload) and **v74** (sex toggle).
 - State/country auto-detection from coords.
 - Per-entry coords in the CSV (eBird Record Format takes one location per checklist).
 
+---
+
+# Google Drive sync
+
+Connect the app to a Google account and sync local data (settings, checklists,
+map points, eBird key) across devices via the user's Drive **appdata** folder.
+Auto sync (open / debounced change / tab-hide / online) + manual "Sync now".
+Reuses the existing Export/Import merge logic.
+
+## Tasks
+- [x] `app.js`: refactor `exportAppData`/`importAppData` → `buildPayload()` +
+      `applyRemote(obj, {incomingWins, interactive})`; add `interactive` flag to
+      `mergePointSets`; expose `window.AppData`.
+- [x] `state.js`: stamp `updatedAt` in `write()`; add `onChange(cb)` notify hook
+      + `bootUpdatedAt()` (load-time snapshot) + `touch()`.
+- [x] `gdrive-sync.js` (new): `window.GDriveSync` — GIS auth, Drive REST
+      (find/download/create/update in appDataFolder), pull→merge→push, debounce,
+      triggers (open / change / tab-hide / online), in-memory token only.
+- [x] `app.js`: add Connect/Disconnect/Sync-now UI to `#sync-wrap`; wire handlers;
+      bump `updatedAt` on eBird-key write; call `GDriveSync.init()` at end of init.
+- [x] `index.html`: load `gdrive-sync.js` after `state.js`; add GIS client script.
+- [x] `sw.js`: add `gdrive-sync.js` to SHELL precache; bump VERSION (v178→v179).
+- [x] `i18n/strings.js`: add `gdrive.*` strings to `en` + `sv` (others fall back
+      to English per the file's documented contract).
+- [x] Verify: merge direction/union unit tests (7/7); headless page render shows
+      the new UI with no console errors; GeoState/GDriveSync runtime surface
+      checks (12/12). OAuth round-trip needs the user's Client ID (prerequisite).
+
+## Prerequisite (user, one-time)
+Google Cloud project → enable Drive API → OAuth consent (External, scope
+`drive.appdata`) → Web OAuth client ID with the Pages origin + `http://localhost:8000`
+as authorized JS origins. Paste the Client ID into the app.
+
+## Known limitation
+Union-merge does not propagate **deletions** (an item deleted on one device can
+reappear from another). Matches today's Export/Import behavior; proper fix needs
+tombstones (out of scope). Surface in a UI hint.
+
+## Review
+
+Built as a thin transport+auth layer over the existing Export/Import merge.
+
+- **state.js** — `write()` now stamps `updatedAt = Date.now()` and notifies
+  `onChange` listeners; `bootUpdatedAt()` returns the change-stamp as it was at
+  page load (captured before init churn) so the open-time pull isn't fooled into
+  thinking local is newer; `touch()` bumps the stamp for out-of-store changes.
+- **app.js** — `exportAppData`/`importAppData` refactored into reusable
+  `buildPayload()` + `applyRemote(obj,{incomingWins,interactive})`, exposed as
+  `window.AppData`. `mergePointSets` gained an `interactive` flag (off for sync →
+  always union, never prompts). File Export/Import behavior is byte-for-byte
+  unchanged (`incomingWins:true, interactive:true`). Settings panel gained
+  Connect / Sync-now / Disconnect + an optional client-ID field; eBird-key edits
+  `touch()` the stamp; `GDriveSync.init()` runs last in init.
+- **gdrive-sync.js** (new) — `window.GDriveSync`. GIS browser token flow,
+  `drive.appdata` scope only, token kept in memory (never persisted). Drive REST
+  find/download/create/update of `migration_calendar.json` in the hidden app
+  folder. `sync()` = pull → direction-aware merge → push: collections always
+  union; scalar settings follow `remoteStamp > bootUpdatedAt && !localDirty`. A
+  pull that changed already-rendered scalars triggers a one-time reload.
+- **index.html / sw.js** — load order + GIS script tag; precache + VERSION v179.
+- **i18n** — `gdrive.*` in `en` + `sv`.
+
+### Known limitations
+- **Deletions don't propagate** (union merge) — surfaced in the settings hint.
+  Proper fix needs tombstones (out of scope).
+- **GIS ties tokens to a user gesture**, so a background token refresh can fail
+  silently; the UI then shows "reconnect" and a tap on Connect/Sync now recovers.
+- Other languages show English `gdrive.*` text (intentional fallback).
+
+### User prerequisite (one-time, cannot be automated)
+Create a Google Cloud OAuth Web client (Drive API enabled, consent scope
+`drive.appdata`, JS origins = Pages origin + `http://localhost:8000`) and paste
+the Client ID into Settings — or hard-code it in `gdrive-sync.js`
+(`DEFAULT_CLIENT_ID`).
+

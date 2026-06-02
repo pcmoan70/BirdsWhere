@@ -1342,17 +1342,22 @@
   // out (large, fully reconstructible). Imports MERGE checklists by id and
   // append log entries (deduped by entry id), so observations made on either
   // device survive a round-trip.
-  function exportAppData() {
+  // The full transportable snapshot of the user's data — shared by the file
+  // Export and the Google Drive sync. `state.updatedAt` (stamped by GeoState on
+  // every write) rides along as the local "version" used to order sync writes.
+  function buildPayload() {
     var state = {};
     try { state = JSON.parse(localStorage.getItem("geomodel-explorer-v1") || "{}"); } catch (e) {}
-    var payload = {
+    return {
       app: "migration_calendar",
       version: 1,
       exportedAt: new Date().toISOString(),
       state: state,
       ebirdKey: localStorage.getItem(EBIRD_KEY_LS) || ""
     };
-    downloadCsv("migration_calendar_" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify(payload, null, 2));
+  }
+  function exportAppData() {
+    downloadCsv("migration_calendar_" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify(buildPayload(), null, 2));
   }
   function mergeChecklists(local, incoming) {
     var out = {}; Object.keys(local || {}).forEach(function (k) { out[k] = local[k]; });
@@ -1396,20 +1401,30 @@
   }
   // Merge incoming named lists into local: same-named lists ask the user to
   // merge (union the pins) or overwrite (replace with the imported list).
-  function mergePointSets(localSets, incSets) {
+  // `interactive` false (background Drive sync) skips the prompt and always
+  // unions — a sync must never silently drop a device's pins.
+  function mergePointSets(localSets, incSets, interactive) {
     var out = (Array.isArray(localSets) ? localSets : []).map(function (c) { return { name: c.name, points: (c.points || []).slice() }; });
     var byName = Object.create(null); out.forEach(function (c) { byName[c.name] = c; });
     (Array.isArray(incSets) ? incSets : []).forEach(function (inc) {
       if (!inc || !inc.name) return;
       var cur = byName[inc.name];
       if (!cur) { var added = { name: inc.name, points: (inc.points || []).slice() }; out.push(added); byName[inc.name] = added; return; }
-      if (confirm(t("sync.listMergePrompt", { name: inc.name }))) cur.points = mergePins(cur.points, inc.points);
+      if (!interactive || confirm(t("sync.listMergePrompt", { name: inc.name }))) cur.points = mergePins(cur.points, inc.points);
       else cur.points = (inc.points || []).slice();
     });
     return out;
   }
-  function importAppData(jsonText) {
-    var data; try { data = JSON.parse(jsonText); } catch (e) { throw new Error("Invalid JSON"); }
+  // Merge a parsed payload into local storage and return a summary of the merge.
+  // Collections (checklists, loose pins, named lists) are ALWAYS unioned so no
+  // observation is ever lost, regardless of direction. Scalar settings follow
+  // `opts.incomingWins`: true → incoming overrides local (file import, and Drive
+  // pulls where the remote copy is newer); false → local is kept (Drive pushes
+  // where the local copy is newer). `opts.interactive` gates the same-named
+  // list merge/replace prompt (off for background sync). Writes straight to
+  // localStorage (bypassing GeoState) so it does not re-trigger a sync push.
+  function applyRemote(data, opts) {
+    opts = opts || {};
     if (!data || data.app !== "migration_calendar") throw new Error(t("sync.notBackup"));
     var local = {}; try { local = JSON.parse(localStorage.getItem("geomodel-explorer-v1") || "{}"); } catch (e) {}
     var incoming = data.state || {};
@@ -1417,16 +1432,20 @@
     // Map points: merge rather than overwrite. Loose pins from both sides are
     // unioned into the working set; named lists are merged/overwritten by name.
     var mergedLoose = mergePins(loosePointsOf(local), loosePointsOf(incoming));
-    var mergedSets = mergePointSets(local.mapPointSets, incoming.mapPointSets);
-    // Incoming overrides local for everything else; the above are merged.
-    var newState = {}; Object.keys(local).forEach(function (k) { newState[k] = local[k]; });
-    Object.keys(incoming).forEach(function (k) { newState[k] = incoming[k]; });
+    var mergedSets = mergePointSets(local.mapPointSets, incoming.mapPointSets, opts.interactive);
+    // Scalar settings: the winning side overrides, the other fills any gaps.
+    var primary = opts.incomingWins ? incoming : local;
+    var secondary = opts.incomingWins ? local : incoming;
+    var newState = {}; Object.keys(secondary).forEach(function (k) { newState[k] = secondary[k]; });
+    Object.keys(primary).forEach(function (k) { newState[k] = primary[k]; });
+    // The merged collections override either side's copy.
     newState.fieldChecklists = mergedCl;
     newState.mapPoints = mergedLoose;
     newState.mapPointSets = mergedSets;
     newState.mapPointSetActive = "";   // show the merged unsaved set after import
     try { localStorage.setItem("geomodel-explorer-v1", JSON.stringify(newState)); } catch (e) { throw new Error("storage write failed: " + e.message); }
-    if (data.ebirdKey) setEbirdKey(data.ebirdKey);
+    // eBird key: adopt incoming only when it should win, or when we have none.
+    if (data.ebirdKey && (opts.incomingWins || !ebirdKey())) setEbirdKey(data.ebirdKey);
     return {
       checklistsIncoming: Object.keys(incoming.fieldChecklists || {}).length,
       checklistsTotal: Object.keys(mergedCl).length,
@@ -1435,6 +1454,20 @@
       hadKey: !!data.ebirdKey
     };
   }
+  function importAppData(jsonText) {
+    var data; try { data = JSON.parse(jsonText); } catch (e) { throw new Error("Invalid JSON"); }
+    return applyRemote(data, { incomingWins: true, interactive: true });
+  }
+
+  // Surface the data layer for the Google Drive sync module (gdrive-sync.js),
+  // which lives outside this IIFE. It builds the payload and merges remote
+  // copies through the exact same code path as the file Export/Import.
+  window.AppData = {
+    buildPayload: buildPayload,
+    applyRemote: applyRemote,
+    ebirdKey: ebirdKey,
+    setEbirdKey: setEbirdKey
+  };
 
   // Recent eBird observations of one species near a point. The app's species
   // keys ARE eBird species codes, so this is a single call. eBird caps the
@@ -1870,6 +1903,14 @@
                   '<button type="button" id="sync-import" class="demo-btn" data-i18n="sync.import">⬆ Import</button>' +
                   '<input type="file" id="sync-file" accept=".json,application/json" style="display:none" />' +
                 '</div>' +
+                '<div class="sync-row" id="gdrive-row">' +
+                  '<button type="button" id="gd-connect" class="demo-btn" data-i18n="gdrive.connect">☁ Connect Google Drive</button>' +
+                  '<button type="button" id="gd-sync" class="demo-btn" data-i18n="gdrive.syncNow" style="display:none">⟳ Sync now</button>' +
+                  '<button type="button" id="gd-disconnect" class="demo-btn" data-i18n="gdrive.disconnect" style="display:none">Disconnect</button>' +
+                '</div>' +
+                '<input type="text" id="gd-clientid" autocomplete="off" spellcheck="false" data-i18n-ph="gdrive.clientIdPh" placeholder="Google OAuth client ID" style="display:none" />' +
+                '<div id="gd-status" class="cu-hint"></div>' +
+                '<p class="cu-hint" data-i18n="gdrive.hint">Syncs settings, checklists and points to your private Google Drive app folder. Deletions don’t sync between devices.</p>' +
               '</div>' +
               '<div class="ctrl-group" id="points-kml-wrap">' +
                 '<label data-i18n="ctrl.exportPoints">Map points</label>' +
@@ -2096,6 +2137,9 @@
       var hasHere = false; try { hasHere = new URLSearchParams(location.search).has("here"); } catch (e) {}
       if (!hasHere) restoreSession();   // return to the view we left (reload-safe)
       maybeUrlAutoLocate();   // ?here=1 → geolocate + open species list
+      // Start Google Drive sync last, after all init-time GeoState writes, so
+      // its open-time pull isn't fooled into thinking local is newer.
+      if (window.GDriveSync) window.GDriveSync.init();
     } catch (e) {
       document.getElementById("demo-loading").innerHTML =
         '<span style="color:red">' + t("app.failed", { msg: e.message }) + '</span>';
@@ -3890,7 +3934,9 @@
     // Personal eBird API key (enables eBird recent-sightings in the Recent panel).
     var ebKeyEl = document.getElementById("ebird-key");
     ebKeyEl.value = ebirdKey();
-    var saveEbKey = function () { setEbirdKey(ebKeyEl.value); };
+    // Bump the change-stamp so a key edit marks local as newer and rides along
+    // on the next Drive sync (the key lives outside GeoState).
+    var saveEbKey = function () { setEbirdKey(ebKeyEl.value); window.GeoState.touch(); };
     ebKeyEl.addEventListener("input", saveEbKey);    // save as typed/pasted, not only on blur
     ebKeyEl.addEventListener("change", saveEbKey);
 
@@ -3931,6 +3977,39 @@
       };
       rd.readAsText(f);
     });
+
+    // Google Drive sync controls. The transport lives in window.GDriveSync; here
+    // we just reflect its state into the buttons and forward user gestures.
+    if (window.GDriveSync) {
+      var gdConnect = document.getElementById("gd-connect");
+      var gdSync = document.getElementById("gd-sync");
+      var gdDisconnect = document.getElementById("gd-disconnect");
+      var gdClientId = document.getElementById("gd-clientid");
+      var gdStatus = document.getElementById("gd-status");
+      try { gdClientId.value = localStorage.getItem("gdrive-client-id") || ""; } catch (e) {}
+
+      var renderGd = function (st) {
+        var needId = !st.hasClientId;
+        gdClientId.style.display = needId ? "" : "none";
+        gdConnect.style.display = (!needId && !st.connected) ? "" : "none";
+        gdSync.style.display = st.connected ? "" : "none";
+        gdDisconnect.style.display = st.connected ? "" : "none";
+        gdSync.disabled = !!st.busy;
+        var msg = "";
+        if (st.status === "syncing") msg = t("gdrive.syncing");
+        else if (st.status === "reconnect") msg = t("gdrive.reconnect");
+        else if (st.status === "error") msg = t("gdrive.error");
+        else if (st.connected) msg = t("gdrive.synced");
+        gdStatus.textContent = msg;
+      };
+      window.GDriveSync.onStatus(renderGd);
+
+      gdConnect.addEventListener("click", function () { window.GDriveSync.connect().catch(function () {}); });
+      gdSync.addEventListener("click", function () { window.GDriveSync.syncNow(); });
+      gdDisconnect.addEventListener("click", function () { window.GDriveSync.disconnect(); });
+      var saveClientId = function () { window.GDriveSync.setClientId(gdClientId.value); };
+      gdClientId.addEventListener("change", saveClientId);
+    }
 
     document.getElementById("maptype-select").addEventListener("change", function () {
       setBasemap(this.value);

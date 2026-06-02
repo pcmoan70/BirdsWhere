@@ -26,7 +26,12 @@
   <!-- i18n strings + persisted state + analysis views (load before app.js) -->
   <script src="i18n/strings.js"></script>
   <script src="state.js"></script>
+  <script src="gdrive-sync.js"></script>
   <script src="analysis.js"></script>
+
+  <!-- Google Identity Services — for optional "sync via Google Drive" (loaded
+       from Google; harmless to skip when offline, sync just stays disabled). -->
+  <script async src="https://accounts.google.com/gsi/client"></script>
 
   <!-- Leaflet (vendored locally for offline use) -->
   <script src="vendor/leaflet/leaflet.js"></script>

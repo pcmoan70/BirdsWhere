@@ -14,7 +14,7 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v178";
+var VERSION = "v179";
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs
 var TILE_CACHE = "tiles-" + VERSION;    // map tiles
@@ -30,6 +30,7 @@ var SHELL = [
   "app.css",
   "analysis.js",
   "state.js",
+  "gdrive-sync.js",
   "i18n/strings.js",
   "manifest.webmanifest",
   "icon.svg",
