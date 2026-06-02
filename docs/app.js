@@ -555,7 +555,9 @@
   function toggleInteresting(key) {
     if (!key) return;
     if (interestingSpecies[key]) delete interestingSpecies[key]; else interestingSpecies[key] = true;
-    persistInteresting(); refreshCurrentView();
+    persistInteresting();
+    keepListScroll = true;   // re-render in place — don't jump the list back to the top
+    refreshCurrentView();
   }
 
   // "★ " prefix for species the user has tagged as interesting (lists/cards).
@@ -2386,6 +2388,10 @@
   }
 
   // Re-render whatever panel/overlay is currently shown (after a language change).
+  // One-shot: when true, the next species-list render keeps the panel's scroll
+  // position instead of jumping to the top (set for in-place updates like
+  // starring a species). Consumed at the start of the render functions.
+  var keepListScroll = false;
   function refreshCurrentView() {
     if (currentSpView && currentSpView.mode === "country" && document.getElementById("species-panel").style.display !== "none") {
       renderSpeciesInCountry(currentSpView.lat, currentSpView.lon); return;
@@ -2400,6 +2406,7 @@
     }
     // Field-list re-render so the chk-filter buttons reflect interesting set changes.
     if (document.getElementById("field-page").style.display === "flex") renderFieldList();
+    keepListScroll = false;   // clear if no list render consumed it (e.g. barchart mode)
   }
 
   // ---- Map setup -----------------------------------------------------------
@@ -6887,6 +6894,7 @@
     return { max: maxArr, p90: p90, median: median };
   }
   async function renderSpeciesInCountry(lat, lon) {
+    var keepScroll = keepListScroll; keepListScroll = false;   // consume one-shot flag
     var info = await countryInfo(lat, lon);
     if (!info.cc) { setStatus(t("status.error", { msg: "country lookup failed" })); return; }
     var res = +window.GeoState.get("countryRes", 3) || 3;
@@ -6981,7 +6989,7 @@
       var sp = document.getElementById("species-panel");
       sp.classList.toggle("as-page", currentMode === "list");
       sp.style.display = "block";
-      if (currentMode === "list") { sp.scrollTop = 0; navOpen("page", closeAnyFullPage); }
+      if (currentMode === "list") { if (!keepScroll) sp.scrollTop = 0; navOpen("page", closeAnyFullPage); }
       document.getElementById("barchart-panel").style.display = "none";
       setStatus(t("status.countryDone", { country: info.name || info.cc, ns: results.length, n: cells.length }));
       // CSV download.
@@ -7012,6 +7020,7 @@
   }
 
   async function renderSpeciesList(lat, lon) {
+    var keepScroll = keepListScroll; keepListScroll = false;   // consume one-shot flag
     currentSpView = { mode: "point", lat: lat, lon: lon };
     if (currentMode === "list") saveSession({ mode: "list", page: "species", lat: lat, lon: lon });
     setPointMarker(lat, lon);   // show the pin for the point this list is about
@@ -7079,7 +7088,7 @@
       // keep it as an inline card under the map.
       sp.classList.toggle("as-page", currentMode === "list");
       sp.style.display = "block";
-      if (currentMode === "list") { sp.scrollTop = 0; navOpen("page", closeAnyFullPage); }
+      if (currentMode === "list") { if (!keepScroll) sp.scrollTop = 0; navOpen("page", closeAnyFullPage); }
       document.getElementById("barchart-panel").style.display = "none";
       setStatus(t("status.spResult", { n: results.length, p: (pmin * 100).toFixed(0), lat: lat.toFixed(2), lon: lon.toFixed(2) }));
 
