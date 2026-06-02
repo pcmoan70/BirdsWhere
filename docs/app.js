@@ -2622,13 +2622,11 @@
     map.on("contextmenu", onMapContextMenu);   // right-click / long-press → add point dialog
     map.on("movestart zoomstart click", clearSpider);   // collapse the fan-out when the view changes / map is clicked
     document.addEventListener("keydown", function (e) { if (e.key === "Escape") clearSpider(); });
-    // Detection quick-popup: track open state and make the popup body open the
-    // observation's source on click.
+    // Detection quick-popup: track open state so a background click can dismiss
+    // it (see onMapClick). The popup's source link is a plain <a> that navigates
+    // on its own.
     map.on("popupopen", function (e) {
-      if (!(e.popup && e.popup.options && e.popup.options.className === "det-pop-wrap")) return;
-      detPopupOpen = true;
-      var src = e.popup._source, body = e.popup.getElement() && e.popup.getElement().querySelector(".det-pop");
-      if (body && src && src._detUrl) body.addEventListener("click", function (ev) { ev.stopPropagation(); openExternal(src._detUrl); map.closePopup(); });
+      if (e.popup && e.popup.options && e.popup.options.className === "det-pop-wrap") detPopupOpen = true;
     });
     map.on("popupclose", function (e) {
       if (e.popup && e.popup.options && e.popup.options.className === "det-pop-wrap") detPopupOpen = false;
@@ -3096,23 +3094,18 @@
     var t = Date.parse(dateStr); if (isNaN(t)) return false;
     return (Date.now() - t) / 86400000 <= maxDays;
   }
-  function detTooltipHtml(name, r) {
-    return "<b>" + escapeHtml(name) + "</b><span class='area-tip-sub'>" + escapeHtml([r.src, r.date, r.place].filter(Boolean).join(" · ")) + "</span>";
-  }
-  // Quick popup for a tapped detection dot: shows what/where it is and, when the
-  // observation has a source link, opens it on click. The wiring (click-to-open
-  // + the detPopupOpen flag) lives in the map's popupopen/popupclose handlers in
-  // initMap; a background click dismisses it via onMapClick (closeOnClick is off
-  // so the dismiss doesn't also drop a new point).
+  // Quick popup for a tapped detection dot: shows what/where it is. When the
+  // observation has a source link the whole popup is an <a> that opens it in a
+  // new tab (a real link, so it isn't blocked like window.open can be). The
+  // detPopupOpen flag (set in initMap's popupopen/popupclose) lets a background
+  // click dismiss it via onMapClick without also dropping a new point.
   function openDetPopup(marker, name, r) {
     var sub = escapeHtml([r.src, r.date, r.place].filter(Boolean).join(" · "));
-    var hasUrl = !!r.url;
-    var html = '<div class="det-pop' + (hasUrl ? " det-pop-link" : "") + '">' +
-      "<b>" + escapeHtml(name) + "</b>" +
-      (sub ? '<span class="det-pop-sub">' + sub + "</span>" : "") +
-      (hasUrl ? '<span class="det-pop-go">' + escapeHtml(t("det.openSource")) + " ↗</span>" : "") +
-      "</div>";
-    marker._detUrl = hasUrl ? r.url : "";   // read by the popupopen handler
+    var inner = "<b>" + escapeHtml(name) + "</b>" + (sub ? '<span class="det-pop-sub">' + sub + "</span>" : "");
+    var html = r.url
+      ? '<a class="det-pop det-pop-link" href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener">' +
+          inner + '<span class="det-pop-go">' + escapeHtml(t("det.openSource")) + " ↗</span></a>"
+      : '<div class="det-pop">' + inner + "</div>";
     marker.bindPopup(html, { className: "det-pop-wrap", closeButton: false, closeOnClick: false, autoClose: true });
     marker.openPopup();
   }
@@ -3124,7 +3117,6 @@
       if (!recentEnough(r.date, maxDays)) return;
       visible++;
       var m = L.circleMarker([r.lat, r.lon], { radius: 5, color: "#1a1a1a", weight: 1, opacity: strokeOp, fillColor: fill, fillOpacity: fillOp, bubblingMouseEvents: false });
-      m.bindTooltip(detTooltipHtml(name, r), { direction: "top", className: "area-tip" });
       // Metadata for the fan-out so it can reconstruct clones in place. Keep
       // the true species colour too, so fanned clones are distinguishable even
       // when the map is in the muted/grey (no-selection) state.
@@ -3793,8 +3785,7 @@
       g.addLayer(L.polyline([centerLatLng, ll], { color: "#666", weight: 1, opacity: 0.55, interactive: false }));
       var clone = L.circleMarker(ll, { radius: 6, color: "#1a1a1a", weight: 1, opacity: 0.95, fillColor: orig._detTrueColor || orig._detColor, fillOpacity: 0.95, bubblingMouseEvents: false });
       var r = orig._detRow;
-      // Permanent tooltip on hover; click → quick popup (tap it to open source).
-      clone.bindTooltip(detTooltipHtml(orig._detName, r), { direction: "top", className: "area-tip" });
+      // Click a fanned clone → its quick popup (tap it to open the source).
       clone.on("click", function (ev) {
         if (ev && ev.originalEvent) L.DomEvent.stopPropagation(ev.originalEvent);   // keep the fan open
         openDetPopup(clone, orig._detName, r);

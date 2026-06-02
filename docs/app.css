@@ -1695,7 +1695,7 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
 
 /* Quick popup shown when a plotted detection dot is tapped. */
 .det-pop-wrap .leaflet-popup-content { margin: 7px 11px; }
-.det-pop { font-size: 0.8rem; line-height: 1.35; min-width: 110px; }
+.det-pop { display: block; font-size: 0.8rem; line-height: 1.35; min-width: 110px; color: var(--ink, #222); text-decoration: none; }
 .det-pop b { display: block; }
 .det-pop .det-pop-sub { display: block; margin-top: 1px; color: var(--ink-muted, #666); font-size: 0.72rem; }
 .det-pop-link { cursor: pointer; }
