@@ -3099,15 +3099,19 @@
   // new tab (a real link, so it isn't blocked like window.open can be). The
   // detPopupOpen flag (set in initMap's popupopen/popupclose) lets a background
   // click dismiss it via onMapClick without also dropping a new point.
-  function openDetPopup(marker, name, r) {
+  function openDetPopup(dot, name, r) {
+    // Close any other open popup first — notably the point-options popup, which
+    // is autoClose:false and would otherwise linger behind this one.
+    if (marker && marker.closePopup) marker.closePopup();
+    map.closePopup();
     var sub = escapeHtml([r.src, r.date, r.place].filter(Boolean).join(" · "));
     var inner = "<b>" + escapeHtml(name) + "</b>" + (sub ? '<span class="det-pop-sub">' + sub + "</span>" : "");
     var html = r.url
       ? '<a class="det-pop det-pop-link" href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener">' +
           inner + '<span class="det-pop-go">' + escapeHtml(t("det.openSource")) + " ↗</span></a>"
       : '<div class="det-pop">' + inner + "</div>";
-    marker.bindPopup(html, { className: "det-pop-wrap", closeButton: false, closeOnClick: false, autoClose: true });
-    marker.openPopup();
+    dot.bindPopup(html, { className: "det-pop-wrap", closeButton: false, closeOnClick: false, autoClose: true });
+    dot.openPopup();
   }
   function renderDetGroup(name, rows, color, muted) {
     var g = L.layerGroup(), maxDays = detRecencyDays(), visible = 0;
