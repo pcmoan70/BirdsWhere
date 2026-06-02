@@ -2622,6 +2622,17 @@
     map.on("contextmenu", onMapContextMenu);   // right-click / long-press → add point dialog
     map.on("movestart zoomstart click", clearSpider);   // collapse the fan-out when the view changes / map is clicked
     document.addEventListener("keydown", function (e) { if (e.key === "Escape") clearSpider(); });
+    // Detection quick-popup: track open state and make the popup body open the
+    // observation's source on click.
+    map.on("popupopen", function (e) {
+      if (!(e.popup && e.popup.options && e.popup.options.className === "det-pop-wrap")) return;
+      detPopupOpen = true;
+      var src = e.popup._source, body = e.popup.getElement() && e.popup.getElement().querySelector(".det-pop");
+      if (body && src && src._detUrl) body.addEventListener("click", function (ev) { ev.stopPropagation(); openExternal(src._detUrl); map.closePopup(); });
+    });
+    map.on("popupclose", function (e) {
+      if (e.popup && e.popup.options && e.popup.options.className === "det-pop-wrap") detPopupOpen = false;
+    });
 
     map.on("moveend", function () {
       var c = map.getCenter();
@@ -3062,6 +3073,7 @@
   // lists (and the map shows) only the species the user has starred.
   var detStarFilter = false;
   function detPassesStar(k) { return !detStarFilter || isInteresting((detPlot[k] && detPlot[k].key) || k); }
+  var detPopupOpen = false;   // a detection's quick popup is showing (see openDetPopup)
   var mapClickGuardUntil = 0;   // onMapClick ignores clicks before this time; each accepted click re-arms it (200 ms debounce), legend re-renders set a longer window
   function detSelectionActive() { return Object.keys(detSelected).some(function (k) { return detPlot[k] && detPassesStar(k); }); }
   function detIsVisible(key) { return detPassesStar(key) && (!detSelectionActive() || !!detSelected[key]); }
@@ -3087,6 +3099,23 @@
   function detTooltipHtml(name, r) {
     return "<b>" + escapeHtml(name) + "</b><span class='area-tip-sub'>" + escapeHtml([r.src, r.date, r.place].filter(Boolean).join(" · ")) + "</span>";
   }
+  // Quick popup for a tapped detection dot: shows what/where it is and, when the
+  // observation has a source link, opens it on click. The wiring (click-to-open
+  // + the detPopupOpen flag) lives in the map's popupopen/popupclose handlers in
+  // initMap; a background click dismisses it via onMapClick (closeOnClick is off
+  // so the dismiss doesn't also drop a new point).
+  function openDetPopup(marker, name, r) {
+    var sub = escapeHtml([r.src, r.date, r.place].filter(Boolean).join(" · "));
+    var hasUrl = !!r.url;
+    var html = '<div class="det-pop' + (hasUrl ? " det-pop-link" : "") + '">' +
+      "<b>" + escapeHtml(name) + "</b>" +
+      (sub ? '<span class="det-pop-sub">' + sub + "</span>" : "") +
+      (hasUrl ? '<span class="det-pop-go">' + escapeHtml(t("det.openSource")) + " ↗</span>" : "") +
+      "</div>";
+    marker._detUrl = hasUrl ? r.url : "";   // read by the popupopen handler
+    marker.bindPopup(html, { className: "det-pop-wrap", closeButton: false, closeOnClick: false, autoClose: true });
+    marker.openPopup();
+  }
   function renderDetGroup(name, rows, color, muted) {
     var g = L.layerGroup(), maxDays = detRecencyDays(), visible = 0;
     var fill = muted ? DET_MUTE_COLOR : color;
@@ -3100,13 +3129,13 @@
       // the true species colour too, so fanned clones are distinguishable even
       // when the map is in the muted/grey (no-selection) state.
       m._detRow = r; m._detName = name; m._detColor = fill; m._detTrueColor = color;
-      // Click a lone dot → open its observation source. Click a dot that hides
-      // others underneath → fan the cluster out (sticky) so each can be reached.
+      // Click a lone dot → quick popup (tap it to open the source). Click a dot
+      // that hides others underneath → fan the cluster out (sticky) to reach each.
       m.on("click", function (e) {
         if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent);
         var overlaps = findOverlapsAt(m.getLatLng(), 10);
         if (overlaps.length >= 2) { clearSpider(); spiderOut(m.getLatLng(), overlaps); return; }
-        if (r.url) openExternal(r.url);
+        openDetPopup(m, name, r);
       });
       g.addLayer(m);
     });
@@ -3764,11 +3793,11 @@
       g.addLayer(L.polyline([centerLatLng, ll], { color: "#666", weight: 1, opacity: 0.55, interactive: false }));
       var clone = L.circleMarker(ll, { radius: 6, color: "#1a1a1a", weight: 1, opacity: 0.95, fillColor: orig._detTrueColor || orig._detColor, fillOpacity: 0.95, bubblingMouseEvents: false });
       var r = orig._detRow;
-      // Permanent tooltip on hover; click → the observation's source page.
+      // Permanent tooltip on hover; click → quick popup (tap it to open source).
       clone.bindTooltip(detTooltipHtml(orig._detName, r), { direction: "top", className: "area-tip" });
       clone.on("click", function (ev) {
         if (ev && ev.originalEvent) L.DomEvent.stopPropagation(ev.originalEvent);   // keep the fan open
-        if (r.url) openExternal(r.url);
+        openDetPopup(clone, orig._detName, r);
       });
       g.addLayer(clone);
       orig.setStyle({ opacity: 0, fillOpacity: 0 });   // hide the stacked original while fanned
@@ -5446,6 +5475,9 @@
     // previous one (rapid double-taps, or a legend re-render leaking through).
     if (Date.now() < mapClickGuardUntil) return;
     mapClickGuardUntil = Date.now() + 200;
+    // A background click while a detection's quick popup is open just dismisses
+    // it — don't also drop a new point.
+    if (detPopupOpen) { map.closePopup(); return; }
     // List + Range show the per-point species list; Migration the analysis.
     if (["list", "barchart", "range"].indexOf(currentMode) < 0) return;
     // Don't fire the point-options popup if the user was tapping a plotted
