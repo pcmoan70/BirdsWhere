@@ -1650,6 +1650,11 @@ th.clickable-head:hover { text-decoration: underline; }
 /* Settings → Share between devices (Export / Import buttons side-by-side). */
 .sync-row { display: flex; gap: 8px; }
 .sync-row button { flex: 1 1 auto; }
+/* Stack the Export/Import and Google-Drive button rows with even spacing, and
+   give the Drive status/hint lines room so they don't crowd the buttons. */
+.sync-row + .sync-row { margin-top: 8px; }
+#gd-status:empty { display: none; }
+#sync-wrap .cu-hint { font-size: 0.72rem; color: var(--ink-muted); margin: 8px 0 0; }
 
 /* Species observed at the point that the prediction model doesn't cover —
    listed above the model rows with a subtle highlight + bold name. */
