@@ -3058,10 +3058,16 @@
   // Click a legend row to "select" it — selected species draw in their colour
   // and the unselected ones are hidden entirely.
   var detSelected = {};
+  // "Starred only" filter, driven by the legend dropdown: when on, the legend
+  // lists (and the map shows) only the species the user has starred.
+  var detStarFilter = false;
+  function detPassesStar(k) { return !detStarFilter || isInteresting((detPlot[k] && detPlot[k].key) || k); }
   var mapClickGuardUntil = 0;   // onMapClick ignores clicks before this time; each accepted click re-arms it (200 ms debounce), legend re-renders set a longer window
-  function detSelectionActive() { return Object.keys(detSelected).some(function (k) { return detPlot[k]; }); }
-  function detIsVisible(key) { return !detSelectionActive() || !!detSelected[key]; }
-  function detIsMuted(key) { return !detSelectionActive(); }   // no selection → all grey
+  function detSelectionActive() { return Object.keys(detSelected).some(function (k) { return detPlot[k] && detPassesStar(k); }); }
+  function detIsVisible(key) { return detPassesStar(key) && (!detSelectionActive() || !!detSelected[key]); }
+  // No row selected → all grey, EXCEPT when the starred filter is on, where the
+  // narrowed-down species show in their colours.
+  function detIsMuted(key) { return !detStarFilter && !detSelectionActive(); }
   var DET_MUTE_COLOR = "#9aa3a0";
   function detSlim(rows) {
     return (rows || []).filter(function (r) { return r.lat != null && r.lon != null; })
@@ -3229,7 +3235,7 @@
     if (map) map.invalidateSize();
   }
   function removeDetection(key) { if (detPlot[key]) { clearSpider(); if (detPlot[key].group) map.removeLayer(detPlot[key].group); delete detPlot[key]; delete detSelected[key]; updateDetLegend(); saveDetections(); } }
-  function clearDetections() { clearSpider(); Object.keys(detPlot).forEach(function (k) { if (detPlot[k].group) map.removeLayer(detPlot[k].group); }); detPlot = {}; detSelected = {}; updateDetLegend(); saveDetections(); }
+  function clearDetections() { clearSpider(); Object.keys(detPlot).forEach(function (k) { if (detPlot[k].group) map.removeLayer(detPlot[k].group); }); detPlot = {}; detSelected = {}; detStarFilter = false; updateDetLegend(); saveDetections(); }
   // Re-render plotted points + legend in the current language (called on lang change).
   function refreshDetections() {
     rebuildDetLayers();
@@ -3255,8 +3261,11 @@
   // worth persisting.
   var detLegendMini = false;
   function updateDetLegend() {
-    var keys = Object.keys(detPlot);
-    if (!keys.length) { if (detLegend) { map.removeControl(detLegend); detLegend = null; } return; }
+    var allKeys = Object.keys(detPlot);
+    if (!allKeys.length) { if (detLegend) { map.removeControl(detLegend); detLegend = null; } return; }
+    // The dropdown's "Starred only" narrows which species the legend lists (and
+    // the map shows). The legend itself stays up so the filter can be toggled.
+    var keys = allKeys.filter(detPassesStar);
     // Summary "nn(mmm)" — nn species, mmm total detections currently shown (the
     // sum of the per-species counts in the rows below).
     var nDet = 0;
@@ -3277,15 +3286,16 @@
     }
     var rDays = detRecencyDays();
     var recOpts = [[1, "1"], [7, "7"], [14, "14"], [30, "30"], [0, ""]]
-      .map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === rDays ? " selected" : "") + ">" + (o[0] ? o[1] + " " + escapeHtml(t("det.days")) : escapeHtml(t("det.allTime"))) + "</option>"; })
+      .map(function (o) { return '<option value="' + o[0] + '"' + (!detStarFilter && o[0] === rDays ? " selected" : "") + ">" + (o[0] ? o[1] + " " + escapeHtml(t("det.days")) : escapeHtml(t("det.allTime"))) + "</option>"; })
       .join("");
     el.innerHTML = '<div class="det-legend-head">' +
         '<button type="button" class="det-min" title="' + escapeHtml(t("det.minimise")) + '" aria-label="' + escapeHtml(t("det.minimise")) + '">−</button>' +
         '<span class="det-sum" title="' + escapeHtml(t("det.summaryTip")) + '">' + detSummary + "</span>" +
         '<button type="button" class="det-clear">' + escapeHtml(t("det.clearAll")) + "</button>" +
         '<select id="det-recency" title="' + escapeHtml(t("det.recency")) + '">' + recOpts +
-          '<option value="starred">★ ' + escapeHtml(t("det.starred")) + "</option>" + "</select>" +
+          '<option value="starred"' + (detStarFilter ? " selected" : "") + ">★ " + escapeHtml(t("det.starred")) + "</option>" + "</select>" +
       "</div>" +
+      (keys.length ? "" : '<div class="det-empty">' + escapeHtml(t("det.noStarred")) + "</div>") +
       keys.map(function (k) {
         var e = detPlot[k], nm = escapeHtml(detName(e));
         var vis = (e.group && e.group._visibleCount != null) ? e.group._visibleCount : e.rows.length;
@@ -3313,23 +3323,14 @@
       });
     });
     el.querySelector("#det-recency").addEventListener("change", function () {
-      if (this.value === "starred") { selectStarredDetections(); return; }   // an action, not a recency value
-      window.GeoState.save({ detRecencyDays: +this.value });
-      rebuildDetLayers();   // re-render with the new recency filter (no refetch)
+      // "Starred only" is a persistent filter on which species show; the other
+      // values are the recency (time) filter. Switching to a recency value also
+      // turns the starred filter off.
+      if (this.value === "starred") { detStarFilter = true; }
+      else { detStarFilter = false; window.GeoState.save({ detRecencyDays: +this.value }); }
+      rebuildDetLayers();   // re-render layers under the new filter (no refetch)
       updateDetLegend();
     });
-  }
-  // Legend dropdown action: show only the plotted species the user has starred
-  // (interesting). Selecting them drives the same selection used by row clicks,
-  // so the rest are hidden on the map. updateDetLegend() re-renders the dropdown
-  // back to the recency value (this is a one-shot action, not a saved setting).
-  function selectStarredDetections() {
-    var starred = Object.keys(detPlot).filter(function (k) { return isInteresting(detPlot[k].key); });
-    if (!starred.length) { updateDetLegend(); setStatus(t("det.noStarred")); return; }
-    detSelected = {};
-    starred.forEach(function (k) { detSelected[k] = true; });
-    rebuildDetLayers();
-    updateDetLegend();
   }
 
   // ---- Map points (user-added pins + named lists) ---------------------------
