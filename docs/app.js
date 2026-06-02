@@ -3063,14 +3063,30 @@
     g._visibleCount = visible;
     return g;
   }
+  // Union two slim-row arrays, de-duping by position+date+source so re-pinning
+  // the same observations is idempotent (no piling-up of identical dots).
+  function mergeDetRows(a, b) {
+    var seen = Object.create(null), out = [];
+    (a || []).concat(b || []).forEach(function (r) {
+      if (!r) return;
+      var id = r.lat + "," + r.lon + "|" + (r.date || "") + "|" + (r.url || "") + "|" + (r.src || "");
+      if (seen[id]) return; seen[id] = 1; out.push(r);
+    });
+    return out;
+  }
   function plotDetections(key, name, rows, fit, defer) {
     var slim = detSlim(rows);
     if (!slim.length) { if (!defer) setStatus(t("det.none")); return; }
-    var color = (detPlot[key] && detPlot[key].color) || DET_COLORS[Object.keys(detPlot).length % DET_COLORS.length];
-    if (detPlot[key] && detPlot[key].group) map.removeLayer(detPlot[key].group);
-    var e = { key: key, name: name, color: color, rows: slim, group: null };
+    var prev = detPlot[key];
+    var color = (prev && prev.color) || DET_COLORS[Object.keys(detPlot).length % DET_COLORS.length];
+    // Accumulate: re-pinning a species ADDS its new observations to whatever is
+    // already on the map (deduped) instead of replacing them — so pinning at
+    // several places/searches builds up the full set of dots. No cap.
+    var merged = prev ? mergeDetRows(prev.rows, slim) : slim;
+    if (prev && prev.group) map.removeLayer(prev.group);
+    var e = { key: key, name: (name || (prev && prev.name)), color: color, rows: merged, group: null };
     detPlot[key] = e;
-    if (detIsVisible(key)) { e.group = renderDetGroup(detName(e), slim, color, detIsMuted(key)); e.group.addTo(map); }
+    if (detIsVisible(key)) { e.group = renderDetGroup(detName(e), merged, color, detIsMuted(key)); e.group.addTo(map); }
     if (!defer) { updateDetLegend(); saveDetections(); }   // batch when plotting many at once
     if (fit && e.group) { try { map.fitBounds(e.group.getBounds().pad(0.25)); } catch (err) { /* single point / bad bounds */ } }
   }
@@ -3177,7 +3193,7 @@
     updateDetLegend();
   }
   function saveDetections() {
-    var out = {}; Object.keys(detPlot).forEach(function (k) { var e = detPlot[k]; out[k] = { key: e.key, name: e.name, color: e.color, rows: e.rows.slice(0, 150) }; });
+    var out = {}; Object.keys(detPlot).forEach(function (k) { var e = detPlot[k]; out[k] = { key: e.key, name: e.name, color: e.color, rows: e.rows }; });
     window.GeoState.save({ mapDetections: out });
   }
   function loadDetections() {
