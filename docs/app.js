@@ -3063,9 +3063,9 @@
   var DET_COLORS = ["#e6194B", "#3cb44b", "#4363d8", "#f58231", "#911eb4", "#42d4f4", "#f032e6", "#469990", "#9A6324", "#800000", "#808000", "#000075", "#a9a9a9", "#fabed4", "#bfef45"];
   var detPlot = {};     // speciesKey -> { key, name (fallback), color, rows, group }
   var detLegend = null;
-  // Legend-driven visibility: when empty, every species is drawn muted (grey).
-  // Click a legend row to "select" it — selected species draw in their colour
-  // and the unselected ones are hidden entirely.
+  // Legend-driven visibility: dots always draw in their species colour. Click a
+  // legend row to "select" it — that isolates the selected species (the rest are
+  // hidden); with nothing selected every species shows, in colour.
   var detSelected = {};
   // "Starred only" filter, driven by the legend dropdown: when on, the legend
   // lists (and the map shows) only the species the user has starred.
@@ -3075,10 +3075,10 @@
   var mapClickGuardUntil = 0;   // onMapClick ignores clicks before this time; each accepted click re-arms it (200 ms debounce), legend re-renders set a longer window
   function detSelectionActive() { return Object.keys(detSelected).some(function (k) { return detPlot[k] && detPassesStar(k); }); }
   function detIsVisible(key) { return detPassesStar(key) && (!detSelectionActive() || !!detSelected[key]); }
-  // No row selected → all grey, EXCEPT when the starred filter is on, where the
-  // narrowed-down species show in their colours.
-  function detIsMuted(key) { return !detStarFilter && !detSelectionActive(); }
-  var DET_MUTE_COLOR = "#9aa3a0";
+  // Dots are always shown in their species colour (no grey overview mode) — so
+  // "all"/"1 day"/etc. all render coloured. Visibility (above) does the filtering.
+  function detIsMuted(key) { return false; }
+  var DET_MUTE_COLOR = "#9aa3a0";   // still used for hidden rows' legend swatch
   function detSlim(rows) {
     return (rows || []).filter(function (r) { return r.lat != null && r.lon != null; })
       .map(function (r) { return { lat: +r.lat, lon: +r.lon, url: r.url || "", date: r.date || "", src: r.src || "", place: r.place || "" }; });
