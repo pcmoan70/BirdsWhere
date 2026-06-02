@@ -1173,8 +1173,7 @@
     var sci = ensureSciIndex();
     var agg = Object.create(null);     // model species: key -> { count, latestTs }
     var extras = Object.create(null);  // species the model doesn't cover: sciLower -> { sci, name, count, latestTs }
-    var MP_ROWS = 25;   // per-species coordinate cap (enough to plot, bounded memory)
-    function pushRow(arr, row) { if (row && row.lat != null && row.lon != null && arr.length < MP_ROWS) arr.push(row); }
+    function pushRow(arr, row) { if (row && row.lat != null && row.lon != null) arr.push(row); }   // no per-species cap
     function bump(key, dt, row) {
       if (!key) return;
       if (!agg[key]) agg[key] = { count: 0, latestTs: 0, rows: [] };
@@ -3164,12 +3163,11 @@
       });
       if (!entries.length) { setStatus(t("det.none")); return; }
       entries.sort(function (a, b) { return b.count - a.count; });
-      var CAP = 40, capped = entries.length > CAP;
       // Fresh plot: drop any previously-plotted layers (incl. ones restored from
       // localStorage or from an earlier, unfiltered plot) so the result reflects
-      // only the current group filter.
+      // only the current group filter. No species cap — plot them all.
       clearDetections();
-      entries.slice(0, CAP).forEach(function (e) { plotDetections(e.key, e.name, e.rows, false, true); });
+      entries.forEach(function (e) { plotDetections(e.key, e.name, e.rows, false, true); });
       updateDetLegend(); saveDetections();   // one batch update after the loop
       var bounds = L.latLngBounds([]);
       Object.keys(detPlot).forEach(function (k) { var g = detPlot[k] && detPlot[k].group; if (g) { try { bounds.extend(g.getBounds()); } catch (e2) {} } });
@@ -3177,7 +3175,7 @@
       // Surface the map so the user sees the plotted points.
       document.getElementById("species-panel").style.display = "none";
       if (map) map.invalidateSize();
-      setStatus(capped ? t("sp.plottedCapped", { n: CAP }) : t("sp.plotted", { n: entries.slice(0, CAP).length }));
+      setStatus(t("sp.plotted", { n: entries.length }));
     }).catch(function () { setStatus(t("det.none")); });
   }
   // Plot every per-entry GPS fix from the open field checklist on the map,
@@ -3252,6 +3250,11 @@
   function updateDetLegend() {
     var keys = Object.keys(detPlot);
     if (!keys.length) { if (detLegend) { map.removeControl(detLegend); detLegend = null; } return; }
+    // Summary "nn(mmm)" — nn species, mmm total detections currently shown (the
+    // sum of the per-species counts in the rows below).
+    var nDet = 0;
+    keys.forEach(function (k) { var e = detPlot[k]; nDet += (e.group && e.group._visibleCount != null) ? e.group._visibleCount : e.rows.length; });
+    var detSummary = keys.length + "(" + nDet + ")";
     if (!detLegend) {
       detLegend = L.control({ position: "bottomleft" });
       detLegend.onAdd = function () { var d = L.DomUtil.create("div", "det-legend"); d.id = "det-legend"; L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d); return d; };
@@ -3261,7 +3264,7 @@
     el.classList.toggle("det-legend-mini", detLegendMini);
     // Collapsed: a single pill in the corner showing the species count.
     if (detLegendMini) {
-      el.innerHTML = '<button type="button" class="det-restore" title="' + escapeHtml(t("det.expand")) + '">📍 ' + keys.length + "</button>";
+      el.innerHTML = '<button type="button" class="det-restore" title="' + escapeHtml(t("det.expand")) + '">📍 ' + detSummary + "</button>";
       el.querySelector(".det-restore").addEventListener("click", function () { mapClickGuardUntil = Date.now() + 250; detLegendMini = false; updateDetLegend(); });
       return;
     }
@@ -3271,6 +3274,7 @@
       .join("");
     el.innerHTML = '<div class="det-legend-head">' +
         '<button type="button" class="det-min" title="' + escapeHtml(t("det.minimise")) + '" aria-label="' + escapeHtml(t("det.minimise")) + '">−</button>' +
+        '<span class="det-sum" title="' + escapeHtml(t("det.summaryTip")) + '">' + detSummary + "</span>" +
         '<button type="button" class="det-clear">' + escapeHtml(t("det.clearAll")) + "</button>" +
         '<select id="det-recency" title="' + escapeHtml(t("det.recency")) + '">' + recOpts + "</select>" +
       "</div>" +
