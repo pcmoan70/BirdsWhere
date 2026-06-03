@@ -3216,14 +3216,14 @@
       });
       if (!entries.length) { setStatus(t("det.none")); return; }
       entries.sort(function (a, b) { return b.count - a.count; });
-      // Fresh plot: drop any previously-plotted layers (incl. ones restored from
-      // localStorage or from an earlier, unfiltered plot) so the result reflects
-      // only the current group filter. No species cap — plot them all.
-      clearDetections();
+      // Accumulate: plotDetections merges (deduped) into whatever is already on
+      // the map, so plotting at several locations builds up the full picture.
+      // Use the legend's "Clear" to start over. No species cap — plot them all.
       entries.forEach(function (e) { plotDetections(e.key, e.name, e.rows, false, true); });
       updateDetLegend(); saveDetections();   // one batch update after the loop
+      // Fit to the points just added (this location), not the whole accumulated set.
       var bounds = L.latLngBounds([]);
-      Object.keys(detPlot).forEach(function (k) { var g = detPlot[k] && detPlot[k].group; if (g) { try { bounds.extend(g.getBounds()); } catch (e2) {} } });
+      entries.forEach(function (e) { (e.rows || []).forEach(function (r) { if (r && isFinite(+r.lat) && isFinite(+r.lon)) bounds.extend([+r.lat, +r.lon]); }); });
       if (bounds.isValid()) { try { map.fitBounds(bounds.pad(0.2)); } catch (e3) {} }
       // Surface the map so the user sees the plotted points.
       document.getElementById("species-panel").style.display = "none";
