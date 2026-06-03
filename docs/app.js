@@ -3967,9 +3967,9 @@
   // address is never exposed in the app. The recipient is set in the EmailJS
   // template; only these public IDs live here (the public key is meant to be
   // public). Fill them in from the EmailJS dashboard to enable sending.
-  var EMAILJS_PUBLIC_KEY = "";
-  var EMAILJS_SERVICE_ID = "";
-  var EMAILJS_TEMPLATE_ID = "";
+  var EMAILJS_PUBLIC_KEY = "-5S2PctOrxEViV5Pf";
+  var EMAILJS_SERVICE_ID = "service_1wr4am1";
+  var EMAILJS_TEMPLATE_ID = "template_2qq926a";
   function openFeedback() {
     closeDropdowns();
     var st = document.getElementById("feedback-status"); if (st) st.textContent = "";
