@@ -2386,7 +2386,10 @@
         '<div id="visit-counter"><img src="https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fpcmoan70.github.io%2Fmigration_calendar&label=page%20visits&labelColor=%230f1b24&countColor=%232f6f4f" alt="page visits" /></div>' +
         (lastChangeText ? '<div id="last-change">' + escapeHtml(t("footer.lastchange", { t: lastChangeText })) + "</div>" : "") +
       "</div>";
-    applyI18n();   // localize the embedded [data-i18n] feedback button
+    // Localize the embedded [data-i18n] bits (e.g. the feedback button), scoped
+    // to the About body — NOT applyI18n(), which calls back here (infinite loop).
+    var i18nEls = about.querySelectorAll("[data-i18n]");
+    for (var i = 0; i < i18nEls.length; i++) i18nEls[i].textContent = t(i18nEls[i].getAttribute("data-i18n"));
   }
 
   // Build the 48-week dropdown with localized labels.
