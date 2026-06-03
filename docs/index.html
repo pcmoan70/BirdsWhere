@@ -33,6 +33,10 @@
        from Google; harmless to skip when offline, sync just stays disabled). -->
   <script async src="https://accounts.google.com/gsi/client"></script>
 
+  <!-- EmailJS — sends the feedback form to the project address without exposing
+       it (recipient lives in the EmailJS template). Network-only; skipped offline. -->
+  <script async src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+
   <!-- Leaflet (vendored locally for offline use) -->
   <script src="vendor/leaflet/leaflet.js"></script>
 

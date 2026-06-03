@@ -2093,9 +2093,20 @@
         '<div id="perf-modal" style="display:none"><div id="perf-modal-box">' +
           '<h2 class="perf-title" data-i18n="popup.title">Species distributions and checklists</h2>' +
           '<p data-i18n="popup.perf"></p>' +
-          '<p class="perf-feedback"><span data-i18n="popup.feedback"></span> <a href="mailto:vesmir09@gmail.com">vesmir09@gmail.com</a></p>' +
+          '<p class="perf-feedback"><span data-i18n="popup.feedback"></span> <button type="button" class="feedback-open" data-i18n="feedback.send">✉ Send feedback</button></p>' +
           '<p class="perf-attrib" data-i18n="footer.attrib"></p>' +
           '<button id="perf-modal-ok" class="demo-btn" data-i18n="popup.ok">OK</button>' +
+        '</div></div>' +
+        '<div id="feedback-modal" style="display:none"><div id="feedback-box">' +
+          '<button type="button" id="feedback-close" aria-label="Close">×</button>' +
+          '<h3 data-i18n="feedback.title">Send feedback</h3>' +
+          '<textarea id="feedback-msg" rows="5" data-i18n-ph="feedback.msgPh" placeholder="Your message…"></textarea>' +
+          '<input type="email" id="feedback-email" autocomplete="email" data-i18n-ph="feedback.emailPh" placeholder="Your email (optional, for a reply)" />' +
+          '<div id="feedback-status" class="cu-hint"></div>' +
+          '<div class="feedback-actions">' +
+            '<button type="button" id="feedback-cancel" class="demo-btn demo-btn-light" data-i18n="feedback.cancel">Cancel</button>' +
+            '<button type="button" id="feedback-send" class="demo-btn" data-i18n="feedback.sendBtn">Send</button>' +
+          '</div>' +
         '</div></div>' +
       '</div>';
 
@@ -2375,6 +2386,7 @@
         '<div id="visit-counter"><img src="https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fpcmoan70.github.io%2Fmigration_calendar&label=page%20visits&labelColor=%230f1b24&countColor=%232f6f4f" alt="page visits" /></div>' +
         (lastChangeText ? '<div id="last-change">' + escapeHtml(t("footer.lastchange", { t: lastChangeText })) + "</div>" : "") +
       "</div>";
+    applyI18n();   // localize the embedded [data-i18n] feedback button
   }
 
   // Build the 48-week dropdown with localized labels.
@@ -3950,6 +3962,44 @@
     if (m) m.style.display = "none";
   }
 
+  // ---- Feedback (EmailJS) ---------------------------------------------------
+  // The feedback form sends a message to the project address via EmailJS, so the
+  // address is never exposed in the app. The recipient is set in the EmailJS
+  // template; only these public IDs live here (the public key is meant to be
+  // public). Fill them in from the EmailJS dashboard to enable sending.
+  var EMAILJS_PUBLIC_KEY = "";
+  var EMAILJS_SERVICE_ID = "";
+  var EMAILJS_TEMPLATE_ID = "";
+  function openFeedback() {
+    closeDropdowns();
+    var st = document.getElementById("feedback-status"); if (st) st.textContent = "";
+    document.getElementById("feedback-modal").style.display = "flex";
+    navOpen("feedback", hideFeedback);
+    var ta = document.getElementById("feedback-msg"); if (ta) ta.focus();
+  }
+  function hideFeedback() { document.getElementById("feedback-modal").style.display = "none"; }
+  function sendFeedback() {
+    var msg = (document.getElementById("feedback-msg").value || "").trim();
+    var email = (document.getElementById("feedback-email").value || "").trim();
+    var st = document.getElementById("feedback-status");
+    if (!msg) { st.textContent = t("feedback.empty"); return; }
+    if (!window.emailjs || !EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY) {
+      st.textContent = t("feedback.unavailable"); return;
+    }
+    var btn = document.getElementById("feedback-send"); btn.disabled = true;
+    st.textContent = t("feedback.sending");
+    window.emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID,
+      { message: msg, reply_to: email, from_name: email || "anonymous" },
+      { publicKey: EMAILJS_PUBLIC_KEY })
+      .then(function () {
+        st.textContent = t("feedback.sent");
+        document.getElementById("feedback-msg").value = "";
+        setTimeout(function () { navClose("feedback"); }, 1200);
+      })
+      .catch(function () { st.textContent = t("feedback.sendFail"); })
+      .then(function () { btn.disabled = false; });
+  }
+
   // In Species List mode the CSV button sits next to the "＋ Checklist" button;
   // in every other mode it lives directly below the map.
   function relocateCsvButton() {
@@ -4564,6 +4614,18 @@
     document.getElementById("about-close").addEventListener("click", function () { navClose("about"); });
     document.getElementById("about-modal").addEventListener("click", function (e) {
       if (e.target === this) navClose("about");
+    });
+
+    // Feedback form (EmailJS). The ".feedback-open" triggers live in the perf
+    // modal and the (dynamically rendered) About body, so listen via delegation.
+    document.addEventListener("click", function (e) {
+      if (e.target.closest && e.target.closest(".feedback-open")) { e.preventDefault(); openFeedback(); }
+    });
+    document.getElementById("feedback-close").addEventListener("click", function () { navClose("feedback"); });
+    document.getElementById("feedback-cancel").addEventListener("click", function () { navClose("feedback"); });
+    document.getElementById("feedback-send").addEventListener("click", sendFeedback);
+    document.getElementById("feedback-modal").addEventListener("click", function (e) {
+      if (e.target === this) navClose("feedback");
     });
 
     // Checklist actions

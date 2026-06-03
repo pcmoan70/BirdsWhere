@@ -1313,6 +1313,39 @@ button.dd-name:hover { text-decoration: underline; }
 }
 #about-close:hover { color: var(--ink); }
 
+/* ===== Feedback form (EmailJS) — replaces the explicit email link ===== */
+.feedback-open {
+  border: none; background: none; padding: 0; margin: 0; font: inherit;
+  color: var(--brand); cursor: pointer; text-decoration: underline;
+}
+.feedback-open:hover { color: var(--brand-strong, var(--brand)); }
+#feedback-modal {
+  position: fixed; inset: 0; z-index: 5000; display: none;
+  align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.55); padding: 20px;
+}
+#feedback-box {
+  position: relative; background: var(--surface); color: var(--ink);
+  max-width: 420px; width: 100%; border-radius: 10px; padding: 20px 22px;
+  box-shadow: var(--shadow-md, 0 6px 24px rgba(0,0,0,.35));
+}
+#feedback-box h3 { margin: 0 28px 12px 0; font-size: 1.1rem; color: var(--brand-deep); }
+#feedback-close {
+  position: absolute; top: 10px; right: 12px; border: none; background: transparent;
+  cursor: pointer; font-size: 1.5rem; line-height: 1; color: var(--ink-muted);
+}
+#feedback-close:hover { color: var(--ink); }
+#feedback-box textarea, #feedback-box input[type="email"] {
+  width: 100%; box-sizing: border-box; font: inherit; font-size: 0.9rem;
+  border: 1px solid var(--border); border-radius: var(--radius-xs);
+  background: var(--surface); color: var(--ink); padding: 8px 10px; margin-bottom: 10px; resize: vertical;
+}
+#feedback-box textarea:focus, #feedback-box input[type="email"]:focus {
+  outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft);
+}
+#feedback-status:not(:empty) { min-height: 1.1em; margin-bottom: 8px; font-size: 0.8rem; color: var(--ink-muted); }
+.feedback-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
 /* ===== Clickable species names + context menu (Filter / Do not show) ===== */
 .sp-link {
   cursor: pointer;
