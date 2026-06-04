@@ -1282,7 +1282,12 @@
       applyAgeFilter();
       if (speciesListSort.col) sortSpeciesList();
       if (result.failed && result.failed.length) setStatus(t("fetch.failed", { sources: result.failed.join(", ") }));
-    }).catch(function () { /* keep "…" placeholders silently */ });
+    }).catch(function () {
+      // Hard failure — clear the hourglasses so they don't spin forever.
+      if (tbody && tbody.dataset.sightingsToken === token) {
+        tbody.querySelectorAll(".det-nd .det-wait").forEach(function (s) { if (s.parentNode) s.parentNode.textContent = ""; });
+      }
+    });
   }
   // Append species the model doesn't cover (matched only via GBIF/iNat/eBird
   // sci-name) BELOW the model rows so the prediction-ranked species stay at the
@@ -7205,7 +7210,7 @@
         return '<tr><td>' + nameLinkHtml(r.label) + '</td>' + name2Cell + '<td class="sci">' +
                escapeHtml(r.label.sci) + '</td><td class="prob-cell"><span class="prob-num">' + pct +
                '%</span><div class="prob-bar" style="width:' + pct + '%;background:' + probHueColor(pRange > 0 ? (r.prob - pLo) / pRange : 1) + '"></div></td>' +
-               '<td class="num det-nd" data-key="' + dKey + '">…</td>' + cmpCell + '</tr>';
+               '<td class="num det-nd" data-key="' + dKey + '"><span class="det-wait" title="' + escapeHtml(t("status.loadingDet")) + '">⏳</span></td>' + cmpCell + '</tr>';
       }).join("");
       var sp = document.getElementById("species-panel");
       // In Species-List mode show the list as a full-screen page; in Range mode
