@@ -1652,6 +1652,7 @@ table.recent-table .rc-date { white-space: nowrap; font-variant-numeric: tabular
 table.recent-table .rc-who { color: var(--md-default-fg-color--light, #888); white-space: nowrap; }
 .recent-links { margin-top: 12px; font-size: 0.85rem; }
 .recent-none { font-size: 0.9rem; }
+.recent-warn { font-size: 0.78rem; color: var(--danger, #c0392b); margin: 0 0 8px; }
 
 /* Recent-detections source label */
 .recent-src { font-size: 0.78rem; color: var(--md-default-fg-color--light, #888); margin-bottom: 8px; }

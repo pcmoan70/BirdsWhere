@@ -1234,7 +1234,13 @@
     });
     return { agg: agg, extras: extras };
   }
+  // Run a source fetch; on failure record the source name (so the caller can
+  // warn that results may be incomplete) and resolve to an empty list instead.
+  function guardFetch(failed, name, promise) {
+    return Promise.resolve(promise).then(function (r) { return r; }, function () { failed.push(name); return []; });
+  }
   // Cached fetch of every species' recent detections at a point (last 30 days).
+  // The resolved object carries `failed` — the source names that errored.
   function fetchAllSightingsAt(lat, lon) {
     var rkm = recentRadiusKm();
     var ck = lat.toFixed(2) + "," + lon.toFixed(2) + ":" + rkm;
@@ -1243,11 +1249,12 @@
     var fmtD = function (d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); };
     var d1 = fmtD(from), d2 = fmtD(to), range = d1 + "," + d2;
     var tok = ebirdKey();
+    var failed = [];
     var pr = Promise.all([
-      fetchGbifAll(lat, lon, range, rkm).catch(function () { return []; }),
-      fetchInatAll(lat, lon, d1, d2, rkm).catch(function () { return []; }),
-      tok ? fetchEbirdAll(lat, lon, tok, rkm).catch(function () { return []; }) : Promise.resolve([])
-    ]).then(function (r) { return aggregateSightings(r[0], r[1], r[2]); });
+      guardFetch(failed, "GBIF", fetchGbifAll(lat, lon, range, rkm)),
+      guardFetch(failed, "iNaturalist", fetchInatAll(lat, lon, d1, d2, rkm)),
+      tok ? guardFetch(failed, "eBird", fetchEbirdAll(lat, lon, tok, rkm)) : Promise.resolve([])
+    ]).then(function (r) { var out = aggregateSightings(r[0], r[1], r[2]); out.failed = failed; return out; });
     allSightingsCache[ck] = pr;
     return pr;
   }
@@ -1274,6 +1281,7 @@
       // Re-apply the active age filter and sort once data has arrived.
       applyAgeFilter();
       if (speciesListSort.col) sortSpeciesList();
+      if (result.failed && result.failed.length) setStatus(t("fetch.failed", { sources: result.failed.join(", ") }));
     }).catch(function () { /* keep "…" placeholders silently */ });
   }
   // Append species the model doesn't cover (matched only via GBIF/iNat/eBird
@@ -1554,9 +1562,12 @@
     });
 
     var srcSlug = function (s) { return s === "iNaturalist" ? "inat" : (s || "").toLowerCase(); };
-    function render(rows) {
+    function render(rows, failed) {
       if (token !== recentToken) return;
-      if (!rows.length) { body.innerHTML = '<p class="recent-none">' + escapeHtml(t("recent.none")) + "</p>" + links(); return; }
+      var warn = (failed && failed.length) ? '<div class="recent-warn">' + escapeHtml(t("fetch.failed", { sources: failed.join(", ") })) + "</div>" : "";
+      if (!rows.length) {
+        body.innerHTML = warn + '<p class="recent-none">' + escapeHtml(t("recent.none")) + "</p>" + links(); return;
+      }
       var counts = {};
       rows.forEach(function (r) { counts[r.src] = (counts[r.src] || 0) + 1; });
       var cap = Object.keys(counts).map(function (s) { return s + " " + counts[s]; }).join(" · ");
@@ -1571,24 +1582,25 @@
       }).join("");
       body.innerHTML = '<div class="recent-head"><span class="recent-src">' + escapeHtml(cap + " · " + d1 + " – " + d2 + " · " + recentRadiusKm() + " km") + "</span>" +
         '<span class="recent-head-btns"><button type="button" id="recent-map">' + escapeHtml(t("btn.showInMap")) + "</button>" +
-        '<button type="button" id="recent-dl">' + escapeHtml(t("recent.download")) + "</button></span></div>" +
+        '<button type="button" id="recent-dl">' + escapeHtml(t("recent.download")) + "</button></span></div>" + warn +
         '<table class="recent-table"><tbody>' + html + "</tbody></table>" + links();
     }
 
     try {
       var rkm = recentRadiusKm();
       var wantEbird = key && isBirdKey(key) && ebirdKey();
+      var failed = [];
       var results = await Promise.all([
-        gbifRecent(sci, lat, lon, range, rkm).catch(function () { return []; }),
-        inatRecent(sci, lat, lon, d1, d2, rkm).catch(function () { return []; }),
-        wantEbird ? ebirdRecent(key, lat, lon, rkm).catch(function () { return []; }) : Promise.resolve([])
+        guardFetch(failed, "GBIF", gbifRecent(sci, lat, lon, range, rkm)),
+        guardFetch(failed, "iNaturalist", inatRecent(sci, lat, lon, d1, d2, rkm)),
+        wantEbird ? guardFetch(failed, "eBird", ebirdRecent(key, lat, lon, rkm)) : Promise.resolve([])
       ]);
       if (token !== recentToken) return;
       var rows = results[0].concat(results[1], results[2]);
       rows.sort(function (a, b) { return String(b.dt || b.date || "").localeCompare(String(a.dt || a.date || "")); });
       lastRecentRows = rows;
       lastRecentMeta = { key: key, name: name, sci: sci, lat: lat, lon: lon };
-      render(rows);
+      render(rows, failed);
     } catch (e) {
       if (token !== recentToken) return;
       body.innerHTML = '<p class="recent-none">' + escapeHtml(t("recent.none")) + "</p>" + links();
@@ -3215,7 +3227,8 @@
         var ex = result.extras[k];
         if (ex.rows && ex.rows.length && extraInGroup(ex.cls)) entries.push({ key: "x:" + k, name: ex.name || ex.sci, rows: ex.rows, count: ex.count });
       });
-      if (!entries.length) { setStatus(t("det.none")); return; }
+      var failNote = (result.failed && result.failed.length) ? " · " + t("fetch.failed", { sources: result.failed.join(", ") }) : "";
+      if (!entries.length) { setStatus(failNote ? failNote.replace(/^ · /, "") : t("det.none")); return; }
       entries.sort(function (a, b) { return b.count - a.count; });
       // Accumulate: plotDetections merges (deduped) into whatever is already on
       // the map, so plotting at several locations builds up the full picture.
@@ -3229,7 +3242,7 @@
       // Surface the map so the user sees the plotted points.
       document.getElementById("species-panel").style.display = "none";
       if (map) map.invalidateSize();
-      setStatus(t("sp.plotted", { n: entries.length }));
+      setStatus(t("sp.plotted", { n: entries.length }) + failNote);
     }).catch(function () { setStatus(t("det.none")); });
   }
   // Plot every per-entry GPS fix from the open field checklist on the map,
