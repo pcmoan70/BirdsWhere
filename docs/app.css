@@ -1546,9 +1546,9 @@ table.chk-table .chk-text { min-width: 100px; }
 /* Combined n(d) cell: count as a clickable button, (days) in a faint grey. */
 .det-nd { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .det-nd .det-d { color: var(--ink-muted, #5b6f69); font-size: 0.74rem; margin-left: 2px; }
-/* Hourglass shown in the N(D) cell while observation data is being fetched. */
-.det-wait { display: inline-block; opacity: 0.5; animation: det-wait-pulse 1.1s ease-in-out infinite; }
-@keyframes det-wait-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+/* Cycling " .." → ". ." → ".. " shown in the N(D) cell while data is fetched.
+   Monospace + pre so the gap slides without the dots jittering sideways. */
+.det-wait { white-space: pre; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--ink-muted, #5b6f69); font-weight: 700; }
 
 /* Timeline: ring the current-week bar (its fill stays on the red->green scale) */
 .bc-bar.bc-cur { outline: 2px solid #111; outline-offset: -1px; opacity: 1 !important; z-index: 2; }

@@ -1258,6 +1258,18 @@
     allSightingsCache[ck] = pr;
     return pr;
   }
+  // Cycle the " .." → ". ." → ".. " placeholder shown in the N(D) cells while
+  // their detection counts are loading. One shared timer that stops itself once
+  // no cells are waiting (they get replaced by the count when data arrives).
+  var DET_WAIT_FRAMES = [" ..", ". .", ".. "];
+  var detWaitIdx = 0, detWaitTimer = null;
+  function pumpDetWait() {
+    var els = document.querySelectorAll(".det-wait");
+    if (!els.length) { clearInterval(detWaitTimer); detWaitTimer = null; return; }
+    detWaitIdx = (detWaitIdx + 1) % DET_WAIT_FRAMES.length;
+    for (var i = 0; i < els.length; i++) els[i].textContent = DET_WAIT_FRAMES[detWaitIdx];
+  }
+  function ensureDetWait() { if (!detWaitTimer && document.querySelector(".det-wait")) detWaitTimer = setInterval(pumpDetWait, 320); }
   // Populate the per-point species-list rows with count + days-since-most-recent
   // from the cached all-species fetch. Cells stay blank for species without any
   // detection in the last 30 days; counts >0 become clickable.
@@ -7210,8 +7222,9 @@
         return '<tr><td>' + nameLinkHtml(r.label) + '</td>' + name2Cell + '<td class="sci">' +
                escapeHtml(r.label.sci) + '</td><td class="prob-cell"><span class="prob-num">' + pct +
                '%</span><div class="prob-bar" style="width:' + pct + '%;background:' + probHueColor(pRange > 0 ? (r.prob - pLo) / pRange : 1) + '"></div></td>' +
-               '<td class="num det-nd" data-key="' + dKey + '"><span class="det-wait" title="' + escapeHtml(t("status.loadingDet")) + '">⏳</span></td>' + cmpCell + '</tr>';
+               '<td class="num det-nd" data-key="' + dKey + '"><span class="det-wait" title="' + escapeHtml(t("status.loadingDet")) + '"> ..</span></td>' + cmpCell + '</tr>';
       }).join("");
+      ensureDetWait();   // animate the loading placeholders until counts arrive
       var sp = document.getElementById("species-panel");
       // In Species-List mode show the list as a full-screen page; in Range mode
       // keep it as an inline card under the map.
