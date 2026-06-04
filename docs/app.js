@@ -3058,7 +3058,7 @@
       var url = "https://api.ebird.org/v2/ref/hotspot/geo?lat=" + c.lat.toFixed(4) + "&lng=" + c.lng.toFixed(4) + "&dist=" + radius + "&fmt=json";
       var mine = ++tok, minSp = hotspotMin();
       fetch(url, { headers: { "X-eBirdApiToken": key } })
-        .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function (r) { if (!r.ok) { var er = new Error("HTTP " + r.status); er.status = r.status; throw er; } return r.json(); })
         .then(function (rows) {
         if (mine !== tok || !active) return;
         grp.clearLayers();
@@ -3074,7 +3074,14 @@
           grp.addLayer(m);
         });
         if (!grp.getLayers().length) setStatus(t("layer.hotspotsNone"));
-      }).catch(function (e) { if (active) setStatus(t("status.error", { msg: "eBird hotspots " + e.message })); });
+      }).catch(function (e) {
+        if (!active) return;
+        grp.clearLayers();
+        // 401/403 = eBird rejected the key (invalid/expired). Point the user at it
+        // rather than showing a raw "HTTP 403".
+        if (e.status === 401 || e.status === 403) setStatus(t("layer.hotspotsKeyBad"));
+        else setStatus(t("status.error", { msg: "eBird hotspots " + e.message }));
+      });
     }
     grp._reload = function () { if (active) load(); };
     grp.on("add", function () { active = true; map.attributionControl.addAttribution(EBIRD_HS_ATTR); load(); });
