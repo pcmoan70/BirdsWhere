@@ -504,6 +504,7 @@
   var animateAll = false;   // when true, range/richness precompute all 48 weeks
   var animating = false;    // animation playback in progress
   var animReady = false;    // all 48 weeks cached → progress bar stays scrubbable
+  var animStartWeek = null; // week selected before Play — restored when it stops
   var animTimer = null;
   var ANIM_INTERVAL = 350;  // ms between animation frames
 
@@ -7496,11 +7497,29 @@
     el.querySelector(".pp-marker").style.left = pct + "%";
   }
 
+  // Put the week selector (and the map/list) back to where it was before Play.
+  // `rerender` true when nothing else will re-render afterwards (explicit stop);
+  // false when the caller is about to render for the restored week anyway.
+  function restoreAnimWeek(rerender) {
+    if (animStartWeek == null) return;
+    var w = animStartWeek; animStartWeek = null;
+    var wsel = document.getElementById("week-select");
+    if (!wsel || +wsel.value === w) return;
+    wsel.value = w;
+    updatePlayProgress(w);
+    if (rerender) {
+      if (currentMode === "range" || currentMode === "richness") showCachedWeek();
+      rerenderPointList();
+      updateLegend();
+    }
+  }
+
   function stopAnimation() {
     animating = false;
     animateAll = false;
     if (animTimer) { clearTimeout(animTimer); animTimer = null; }
     setPlayBtn(false);
+    restoreAnimWeek(true);   // return to the pre-Play week — don't leave it moved
     // Keep the (now paused) bar visible for scrubbing when a full 48-week
     // animation is cached; otherwise hide it.
     if (!animReady) showPlayProgress(false);
@@ -7515,6 +7534,7 @@
       if (animTimer) { clearTimeout(animTimer); animTimer = null; }
       setPlayBtn(false);
     }
+    restoreAnimWeek(false);   // the caller re-renders for the restored week
     animReady = false;
     showPlayProgress(false);
   }
@@ -7544,6 +7564,9 @@
       setStatus(t("status.selectSpecies"));
       return;
     }
+    // Remember the chosen week so stopping returns to it — Play is a preview and
+    // must not silently move the user's week (confusing on distribution maps).
+    animStartWeek = +document.getElementById("week-select").value || 1;
     animating = true;
     setPlayBtn(true);
     showPlayProgress(true);
