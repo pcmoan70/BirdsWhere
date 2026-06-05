@@ -1272,23 +1272,25 @@ button.dd-name:hover { text-decoration: underline; }
   background: var(--surface); color: var(--ink); transition: border-color .15s, box-shadow .15s;
 }
 #ebird-key-link { font-size: 0.72rem; margin-top: 4px; color: var(--brand-strong); }
-/* GBIF datasets popup — Key | URL table. */
-#gbif-modal {
+/* GBIF datasets / National databases popups. */
+#gbif-modal, #natdb-modal {
   position: fixed; inset: 0; z-index: 5000; display: none;
   align-items: center; justify-content: center; background: rgba(0,0,0,0.55); padding: 20px;
 }
-#gbif-box {
+#gbif-box, #natdb-box {
   position: relative; background: var(--surface); color: var(--ink);
   max-width: 640px; width: 100%; max-height: 80vh; overflow: auto;
   border-radius: 10px; padding: 20px 22px; box-shadow: var(--shadow-md, 0 6px 24px rgba(0,0,0,.35));
 }
-#gbif-box h3 { margin: 0 28px 8px 0; font-size: 1.1rem; color: var(--brand-deep); }
-#gbif-close {
+#gbif-box h3, #natdb-box h3 { margin: 0 28px 8px 0; font-size: 1.1rem; color: var(--brand-deep); }
+#gbif-close, #natdb-close {
   position: absolute; top: 10px; right: 12px; border: none; background: transparent;
   cursor: pointer; font-size: 1.5rem; line-height: 1; color: var(--ink-muted);
 }
-#gbif-close:hover { color: var(--ink); }
-#gbif-box .cu-hint { font-size: 0.74rem; color: var(--ink-muted); margin: 0 0 12px; }
+#gbif-close:hover, #natdb-close:hover { color: var(--ink); }
+#gbif-box .cu-hint, #natdb-box .cu-hint { font-size: 0.74rem; color: var(--ink-muted); margin: 0 0 12px; }
+#natdb-box .cu-row { margin-bottom: 6px; }
+#natdb-box .cu-actions { display: flex; gap: 8px; margin-top: 10px; }
 .gbif-add-row { display: flex; gap: 8px; margin-bottom: 12px; }
 .gbif-add-row input {
   flex: 1 1 auto; min-width: 0; box-sizing: border-box; padding: 7px 10px; font: inherit; font-size: 0.85rem;

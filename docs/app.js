@@ -2015,15 +2015,8 @@
                 '<button type="button" id="gbif-ds-open" class="demo-btn" data-i18n="gbif.manage">📚 Manage datasets…</button>' +
               '</div>' +
               '<div class="ctrl-group">' +
-                '<details id="custom-urls-wrap">' +
-                  '<summary data-i18n="ctrl.customurls">National databases</summary>' +
-                  '<p class="cu-hint" data-i18n="ctrl.customurlsHint">Open extra sites for a country in the map popups. Country code = ISO-3166 (e.g. NO, GB).</p>' +
-                  '<div id="custom-urls-list"></div>' +
-                  '<div class="cu-actions">' +
-                    '<button type="button" id="custom-urls-add" class="demo-btn" data-i18n="ctrl.customurlsAdd">+ Add</button>' +
-                    '<button type="button" id="custom-urls-reset" class="demo-btn demo-btn-light" data-i18n="ctrl.customurlsReset">Reset</button>' +
-                  '</div>' +
-                '</details>' +
+                '<label data-i18n="ctrl.customurls">National databases</label>' +
+                '<button type="button" id="natdb-open" class="demo-btn" data-i18n="natdb.manage">🌐 Manage national databases…</button>' +
               '</div>' +
               '<div class="ctrl-group" id="barchart-threshold-wrap" style="display:none">' +
                 '<label data-i18n="ctrl.bcthreshold">Probability range</label>' +
@@ -2255,6 +2248,16 @@
             '<button type="button" id="gbif-add-btn" class="demo-btn" data-i18n="gbif.add">Add</button>' +
           '</div>' +
           '<div id="gbif-table"></div>' +
+        '</div></div>' +
+        '<div id="natdb-modal" style="display:none"><div id="natdb-box">' +
+          '<button type="button" id="natdb-close" aria-label="Close">×</button>' +
+          '<h3 data-i18n="ctrl.customurls">National databases</h3>' +
+          '<p class="cu-hint" data-i18n="ctrl.customurlsHint">Open extra sites for a country in the map popups. Country code = ISO-3166 (e.g. NO, GB).</p>' +
+          '<div id="custom-urls-list"></div>' +
+          '<div class="cu-actions">' +
+            '<button type="button" id="custom-urls-add" class="demo-btn" data-i18n="ctrl.customurlsAdd">+ Add</button>' +
+            '<button type="button" id="custom-urls-reset" class="demo-btn demo-btn-light" data-i18n="ctrl.customurlsReset">Reset</button>' +
+          '</div>' +
         '</div></div>' +
       '</div>';
 
@@ -4237,10 +4240,18 @@
       window.GeoState.save({ countryLinks: null, customCountryUrls: null });   // revert to built-in defaults
       renderCustomUrls();
     });
-    // Persist the National-databases section's open/closed state (default closed).
-    var natDetails = document.getElementById("custom-urls-wrap");
-    natDetails.open = window.GeoState.get("natdbOpen", false) === true;
-    natDetails.addEventListener("toggle", function () { window.GeoState.save({ natdbOpen: natDetails.open }); });
+    // National-databases popup (opens like the GBIF datasets list).
+    var natdbOpenBtn = document.getElementById("natdb-open");
+    if (natdbOpenBtn) {
+      natdbOpenBtn.addEventListener("click", function () {
+        closeDropdowns();
+        renderCustomUrls();
+        document.getElementById("natdb-modal").style.display = "flex";
+        navOpen("natdb", function () { document.getElementById("natdb-modal").style.display = "none"; });
+      });
+      document.getElementById("natdb-close").addEventListener("click", function () { navClose("natdb"); });
+      document.getElementById("natdb-modal").addEventListener("click", function (e) { if (e.target === this) navClose("natdb"); });
+    }
 
 
 
