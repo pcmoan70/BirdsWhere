@@ -1142,12 +1142,36 @@
     return sciByLower;
   }
   var allSightingsCache = {};   // "lat,lon" rounded -> Promise<aggregated map>
-  // GBIF's "Observation.org, Nature data from around the World" dataset. Pulled
-  // explicitly alongside the general query so its records are always included
-  // even if the general page cap truncates them. (Note: GBIF re-indexes
-  // Observation.org with a lag, so the very newest records may still be absent
-  // until it catches up — those would need Observation.org's own API.)
-  var GBIF_OBS_DATASET = "8a863029-f435-446a-821e-275f4f641165";
+  // GBIF datasets fetched on their OWN (each with its own page budget) in
+  // addition to the general query, so a busy dataset isn't lost to the page cap.
+  // eBird & iNaturalist are fetched via their native APIs instead (fresher, and
+  // GBIF copies would double-count), so they're deliberately not here. The list
+  // is user-extendable in Settings (gbifDatasets in GeoState).
+  var DEFAULT_GBIF_DATASETS = [
+    { key: "8a863029-f435-446a-821e-275f4f641165", name: "Observation.org" },
+    { key: "38b4c89f-584c-41bb-bd8f-cd1def33e92f", name: "Artportalen (SE)" },
+    { key: "b124e1e0-4755-430f-9eab-894f25a9b59c", name: "Artsobservasjoner (NO)" },
+    { key: "df12ca07-f133-4550-ab3b-fde13f0e76ba", name: "Notebook / Laji.fi (FI)" },
+    { key: "95db4db8-f762-11e1-a439-00145eb45e9a", name: "DOFbasen (DK)" }
+  ];
+  // eBird & iNaturalist GBIF datasets — never cycle/auto-add these (already
+  // fetched via their native APIs; via GBIF they'd double-count and lag).
+  var GBIF_NATIVE_DATASETS = { "4fa7b334-ce0d-4e88-aaae-2e0c138d049e": 1, "50c9509d-22c7-4a22-a47d-8c48425ef4a7": 1 };
+  var GBIF_DS_MAX = 12;       // cap on separately-queried datasets (bounds requests)
+  var GBIF_LEARN_MIN = 150;   // min records in an area for auto-discovery to adopt a dataset
+  function gbifDatasets() {
+    var v = window.GeoState.get("gbifDatasets", null);
+    return Array.isArray(v) ? v : DEFAULT_GBIF_DATASETS;
+  }
+  function gbifDatasetsToText(list) {
+    return (list || []).map(function (d) { return d.key + (d.name ? "  " + d.name : ""); }).join("\n");
+  }
+  function parseGbifDatasets(text) {
+    return String(text || "").split("\n").map(function (ln) {
+      var m = ln.trim().match(/^([0-9a-fA-F]{8}-[0-9a-fA-F-]{27,30})[\s,|]*(.*)$/);
+      return m ? { key: m[1], name: (m[2] || "").trim() || m[1] } : null;
+    }).filter(Boolean);
+  }
   async function fetchGbifAll(lat, lon, range, rkm) {
     var base = "https://api.gbif.org/v1/occurrence/search?hasCoordinate=true&limit=300&geometry=" +
       encodeURIComponent(gbifGeometry(lat, lon, rkm)) + "&eventDate=" + encodeURIComponent(range);
@@ -1161,13 +1185,43 @@
       }
       return out;
     }
-    var parts = await Promise.all([pull(base, 4), pull(base + "&datasetKey=" + GBIF_OBS_DATASET, 3)]);
+    var jobs = [pull(base, 4)];   // general query across all datasets
+    gbifDatasets().forEach(function (d) {
+      if (d && d.key) jobs.push(pull(base + "&datasetKey=" + encodeURIComponent(d.key), 3));
+    });
+    var parts = await Promise.all(jobs);
     var seen = Object.create(null), all = [];
-    parts[0].concat(parts[1]).forEach(function (o) {
+    parts.forEach(function (arr) { (arr || []).forEach(function (o) {
       if (o.key != null) { if (seen[o.key]) return; seen[o.key] = 1; }
       all.push(o);
-    });
+    }); });
     return all;
+  }
+  // Auto-discovery: a cheap facet query over the area reveals which datasets are
+  // well-represented here; any new, non-native one above the threshold is added
+  // to the list so FUTURE fetches query it on its own budget. Best-effort and
+  // capped; runs in the background so it never blocks the main fetch.
+  async function learnGbifDatasets(lat, lon, range, rkm) {
+    var list = gbifDatasets();
+    if (list.length >= GBIF_DS_MAX) return;
+    try {
+      var url = "https://api.gbif.org/v1/occurrence/search?hasCoordinate=true&limit=0&facet=datasetKey&facetLimit=12&geometry=" +
+        encodeURIComponent(gbifGeometry(lat, lon, rkm)) + "&eventDate=" + encodeURIComponent(range);
+      var j = await (await fetch(url)).json();
+      var f = (j.facets || []).filter(function (x) { return x.field === "DATASET_KEY"; })[0];
+      if (!f || !f.counts) return;
+      var known = {}; list.forEach(function (d) { known[d.key] = 1; });
+      var out = list.slice(), changed = false;
+      for (var i = 0; i < f.counts.length && out.length < GBIF_DS_MAX; i++) {
+        var c = f.counts[i];
+        if (c.count < GBIF_LEARN_MIN) break;   // counts are descending
+        if (known[c.name] || GBIF_NATIVE_DATASETS[c.name]) continue;
+        var nm = c.name;
+        try { var dj = await (await fetch("https://api.gbif.org/v1/dataset/" + c.name)).json(); if (dj && dj.title) nm = dj.title; } catch (e) {}
+        out.push({ key: c.name, name: nm }); known[c.name] = 1; changed = true;
+      }
+      if (changed) window.GeoState.save({ gbifDatasets: out });
+    } catch (e) { /* discovery is best-effort */ }
   }
   async function fetchInatAll(lat, lon, d1, d2, rkm) {
     var base = "https://api.inaturalist.org/v1/observations?verifiable=true&order_by=observed_on&order=desc&per_page=200&d1=" +
@@ -1272,6 +1326,7 @@
       tok ? guardFetch(failed, "eBird", fetchEbirdAll(lat, lon, tok, rkm)) : Promise.resolve([])
     ]).then(function (r) { var out = aggregateSightings(r[0], r[1], r[2]); out.failed = failed; return out; });
     allSightingsCache[ck] = pr;
+    learnGbifDatasets(lat, lon, range, rkm);   // background — adopt rich datasets for future fetches
     return pr;
   }
   // Cycle the " .." → ". ." → ".. " placeholder shown in the N(D) cells while
@@ -1921,6 +1976,11 @@
                 '<select id="recent-radius">' +
                   '<option value="5">5 km</option><option value="10">10 km</option><option value="25">25 km</option><option value="50">50 km</option><option value="100">100 km</option>' +
                 '</select>' +
+              '</div>' +
+              '<div class="ctrl-group" id="gbif-ds-wrap">' +
+                '<label for="gbif-datasets" data-i18n="ctrl.gbifDatasets">GBIF datasets (fetched separately)</label>' +
+                '<textarea id="gbif-datasets" rows="4" spellcheck="false" data-i18n-ph="ph.gbifDatasets" placeholder="dataset-key  Name — one per line"></textarea>' +
+                '<p class="cu-hint" data-i18n="gbif.hint">Each is queried on its own page budget so a busy one isn’t lost to the cap. eBird &amp; iNaturalist are already fetched directly.</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
                 '<details id="custom-urls-wrap">' +
@@ -4174,7 +4234,18 @@
 
     var rrEl = document.getElementById("recent-radius");
     rrEl.value = String(+window.GeoState.get("recentRadiusKm", 25) || 25);
-    rrEl.addEventListener("change", function () { window.GeoState.save({ recentRadiusKm: +this.value || 25 }); });
+    rrEl.addEventListener("change", function () { window.GeoState.save({ recentRadiusKm: +this.value || 25 }); allSightingsCache = {}; });
+
+    var gbifTa = document.getElementById("gbif-datasets");
+    if (gbifTa) {
+      gbifTa.value = gbifDatasetsToText(gbifDatasets());
+      gbifTa.addEventListener("change", function () {
+        var list = parseGbifDatasets(this.value);
+        window.GeoState.save({ gbifDatasets: list });
+        allSightingsCache = {};   // re-fetch with the new dataset list
+        this.value = gbifDatasetsToText(list);   // normalize the display
+      });
+    }
 
     document.getElementById("sync-export").addEventListener("click", exportAppData);
     document.getElementById("points-kml-export").addEventListener("click", exportPointsKml);
