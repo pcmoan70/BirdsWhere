@@ -1163,14 +1163,42 @@
     var v = window.GeoState.get("gbifDatasets", null);
     return Array.isArray(v) ? v : DEFAULT_GBIF_DATASETS;
   }
-  function gbifDatasetsToText(list) {
-    return (list || []).map(function (d) { return d.key + (d.name ? "  " + d.name : ""); }).join("\n");
+  // Render the dataset list into the popup as a Key | URL table (the URL links
+  // to the dataset's GBIF page; its name is the link tooltip). Each row removable.
+  function renderGbifTable() {
+    var el = document.getElementById("gbif-table"); if (!el) return;
+    var body = gbifDatasets().map(function (d) {
+      var url = "https://www.gbif.org/dataset/" + d.key;
+      return '<tr><td class="gbif-key">' + escapeHtml(d.key) + '</td>' +
+        '<td class="gbif-url"><a href="' + escapeHtml(url) + '" target="_blank" rel="noopener" title="' + escapeHtml(d.name || "") + '">' + escapeHtml(url) + "</a></td>" +
+        '<td><button type="button" class="gbif-del" data-key="' + escapeHtml(d.key) + '" aria-label="remove">×</button></td></tr>';
+    }).join("");
+    el.innerHTML = '<table class="gbif-tbl"><thead><tr><th>' + escapeHtml(t("gbif.colKey")) + "</th><th>" + escapeHtml(t("gbif.colUrl")) + "</th><th></th></tr></thead><tbody>" +
+      (body || '<tr><td colspan="3" class="cu-hint">' + escapeHtml(t("gbif.empty")) + "</td></tr>") + "</tbody></table>";
+    el.querySelectorAll(".gbif-del").forEach(function (b) {
+      b.addEventListener("click", function () { removeGbifDataset(this.getAttribute("data-key")); });
+    });
   }
-  function parseGbifDatasets(text) {
-    return String(text || "").split("\n").map(function (ln) {
-      var m = ln.trim().match(/^([0-9a-fA-F]{8}-[0-9a-fA-F-]{27,30})[\s,|]*(.*)$/);
-      return m ? { key: m[1], name: (m[2] || "").trim() || m[1] } : null;
-    }).filter(Boolean);
+  function removeGbifDataset(key) {
+    window.GeoState.save({ gbifDatasets: gbifDatasets().filter(function (d) { return d.key !== key; }) });
+    allSightingsCache = {};
+    renderGbifTable();
+  }
+  // Accept a bare dataset key or a gbif.org/dataset/<key> URL; pull the name from
+  // GBIF in the background and refresh.
+  function addGbifDataset(text) {
+    var m = String(text || "").match(/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/);
+    if (!m) return;
+    var key = m[1], list = gbifDatasets().slice();
+    if (list.some(function (d) { return d.key === key; })) return;
+    list.push({ key: key, name: "" });
+    window.GeoState.save({ gbifDatasets: list }); allSightingsCache = {};
+    renderGbifTable();
+    fetch("https://api.gbif.org/v1/dataset/" + key).then(function (r) { return r.json(); }).then(function (dj) {
+      if (!dj || !dj.title) return;
+      var l2 = gbifDatasets().slice(), d = l2.filter(function (x) { return x.key === key; })[0];
+      if (d) { d.name = dj.title; window.GeoState.save({ gbifDatasets: l2 }); renderGbifTable(); }
+    }).catch(function () {});
   }
   async function fetchGbifAll(lat, lon, range, rkm) {
     var base = "https://api.gbif.org/v1/occurrence/search?hasCoordinate=true&limit=300&geometry=" +
@@ -1978,9 +2006,8 @@
                 '</select>' +
               '</div>' +
               '<div class="ctrl-group" id="gbif-ds-wrap">' +
-                '<label for="gbif-datasets" data-i18n="ctrl.gbifDatasets">GBIF datasets (fetched separately)</label>' +
-                '<textarea id="gbif-datasets" rows="4" spellcheck="false" data-i18n-ph="ph.gbifDatasets" placeholder="dataset-key  Name — one per line"></textarea>' +
-                '<p class="cu-hint" data-i18n="gbif.hint">Each is queried on its own page budget so a busy one isn’t lost to the cap. eBird &amp; iNaturalist are already fetched directly.</p>' +
+                '<label data-i18n="ctrl.gbifDatasets">GBIF datasets (fetched separately)</label>' +
+                '<button type="button" id="gbif-ds-open" class="demo-btn" data-i18n="gbif.manage">📚 Manage datasets…</button>' +
               '</div>' +
               '<div class="ctrl-group">' +
                 '<details id="custom-urls-wrap">' +
@@ -2213,6 +2240,16 @@
             '<button type="button" id="feedback-cancel" class="demo-btn demo-btn-light" data-i18n="feedback.cancel">Cancel</button>' +
             '<button type="button" id="feedback-send" class="demo-btn" data-i18n="feedback.sendBtn">Send</button>' +
           '</div>' +
+        '</div></div>' +
+        '<div id="gbif-modal" style="display:none"><div id="gbif-box">' +
+          '<button type="button" id="gbif-close" aria-label="Close">×</button>' +
+          '<h3 data-i18n="gbif.title">GBIF datasets</h3>' +
+          '<p class="cu-hint" data-i18n="gbif.hint">Each is queried on its own page budget so a busy one isn’t lost to the cap. eBird &amp; iNaturalist are already fetched directly; rich datasets you browse are added automatically.</p>' +
+          '<div class="gbif-add-row">' +
+            '<input type="text" id="gbif-add" autocomplete="off" spellcheck="false" data-i18n-ph="gbif.addPh" placeholder="Paste a dataset key or gbif.org/dataset/… URL" />' +
+            '<button type="button" id="gbif-add-btn" class="demo-btn" data-i18n="gbif.add">Add</button>' +
+          '</div>' +
+          '<div id="gbif-table"></div>' +
         '</div></div>' +
       '</div>';
 
@@ -4236,15 +4273,20 @@
     rrEl.value = String(+window.GeoState.get("recentRadiusKm", 25) || 25);
     rrEl.addEventListener("change", function () { window.GeoState.save({ recentRadiusKm: +this.value || 25 }); allSightingsCache = {}; });
 
-    var gbifTa = document.getElementById("gbif-datasets");
-    if (gbifTa) {
-      gbifTa.value = gbifDatasetsToText(gbifDatasets());
-      gbifTa.addEventListener("change", function () {
-        var list = parseGbifDatasets(this.value);
-        window.GeoState.save({ gbifDatasets: list });
-        allSightingsCache = {};   // re-fetch with the new dataset list
-        this.value = gbifDatasetsToText(list);   // normalize the display
+    var gbifOpen = document.getElementById("gbif-ds-open");
+    if (gbifOpen) {
+      gbifOpen.addEventListener("click", function () {
+        closeDropdowns();
+        renderGbifTable();
+        document.getElementById("gbif-modal").style.display = "flex";
+        navOpen("gbif", function () { document.getElementById("gbif-modal").style.display = "none"; });
       });
+      document.getElementById("gbif-close").addEventListener("click", function () { navClose("gbif"); });
+      document.getElementById("gbif-modal").addEventListener("click", function (e) { if (e.target === this) navClose("gbif"); });
+      var gbifAddInp = document.getElementById("gbif-add");
+      var gbifAdd = function () { addGbifDataset(gbifAddInp.value); gbifAddInp.value = ""; };
+      document.getElementById("gbif-add-btn").addEventListener("click", gbifAdd);
+      gbifAddInp.addEventListener("keydown", function (e) { if (e.key === "Enter") gbifAdd(); });
     }
 
     document.getElementById("sync-export").addEventListener("click", exportAppData);
