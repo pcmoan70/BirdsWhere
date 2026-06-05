@@ -1152,7 +1152,8 @@
     { key: "38b4c89f-584c-41bb-bd8f-cd1def33e92f", name: "Artportalen (SE)", url: "https://www.artportalen.se/" },
     { key: "b124e1e0-4755-430f-9eab-894f25a9b59c", name: "Artsobservasjoner (NO)", url: "https://artsobservasjoner.no/" },
     { key: "df12ca07-f133-4550-ab3b-fde13f0e76ba", name: "Notebook / Laji.fi (FI)", url: "https://laji.fi/" },
-    { key: "95db4db8-f762-11e1-a439-00145eb45e9a", name: "DOFbasen (DK)", url: "https://www.dofbasen.dk/" }
+    { key: "95db4db8-f762-11e1-a439-00145eb45e9a", name: "DOFbasen (DK)", url: "https://www.dofbasen.dk/" },
+    { key: "6ff8b3b0-ef0f-4f79-a310-5a5615c6aa0b", name: "Birda", url: "https://birda.org/" }
   ];
   // eBird & iNaturalist GBIF datasets — never cycle/auto-add these (already
   // fetched via their native APIs; via GBIF they'd double-count and lag).
@@ -1160,13 +1161,19 @@
   var GBIF_DS_MAX = 12;       // cap on separately-queried datasets (bounds requests)
   var GBIF_LEARN_MIN = 150;   // min records in an area for auto-discovery to adopt a dataset
   function gbifDatasets() {
-    var v = window.GeoState.get("gbifDatasets", null);
-    var list = Array.isArray(v) ? v : DEFAULT_GBIF_DATASETS;
-    // Backfill url/name from the defaults for entries saved before url existed.
-    var byKey = {}; DEFAULT_GBIF_DATASETS.forEach(function (d) { byKey[d.key] = d; });
-    return list.map(function (d) {
-      return (d.url || !byKey[d.key]) ? d : { key: d.key, name: d.name || byKey[d.key].name, url: byKey[d.key].url };
+    var stored = window.GeoState.get("gbifDatasets", null);
+    var def = {}; DEFAULT_GBIF_DATASETS.forEach(function (d) { def[d.key] = d; });
+    var removed = {}; (window.GeoState.get("gbifRemoved", []) || []).forEach(function (k) { removed[k] = 1; });
+    var out = [], have = {};
+    (Array.isArray(stored) ? stored : []).forEach(function (d) {
+      have[d.key] = 1;
+      // Backfill url/name from defaults for entries saved before url existed.
+      out.push((d.url || !def[d.key]) ? d : { key: d.key, name: d.name || def[d.key].name, url: def[d.key].url });
     });
+    // Always include the current defaults (so new ones like Birda appear),
+    // unless the user explicitly removed them.
+    DEFAULT_GBIF_DATASETS.forEach(function (d) { if (!have[d.key] && !removed[d.key]) out.push(d); });
+    return out;
   }
   // Render the dataset list into the popup as a Key | URL table (the URL links
   // to the dataset's GBIF page; its name is the link tooltip). Each row removable.
@@ -1186,6 +1193,11 @@
   }
   function removeGbifDataset(key) {
     window.GeoState.save({ gbifDatasets: gbifDatasets().filter(function (d) { return d.key !== key; }) });
+    // Remember removed defaults so they aren't re-merged by gbifDatasets().
+    if (DEFAULT_GBIF_DATASETS.some(function (d) { return d.key === key; })) {
+      var rem = window.GeoState.get("gbifRemoved", []) || [];
+      if (rem.indexOf(key) < 0) { rem.push(key); window.GeoState.save({ gbifRemoved: rem }); }
+    }
     allSightingsCache = {};
     renderGbifTable();
   }
@@ -1196,6 +1208,9 @@
     if (!m) return;
     var key = m[1], list = gbifDatasets().slice();
     if (list.some(function (d) { return d.key === key; })) return;
+    // Re-adding a previously-removed default: clear it from the removed list.
+    var rem = window.GeoState.get("gbifRemoved", []) || []; var ri = rem.indexOf(key);
+    if (ri >= 0) { rem.splice(ri, 1); window.GeoState.save({ gbifRemoved: rem }); }
     list.push({ key: key, name: "", url: "" });
     window.GeoState.save({ gbifDatasets: list }); allSightingsCache = {};
     renderGbifTable();
