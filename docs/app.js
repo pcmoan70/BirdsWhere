@@ -1239,13 +1239,14 @@
   function guardFetch(failed, name, promise) {
     return Promise.resolve(promise).then(function (r) { return r; }, function () { failed.push(name); return []; });
   }
-  // Cached fetch of every species' recent detections at a point (last 30 days).
-  // The resolved object carries `failed` — the source names that errored.
+  // Cached fetch of every species' recent detections at a point (last 3 months;
+  // eBird is still capped at its 30-day API limit). The resolved object carries
+  // `failed` — the source names that errored.
   function fetchAllSightingsAt(lat, lon) {
     var rkm = recentRadiusKm();
     var ck = lat.toFixed(2) + "," + lon.toFixed(2) + ":" + rkm;
     if (allSightingsCache[ck]) return allSightingsCache[ck];
-    var to = new Date(), from = new Date(); from.setDate(from.getDate() - 30);
+    var to = new Date(), from = new Date(); from.setMonth(from.getMonth() - 3);
     var fmtD = function (d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); };
     var d1 = fmtD(from), d2 = fmtD(to), range = d1 + "," + d2;
     var tok = ebirdKey();
@@ -1272,7 +1273,7 @@
   function ensureDetWait() { if (!detWaitTimer && document.querySelector(".det-wait")) detWaitTimer = setInterval(pumpDetWait, 320); }
   // Populate the per-point species-list rows with count + days-since-most-recent
   // from the cached all-species fetch. Cells stay blank for species without any
-  // detection in the last 30 days; counts >0 become clickable.
+  // detection in the last 3 months; counts >0 become clickable.
   function augmentRowsWithSightings(lat, lon) {
     var token = lat.toFixed(4) + "," + lon.toFixed(4);
     var tbody = document.getElementById("sp-tbody");
@@ -1547,7 +1548,7 @@
   // Show recent observations of a species near the clicked location: GBIF,
   // iNaturalist and (with the user's eBird key, for birds) eBird, fetched in
   // parallel and merged into one list sorted by time, most recent first.
-  // Downloadable as CSV. eBird's window is 30 days; GBIF/iNaturalist use ~2 months.
+  // Downloadable as CSV. eBird's window is 30 days; GBIF/iNaturalist use 3 months.
   async function showRecent(name, sci, lat, lon, key) {
     var body = document.getElementById("recent-body");
     document.getElementById("recent-title").textContent = name;
@@ -1556,7 +1557,7 @@
     navOpen("recent", hideRecent);
     var token = ++recentToken;
 
-    var to = new Date(), from = new Date(); from.setMonth(from.getMonth() - 2);
+    var to = new Date(), from = new Date(); from.setMonth(from.getMonth() - 3);
     var fmtD = function (d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); };
     var d1 = fmtD(from), d2 = fmtD(to), range = d1 + "," + d2;
 
