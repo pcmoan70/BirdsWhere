@@ -1142,16 +1142,31 @@
     return sciByLower;
   }
   var allSightingsCache = {};   // "lat,lon" rounded -> Promise<aggregated map>
+  // GBIF's "Observation.org, Nature data from around the World" dataset. Pulled
+  // explicitly alongside the general query so its records are always included
+  // even if the general page cap truncates them. (Note: GBIF re-indexes
+  // Observation.org with a lag, so the very newest records may still be absent
+  // until it catches up — those would need Observation.org's own API.)
+  var GBIF_OBS_DATASET = "8a863029-f435-446a-821e-275f4f641165";
   async function fetchGbifAll(lat, lon, range, rkm) {
     var base = "https://api.gbif.org/v1/occurrence/search?hasCoordinate=true&limit=300&geometry=" +
       encodeURIComponent(gbifGeometry(lat, lon, rkm)) + "&eventDate=" + encodeURIComponent(range);
-    var all = [], offset = 0;
-    for (var pages = 0; pages < 4; pages++) {
-      var j = await (await fetch(base + "&offset=" + offset)).json();
-      var res = j.results || []; all = all.concat(res);
-      if (res.length < 300) break;
-      offset += 300;
+    async function pull(b, maxPages) {
+      var out = [], offset = 0;
+      for (var p = 0; p < maxPages; p++) {
+        var j = await (await fetch(b + "&offset=" + offset)).json();
+        var res = j.results || []; out = out.concat(res);
+        if (res.length < 300) break;
+        offset += 300;
+      }
+      return out;
     }
+    var parts = await Promise.all([pull(base, 4), pull(base + "&datasetKey=" + GBIF_OBS_DATASET, 3)]);
+    var seen = Object.create(null), all = [];
+    parts[0].concat(parts[1]).forEach(function (o) {
+      if (o.key != null) { if (seen[o.key]) return; seen[o.key] = 1; }
+      all.push(o);
+    });
     return all;
   }
   async function fetchInatAll(lat, lon, d1, d2, rkm) {
@@ -3372,7 +3387,7 @@
       return;
     }
     var rDays = detRecencyDays();
-    var recOpts = [[1, "1"], [7, "7"], [14, "14"], [30, "30"], [0, ""]]
+    var recOpts = [[1, "1"], [7, "7"], [14, "14"], [30, "30"], [90, "90"], [0, ""]]
       .map(function (o) { return '<option value="' + o[0] + '"' + (!detStarFilter && o[0] === rDays ? " selected" : "") + ">" + (o[0] ? o[1] + " " + escapeHtml(t("det.days")) : escapeHtml(t("det.allTime"))) + "</option>"; })
       .join("");
     el.innerHTML = '<div class="det-legend-head">' +
