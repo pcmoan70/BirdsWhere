@@ -1148,11 +1148,11 @@
   // GBIF copies would double-count), so they're deliberately not here. The list
   // is user-extendable in Settings (gbifDatasets in GeoState).
   var DEFAULT_GBIF_DATASETS = [
-    { key: "8a863029-f435-446a-821e-275f4f641165", name: "Observation.org" },
-    { key: "38b4c89f-584c-41bb-bd8f-cd1def33e92f", name: "Artportalen (SE)" },
-    { key: "b124e1e0-4755-430f-9eab-894f25a9b59c", name: "Artsobservasjoner (NO)" },
-    { key: "df12ca07-f133-4550-ab3b-fde13f0e76ba", name: "Notebook / Laji.fi (FI)" },
-    { key: "95db4db8-f762-11e1-a439-00145eb45e9a", name: "DOFbasen (DK)" }
+    { key: "8a863029-f435-446a-821e-275f4f641165", name: "Observation.org", url: "https://observation.org/" },
+    { key: "38b4c89f-584c-41bb-bd8f-cd1def33e92f", name: "Artportalen (SE)", url: "https://www.artportalen.se/" },
+    { key: "b124e1e0-4755-430f-9eab-894f25a9b59c", name: "Artsobservasjoner (NO)", url: "https://artsobservasjoner.no/" },
+    { key: "df12ca07-f133-4550-ab3b-fde13f0e76ba", name: "Notebook / Laji.fi (FI)", url: "https://laji.fi/" },
+    { key: "95db4db8-f762-11e1-a439-00145eb45e9a", name: "DOFbasen (DK)", url: "https://www.dofbasen.dk/" }
   ];
   // eBird & iNaturalist GBIF datasets — never cycle/auto-add these (already
   // fetched via their native APIs; via GBIF they'd double-count and lag).
@@ -1161,14 +1161,19 @@
   var GBIF_LEARN_MIN = 150;   // min records in an area for auto-discovery to adopt a dataset
   function gbifDatasets() {
     var v = window.GeoState.get("gbifDatasets", null);
-    return Array.isArray(v) ? v : DEFAULT_GBIF_DATASETS;
+    var list = Array.isArray(v) ? v : DEFAULT_GBIF_DATASETS;
+    // Backfill url/name from the defaults for entries saved before url existed.
+    var byKey = {}; DEFAULT_GBIF_DATASETS.forEach(function (d) { byKey[d.key] = d; });
+    return list.map(function (d) {
+      return (d.url || !byKey[d.key]) ? d : { key: d.key, name: d.name || byKey[d.key].name, url: byKey[d.key].url };
+    });
   }
   // Render the dataset list into the popup as a Key | URL table (the URL links
   // to the dataset's GBIF page; its name is the link tooltip). Each row removable.
   function renderGbifTable() {
     var el = document.getElementById("gbif-table"); if (!el) return;
     var body = gbifDatasets().map(function (d) {
-      var url = "https://www.gbif.org/dataset/" + d.key;
+      var url = d.url || ("https://www.gbif.org/dataset/" + d.key);   // source homepage, else GBIF page
       return '<tr><td class="gbif-key">' + escapeHtml(d.key) + '</td>' +
         '<td class="gbif-url"><a href="' + escapeHtml(url) + '" target="_blank" rel="noopener" title="' + escapeHtml(d.name || "") + '">' + escapeHtml(url) + "</a></td>" +
         '<td><button type="button" class="gbif-del" data-key="' + escapeHtml(d.key) + '" aria-label="remove">×</button></td></tr>';
@@ -1191,13 +1196,13 @@
     if (!m) return;
     var key = m[1], list = gbifDatasets().slice();
     if (list.some(function (d) { return d.key === key; })) return;
-    list.push({ key: key, name: "" });
+    list.push({ key: key, name: "", url: "" });
     window.GeoState.save({ gbifDatasets: list }); allSightingsCache = {};
     renderGbifTable();
     fetch("https://api.gbif.org/v1/dataset/" + key).then(function (r) { return r.json(); }).then(function (dj) {
-      if (!dj || !dj.title) return;
+      if (!dj) return;
       var l2 = gbifDatasets().slice(), d = l2.filter(function (x) { return x.key === key; })[0];
-      if (d) { d.name = dj.title; window.GeoState.save({ gbifDatasets: l2 }); renderGbifTable(); }
+      if (d) { d.name = dj.title || d.name; if (dj.homepage) d.url = dj.homepage; window.GeoState.save({ gbifDatasets: l2 }); renderGbifTable(); }
     }).catch(function () {});
   }
   async function fetchGbifAll(lat, lon, range, rkm) {
@@ -1244,9 +1249,9 @@
         var c = f.counts[i];
         if (c.count < GBIF_LEARN_MIN) break;   // counts are descending
         if (known[c.name] || GBIF_NATIVE_DATASETS[c.name]) continue;
-        var nm = c.name;
-        try { var dj = await (await fetch("https://api.gbif.org/v1/dataset/" + c.name)).json(); if (dj && dj.title) nm = dj.title; } catch (e) {}
-        out.push({ key: c.name, name: nm }); known[c.name] = 1; changed = true;
+        var nm = c.name, hp = "";
+        try { var dj = await (await fetch("https://api.gbif.org/v1/dataset/" + c.name)).json(); if (dj) { if (dj.title) nm = dj.title; if (dj.homepage) hp = dj.homepage; } } catch (e) {}
+        out.push({ key: c.name, name: nm, url: hp }); known[c.name] = 1; changed = true;
       }
       if (changed) window.GeoState.save({ gbifDatasets: out });
     } catch (e) { /* discovery is best-effort */ }
