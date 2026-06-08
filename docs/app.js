@@ -3326,38 +3326,57 @@
   // Scrollable list popup for several records of one species on one day at one
   // place — each row links to its source. Header shows species · date · place.
   function srcLabel(r) { return (r.src === "GBIF" && r.origin) ? shortOrigin(r.origin) : (r.src || ""); }
-  function openDetList(dot, name, rows) {
-    var first = rows[0] || {};
-    var sub = escapeHtml([first.date, first.place].filter(Boolean).join(" · "));
-    var items = rows.map(function (r) {
-      var meta = escapeHtml(srcLabel(r) || r.src || "obs");
+  // Detection markers within `meters` of a point (real-world distance), across
+  // every plotted species.
+  function findNear(latlng, meters) {
+    var out = [];
+    Object.keys(detPlot).forEach(function (k) {
+      var entry = detPlot[k];
+      if (!entry.group || !map.hasLayer(entry.group)) return;
+      entry.group.eachLayer(function (m) {
+        if (m._detRow && map.distance(latlng, m.getLatLng()) <= meters) out.push(m);
+      });
+    });
+    return out;
+  }
+  // List popup for ONE date at a place: every species seen that day, each row a
+  // legend-coloured swatch + species name, linking to its source record.
+  function openDetList(dot, grp) {
+    var first = (grp.items[0] && grp.items[0].row) || {};
+    var items = grp.items.map(function (it) {
+      var r = it.row;
+      var label = '<span class="det-sw" style="background:' + (it.color || "#888") + '"></span>' +
+        '<span class="det-list-sp">' + escapeHtml(it.name || r.src || "") + "</span>" +
+        '<span class="det-list-src">' + escapeHtml(srcLabel(r)) + "</span>";
       return r.url
-        ? '<a class="det-list-item det-list-link" href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener">' + meta + ' <span class="det-list-go">↗</span></a>'
-        : '<div class="det-list-item">' + meta + "</div>";
+        ? '<a class="det-list-item det-list-link" href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener">' + label + '<span class="det-list-go">↗</span></a>'
+        : '<div class="det-list-item">' + label + "</div>";
     }).join("");
-    var html = '<div class="det-list"><div class="det-list-head"><b>' + escapeHtml(name) + "</b>" +
-      (sub ? '<span class="det-pop-sub">' + sub + "</span>" : "") +
-      '<span class="det-pop-sub">' + escapeHtml(t("det.obsCount", { n: rows.length })) + "</span></div>" +
+    var html = '<div class="det-list"><div class="det-list-head"><b>' + escapeHtml(grp.date || "") + "</b>" +
+      (first.place ? '<span class="det-pop-sub">' + escapeHtml(first.place) + "</span>" : "") +
+      '<span class="det-pop-sub">' + escapeHtml(t("det.obsCount", { n: grp.items.length })) + "</span></div>" +
       '<div class="det-list-body">' + items + "</div></div>";
-    dot.bindPopup(html, { className: "det-pop-wrap det-list-wrap", closeButton: true, closeOnClick: false, autoClose: true, maxWidth: 300, minWidth: 210 });
+    dot.bindPopup(html, { className: "det-pop-wrap det-list-wrap", closeButton: true, closeOnClick: false, autoClose: true, maxWidth: 300, minWidth: 220 });
     dot.openPopup();
   }
-  // Cluster the detection markers near a click (on-screen proximity), group them
-  // by (species, day), then: one group → its popup/list; several → fan them out.
+  // Click a detection: cluster everything within 50 m, group by DATE (all species
+  // merged). One date → its list (or single popup); several dates → fan them out.
   function onDetMarkerClick(marker, name, fallbackRow) {
-    var overlaps = findOverlapsAt(marker.getLatLng(), 12);
-    var byKey = {}, order = [];
-    overlaps.forEach(function (m) {
+    var near = findNear(marker.getLatLng(), 50);
+    var byDay = {}, order = [];
+    near.forEach(function (m) {
       if (!m._detRow) return;
-      var k = m._detName + "|" + (m._detRow.date || "");
-      if (!byKey[k]) { byKey[k] = { name: m._detName, color: m._detTrueColor || m._detColor, rows: [], latlng: m.getLatLng() }; order.push(k); }
-      byKey[k].rows.push(m._detRow);
+      var d = m._detRow.date || "";
+      if (!byDay[d]) { byDay[d] = { date: d, latlng: m.getLatLng(), items: [] }; order.push(d); }
+      byDay[d].items.push({ row: m._detRow, name: m._detName, color: m._detTrueColor || m._detColor });
     });
-    var groups = order.map(function (k) { return byKey[k]; });
+    order.sort(function (a, b) { return String(b).localeCompare(String(a)); });   // newest date first
+    var groups = order.map(function (d) { return byDay[d]; });
+    if (!groups.length && fallbackRow) groups = [{ date: fallbackRow.date || "", latlng: marker.getLatLng(), items: [{ row: fallbackRow, name: name, color: null }] }];
     if (groups.length <= 1) {
-      var g = groups[0] || { name: name, rows: fallbackRow ? [fallbackRow] : [] };
-      if (g.rows.length <= 1) openDetPopup(marker, g.name || name, g.rows[0] || fallbackRow);
-      else openDetList(marker, g.name || name, g.rows);
+      var g = groups[0];
+      if (!g || g.items.length <= 1) openDetPopup(marker, (g && g.items[0] && g.items[0].name) || name, (g && g.items[0] && g.items[0].row) || fallbackRow);
+      else openDetList(marker, g);
     } else {
       clearSpider();
       spiderOutGroups(marker.getLatLng(), groups);
@@ -4023,22 +4042,9 @@
     spiderHidden = [];
     map.removeLayer(spiderLayer); spiderLayer = null;
   }
-  function findOverlapsAt(latlng, pxRadius) {
-    pxRadius = pxRadius || 10;
-    var center = map.latLngToContainerPoint(latlng), out = [];
-    Object.keys(detPlot).forEach(function (k) {
-      var entry = detPlot[k];
-      if (!entry.group || !map.hasLayer(entry.group)) return;
-      entry.group.eachLayer(function (m) {
-        if (!m._detRow) return;
-        var p = map.latLngToContainerPoint(m.getLatLng());
-        if (Math.hypot(p.x - center.x, p.y - center.y) <= pxRadius) out.push(m);
-      });
-    });
-    return out;
-  }
-  // Fan out one marker per (species, day) GROUP around the click point, each
-  // labelled with its date + count. Click a fanned marker → its popup/list.
+  // Fan out one marker per DATE around the click point, each labelled with its
+  // date + count. A date may span several species, so the markers are neutral —
+  // the species colours live in each date's list. Click a marker → its list.
   function spiderOutGroups(centerLatLng, groups) {
     var centerPt = map.latLngToContainerPoint(centerLatLng);
     var n = groups.length, radius = Math.min(82, 26 + n * 5);
@@ -4048,19 +4054,18 @@
       var pt = L.point(centerPt.x + Math.cos(angle) * radius, centerPt.y + Math.sin(angle) * radius);
       var ll = map.containerPointToLatLng(pt);
       g.addLayer(L.polyline([centerLatLng, ll], { color: "#666", weight: 1, opacity: 0.55, interactive: false }));
-      var cnt = grp.rows.length;
-      var clone = L.circleMarker(ll, { radius: cnt > 1 ? 8 : 6, color: "#1a1a1a", weight: 1, opacity: 0.95, fillColor: grp.color, fillOpacity: 0.95, bubblingMouseEvents: false });
-      var date = (grp.rows[0] && grp.rows[0].date) || "";
-      clone.bindTooltip(escapeHtml(date + (cnt > 1 ? " · " + cnt : "")), { permanent: true, direction: "top", className: "area-tip det-fan-tip", offset: [0, -3] });
+      var cnt = grp.items.length;
+      var clone = L.circleMarker(ll, { radius: cnt > 1 ? 8 : 6, color: "#1a1a1a", weight: 1, opacity: 0.95, fillColor: "#3f8e7d", fillOpacity: 0.95, bubblingMouseEvents: false });
+      clone.bindTooltip(escapeHtml(grp.date + (cnt > 1 ? " · " + cnt : "")), { permanent: true, direction: "top", className: "area-tip det-fan-tip", offset: [0, -3] });
       clone.on("click", function (ev) {
         if (ev && ev.originalEvent) L.DomEvent.stopPropagation(ev.originalEvent);   // keep the fan open
-        if (grp.rows.length <= 1) openDetPopup(clone, grp.name, grp.rows[0]);
-        else openDetList(clone, grp.name, grp.rows);
+        if (grp.items.length <= 1) openDetPopup(clone, grp.items[0].name, grp.items[0].row);
+        else openDetList(clone, grp);
       });
       g.addLayer(clone);
     });
-    // Hide the stacked originals near the centre while fanned.
-    findOverlapsAt(centerLatLng, 12).forEach(function (m) {
+    // Hide the stacked originals within 50 m while fanned.
+    findNear(centerLatLng, 50).forEach(function (m) {
       try { m.setStyle({ opacity: 0, fillOpacity: 0 }); spiderHidden.push(m); } catch (e) {}
     });
     g.addTo(map); spiderLayer = g;

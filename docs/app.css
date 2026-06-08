@@ -1776,9 +1776,11 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
 .det-list-head b { display: block; }
 .det-list-head .det-pop-sub { display: block; color: var(--ink-muted, #666); font-size: 0.72rem; }
 .det-list-body { max-height: 40vh; overflow-y: auto; margin: 0 -2px; }
-.det-list-item { display: block; padding: 4px 4px; border-top: 1px solid var(--border, #e3e3e3); font-size: 0.78rem; color: var(--ink, #222); text-decoration: none; }
+.det-list-item { display: flex; align-items: center; gap: 6px; padding: 4px 4px; border-top: 1px solid var(--border, #e3e3e3); font-size: 0.78rem; color: var(--ink, #222); text-decoration: none; }
 a.det-list-item:hover { background: var(--surface-2, rgba(0,0,0,.05)); }
-.det-list-go { color: var(--brand); font-weight: 700; }
+.det-list-sp { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.det-list-src { flex: 0 0 auto; color: var(--ink-muted, #666); font-size: 0.7rem; }
+.det-list-go { flex: 0 0 auto; color: var(--brand); font-weight: 700; }
 /* Compact date label on the fanned-out group markers. */
 .leaflet-tooltip.det-fan-tip { font-size: 0.66rem; padding: 1px 5px; font-variant-numeric: tabular-nums; }
 /* Keep the box narrow (it would otherwise size to the widest option, e.g.
