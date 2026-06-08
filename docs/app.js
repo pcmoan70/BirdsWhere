@@ -687,7 +687,7 @@
   var navSuppress = 0;    // popstate events to ignore (from our own history.back)
   // Pop-up overlays (vs. full-screen pages, which may legitimately stack). By
   // default only one of these shows at a time — opening one closes the others.
-  var MODAL_IDS = { feedback: 1, gbif: 1, natdb: 1, about: 1, recent: 1, distmap: 1 };
+  var MODAL_IDS = { feedback: 1, gbif: 1, natdb: 1, about: 1, recent: 1, distmap: 1, detlist: 1 };
   // Close the open Leaflet map popups (detection dot, point-options, map-point
   // editor) and the sticky fan-out.
   function closeMapPopups() {
@@ -2294,6 +2294,17 @@
             '<button type="button" id="custom-urls-reset" class="demo-btn demo-btn-light" data-i18n="ctrl.customurlsReset">Reset</button>' +
           '</div>' +
         '</div></div>' +
+        '<div id="detlist-modal" style="display:none"><div id="detlist-box">' +
+          '<button type="button" id="detlist-close" aria-label="Close">×</button>' +
+          '<div id="detlist-head">' +
+            '<h3 data-i18n="detlist.title">Detections</h3>' +
+            '<div id="detlist-sort">' +
+              '<button type="button" class="detlist-sort-btn" data-sort="time" data-i18n="detlist.byTime">By date</button>' +
+              '<button type="button" class="detlist-sort-btn" data-sort="species" data-i18n="detlist.bySpecies">By species</button>' +
+            '</div>' +
+          '</div>' +
+          '<div id="detlist-body"></div>' +
+        '</div></div>' +
       '</div>';
 
     // Restore saved language before building the UI text.
@@ -2823,16 +2834,8 @@
     map.on("contextmenu", onMapContextMenu);   // right-click / long-press → add point dialog
     map.on("movestart zoomstart click", clearSpider);   // collapse the fan-out when the view changes / map is clicked
     document.addEventListener("keydown", function (e) { if (e.key === "Escape") clearSpider(); });
-    // Detection quick-popup: track open state so a background click can dismiss
-    // it (see onMapClick). The popup's source link is a plain <a> that navigates
-    // on its own.
-    function isDetPopup(e) { var c = e.popup && e.popup.options && e.popup.options.className; return !!c && c.indexOf("det-pop-wrap") >= 0; }
-    map.on("popupopen", function (e) {
-      if (isDetPopup(e)) detPopupOpen = true;
+    map.on("popupopen", function () {
       closeModals();   // a map popup opened — close any open modal overlay
-    });
-    map.on("popupclose", function (e) {
-      if (isDetPopup(e)) detPopupOpen = false;
     });
 
     map.on("moveend", function () {
@@ -3281,7 +3284,6 @@
   // lists (and the map shows) only the species the user has starred.
   var detStarFilter = false;
   function detPassesStar(k) { return !detStarFilter || isInteresting((detPlot[k] && detPlot[k].key) || k); }
-  var detPopupOpen = false;   // a detection's quick popup is showing (see openDetPopup)
   var mapClickGuardUntil = 0;   // onMapClick ignores clicks before this time; each accepted click re-arms it (200 ms debounce), legend re-renders set a longer window
   function detSelectionActive() { return Object.keys(detSelected).some(function (k) { return detPlot[k] && detPassesStar(k); }); }
   function detIsVisible(key) { return detPassesStar(key) && (!detSelectionActive() || !!detSelected[key]); }
@@ -3304,82 +3306,92 @@
     var t = Date.parse(dateStr); if (isNaN(t)) return false;
     return (Date.now() - t) / 86400000 <= maxDays;
   }
-  // Quick popup for a tapped detection dot: shows what/where it is. When the
-  // observation has a source link the whole popup is an <a> that opens it in a
-  // new tab (a real link, so it isn't blocked like window.open can be). The
-  // detPopupOpen flag (set in initMap's popupopen/popupclose) lets a background
-  // click dismiss it via onMapClick without also dropping a new point.
-  function openDetPopup(dot, name, r) {
-    // Close any other open popup first — notably the point-options popup, which
-    // is autoClose:false and would otherwise linger behind this one.
-    if (marker && marker.closePopup) marker.closePopup();
-    map.closePopup();
-    var sub = escapeHtml([r.src, r.date, r.place].filter(Boolean).join(" · "));
-    var inner = "<b>" + escapeHtml(name) + "</b>" + (sub ? '<span class="det-pop-sub">' + sub + "</span>" : "");
-    var html = r.url
-      ? '<a class="det-pop det-pop-link" href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener">' +
-          inner + '<span class="det-pop-go">' + escapeHtml(t("det.openSource")) + " ↗</span></a>"
-      : '<div class="det-pop">' + inner + "</div>";
-    dot.bindPopup(html, { className: "det-pop-wrap", closeButton: false, closeOnClick: false, autoClose: true });
-    dot.openPopup();
-  }
-  // Scrollable list popup for several records of one species on one day at one
-  // place — each row links to its source. Header shows species · date · place.
+  // Source label for a row: the GBIF origin dataset (shortened) when present,
+  // else the raw source tag (eBird / iNaturalist / Checklist …).
   function srcLabel(r) { return (r.src === "GBIF" && r.origin) ? shortOrigin(r.origin) : (r.src || ""); }
-  // Detection markers within `meters` of a point (real-world distance), across
-  // every plotted species.
-  function findNear(latlng, meters) {
-    var out = [];
+  // Every detection currently shown under the legend (its star / row-selection
+  // and recency filters), flattened to one entry per observation row. This is the
+  // exact set of dots on the map, so the list always matches what's visible.
+  function collectVisibleDetections() {
+    var maxDays = detRecencyDays(), out = [];
     Object.keys(detPlot).forEach(function (k) {
-      var entry = detPlot[k];
-      if (!entry.group || !map.hasLayer(entry.group)) return;
-      entry.group.eachLayer(function (m) {
-        if (m._detRow && map.distance(latlng, m.getLatLng()) <= meters) out.push(m);
+      if (!detIsVisible(k)) return;
+      var e = detPlot[k], nm = detName(e);
+      (e.rows || []).forEach(function (r) {
+        if (!recentEnough(r.date, maxDays)) return;
+        out.push({ key: k, name: nm, color: e.color, date: r.date || "", src: r.src || "", origin: r.origin || "", url: r.url || "", place: r.place || "" });
       });
     });
     return out;
   }
-  // List popup for ONE date at a place: every species seen that day, each row a
-  // legend-coloured swatch + species name, linking to its source record.
-  function openDetList(dot, grp) {
-    var items = grp.items.map(function (it) {
-      var r = it.row;
-      var label = '<span class="det-sw" style="background:' + (it.color || "#888") + '"></span>' +
-        '<span class="det-list-sp">' + escapeHtml(it.name || r.src || "") + "</span>" +
-        '<span class="det-list-src">' + escapeHtml(srcLabel(r)) + "</span>";
-      return r.url
-        ? '<a class="det-list-item det-list-link" href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener">' + label + '<span class="det-list-go">↗</span></a>'
-        : '<div class="det-list-item">' + label + "</div>";
-    }).join("");
-    // Header: one line — date · count.
-    var html = '<div class="det-list"><div class="det-list-head"><b>' + escapeHtml(grp.date || "") + '</b><span class="det-pop-sub"> · ' + grp.items.length + "</span></div>" +
-      '<div class="det-list-body">' + items + "</div></div>";
-    dot.bindPopup(html, { className: "det-pop-wrap det-list-wrap", closeButton: true, closeOnClick: false, autoClose: true, maxWidth: 320, minWidth: 120 });
-    dot.openPopup();
+  var detListSort = "time";            // "time" (date sections) | "species" (per-species rows)
+  var detListOpenSp = {};              // species keys expanded in the by-species view
+  // Open the consolidated detections list — replaces the old per-dot popups.
+  // Clicking any plotted dot, or the legend's list button, lands here.
+  function openDetListModal() {
+    var m = document.getElementById("detlist-modal");
+    if (!m) return;
+    detListOpenSp = {};
+    m.style.display = "flex";
+    navOpen("detlist", function () { m.style.display = "none"; });
+    renderDetListModal();
   }
-  // Click a detection: cluster everything within 50 m, group by DATE (all species
-  // merged). One date → its list (or single popup); several dates → fan them out.
-  function onDetMarkerClick(marker, name, fallbackRow) {
-    var near = findNear(marker.getLatLng(), 50);
-    var byDay = {}, order = [];
-    near.forEach(function (m) {
-      if (!m._detRow) return;
-      var d = m._detRow.date || "";
-      if (!byDay[d]) { byDay[d] = { date: d, latlng: m.getLatLng(), items: [] }; order.push(d); }
-      byDay[d].items.push({ row: m._detRow, name: m._detName, color: m._detTrueColor || m._detColor });
-    });
-    order.sort(function (a, b) { return String(b).localeCompare(String(a)); });   // newest date first
-    var groups = order.map(function (d) { return byDay[d]; });
-    if (!groups.length && fallbackRow) groups = [{ date: fallbackRow.date || "", latlng: marker.getLatLng(), items: [{ row: fallbackRow, name: name, color: null }] }];
-    if (groups.length <= 1) {
-      var g = groups[0];
-      if (!g || g.items.length <= 1) openDetPopup(marker, (g && g.items[0] && g.items[0].name) || name, (g && g.items[0] && g.items[0].row) || fallbackRow);
-      else openDetList(marker, g);
+  // One source-linked row: colour swatch, species name, meta (date? + source),
+  // and a ↗ affordance when the record links out.
+  function detRowHtml(d, showDate) {
+    var meta = [showDate ? d.date : "", srcLabel(d)].filter(Boolean).join(" · ");
+    var inner = '<span class="det-sw" style="background:' + (d.color || "#888") + '"></span>' +
+      '<span class="dl-sp">' + escapeHtml(d.name) + "</span>" +
+      '<span class="dl-meta">' + escapeHtml(meta) + "</span>";
+    return d.url
+      ? '<a class="dl-row dl-link" href="' + escapeHtml(d.url) + '" target="_blank" rel="noopener">' + inner + '<span class="dl-go">↗</span></a>'
+      : '<div class="dl-row">' + inner + "</div>";
+  }
+  function renderDetListModal() {
+    var body = document.getElementById("detlist-body");
+    if (!body) return;
+    var sortBtns = document.querySelectorAll("#detlist-sort .detlist-sort-btn");
+    Array.prototype.forEach.call(sortBtns, function (b) { b.classList.toggle("active", b.getAttribute("data-sort") === detListSort); });
+    var rows = collectVisibleDetections();
+    if (!rows.length) { body.innerHTML = '<div class="dl-empty">' + escapeHtml(t("detlist.empty")) + "</div>"; return; }
+    var html;
+    if (detListSort === "species") {
+      // One summary line per species (most-recent date + count); tap to expand
+      // that species' individual records (each linking to its source).
+      var bySp = {}, spOrder = [];
+      rows.forEach(function (d) { if (!bySp[d.key]) { bySp[d.key] = { name: d.name, color: d.color, items: [] }; spOrder.push(d.key); } bySp[d.key].items.push(d); });
+      spOrder.sort(function (a, b) { return bySp[a].name.localeCompare(bySp[b].name); });
+      html = spOrder.map(function (k) {
+        var g = bySp[k];
+        var last = g.items.reduce(function (acc, d) { return d.date > acc ? d.date : acc; }, "");
+        var open = !!detListOpenSp[k];
+        var head = '<button type="button" class="dl-sp-head' + (open ? " open" : "") + '" data-key="' + escapeHtml(k) + '">' +
+          '<span class="det-sw" style="background:' + (g.color || "#888") + '"></span>' +
+          '<span class="dl-sp">' + escapeHtml(g.name) + "</span>" +
+          '<span class="dl-meta">' + escapeHtml(last) + "</span>" +
+          '<span class="dl-ct">' + g.items.length + "</span>" +
+          '<span class="dl-caret">' + (open ? "▾" : "▸") + "</span></button>";
+        var sub = open ? '<div class="dl-sp-body">' + g.items.slice().sort(function (a, b) { return (b.date || "").localeCompare(a.date || ""); }).map(function (d) { return detRowHtml(d, true); }).join("") + "</div>" : "";
+        return '<div class="dl-sp-group">' + head + sub + "</div>";
+      }).join("");
     } else {
-      clearSpider();
-      spiderOutGroups(marker.getLatLng(), groups);
+      // Group by date, newest first; species rows (A→Z) under each date header.
+      var byDate = {}, dates = [];
+      rows.forEach(function (d) { var k = d.date || ""; if (!byDate[k]) { byDate[k] = []; dates.push(k); } byDate[k].push(d); });
+      dates.sort(function (a, b) { return b.localeCompare(a); });
+      html = dates.map(function (dt) {
+        var items = byDate[dt].slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
+        return '<div class="dl-date-head"><span>' + escapeHtml(dt || t("detlist.noDate")) + '</span><span class="dl-ct">' + items.length + "</span></div>" +
+          items.map(function (d) { return detRowHtml(d, false); }).join("");
+      }).join("");
     }
+    body.innerHTML = html;
+    Array.prototype.forEach.call(body.querySelectorAll(".dl-sp-head"), function (b) {
+      b.addEventListener("click", function () { var k = this.getAttribute("data-key"); if (detListOpenSp[k]) delete detListOpenSp[k]; else detListOpenSp[k] = true; renderDetListModal(); });
+    });
   }
+  // Clicking any plotted dot opens the consolidated list (filtered by the legend).
+  function onDetMarkerClick() { openDetListModal(); }
   function renderDetGroup(name, rows, color, muted) {
     var g = L.layerGroup(), maxDays = detRecencyDays(), visible = 0;
     var fill = muted ? DET_MUTE_COLOR : color;
@@ -3590,6 +3602,7 @@
     el.innerHTML = '<div class="det-legend-head">' +
         '<button type="button" class="det-min" title="' + escapeHtml(t("det.minimise")) + '" aria-label="' + escapeHtml(t("det.minimise")) + '">−</button>' +
         '<span class="det-sum" title="' + escapeHtml(t("det.summaryTip")) + '">' + detSummary + "</span>" +
+        '<button type="button" class="det-list-btn" title="' + escapeHtml(t("detlist.open")) + '" aria-label="' + escapeHtml(t("detlist.open")) + '">☰</button>' +
         '<button type="button" class="det-clear">' + escapeHtml(t("det.clearAll")) + "</button>" +
         '<select id="det-recency" title="' + escapeHtml(t("det.recency")) + '">' + recOpts +
           '<option value="starred"' + (detStarFilter ? " selected" : "") + ">★ " + escapeHtml(t("det.starred")) + "</option>" + "</select>" +
@@ -3607,6 +3620,7 @@
         return '<div class="' + rowCls + '" data-key="' + escapeHtml(k) + '"><span class="det-sw" style="background:' + sw + '"></span><span class="det-nm" title="' + nm + '">' + interestingStar(e.key) + nm + '</span><span class="det-ct">' + ct + '</span><button type="button" class="det-del" data-key="' + escapeHtml(k) + '" aria-label="remove">×</button></div>';
       }).join("");
     el.querySelector(".det-clear").addEventListener("click", clearDetections);
+    el.querySelector(".det-list-btn").addEventListener("click", function (e) { e.stopPropagation(); mapClickGuardUntil = Date.now() + 250; openDetListModal(); });
     el.querySelector(".det-min").addEventListener("click", function () { mapClickGuardUntil = Date.now() + 250; detLegendMini = true; saveLegendState(); updateDetLegend(); });
     el.querySelectorAll(".det-del").forEach(function (b) { b.addEventListener("click", function (e) { e.stopPropagation(); removeDetection(this.getAttribute("data-key")); }); });
     // Click a row to toggle its visibility selection. Stop the click here so it
@@ -3616,7 +3630,9 @@
         e.stopPropagation();
         mapClickGuardUntil = Date.now() + 250;
         var k = this.getAttribute("data-key");
-        if (detSelected[k]) delete detSelected[k]; else detSelected[k] = true;
+        // Single-select (radio): clicking a species shows only it; clicking the
+        // already-selected species clears the selection → all species show again.
+        if (detSelected[k]) detSelected = {}; else { detSelected = {}; detSelected[k] = true; }
         saveLegendState();
         rebuildDetLayers();
         updateDetLegend();
@@ -4040,35 +4056,6 @@
     spiderHidden = [];
     map.removeLayer(spiderLayer); spiderLayer = null;
   }
-  // Fan out one marker per DATE around the click point, each labelled with its
-  // date + count. A date may span several species, so the markers are neutral —
-  // the species colours live in each date's list. Click a marker → its list.
-  function spiderOutGroups(centerLatLng, groups) {
-    var centerPt = map.latLngToContainerPoint(centerLatLng);
-    var n = groups.length, radius = Math.min(82, 26 + n * 5);
-    var g = L.layerGroup();
-    groups.forEach(function (grp, i) {
-      var angle = -Math.PI / 2 + (i / n) * 2 * Math.PI;
-      var pt = L.point(centerPt.x + Math.cos(angle) * radius, centerPt.y + Math.sin(angle) * radius);
-      var ll = map.containerPointToLatLng(pt);
-      g.addLayer(L.polyline([centerLatLng, ll], { color: "#666", weight: 1, opacity: 0.55, interactive: false }));
-      var cnt = grp.items.length;
-      var clone = L.circleMarker(ll, { radius: cnt > 1 ? 8 : 6, color: "#1a1a1a", weight: 1, opacity: 0.95, fillColor: "#3f8e7d", fillOpacity: 0.95, bubblingMouseEvents: false });
-      clone.bindTooltip(escapeHtml(grp.date + (cnt > 1 ? " · " + cnt : "")), { permanent: true, direction: "top", className: "area-tip det-fan-tip", offset: [0, -3] });
-      clone.on("click", function (ev) {
-        if (ev && ev.originalEvent) L.DomEvent.stopPropagation(ev.originalEvent);   // keep the fan open
-        if (grp.items.length <= 1) openDetPopup(clone, grp.items[0].name, grp.items[0].row);
-        else openDetList(clone, grp);
-      });
-      g.addLayer(clone);
-    });
-    // Hide the stacked originals within 50 m while fanned.
-    findNear(centerLatLng, 50).forEach(function (m) {
-      try { m.setStyle({ opacity: 0, fillOpacity: 0 }); spiderHidden.push(m); } catch (e) {}
-    });
-    g.addTo(map); spiderLayer = g;
-  }
-
   var arcOverlays = [];   // active-overlay refs for hover identify: {layer, kind, defs}
   var hotspotsLayer = null;
   function setupAreaOverlays() {
@@ -4388,6 +4375,14 @@
       document.getElementById("gbif-add-btn").addEventListener("click", gbifAdd);
       gbifAddInp.addEventListener("keydown", function (e) { if (e.key === "Enter") gbifAdd(); });
     }
+
+    // Consolidated detections list (opened from a plotted dot or the legend's
+    // list button). Close button, backdrop click, and the date/species sort toggle.
+    document.getElementById("detlist-close").addEventListener("click", function () { navClose("detlist"); });
+    document.getElementById("detlist-modal").addEventListener("click", function (e) { if (e.target === this) navClose("detlist"); });
+    Array.prototype.forEach.call(document.querySelectorAll("#detlist-sort .detlist-sort-btn"), function (b) {
+      b.addEventListener("click", function () { detListSort = this.getAttribute("data-sort"); renderDetListModal(); });
+    });
 
     document.getElementById("sync-export").addEventListener("click", exportAppData);
     document.getElementById("points-kml-export").addEventListener("click", exportPointsKml);
@@ -5812,9 +5807,6 @@
     // previous one (rapid double-taps, or a legend re-render leaking through).
     if (Date.now() < mapClickGuardUntil) return;
     mapClickGuardUntil = Date.now() + 200;
-    // A background click while a detection's quick popup is open just dismisses
-    // it — don't also drop a new point.
-    if (detPopupOpen) { map.closePopup(); return; }
     // List + Range show the per-point species list; Migration the analysis.
     if (["list", "barchart", "range"].indexOf(currentMode) < 0) return;
     // Don't fire the point-options popup if the user was tapping a plotted

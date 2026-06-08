@@ -1760,31 +1760,57 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
 .det-legend-head { display: flex; align-items: center; gap: 6px; font-weight: 700; margin-bottom: 5px; }
 .det-legend-head .det-clear { margin-left: auto; }
 .det-legend-head .det-sum { font-size: 0.72rem; font-weight: 700; color: var(--ink-muted, #666); font-variant-numeric: tabular-nums; }
+.det-legend-head .det-list-btn { border: none; background: transparent; cursor: pointer; font-size: 0.9rem; line-height: 1; color: var(--ink-muted, #666); padding: 0 2px; }
+.det-legend-head .det-list-btn:hover { color: var(--brand); }
 .det-empty { font-size: 0.78rem; color: var(--ink-muted, #666); padding: 4px 2px; }
 
-/* Quick popup shown when a plotted detection dot is tapped. */
-.det-pop-wrap .leaflet-popup-content { margin: 7px 11px; }
-.det-pop { display: block; font-size: 0.8rem; line-height: 1.35; min-width: 110px; color: var(--ink, #222); text-decoration: none; }
-.det-pop b { display: block; }
-.det-pop .det-pop-sub { display: block; margin-top: 1px; color: var(--ink-muted, #666); font-size: 0.72rem; }
-.det-pop-link { cursor: pointer; }
-.det-pop .det-pop-go { display: block; margin-top: 5px; color: var(--brand); font-weight: 700; font-size: 0.74rem; }
-.det-pop-link:hover .det-pop-go { text-decoration: underline; }
-/* Scrollable list popup for many records on one day at one place. */
-.det-list { font-size: 0.8rem; line-height: 1.3; }
-.det-list-head { color: var(--ink, #222); margin-bottom: 4px; white-space: nowrap; }
-.det-list-head b { font-weight: 700; }
-.det-list-head .det-pop-sub { color: var(--ink-muted, #666); font-size: 0.74rem; }
-.det-list-body { max-height: 40vh; overflow-y: auto; margin: 0 -2px; }
-.det-list-item { display: flex; align-items: center; gap: 6px; padding: 4px 4px; border-top: 1px solid var(--border, #e3e3e3); font-size: 0.78rem; color: var(--ink, #222); text-decoration: none; }
-a.det-list-item:hover { background: var(--surface-2, rgba(0,0,0,.05)); }
-/* Species name takes its natural width (popup squeezes to fit); source is pushed
-   to the right by the auto margin, which collapses when the row is at min width. */
-.det-list-sp { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.det-list-src { flex: 0 0 auto; margin-left: auto; padding-left: 12px; color: var(--ink-muted, #666); font-size: 0.7rem; }
-.det-list-go { flex: 0 0 auto; color: var(--brand); font-weight: 700; }
-/* Compact date label on the fanned-out group markers. */
-.leaflet-tooltip.det-fan-tip { font-size: 0.66rem; padding: 1px 5px; font-variant-numeric: tabular-nums; }
+/* Consolidated detections list — a modal listing every plotted (legend-filtered)
+   detection, grouped by date or by species (see #detlist-modal in app.js). */
+#detlist-modal {
+  position: fixed; inset: 0; z-index: 5000; display: none;
+  align-items: center; justify-content: center; background: rgba(0,0,0,0.55); padding: 20px;
+}
+#detlist-box {
+  position: relative; background: var(--surface); color: var(--ink);
+  max-width: 440px; width: 100%; max-height: 80vh; display: flex; flex-direction: column;
+  border-radius: 10px; padding: 16px 18px; box-shadow: var(--shadow-md, 0 6px 24px rgba(0,0,0,.35));
+}
+#detlist-close {
+  position: absolute; top: 8px; right: 10px; border: none; background: transparent;
+  cursor: pointer; font-size: 1.5rem; line-height: 1; color: var(--ink-muted);
+}
+#detlist-close:hover { color: var(--ink); }
+#detlist-head { display: flex; align-items: center; gap: 10px; margin: 0 28px 10px 0; }
+#detlist-head h3 { margin: 0; font-size: 1.1rem; color: var(--brand-deep); }
+#detlist-sort { display: flex; margin-left: auto; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+.detlist-sort-btn { border: none; background: transparent; cursor: pointer; font: inherit; font-size: 0.74rem; padding: 3px 10px; color: var(--ink-muted); }
+.detlist-sort-btn.active { background: var(--brand); color: #fff; }
+#detlist-body { overflow-y: auto; margin: 0 -4px; }
+.dl-empty { font-size: 0.82rem; color: var(--ink-muted); padding: 12px 4px; }
+/* Date section header in the by-date view. */
+.dl-date-head { display: flex; align-items: center; gap: 8px; position: sticky; top: 0;
+  background: var(--surface); padding: 6px 4px 3px; margin-top: 4px;
+  font-weight: 700; font-size: 0.78rem; color: var(--brand-deep); font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid var(--border, #e3e3e3); }
+.dl-date-head .dl-ct { margin-left: auto; color: var(--ink-muted); }
+/* One source-linked detection row. */
+.dl-row { display: flex; align-items: center; gap: 8px; padding: 5px 4px; font-size: 0.82rem;
+  color: var(--ink, #222); text-decoration: none; border-top: 1px solid var(--border, #e3e3e3); }
+.dl-date-head + .dl-row { border-top: none; }
+a.dl-row:hover { background: var(--surface-2, rgba(0,0,0,.05)); }
+.dl-sp { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-meta { flex: 0 0 auto; margin-left: auto; padding-left: 10px; color: var(--ink-muted, #666); font-size: 0.72rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dl-go { flex: 0 0 auto; color: var(--brand); font-weight: 700; }
+/* By-species view: one expandable summary row per species. */
+.dl-sp-group { border-top: 1px solid var(--border, #e3e3e3); }
+.dl-sp-head { display: flex; width: 100%; box-sizing: border-box; align-items: center; gap: 8px;
+  padding: 6px 4px; border: none; background: transparent; font: inherit; font-size: 0.84rem;
+  color: var(--ink, #222); cursor: pointer; text-align: left; }
+.dl-sp-head:hover { background: var(--surface-2, rgba(0,0,0,.05)); }
+.dl-sp-head .dl-ct { flex: 0 0 auto; color: var(--ink-muted); font-weight: 700; font-variant-numeric: tabular-nums; }
+.dl-caret { flex: 0 0 auto; color: var(--ink-muted); font-size: 0.7rem; width: 0.9em; text-align: center; }
+.dl-sp-body { padding-left: 18px; }
+.dl-sp-body .dl-row:first-child { border-top: none; }
 /* Keep the box narrow (it would otherwise size to the widest option, e.g.
    "★ Starred only"); the open list still shows full labels. */
 .det-legend-head #det-recency { font: inherit; font-size: 0.72rem; padding: 1px 2px; flex: 0 1 auto; min-width: 0; max-width: 88px; text-overflow: ellipsis; }
