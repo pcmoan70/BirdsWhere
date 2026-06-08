@@ -1265,9 +1265,9 @@
     // truncated — each pull still stops as soon as the source is exhausted, so
     // these only bite where there really are that many records. The heavy fetch
     // is cached per point (allSightingsCache), so the cost is paid once.
-    var jobs = [pull(base, 12)];   // unfiltered query across ALL datasets (always included): up to 3600
+    var jobs = [obsTrack(pull(base, 12))];   // unfiltered query across ALL datasets (always included): up to 3600
     gbifDatasets().forEach(function (d) {
-      if (d && d.key) jobs.push(pull(base + "&datasetKey=" + encodeURIComponent(d.key), 8));   // up to 2400 per dataset
+      if (d && d.key) jobs.push(obsTrack(pull(base + "&datasetKey=" + encodeURIComponent(d.key), 8)));   // up to 2400 per dataset
     });
     var parts = await Promise.all(jobs);
     var seen = Object.create(null), all = [];
@@ -1407,26 +1407,32 @@
     var tok = ebirdKey();
     var failed = [];
     var pr = Promise.all([
-      guardFetch(failed, "GBIF", fetchGbifAll(lat, lon, range, rkm)),
-      guardFetch(failed, "iNaturalist", fetchInatAll(lat, lon, d1, d2, rkm)),
-      tok ? guardFetch(failed, "eBird", fetchEbirdAll(lat, lon, tok, rkm)) : Promise.resolve([])
+      guardFetch(failed, "GBIF", fetchGbifAll(lat, lon, range, rkm)),   // counts its own sub-queries via obsTrack
+      guardFetch(failed, "iNaturalist", obsTrack(fetchInatAll(lat, lon, d1, d2, rkm))),
+      tok ? guardFetch(failed, "eBird", obsTrack(fetchEbirdAll(lat, lon, tok, rkm))) : Promise.resolve([])
     ]).then(function (r) { var out = aggregateSightings(r[0], r[1], r[2]); out.failed = failed; return out; });
     allSightingsCache[ck] = pr;
     learnGbifDatasets(lat, lon, range, rkm);   // background — adopt rich datasets for future fetches
     return pr;
   }
-  // Cycle the " .." → ". ." → ".. " placeholder shown in the N(D) cells while
-  // their detection counts are loading. One shared timer that stops itself once
-  // no cells are waiting (they get replaced by the count when data arrives).
-  var DET_WAIT_FRAMES = [" ..", ". .", ".. "];
-  var detWaitIdx = 0, detWaitTimer = null;
-  function pumpDetWait() {
-    var els = document.querySelectorAll(".det-wait");
-    if (!els.length) { clearInterval(detWaitTimer); detWaitTimer = null; return; }
-    detWaitIdx = (detWaitIdx + 1) % DET_WAIT_FRAMES.length;
-    for (var i = 0; i < els.length; i++) els[i].textContent = DET_WAIT_FRAMES[detWaitIdx];
+  // While observations load, the N(D) cells show the number of source/
+  // dataset queries still in flight (see obsTrack), counting down as each
+  // replies; the real counts replace them once the data has arrived.
+  var obsInflight = 0;
+  var obsStatusActive = false;   // a map-plot is showing the countdown in the status line
+  function obsTrack(p) {
+    obsInflight++; obsProgress();
+    return Promise.resolve(p).then(function (v) { obsInflight--; obsProgress(); return v; },
+                                   function (e) { obsInflight--; obsProgress(); throw e; });
   }
-  function ensureDetWait() { if (!detWaitTimer && document.querySelector(".det-wait")) detWaitTimer = setInterval(pumpDetWait, 320); }
+  function obsProgress() {
+    if (obsInflight <= 0) return;   // 0 left: leave the cells for the data to fill / the plot status to stand
+    var txt = String(obsInflight);
+    var els = document.querySelectorAll(".det-wait");
+    for (var i = 0; i < els.length; i++) els[i].textContent = txt;
+    if (obsStatusActive) setStatus(t("sp.plottingN", { n: obsInflight }));
+  }
+  function ensureDetWait() { obsProgress(); }
   // Populate the per-point species-list rows with count + days-since-most-recent
   // from the cached all-species fetch. Cells stay blank for species without any
   // detection in the last 3 months; counts >0 become clickable.
@@ -3536,7 +3542,9 @@
   function plotAllSightings() {
     if (!currentSpView || currentSpView.mode !== "point") { setStatus(t("det.none")); return; }
     setStatus(t("sp.plotting"));
+    obsStatusActive = true; obsProgress();   // show "N queries left" in the status, counting down
     fetchAllSightingsAt(currentSpView.lat, currentSpView.lon).then(function (result) {
+      obsStatusActive = false;
       // Respect the active species-group filter so e.g. "Birds" mode doesn't
       // plot insects / reptiles / plants picked up from GBIF / iNaturalist.
       var grp = speciesGroup;
@@ -3568,7 +3576,7 @@
       document.getElementById("species-panel").style.display = "none";
       if (map) map.invalidateSize();
       setStatus(t("sp.plotted", { n: entries.length }) + failNote);
-    }).catch(function () { setStatus(t("det.none")); });
+    }).catch(function () { obsStatusActive = false; setStatus(t("det.none")); });
   }
   // Plot every per-entry GPS fix from the open field checklist on the map,
   // grouped by species — reuses the detPlot legend / recency filter / spider,
