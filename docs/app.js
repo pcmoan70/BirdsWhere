@@ -1261,9 +1261,13 @@
       }
       return out;
     }
-    var jobs = [pull(base, 4)];   // unfiltered query across ALL datasets (always included)
+    // Generous page ceilings so a dense spot over the 3-month window isn't
+    // truncated — each pull still stops as soon as the source is exhausted, so
+    // these only bite where there really are that many records. The heavy fetch
+    // is cached per point (allSightingsCache), so the cost is paid once.
+    var jobs = [pull(base, 12)];   // unfiltered query across ALL datasets (always included): up to 3600
     gbifDatasets().forEach(function (d) {
-      if (d && d.key) jobs.push(pull(base + "&datasetKey=" + encodeURIComponent(d.key), 3));
+      if (d && d.key) jobs.push(pull(base + "&datasetKey=" + encodeURIComponent(d.key), 8));   // up to 2400 per dataset
     });
     var parts = await Promise.all(jobs);
     var seen = Object.create(null), all = [];
@@ -1303,9 +1307,13 @@
     var base = "https://api.inaturalist.org/v1/observations?verifiable=true&order_by=observed_on&order=desc&per_page=200&d1=" +
       d1 + "&d2=" + d2 + "&lat=" + lat.toFixed(4) + "&lng=" + lon.toFixed(4) + "&radius=" + rkm;
     var all = [];
-    for (var page = 1; page <= 4; page++) {
-      var j = await (await fetch(base + "&page=" + page)).json();
-      var res = (j && j.results) || []; all = all.concat(res);
+    // Page deep enough to cover busy spots over the 3-month window; stops early
+    // once a page comes back short (source exhausted). iNat caps total at 10k.
+    for (var page = 1; page <= 12; page++) {
+      var res;
+      try { res = ((await (await fetch(base + "&page=" + page)).json()) || {}).results || []; }
+      catch (e) { break; }   // a failed page just ends paging with what we have
+      all = all.concat(res);
       if (res.length < 200) break;
     }
     return all;
