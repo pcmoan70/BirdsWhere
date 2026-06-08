@@ -3320,13 +3320,17 @@
   // Every detection currently shown under the legend (its star / row-selection
   // and recency filters), flattened to one entry per observation row. This is the
   // exact set of dots on the map, so the list always matches what's visible.
-  function collectVisibleDetections() {
+  // `near` (optional) = { lat, lon, meters }: restrict to rows within that radius
+  // of a clicked dot. Without it, every visible detection on the map is returned.
+  function collectVisibleDetections(near) {
     var maxDays = detRecencyDays(), out = [];
+    var center = near ? L.latLng(near.lat, near.lon) : null;
     Object.keys(detPlot).forEach(function (k) {
       if (!detIsVisible(k)) return;
       var e = detPlot[k], nm = detName(e);
       (e.rows || []).forEach(function (r) {
         if (!recentEnough(r.date, maxDays)) return;
+        if (center && map.distance(center, L.latLng(r.lat, r.lon)) > near.meters) return;
         out.push({ key: k, name: nm, color: e.color, date: r.date || "", src: r.src || "", origin: r.origin || "", url: r.url || "", place: r.place || "" });
       });
     });
@@ -3334,11 +3338,13 @@
   }
   var detListSort = "time";            // "time" (date sections) | "species" (per-species rows)
   var detListOpenSp = {};              // species keys expanded in the by-species view
-  // Open the consolidated detections list — replaces the old per-dot popups.
-  // Clicking any plotted dot, or the legend's list button, lands here.
-  function openDetListModal() {
+  var detListNear = null;              // location scope: a clicked dot's { lat, lon, meters } (null = whole map)
+  // Open the consolidated detections list. Clicking a plotted dot scopes it to
+  // that spot (`near`); the legend's list button opens it for the whole map.
+  function openDetListModal(near) {
     var m = document.getElementById("detlist-modal");
     if (!m) return;
+    detListNear = near || null;
     detListOpenSp = {};
     m.style.display = "flex";
     navOpen("detlist", function () { m.style.display = "none"; });
@@ -3360,7 +3366,7 @@
     if (!body) return;
     var sortBtns = document.querySelectorAll("#detlist-sort .detlist-sort-btn");
     Array.prototype.forEach.call(sortBtns, function (b) { b.classList.toggle("active", b.getAttribute("data-sort") === detListSort); });
-    var rows = collectVisibleDetections();
+    var rows = collectVisibleDetections(detListNear);
     if (!rows.length) { body.innerHTML = '<div class="dl-empty">' + escapeHtml(t("detlist.empty")) + "</div>"; return; }
     var html;
     if (detListSort === "species") {
@@ -3398,8 +3404,12 @@
       b.addEventListener("click", function () { var k = this.getAttribute("data-key"); if (detListOpenSp[k]) delete detListOpenSp[k]; else detListOpenSp[k] = true; renderDetListModal(); });
     });
   }
-  // Clicking any plotted dot opens the consolidated list (filtered by the legend).
-  function onDetMarkerClick() { openDetListModal(); }
+  // Clicking a plotted dot opens the list scoped to that spot (co-located
+  // detections within 50 m), still honouring the legend's filters.
+  function onDetMarkerClick(marker) {
+    var ll = marker.getLatLng();
+    openDetListModal({ lat: ll.lat, lon: ll.lng, meters: 50 });
+  }
   function renderDetGroup(name, rows, color, muted) {
     var g = L.layerGroup(), maxDays = detRecencyDays(), visible = 0;
     var fill = muted ? DET_MUTE_COLOR : color;
