@@ -3638,9 +3638,10 @@
         e.stopPropagation();
         mapClickGuardUntil = Date.now() + 250;
         var k = this.getAttribute("data-key");
-        // Single-select (radio): clicking a species shows only it; clicking the
-        // already-selected species clears the selection → all species show again.
-        if (detSelected[k]) detSelected = {}; else { detSelected = {}; detSelected[k] = true; }
+        // Multi-select: each click toggles that species, and the picks stick —
+        // click several to show them together. Clicking a selected species
+        // deselects it; clearing the last one shows all species again.
+        if (detSelected[k]) delete detSelected[k]; else detSelected[k] = true;
         saveLegendState();
         rebuildDetLayers();
         updateDetLegend();
