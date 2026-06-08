@@ -1347,7 +1347,7 @@
       sciName = sciName.replace(/\s+\([^)]*\)\s*/g, " ").replace(/,\s*\d{4}.*$/, "").trim();
       // Skip leftovers that are clearly not binomials (one word = genus or above).
       if (!/\s/.test(sciName)) return;
-      var row = { lat: o.decimalLatitude != null ? +o.decimalLatitude : null, lon: o.decimalLongitude != null ? +o.decimalLongitude : null, date: (o.eventDate || "").slice(0, 10), src: "GBIF", url: o.key ? "https://www.gbif.org/occurrence/" + o.key : "" };
+      var row = { lat: o.decimalLatitude != null ? +o.decimalLatitude : null, lon: o.decimalLongitude != null ? +o.decimalLongitude : null, date: (o.eventDate || "").slice(0, 10), src: "GBIF", origin: o.datasetName || "", url: o.key ? "https://www.gbif.org/occurrence/" + o.key : "" };
       var lbl = sci[sciName.toLowerCase()];
       if (lbl) bump(lbl.key, o.eventDate, row);
       else bumpExtra(sciName, "", o.eventDate, normClass(o.class), row);
@@ -2826,12 +2826,13 @@
     // Detection quick-popup: track open state so a background click can dismiss
     // it (see onMapClick). The popup's source link is a plain <a> that navigates
     // on its own.
+    function isDetPopup(e) { var c = e.popup && e.popup.options && e.popup.options.className; return !!c && c.indexOf("det-pop-wrap") >= 0; }
     map.on("popupopen", function (e) {
-      if (e.popup && e.popup.options && e.popup.options.className === "det-pop-wrap") detPopupOpen = true;
+      if (isDetPopup(e)) detPopupOpen = true;
       closeModals();   // a map popup opened — close any open modal overlay
     });
     map.on("popupclose", function (e) {
-      if (e.popup && e.popup.options && e.popup.options.className === "det-pop-wrap") detPopupOpen = false;
+      if (isDetPopup(e)) detPopupOpen = false;
     });
 
     map.on("moveend", function () {
@@ -3290,7 +3291,7 @@
   var DET_MUTE_COLOR = "#9aa3a0";   // still used for hidden rows' legend swatch
   function detSlim(rows) {
     return (rows || []).filter(function (r) { return r.lat != null && r.lon != null; })
-      .map(function (r) { return { lat: +r.lat, lon: +r.lon, url: r.url || "", date: r.date || "", src: r.src || "", place: r.place || "" }; });
+      .map(function (r) { return { lat: +r.lat, lon: +r.lon, url: r.url || "", date: r.date || "", src: r.src || "", origin: r.origin || "", place: r.place || "" }; });
   }
   // Localized display name for a plotted species (re-derived from the key so it
   // follows the UI language); falls back to the name stored at plot time.
@@ -3322,6 +3323,46 @@
     dot.bindPopup(html, { className: "det-pop-wrap", closeButton: false, closeOnClick: false, autoClose: true });
     dot.openPopup();
   }
+  // Scrollable list popup for several records of one species on one day at one
+  // place — each row links to its source. Header shows species · date · place.
+  function srcLabel(r) { return (r.src === "GBIF" && r.origin) ? shortOrigin(r.origin) : (r.src || ""); }
+  function openDetList(dot, name, rows) {
+    var first = rows[0] || {};
+    var sub = escapeHtml([first.date, first.place].filter(Boolean).join(" · "));
+    var items = rows.map(function (r) {
+      var meta = escapeHtml(srcLabel(r) || r.src || "obs");
+      return r.url
+        ? '<a class="det-list-item det-list-link" href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener">' + meta + ' <span class="det-list-go">↗</span></a>'
+        : '<div class="det-list-item">' + meta + "</div>";
+    }).join("");
+    var html = '<div class="det-list"><div class="det-list-head"><b>' + escapeHtml(name) + "</b>" +
+      (sub ? '<span class="det-pop-sub">' + sub + "</span>" : "") +
+      '<span class="det-pop-sub">' + escapeHtml(t("det.obsCount", { n: rows.length })) + "</span></div>" +
+      '<div class="det-list-body">' + items + "</div></div>";
+    dot.bindPopup(html, { className: "det-pop-wrap det-list-wrap", closeButton: true, closeOnClick: false, autoClose: true, maxWidth: 300, minWidth: 210 });
+    dot.openPopup();
+  }
+  // Cluster the detection markers near a click (on-screen proximity), group them
+  // by (species, day), then: one group → its popup/list; several → fan them out.
+  function onDetMarkerClick(marker, name, fallbackRow) {
+    var overlaps = findOverlapsAt(marker.getLatLng(), 12);
+    var byKey = {}, order = [];
+    overlaps.forEach(function (m) {
+      if (!m._detRow) return;
+      var k = m._detName + "|" + (m._detRow.date || "");
+      if (!byKey[k]) { byKey[k] = { name: m._detName, color: m._detTrueColor || m._detColor, rows: [], latlng: m.getLatLng() }; order.push(k); }
+      byKey[k].rows.push(m._detRow);
+    });
+    var groups = order.map(function (k) { return byKey[k]; });
+    if (groups.length <= 1) {
+      var g = groups[0] || { name: name, rows: fallbackRow ? [fallbackRow] : [] };
+      if (g.rows.length <= 1) openDetPopup(marker, g.name || name, g.rows[0] || fallbackRow);
+      else openDetList(marker, g.name || name, g.rows);
+    } else {
+      clearSpider();
+      spiderOutGroups(marker.getLatLng(), groups);
+    }
+  }
   function renderDetGroup(name, rows, color, muted) {
     var g = L.layerGroup(), maxDays = detRecencyDays(), visible = 0;
     var fill = muted ? DET_MUTE_COLOR : color;
@@ -3334,13 +3375,11 @@
       // the true species colour too, so fanned clones are distinguishable even
       // when the map is in the muted/grey (no-selection) state.
       m._detRow = r; m._detName = name; m._detColor = fill; m._detTrueColor = color;
-      // Click a lone dot → quick popup (tap it to open the source). Click a dot
-      // that hides others underneath → fan the cluster out (sticky) to reach each.
+      // Click → group co-located observations by (species, day): one group shows
+      // a popup/list, several fan out (rose) — see onDetMarkerClick.
       m.on("click", function (e) {
         if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent);
-        var overlaps = findOverlapsAt(m.getLatLng(), 10);
-        if (overlaps.length >= 2) { clearSpider(); spiderOut(m.getLatLng(), overlaps); return; }
-        openDetPopup(m, name, r);
+        onDetMarkerClick(m, name, r);
       });
       g.addLayer(m);
     });
@@ -3998,25 +4037,31 @@
     });
     return out;
   }
-  function spiderOut(centerLatLng, overlaps) {
+  // Fan out one marker per (species, day) GROUP around the click point, each
+  // labelled with its date + count. Click a fanned marker → its popup/list.
+  function spiderOutGroups(centerLatLng, groups) {
     var centerPt = map.latLngToContainerPoint(centerLatLng);
-    var n = overlaps.length, radius = Math.min(70, 24 + n * 4);
+    var n = groups.length, radius = Math.min(82, 26 + n * 5);
     var g = L.layerGroup();
-    overlaps.forEach(function (orig, i) {
+    groups.forEach(function (grp, i) {
       var angle = -Math.PI / 2 + (i / n) * 2 * Math.PI;
       var pt = L.point(centerPt.x + Math.cos(angle) * radius, centerPt.y + Math.sin(angle) * radius);
       var ll = map.containerPointToLatLng(pt);
       g.addLayer(L.polyline([centerLatLng, ll], { color: "#666", weight: 1, opacity: 0.55, interactive: false }));
-      var clone = L.circleMarker(ll, { radius: 6, color: "#1a1a1a", weight: 1, opacity: 0.95, fillColor: orig._detTrueColor || orig._detColor, fillOpacity: 0.95, bubblingMouseEvents: false });
-      var r = orig._detRow;
-      // Click a fanned clone → its quick popup (tap it to open the source).
+      var cnt = grp.rows.length;
+      var clone = L.circleMarker(ll, { radius: cnt > 1 ? 8 : 6, color: "#1a1a1a", weight: 1, opacity: 0.95, fillColor: grp.color, fillOpacity: 0.95, bubblingMouseEvents: false });
+      var date = (grp.rows[0] && grp.rows[0].date) || "";
+      clone.bindTooltip(escapeHtml(date + (cnt > 1 ? " · " + cnt : "")), { permanent: true, direction: "top", className: "area-tip det-fan-tip", offset: [0, -3] });
       clone.on("click", function (ev) {
         if (ev && ev.originalEvent) L.DomEvent.stopPropagation(ev.originalEvent);   // keep the fan open
-        openDetPopup(clone, orig._detName, r);
+        if (grp.rows.length <= 1) openDetPopup(clone, grp.name, grp.rows[0]);
+        else openDetList(clone, grp.name, grp.rows);
       });
       g.addLayer(clone);
-      orig.setStyle({ opacity: 0, fillOpacity: 0 });   // hide the stacked original while fanned
-      spiderHidden.push(orig);
+    });
+    // Hide the stacked originals near the centre while fanned.
+    findOverlapsAt(centerLatLng, 12).forEach(function (m) {
+      try { m.setStyle({ opacity: 0, fillOpacity: 0 }); spiderHidden.push(m); } catch (e) {}
     });
     g.addTo(map); spiderLayer = g;
   }
