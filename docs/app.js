@@ -3602,7 +3602,10 @@
     if (!allKeys.length) { if (detLegend) { map.removeControl(detLegend); detLegend = null; } return; }
     // The dropdown's "Starred only" narrows which species the legend lists (and
     // the map shows). The legend itself stays up so the filter can be toggled.
-    var keys = allKeys.filter(detPassesStar);
+    // Always list the species alphabetically by their (localised) display name.
+    var keys = allKeys.filter(detPassesStar).sort(function (a, b) {
+      return detName(detPlot[a]).localeCompare(detName(detPlot[b]));
+    });
     // Summary "nn(mmm)" — nn species, mmm total detections currently shown (the
     // sum of the per-species counts in the rows below).
     var nDet = 0;
