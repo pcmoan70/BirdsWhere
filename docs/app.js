@@ -3342,7 +3342,6 @@
   // List popup for ONE date at a place: every species seen that day, each row a
   // legend-coloured swatch + species name, linking to its source record.
   function openDetList(dot, grp) {
-    var first = (grp.items[0] && grp.items[0].row) || {};
     var items = grp.items.map(function (it) {
       var r = it.row;
       var label = '<span class="det-sw" style="background:' + (it.color || "#888") + '"></span>' +
@@ -3352,11 +3351,10 @@
         ? '<a class="det-list-item det-list-link" href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener">' + label + '<span class="det-list-go">↗</span></a>'
         : '<div class="det-list-item">' + label + "</div>";
     }).join("");
-    var html = '<div class="det-list"><div class="det-list-head"><b>' + escapeHtml(grp.date || "") + "</b>" +
-      (first.place ? '<span class="det-pop-sub">' + escapeHtml(first.place) + "</span>" : "") +
-      '<span class="det-pop-sub">' + escapeHtml(t("det.obsCount", { n: grp.items.length })) + "</span></div>" +
+    // Header: one line — date · count.
+    var html = '<div class="det-list"><div class="det-list-head"><b>' + escapeHtml(grp.date || "") + '</b><span class="det-pop-sub"> · ' + grp.items.length + "</span></div>" +
       '<div class="det-list-body">' + items + "</div></div>";
-    dot.bindPopup(html, { className: "det-pop-wrap det-list-wrap", closeButton: true, closeOnClick: false, autoClose: true, maxWidth: 300, minWidth: 220 });
+    dot.bindPopup(html, { className: "det-pop-wrap det-list-wrap", closeButton: true, closeOnClick: false, autoClose: true, maxWidth: 320, minWidth: 120 });
     dot.openPopup();
   }
   // Click a detection: cluster everything within 50 m, group by DATE (all species
