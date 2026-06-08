@@ -1329,6 +1329,7 @@
     var sci = ensureSciIndex();
     var agg = Object.create(null);     // model species: key -> { count, latestTs }
     var extras = Object.create(null);  // species the model doesn't cover: sciLower -> { sci, name, count, latestTs }
+    var famDirty = false;              // a GBIF row taught us a new species→family mapping
     function pushRow(arr, row) { if (row && row.lat != null && row.lon != null) arr.push(row); }   // no per-species cap
     function bump(key, dt, row) {
       if (!key) return;
@@ -1365,8 +1366,8 @@
       if (!/\s/.test(sciName)) return;
       var row = { lat: o.decimalLatitude != null ? +o.decimalLatitude : null, lon: o.decimalLongitude != null ? +o.decimalLongitude : null, date: (o.eventDate || "").slice(0, 10), src: "GBIF", origin: o.datasetName || "", url: o.key ? "https://www.gbif.org/occurrence/" + o.key : "" };
       var lbl = sci[sciName.toLowerCase()];
-      if (lbl) bump(lbl.key, o.eventDate, row);
-      else bumpExtra(sciName, "", o.eventDate, normClass(o.class), row);
+      if (lbl) { bump(lbl.key, o.eventDate, row); if (recordFamily(lbl.key, o.family)) famDirty = true; }
+      else { bumpExtra(sciName, "", o.eventDate, normClass(o.class), row); if (recordFamily("x:" + sciName.toLowerCase(), o.family)) famDirty = true; }
     });
     (inat || []).forEach(function (o) {
       var tax = o.taxon || {};
@@ -1385,6 +1386,7 @@
       if (labelsByKey[o.speciesCode]) bump(o.speciesCode, o.obsDt, row);
       else bumpExtra(o.sciName || "", o.comName || "", o.obsDt, "Aves", row);
     });
+    if (famDirty) saveFamIndex();
     return { agg: agg, extras: extras };
   }
   // Run a source fetch; on failure record the source name (so the caller can
@@ -3289,7 +3291,52 @@
   // coloured points; repeatable for many species. Points click through to the
   // source record. Persisted so they survive a reload; a legend lists/removes
   // each species.
-  var DET_COLORS = ["#e6194B", "#3cb44b", "#4363d8", "#f58231", "#911eb4", "#42d4f4", "#f032e6", "#469990", "#9A6324", "#800000", "#808000", "#000075", "#a9a9a9", "#fabed4", "#bfef45"];
+  // Per-species family, harvested from GBIF occurrences (the one source that
+  // returns it) and persisted, so a species keeps its family — and thus its
+  // colour hue — on later fetches/sources (eBird, iNaturalist) that omit it.
+  var famIndex = (window.GeoState && window.GeoState.get("detFamilies", {})) || {};
+  function saveFamIndex() { try { window.GeoState.save({ detFamilies: famIndex }); } catch (e) {} }
+  function recordFamily(key, fam) {
+    fam = (fam || "").trim();
+    if (!key || !fam || famIndex[key] === fam) return false;
+    famIndex[key] = fam; return true;   // caller persists once per batch
+  }
+  // Stable non-negative hash of a string.
+  function strHash(s) { var h = 0; s = String(s); for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
+  // Species with no known family yet get a distinct colour assigned on first
+  // sight and held in memory for THIS session only (cleared on reload), so
+  // several unfamilied species don't all look alike. Golden-angle hues spread
+  // them around the wheel; the lower saturation hints they're provisional
+  // versus the family-coloured ones. Once GBIF supplies the family on a later
+  // fetch, the species switches to its family hue and this entry is dropped.
+  var sessionColors = {};   // key -> colour, this session only (NOT persisted)
+  var sessionColorN = 0;
+  function sessionColor(key) {
+    if (!sessionColors[key]) sessionColors[key] = "hsl(" + Math.round((sessionColorN++ * 137.508) % 360) + ", 35%, 52%)";
+    return sessionColors[key];
+  }
+  // Recompute every plotted species' colour. The families currently on the map
+  // get evenly-spaced hues round the wheel (so two families never collide on the
+  // same hue); species within a family share that hue band but vary in shade and
+  // saturation so they stay distinguishable. Unknown family → neutral grey. Run
+  // whenever the plotted set changes or a family is newly learned from GBIF — so
+  // a grey dot turns its family's hue the moment GBIF supplies the family.
+  function recolorDetections() {
+    var seen = {}, fams = [];
+    Object.keys(detPlot).forEach(function (k) { var f = famIndex[k]; if (f && !seen[f]) { seen[f] = 1; fams.push(f); } });
+    fams.sort();
+    var hueOf = {}, n = fams.length || 1;
+    fams.forEach(function (f, i) { hueOf[f] = Math.round(360 * i / n); });
+    Object.keys(detPlot).forEach(function (k) {
+      var f = famIndex[k] || "";
+      if (f) {
+        var hue = (hueOf[f] + (strHash("h:" + k) % 7) - 3 + 360) % 360;          // ±3° jitter within the family band
+        detPlot[k].color = "hsl(" + hue + ", " + (48 + strHash("a:" + k) % 26) + "%, " + (40 + strHash("s:" + k) % 24) + "%)";
+      } else {
+        detPlot[k].color = sessionColor(k);   // no family yet → a distinct colour held for this session
+      }
+    });
+  }
   var detPlot = {};     // speciesKey -> { key, name (fallback), color, rows, group }
   var detLegend = null;
   // Legend-driven visibility: dots always draw in their species colour. Click a
@@ -3374,6 +3421,7 @@
     if (!body) return;
     var sortBtns = document.querySelectorAll("#detlist-sort .detlist-sort-btn");
     Array.prototype.forEach.call(sortBtns, function (b) { b.classList.toggle("active", b.getAttribute("data-sort") === detListSort); });
+    recolorDetections();   // swatches reflect the latest family colours
     var rows = collectVisibleDetections(detListNear);
     if (!rows.length) { body.innerHTML = '<div class="dl-empty">' + escapeHtml(t("detlist.empty")) + "</div>"; return; }
     var html;
@@ -3456,15 +3504,15 @@
     var slim = detSlim(rows);
     if (!slim.length) { if (!defer) setStatus(t("det.none")); return; }
     var prev = detPlot[key];
-    var color = (prev && prev.color) || DET_COLORS[Object.keys(detPlot).length % DET_COLORS.length];
     // Accumulate: re-pinning a species ADDS its new observations to whatever is
     // already on the map (deduped) instead of replacing them — so pinning at
     // several places/searches builds up the full set of dots. No cap.
     var merged = prev ? mergeDetRows(prev.rows, slim) : slim;
     if (prev && prev.group) map.removeLayer(prev.group);
-    var e = { key: key, name: (name || (prev && prev.name)), color: color, rows: merged, group: null };
+    var e = { key: key, name: (name || (prev && prev.name)), color: (prev && prev.color) || "#888", rows: merged, group: null };
     detPlot[key] = e;
-    if (detIsVisible(key)) { e.group = renderDetGroup(detName(e), merged, color, detIsMuted(key)); e.group.addTo(map); }
+    recolorDetections();   // assign family-based colours now that this species is in the set
+    if (detIsVisible(key)) { e.group = renderDetGroup(detName(e), merged, e.color, detIsMuted(key)); e.group.addTo(map); }
     if (!defer) { updateDetLegend(); saveDetections(); }   // batch when plotting many at once
     if (fit && e.group) { try { map.fitBounds(e.group.getBounds().pad(0.25)); } catch (err) { /* single point / bad bounds */ } }
   }
@@ -3473,6 +3521,7 @@
   // muted (grey) when nothing is selected, coloured when selected.
   function rebuildDetLayers() {
     clearSpider();
+    recolorDetections();
     Object.keys(detPlot).forEach(function (k) {
       var e = detPlot[k];
       if (e.group) { map.removeLayer(e.group); e.group = null; }
@@ -3509,7 +3558,8 @@
       // the map, so plotting at several locations builds up the full picture.
       // Use the legend's "Clear" to start over. No species cap — plot them all.
       entries.forEach(function (e) { plotDetections(e.key, e.name, e.rows, false, true); });
-      updateDetLegend(); saveDetections();   // one batch update after the loop
+      rebuildDetLayers();                      // recolour existing dots if families were just learned
+      updateDetLegend(); saveDetections();     // one batch update after the loop
       // Fit to the points just added (this location), not the whole accumulated set.
       var bounds = L.latLngBounds([]);
       entries.forEach(function (e) { (e.rows || []).forEach(function (r) { if (r && isFinite(+r.lat) && isFinite(+r.lon)) bounds.extend([+r.lat, +r.lon]); }); });
@@ -3606,6 +3656,7 @@
     var keys = allKeys.filter(detPassesStar).sort(function (a, b) {
       return detName(detPlot[a]).localeCompare(detName(detPlot[b]));
     });
+    recolorDetections();   // keep swatches current with learned families / plotted set
     // Summary "nn(mmm)" — nn species, mmm total detections currently shown (the
     // sum of the per-species counts in the rows below).
     var nDet = 0;
