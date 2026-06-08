@@ -2419,17 +2419,16 @@
   function installIsStandalone() {
     try { return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true; } catch (e) { return false; }
   }
-  function iosSafari() { return installIsIOS && /safari/i.test(navigator.userAgent) && !/crios|fxios/i.test(navigator.userAgent); }
   function offerInstall() { installUI.forEach(function (el) { if (el) el.hidden = false; }); }
   function hideInstall() { installUI.forEach(function (el) { if (el) el.hidden = true; }); }
   function triggerInstall(btn) {
     if (deferredInstall) {
       deferredInstall.prompt();
       deferredInstall.userChoice.then(function () { deferredInstall = null; hideInstall(); });
-    } else if (installIsIOS) {
-      if (btn) btn.textContent = t("install.ios");   // can't auto-prompt on iOS — show how
-    } else {
-      hideInstall();
+    } else if (btn) {
+      // No native prompt available (iOS, or the browser isn't offering one right
+      // now) — show how to install by hand instead of doing nothing.
+      btn.textContent = installIsIOS ? t("install.ios") : t("install.manual");
     }
   }
   // Splash-screen button: wired before the model loads so an install offered
@@ -2442,7 +2441,7 @@
     if (!sb) return;
     installUI.push(sb);
     sb.addEventListener("click", function () { triggerInstall(sb); });
-    if (iosSafari()) sb.hidden = false;   // iOS never fires the event — surface the hint
+    sb.hidden = false;   // always offer install on the splash when not already installed
   }
   // Corner pill: the post-load fallback so the offer stays reachable after the
   // splash is gone. Shares deferredInstall with the splash button.
@@ -2457,9 +2456,7 @@
     installUI.push(pill);
     pill.querySelector("#install-go").addEventListener("click", function () { triggerInstall(pill.querySelector("#install-go")); });
     pill.querySelector("#install-x").addEventListener("click", function () { pill.hidden = true; });   // dismiss the pill only
-    // If the offer already became available during load (or this is iOS Safari),
-    // surface the pill now; otherwise the beforeinstallprompt listener will.
-    if (deferredInstall || iosSafari()) pill.hidden = false;
+    pill.hidden = false;   // always reachable post-load when not already installed
   }
 
   // ---- Model & labels ------------------------------------------------------
