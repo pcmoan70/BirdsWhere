@@ -1243,17 +1243,25 @@
   async function fetchGbifAll(lat, lon, range, rkm) {
     var base = "https://api.gbif.org/v1/occurrence/search?hasCoordinate=true&limit=300&geometry=" +
       encodeURIComponent(gbifGeometry(lat, lon, rkm)) + "&eventDate=" + encodeURIComponent(range);
+    // Each pull is self-contained: a rate-limited or failed page just stops that
+    // one query with whatever it has, so a flaky per-dataset query can't reject
+    // the shared Promise.all and wipe out the unfiltered general results too.
     async function pull(b, maxPages) {
       var out = [], offset = 0;
       for (var p = 0; p < maxPages; p++) {
-        var j = await (await fetch(b + "&offset=" + offset)).json();
-        var res = j.results || []; out = out.concat(res);
+        var res;
+        try {
+          var resp = await fetch(b + "&offset=" + offset);
+          if (!resp.ok) break;            // 429 / 5xx → keep what we already pulled
+          res = (await resp.json()).results || [];
+        } catch (e) { break; }            // network / parse failure → partial result
+        out = out.concat(res);
         if (res.length < 300) break;
         offset += 300;
       }
       return out;
     }
-    var jobs = [pull(base, 4)];   // general query across all datasets
+    var jobs = [pull(base, 4)];   // unfiltered query across ALL datasets (always included)
     gbifDatasets().forEach(function (d) {
       if (d && d.key) jobs.push(pull(base + "&datasetKey=" + encodeURIComponent(d.key), 3));
     });
