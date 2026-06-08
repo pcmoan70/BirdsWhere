@@ -685,7 +685,27 @@
   // now and quietly rewinds the matching history entry.
   var navStack = [];      // [{ id, close }]
   var navSuppress = 0;    // popstate events to ignore (from our own history.back)
+  // Pop-up overlays (vs. full-screen pages, which may legitimately stack). By
+  // default only one of these shows at a time — opening one closes the others.
+  var MODAL_IDS = { feedback: 1, gbif: 1, natdb: 1, about: 1, recent: 1, distmap: 1 };
+  // Close the open Leaflet map popups (detection dot, point-options, map-point
+  // editor) and the sticky fan-out.
+  function closeMapPopups() {
+    try { if (typeof map !== "undefined" && map) map.closePopup(); } catch (e) {}
+    try { if (typeof marker !== "undefined" && marker && marker.closePopup) marker.closePopup(); } catch (e) {}
+    try { clearSpider(); } catch (e) {}
+  }
+  // Close every open modal overlay except `keep`.
+  function closeModals(keep) {
+    Object.keys(MODAL_IDS).forEach(function (id) {
+      if (id === keep) return;
+      var el = document.getElementById(id + "-modal");
+      if (el && el.style.display === "flex") navClose(id);
+    });
+    try { if (typeof hidePerfModal === "function") hidePerfModal(); } catch (e) {}
+  }
   function navOpen(id, close) {
+    if (MODAL_IDS[id]) { closeMapPopups(); closeModals(id); }   // a modal stands alone
     for (var i = 0; i < navStack.length; i++) {
       if (navStack[i].id === id) { navStack[i].close = close; return; }   // already open (re-render) — don't double-push
     }
@@ -2808,6 +2828,7 @@
     // on its own.
     map.on("popupopen", function (e) {
       if (e.popup && e.popup.options && e.popup.options.className === "det-pop-wrap") detPopupOpen = true;
+      closeModals();   // a map popup opened — close any open modal overlay
     });
     map.on("popupclose", function (e) {
       if (e.popup && e.popup.options && e.popup.options.className === "det-pop-wrap") detPopupOpen = false;
@@ -3744,7 +3765,7 @@
     // Re-use a single working popup; close any other detail popups first.
     if (mpEditPopup) map.closePopup(mpEditPopup);
     var html = mpEditorHtml(p, isEdit);
-    var pop = L.popup({ closeButton: true, autoClose: false, maxWidth: 280, className: "mp-popup" })
+    var pop = L.popup({ closeButton: true, autoClose: true, maxWidth: 280, className: "mp-popup" })
       .setLatLng([p.lat, p.lon]).setContent(html);
     mpEditPopup = pop; pop.openOn(map);
     setTimeout(function () { wireEditorPopup(p, isEdit); }, 0);
@@ -5794,7 +5815,7 @@
       });
       var pop = mk.getPopup(); if (pop && pop.isOpen()) pop.update();   // re-layout for added buttons
     }).catch(function () { /* leave as-is */ });
-    mk.bindPopup(wrap, { closeButton: true, autoClose: false, autoPan: true, className: "choose-popup", offset: [0, -8] });
+    mk.bindPopup(wrap, { closeButton: true, autoClose: true, autoPan: true, className: "choose-popup", offset: [0, -8] });
     mk.openPopup();
   }
 
