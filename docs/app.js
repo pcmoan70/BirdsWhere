@@ -1415,22 +1415,24 @@
     learnGbifDatasets(lat, lon, range, rkm);   // background — adopt rich datasets for future fetches
     return pr;
   }
-  // While observations load, the N(D) cells show the number of source/
-  // dataset queries still in flight (see obsTrack), counting down as each
-  // replies; the real counts replace them once the data has arrived.
+  // While observations load, the N(D) cells show the share of source/dataset
+  // queries still in flight (see obsTrack) as a percentage, counting down as
+  // each replies; the real counts replace them once the data has arrived.
   var obsInflight = 0;
+  var obsTotal = 0;              // queries fired this batch (for the % remaining)
   var obsStatusActive = false;   // a map-plot is showing the countdown in the status line
   function obsTrack(p) {
-    obsInflight++; obsProgress();
+    if (obsInflight === 0) obsTotal = 0;   // first query of a new batch
+    obsInflight++; obsTotal++; obsProgress();
     return Promise.resolve(p).then(function (v) { obsInflight--; obsProgress(); return v; },
                                    function (e) { obsInflight--; obsProgress(); throw e; });
   }
   function obsProgress() {
     if (obsInflight <= 0) return;   // 0 left: leave the cells for the data to fill / the plot status to stand
-    var txt = String(obsInflight);
+    var txt = (obsTotal ? Math.round(obsInflight / obsTotal * 100) : 0) + "%";
     var els = document.querySelectorAll(".det-wait");
     for (var i = 0; i < els.length; i++) els[i].textContent = txt;
-    if (obsStatusActive) setStatus(t("sp.plottingN", { n: obsInflight }));
+    if (obsStatusActive) setStatus(t("sp.plottingN", { n: txt }));
   }
   function ensureDetWait() { obsProgress(); }
   // Populate the per-point species-list rows with count + days-since-most-recent
@@ -7532,7 +7534,7 @@
         return '<tr><td>' + nameLinkHtml(r.label) + '</td>' + name2Cell + '<td class="sci">' +
                escapeHtml(r.label.sci) + '</td><td class="prob-cell"><span class="prob-num">' + pct +
                '%</span><div class="prob-bar" style="width:' + pct + '%;background:' + probHueColor(pRange > 0 ? (r.prob - pLo) / pRange : 1) + '"></div></td>' +
-               '<td class="num det-nd" data-key="' + dKey + '"><span class="det-wait" title="' + escapeHtml(t("status.loadingDet")) + '"> ..</span></td>' + cmpCell + '</tr>';
+               '<td class="num det-nd" data-key="' + dKey + '"><span class="det-wait" title="' + escapeHtml(t("status.loadingDet")) + '"></span></td>' + cmpCell + '</tr>';
       }).join("");
       ensureDetWait();   // animate the loading placeholders until counts arrive
       var sp = document.getElementById("species-panel");

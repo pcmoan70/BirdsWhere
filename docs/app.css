@@ -1580,7 +1580,7 @@ table.chk-table .chk-text { min-width: 100px; }
 .det-nd .det-d { color: var(--ink-muted, #5b6f69); font-size: 0.74rem; margin-left: 2px; }
 /* Cycling " .." → ". ." → ".. " shown in the N(D) cell while data is fetched.
    Monospace + pre so the gap slides without the dots jittering sideways. */
-.det-wait { white-space: pre; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--ink-muted, #5b6f69); font-weight: 700; }
+.det-wait { color: #c4c4c4; font-weight: 400; font-variant-numeric: tabular-nums; }
 
 /* Timeline: ring the current-week bar (its fill stays on the red->green scale) */
 .bc-bar.bc-cur { outline: 2px solid #111; outline-offset: -1px; opacity: 1 !important; z-index: 2; }
