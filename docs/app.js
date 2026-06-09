@@ -1265,9 +1265,9 @@
     // truncated — each pull still stops as soon as the source is exhausted, so
     // these only bite where there really are that many records. The heavy fetch
     // is cached per point (allSightingsCache), so the cost is paid once.
-    var jobs = [obsTrack(pull(base, 12))];   // unfiltered query across ALL datasets (always included): up to 3600
+    var jobs = [pull(base, 12)];   // unfiltered query across ALL datasets (always included): up to 3600
     gbifDatasets().forEach(function (d) {
-      if (d && d.key) jobs.push(obsTrack(pull(base + "&datasetKey=" + encodeURIComponent(d.key), 8)));   // up to 2400 per dataset
+      if (d && d.key) jobs.push(pull(base + "&datasetKey=" + encodeURIComponent(d.key), 8));   // up to 2400 per dataset
     });
     var parts = await Promise.all(jobs);
     var seen = Object.create(null), all = [];
@@ -1325,17 +1325,126 @@
     var r = await fetch(url, { headers: { "X-eBirdApiToken": tok } });
     return r.ok ? await r.json() : [];
   }
-  function aggregateSightings(gbif, inat, ebird) {
+  // Lat/lon → EPSG:3857 (web-mercator) metres, for Artskart's WKT polygon filter.
+  function toMercator(lat, lon) {
+    var R = 20037508.34;
+    return [lon * R / 180, Math.log(Math.tan((90 + lat) * Math.PI / 360)) / (Math.PI / 180) * R / 180];
+  }
+  // Norway — Artskart public API (no key; aggregates Artsobservasjoner + others).
+  // Geo filter is a WKT polygon in web-mercator metres around the point.
+  async function fetchArtsobsAll(lat, lon, d1, d2, rkm) {
+    var dLat = rkm / 111, dLon = rkm / ((111 * Math.cos(lat * Math.PI / 180)) || 1);
+    var pts = [toMercator(lat - dLat, lon - dLon), toMercator(lat - dLat, lon + dLon), toMercator(lat + dLat, lon + dLon), toMercator(lat + dLat, lon - dLon)];
+    pts.push(pts[0]);
+    var wkt = "POLYGON((" + pts.map(function (p) { return p[0].toFixed(1) + " " + p[1].toFixed(1); }).join(",") + "))";
+    var base = "https://artskart.artsdatabanken.no/publicapi/api/observations/list?MaxFeatures=300&FromDate=" + d1 + "&ToDate=" + d2 + "&gmWktPolygon=" + encodeURIComponent(wkt);
+    var all = [];
+    for (var p = 0; p < 6; p++) {
+      var obs;
+      try { var resp = await fetch(base + "&Offset=" + (p * 300)); if (!resp.ok) break; obs = ((await resp.json()) || {}).Observations || []; }
+      catch (e) { break; }
+      all = all.concat(obs);
+      if (obs.length < 300) break;
+    }
+    return { Observations: all };
+  }
+  // Sweden — SLU Artdatabanken SOS API (free subscription key; Artportalen + more).
+  async function fetchArtportalenAll(lat, lon, d1, d2, rkm, key) {
+    var body = { geographics: { geometries: [{ type: "point", coordinates: [lon, lat] }], maxDistanceFromPoint: Math.round(rkm * 1000) },
+      date: { startDate: d1, endDate: d2, dateFilterType: "OverlappingStartDateAndEndDate" }, output: { fieldSet: "Extended" } };
+    var all = [];
+    for (var p = 0; p < 6; p++) {
+      var recs;
+      try {
+        var resp = await fetch("https://api.artdatabanken.se/species-observation-system/v1/Observations/Search?skip=" + (p * 300) + "&take=300",
+          { method: "POST", headers: { "Content-Type": "application/json", "Ocp-Apim-Subscription-Key": key }, body: JSON.stringify(body) });
+        if (!resp.ok) break; recs = ((await resp.json()) || {}).records || [];
+      } catch (e) { break; }
+      all = all.concat(recs);
+      if (recs.length < 300) break;
+    }
+    return all;
+  }
+  // ---- Uniform observation sources ------------------------------------------
+  // Every source is normalised to one record shape so a single aggregator maps
+  // them to model species / extras. A record is:
+  //   { src, speciesCode, sciName, comName, family, cls, lat, lon, date, dt, url, origin, place }
+  function inatLatLon(o) {
+    if (o.geojson && o.geojson.coordinates) return { lat: +o.geojson.coordinates[1], lon: +o.geojson.coordinates[0] };
+    if (o.location) { var pr = String(o.location).split(","); return { lat: parseFloat(pr[0]), lon: parseFloat(pr[1]) }; }
+    return { lat: null, lon: null };
+  }
+  function normEbird(arr) {
+    return (arr || []).map(function (o) {
+      return { src: "eBird", speciesCode: o.speciesCode || "", sciName: o.sciName || "", comName: o.comName || "", family: "", cls: "Aves",
+        lat: o.lat != null ? +o.lat : null, lon: o.lng != null ? +o.lng : null, date: (o.obsDt || "").slice(0, 10), dt: o.obsDt || "",
+        url: o.subId ? "https://ebird.org/checklist/" + o.subId : "", origin: "", place: o.locName || "" };
+    });
+  }
+  function normInat(arr) {
+    var out = [];
+    (arr || []).forEach(function (o) {
+      var tax = o.taxon || {}, rank = String(tax.rank || "").toLowerCase();
+      if (rank && rank !== "species" && rank !== "subspecies" && rank !== "variety" && rank !== "form") return;
+      var sn = tax.name; if (!sn || !/\s/.test(sn)) return;
+      var ll = inatLatLon(o);
+      out.push({ src: "iNaturalist", speciesCode: "", sciName: sn, comName: tax.preferred_common_name || "", family: "", cls: normClass(tax.iconic_taxon_name),
+        lat: isFinite(ll.lat) ? ll.lat : null, lon: isFinite(ll.lon) ? ll.lon : null, date: o.observed_on || (o.time_observed_at || "").slice(0, 10), dt: o.time_observed_at || o.observed_on || "",
+        url: o.id ? "https://www.inaturalist.org/observations/" + o.id : "", origin: "", place: o.place_guess || "" });
+    });
+    return out;
+  }
+  function normGbif(arr) {
+    var out = [];
+    (arr || []).forEach(function (o) {
+      // Drop higher-rank identifications (ORDER/FAMILY/GENUS) and strip the author
+      // citation GBIF appends; only species-level binomials become rows.
+      var rank = String(o.taxonRank || "").toUpperCase();
+      if (rank && rank !== "SPECIES" && rank !== "SUBSPECIES" && rank !== "VARIETY" && rank !== "FORM") return;
+      var sn = o.species || o.scientificName; if (!sn) return;
+      sn = sn.replace(/\s+\([^)]*\)\s*/g, " ").replace(/,\s*\d{4}.*$/, "").trim();
+      if (!/\s/.test(sn)) return;
+      out.push({ src: "GBIF", speciesCode: "", sciName: sn, comName: o.vernacularName || "", family: o.family || "", cls: normClass(o.class),
+        lat: o.decimalLatitude != null ? +o.decimalLatitude : null, lon: o.decimalLongitude != null ? +o.decimalLongitude : null,
+        date: (o.eventDate || "").slice(0, 10), dt: o.eventDate || "", url: o.key ? "https://www.gbif.org/occurrence/" + o.key : "", origin: o.datasetName || "", place: o.locality || "" });
+    });
+    return out;
+  }
+  function normArtsobs(obj) {
+    var out = [];
+    ((obj && obj.Observations) || []).forEach(function (o) {
+      var sn = o.ScientificName; if (!sn || !/\s/.test(sn)) return;
+      // Coordinates are WGS84 but decimal-comma strings; dates are dd.mm.yyyy.
+      var la = parseFloat(String(o.Latitude || "").replace(",", ".")), lo = parseFloat(String(o.Longitude || "").replace(",", "."));
+      var dm = String(o.CollectedDate || "").match(/(\d{2})\.(\d{2})\.(\d{4})/), date = dm ? (dm[3] + "-" + dm[2] + "-" + dm[1]) : "";
+      out.push({ src: "Artsobs", speciesCode: "", sciName: sn, comName: o.Name || "", family: o.family || "", cls: normClass(o.klass || o.Klass || o["class"]),
+        lat: isFinite(la) ? la : null, lon: isFinite(lo) ? lo : null, date: date, dt: date,
+        url: o.DetailUrl || o.ObsUrl || "", origin: "", place: o.Municipality || o.County || "" });
+    });
+    return out;
+  }
+  function normArtportalen(arr) {
+    var out = [];
+    (arr || []).forEach(function (o) {
+      var tax = o.taxon || {}, loc = o.location || {}, ev = o.event || {};
+      var sn = tax.scientificName; if (!sn || !/\s/.test(sn)) return;
+      var oid = String((o.occurrence && o.occurrence.occurrenceId) || ""), m = oid.match(/[Ss]ighting[:\/](\d+)/);
+      out.push({ src: "Artportalen", speciesCode: "", sciName: sn, comName: tax.vernacularName || "", family: tax.family || "", cls: normClass(tax["class"]),
+        lat: loc.decimalLatitude != null ? +loc.decimalLatitude : null, lon: loc.decimalLongitude != null ? +loc.decimalLongitude : null,
+        date: (ev.startDate || "").slice(0, 10), dt: ev.startDate || "", url: m ? "https://www.artportalen.se/sighting/" + m[1] : "", origin: "", place: loc.locality || loc.municipality || "" });
+    });
+    return out;
+  }
+  // Map a flat list of normalised records to model species (agg) + everything the
+  // model doesn't cover (extras), harvesting families for colouring along the way.
+  function aggregateRecords(records) {
     var sci = ensureSciIndex();
-    var agg = Object.create(null);     // model species: key -> { count, latestTs }
-    var extras = Object.create(null);  // species the model doesn't cover: sciLower -> { sci, name, count, latestTs }
-    var famDirty = false;              // a GBIF row taught us a new species→family mapping
-    function pushRow(arr, row) { if (row && row.lat != null && row.lon != null) arr.push(row); }   // no per-species cap
+    var agg = Object.create(null), extras = Object.create(null), famDirty = false;
+    function pushRow(arr, row) { if (row && row.lat != null && row.lon != null) arr.push(row); }
     function bump(key, dt, row) {
       if (!key) return;
       if (!agg[key]) agg[key] = { count: 0, latestTs: 0, rows: [] };
-      agg[key].count++;
-      pushRow(agg[key].rows, row);
+      agg[key].count++; pushRow(agg[key].rows, row);
       var t = Date.parse(dt); if (!isNaN(t) && t > agg[key].latestTs) agg[key].latestTs = t;
     }
     function bumpExtra(sciName, commonName, dt, cls, row) {
@@ -1344,53 +1453,17 @@
       if (!extras[k]) extras[k] = { sci: sciName, name: commonName || "", cls: cls || "", count: 0, latestTs: 0, rows: [] };
       if (!extras[k].name && commonName) extras[k].name = commonName;
       if (!extras[k].cls && cls) extras[k].cls = cls;
-      extras[k].count++;
-      pushRow(extras[k].rows, row);
+      extras[k].count++; pushRow(extras[k].rows, row);
       var t = Date.parse(dt); if (!isNaN(t) && t > extras[k].latestTs) extras[k].latestTs = t;
     }
-    var inatLatLon = function (o) {
-      if (o.geojson && o.geojson.coordinates) return { lat: +o.geojson.coordinates[1], lon: +o.geojson.coordinates[0] };
-      if (o.location) { var pr = String(o.location).split(","); return { lat: parseFloat(pr[0]), lon: parseFloat(pr[1]) }; }
-      return { lat: null, lon: null };
-    };
-    (gbif || []).forEach(function (o) {
-      // Drop higher-rank identifications (ORDER, FAMILY, GENUS, …). Without
-      // this filter "Passeriformes" or "Passer" — observations the recorder
-      // wouldn't commit to a species — end up as separate species-list rows.
-      var rank = String(o.taxonRank || "").toUpperCase();
-      if (rank && rank !== "SPECIES" && rank !== "SUBSPECIES" && rank !== "VARIETY" && rank !== "FORM") return;
-      var sciName = o.species || o.scientificName; if (!sciName) return;
-      // Strip the author citation GBIF often appends ("Genus species Author, year").
-      sciName = sciName.replace(/\s+\([^)]*\)\s*/g, " ").replace(/,\s*\d{4}.*$/, "").trim();
-      // Skip leftovers that are clearly not binomials (one word = genus or above).
-      if (!/\s/.test(sciName)) return;
-      var row = { lat: o.decimalLatitude != null ? +o.decimalLatitude : null, lon: o.decimalLongitude != null ? +o.decimalLongitude : null, date: (o.eventDate || "").slice(0, 10), src: "GBIF", origin: o.datasetName || "", url: o.key ? "https://www.gbif.org/occurrence/" + o.key : "" };
-      var lbl = sci[sciName.toLowerCase()];
-      if (lbl) { bump(lbl.key, o.eventDate, row); if (recordFamily(lbl.key, o.family)) famDirty = true; }
-      else { bumpExtra(sciName, "", o.eventDate, normClass(o.class), row); if (recordFamily("x:" + sciName.toLowerCase(), o.family)) famDirty = true; }
-    });
-    (inat || []).forEach(function (o) {
-      var tax = o.taxon || {};
-      var rank = String(tax.rank || "").toLowerCase();
-      if (rank && rank !== "species" && rank !== "subspecies" && rank !== "variety" && rank !== "form") return;
-      var sciName = tax.name; if (!sciName) return;
-      if (!/\s/.test(sciName)) return;   // genus-only name slipped through
-      var ll = inatLatLon(o);
-      var row = { lat: isFinite(ll.lat) ? ll.lat : null, lon: isFinite(ll.lon) ? ll.lon : null, date: o.observed_on || (o.time_observed_at || "").slice(0, 10), src: "iNaturalist", url: o.id ? "https://www.inaturalist.org/observations/" + o.id : "" };
-      var lbl = sci[sciName.toLowerCase()];
-      if (lbl) bump(lbl.key, o.observed_on || o.time_observed_at, row);
-      else bumpExtra(sciName, tax.preferred_common_name || "", o.observed_on || o.time_observed_at, normClass(tax.iconic_taxon_name), row);
-    });
-    (ebird || []).forEach(function (o) {
-      var row = { lat: o.lat != null ? +o.lat : null, lon: o.lng != null ? +o.lng : null, date: (o.obsDt || "").slice(0, 10), src: "eBird", url: o.subId ? "https://ebird.org/checklist/" + o.subId : "" };
-      // Map to a model species by eBird code OR scientific name. The model's keys
-      // (e.g. "y00743") aren't eBird species codes, so without the sci-name
-      // fallback an eBird record would split off as a duplicate "extra" row even
-      // though GBIF/iNaturalist already matched the same species by sci-name.
-      var ek = labelsByKey[o.speciesCode] ? o.speciesCode : null;
-      if (!ek && o.sciName) { var el = sci[o.sciName.toLowerCase()]; if (el) ek = el.key; }
-      if (ek) bump(ek, o.obsDt, row);
-      else bumpExtra(o.sciName || "", o.comName || "", o.obsDt, "Aves", row);
+    (records || []).forEach(function (r) {
+      if (!r || !r.sciName) return;
+      var row = { lat: r.lat, lon: r.lon, date: r.date || "", src: r.src, origin: r.origin || "", url: r.url || "", place: r.place || "" };
+      // Match a model species by code (eBird) first, then scientific name.
+      var key = (r.speciesCode && labelsByKey[r.speciesCode]) ? r.speciesCode : null;
+      if (!key) { var l = sci[r.sciName.toLowerCase()]; if (l) key = l.key; }
+      if (key) { bump(key, r.dt || r.date, row); if (r.family && recordFamily(key, r.family)) famDirty = true; }
+      else { bumpExtra(r.sciName, r.comName, r.dt || r.date, r.cls, row); if (r.family && recordFamily("x:" + r.sciName.toLowerCase(), r.family)) famDirty = true; }
     });
     if (famDirty) saveFamIndex();
     return { agg: agg, extras: extras };
@@ -1399,6 +1472,18 @@
   // warn that results may be incomplete) and resolve to an empty list instead.
   function guardFetch(failed, name, promise) {
     return Promise.resolve(promise).then(function (r) { return r; }, function () { failed.push(name); return []; });
+  }
+  // The observation sources, behind one interface. `country` (ISO-2) gates a
+  // source to its own country — the national databases are only queried when the
+  // point is inside that country; the global sources always run (if enabled).
+  function obsSources() {
+    return [
+      { name: "eBird", country: null, enabled: function () { return !!ebirdKey(); }, run: function (c) { return fetchEbirdAll(c.lat, c.lon, c.tok, c.rkm).then(normEbird); } },
+      { name: "iNaturalist", country: null, enabled: function () { return true; }, run: function (c) { return fetchInatAll(c.lat, c.lon, c.d1, c.d2, c.rkm).then(normInat); } },
+      { name: "GBIF", country: null, enabled: function () { return true; }, run: function (c) { return fetchGbifAll(c.lat, c.lon, c.range, c.rkm).then(normGbif); } },
+      { name: "Artsobservasjoner", country: "NO", enabled: function () { return true; }, run: function (c) { return fetchArtsobsAll(c.lat, c.lon, c.d1, c.d2, c.rkm).then(normArtsobs); } },
+      { name: "Artportalen", country: "SE", enabled: function () { return !!artKey(); }, run: function (c) { return fetchArtportalenAll(c.lat, c.lon, c.d1, c.d2, c.rkm, artKey()).then(normArtportalen); } }
+    ];
   }
   // Cached fetch of every species' recent detections at a point (last 3 months;
   // eBird is still capped at its 30-day API limit). The resolved object carries
@@ -1410,13 +1495,23 @@
     var to = new Date(), from = new Date(); from.setMonth(from.getMonth() - 3);
     var fmtD = function (d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); };
     var d1 = fmtD(from), d2 = fmtD(to), range = d1 + "," + d2;
-    var tok = ebirdKey();
+    var c = { lat: lat, lon: lon, d1: d1, d2: d2, range: range, rkm: rkm, tok: ebirdKey() };
     var failed = [];
-    var pr = Promise.all([
-      guardFetch(failed, "GBIF", fetchGbifAll(lat, lon, range, rkm)),   // counts its own sub-queries via obsTrack
-      guardFetch(failed, "iNaturalist", obsTrack(fetchInatAll(lat, lon, d1, d2, rkm))),
-      tok ? guardFetch(failed, "eBird", obsTrack(fetchEbirdAll(lat, lon, tok, rkm))) : Promise.resolve([])
-    ]).then(function (r) { var out = aggregateSightings(r[0], r[1], r[2]); out.failed = failed; return out; });
+    // National DBs wait for the country lookup; global sources start immediately.
+    var ccP = countryCode(lat, lon).then(function (cc) { return cc; }, function () { return ""; });
+    var jobs = obsSources().map(function (s) {
+      if (!s.enabled()) return Promise.resolve([]);
+      if (!s.country) return guardFetch(failed, s.name, obsTrack(s.run(c)));
+      return ccP.then(function (cc) {
+        if (String(cc || "").toUpperCase() !== s.country) return [];
+        return guardFetch(failed, s.name, obsTrack(s.run(c)));
+      });
+    });
+    var pr = Promise.all(jobs).then(function (parts) {
+      var records = [];
+      parts.forEach(function (p) { if (p && p.length) records = records.concat(p); });
+      var out = aggregateRecords(records); out.failed = failed; return out;
+    });
     allSightingsCache[ck] = pr;
     learnGbifDatasets(lat, lon, range, rkm);   // background — adopt rich datasets for future fetches
     return pr;
@@ -1533,6 +1628,11 @@
     } catch (e) { return ""; }
   }
   function setEbirdKey(v) { try { localStorage.setItem(EBIRD_KEY_LS, (v || "").trim()); } catch (e) { /* storage blocked */ } }
+  // SLU Artdatabanken (SE) subscription key — free, pasted like the eBird key;
+  // enables the Artportalen source (only queried when the point is in Sweden).
+  var ART_KEY_LS = "geomodel-artdb-key";
+  function artKey() { try { return String(localStorage.getItem(ART_KEY_LS) || "").trim(); } catch (e) { return ""; } }
+  function setArtKey(v) { try { localStorage.setItem(ART_KEY_LS, (v || "").trim()); } catch (e) { /* storage blocked */ } }
 
   // ---- Cross-device share: Export / Import the user's data ------------------
   // Settings, checklists, eBird key, interesting/hidden lists, plotted points —
@@ -1551,7 +1651,8 @@
       version: 1,
       exportedAt: new Date().toISOString(),
       state: state,
-      ebirdKey: localStorage.getItem(EBIRD_KEY_LS) || ""
+      ebirdKey: localStorage.getItem(EBIRD_KEY_LS) || "",
+      artdbKey: localStorage.getItem(ART_KEY_LS) || ""
     };
   }
   function exportAppData() {
@@ -1644,6 +1745,7 @@
     try { localStorage.setItem("geomodel-explorer-v1", JSON.stringify(newState)); } catch (e) { throw new Error("storage write failed: " + e.message); }
     // eBird key: adopt incoming only when it should win, or when we have none.
     if (data.ebirdKey && (opts.incomingWins || !ebirdKey())) setEbirdKey(data.ebirdKey);
+    if (data.artdbKey && (opts.incomingWins || !artKey())) setArtKey(data.artdbKey);
     return {
       checklistsIncoming: Object.keys(incoming.fieldChecklists || {}).length,
       checklistsTotal: Object.keys(mergedCl).length,
@@ -2058,6 +2160,12 @@
                 '<label for="ebird-key" data-i18n="ctrl.ebirdkey">eBird API key</label>' +
                 '<input id="ebird-key" type="text" autocomplete="off" spellcheck="false" />' +
                 '<a id="ebird-key-link" href="https://ebird.org/api/keygen" target="_blank" rel="noopener" data-i18n="ctrl.ebirdkeyget">Get a free key</a>' +
+              '</div>' +
+              '<div class="ctrl-group" id="artdb-key-wrap">' +
+                '<label for="artdb-key" data-i18n="ctrl.artdbkey">Artportalen key (SE)</label>' +
+                '<input id="artdb-key" type="text" autocomplete="off" spellcheck="false" />' +
+                '<a id="artdb-key-link" href="https://api-portal.artdatabanken.se/products/sos" target="_blank" rel="noopener" data-i18n="ctrl.artdbkeyget">Get a free key</a>' +
+                '<p class="cu-hint" data-i18n="ctrl.artdbhint">Adds fresher Swedish (Artportalen) and Norwegian (Artsobservasjoner, no key) observations — queried only when the point is in that country.</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label for="hotspot-min" data-i18n="ctrl.hotspotmin">Hotspot min. species</label>' +
@@ -4485,6 +4593,14 @@
     var saveEbKey = function () { setEbirdKey(ebKeyEl.value); window.GeoState.touch(); };
     ebKeyEl.addEventListener("input", saveEbKey);    // save as typed/pasted, not only on blur
     ebKeyEl.addEventListener("change", saveEbKey);
+
+    var artKeyEl = document.getElementById("artdb-key");
+    if (artKeyEl) {
+      artKeyEl.value = artKey();
+      var saveArtKey = function () { setArtKey(artKeyEl.value); allSightingsCache = {}; window.GeoState.touch(); };
+      artKeyEl.addEventListener("input", saveArtKey);
+      artKeyEl.addEventListener("change", saveArtKey);
+    }
 
     var hsMinEl = document.getElementById("hotspot-min");
     hsMinEl.value = String(+window.GeoState.get("hotspotMin", 200) || 0);

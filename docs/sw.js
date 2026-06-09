@@ -14,7 +14,7 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v232";
+var VERSION = "v233";
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs
 var TILE_CACHE = "tiles-" + VERSION;    // map tiles
@@ -61,7 +61,7 @@ var DATA = [
 ];
 
 var TILE_HOSTS = /(\.basemaps\.cartocdn\.com|\.tile\.openstreetmap\.org|\.tile\.opentopomap\.org|server\.arcgisonline\.com|data-gis\.unep-wcmc\.org|bio\.discomap\.eea\.europa\.eu)/;
-var API_HOSTS = /(nominatim\.openstreetmap\.org|overpass-api\.de|api\.inaturalist\.org|api\.gbif\.org|api\.ebird\.org|wikipedia\.org|wikidata\.org|wikimedia\.org)/;
+var API_HOSTS = /(nominatim\.openstreetmap\.org|overpass-api\.de|api\.inaturalist\.org|api\.gbif\.org|api\.ebird\.org|artskart\.artsdatabanken\.no|api\.artdatabanken\.se|wikipedia\.org|wikidata\.org|wikimedia\.org)/;
 
 self.addEventListener("install", function (event) {
   event.waitUntil(
