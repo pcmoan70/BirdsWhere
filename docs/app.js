@@ -3909,6 +3909,12 @@
     }
     return new _DetStar(latlng, options);
   }
+  // A shared SVG renderer for all plotted detection markers. `tolerance` pads the
+  // click hit-area (Leaflet adds it to each path's _clickTolerance), so the small
+  // dots/stars are much easier to tap. Sharing one renderer also keeps every
+  // detection marker in the same SVG → stars stay aligned with the dots.
+  var _detRenderer = null;
+  function detRenderer() { if (!_detRenderer) _detRenderer = L.svg({ tolerance: 12 }); return _detRenderer; }
   // A plotted detection draws as: a ★ for starred species, a (larger) coloured
   // disc for locally-rare ones, a ★ or disc with a black centre dot when both
   // rare and (starred/rare), else a plain coloured circle — all SVG so they keep
@@ -3920,7 +3926,7 @@
     rows.forEach(function (r) {
       if (!recentEnough(r.date, maxDays)) return;
       visible++;
-      var base = { color: "#1a1a1a", weight: 1, opacity: strokeOp, fillColor: fill, fillOpacity: fillOp, bubblingMouseEvents: false };
+      var base = { color: "#1a1a1a", weight: 1, opacity: strokeOp, fillColor: fill, fillOpacity: fillOp, bubblingMouseEvents: false, renderer: detRenderer() };
       var m = starred
         ? detStarMarker([r.lat, r.lon], L.extend({ radius: 9 }, base))
         : L.circleMarker([r.lat, r.lon], L.extend({ radius: rare ? 6 : 5 }, base));
@@ -3939,7 +3945,7 @@
       // Locally-rare → a small black centre dot, its own SVG circle so it stays
       // pixel-aligned with the shape above it at every zoom.
       if (rare) {
-        g.addLayer(L.circleMarker([r.lat, r.lon], { radius: 1.8, stroke: false, fillColor: "#111", fillOpacity: Math.min(1, fillOp + 0.1), interactive: false, bubblingMouseEvents: false }));
+        g.addLayer(L.circleMarker([r.lat, r.lon], { radius: 1.8, stroke: false, fillColor: "#111", fillOpacity: Math.min(1, fillOp + 0.1), interactive: false, bubblingMouseEvents: false, renderer: detRenderer() }));
       }
     });
     g._visibleCount = visible;
