@@ -1538,11 +1538,18 @@
     { id: "artportalen", name: "Artportalen",       url: "https://api.artdatabanken.se/species-observation-system/v1/Observations/Search", country: "SE", keyed: true,  days: 90 }
   ];
   var DIRECT_BY_ID = {}; DEFAULT_DIRECT_SOURCES.forEach(function (d) { DIRECT_BY_ID[d.id] = d; });
-  // Coarse country boxes [minLat,maxLat,minLon,maxLon] — a robust fallback for
-  // the national-database country gate when the reverse-geocode is unavailable.
-  var COUNTRY_BBOX = { NO: [57.5, 71.5, 4.0, 31.5], SE: [55.0, 69.3, 10.5, 24.5] };
-  function inCountryBox(lat, lon, cc) {
-    var b = COUNTRY_BBOX[cc]; return !!b && lat >= b[0] && lat <= b[1] && lon >= b[2] && lon <= b[3];
+  // National-database gate. Norway and Sweden sit side by side, so a longitude
+  // line approximates their border far better than overlapping rectangles: NO is
+  // west of it, SE east. The border longitude rises with latitude (~11.4°E at
+  // 59°N to ~20.5°E at the NO/SE/FI tripoint). `marginKm` (the search radius)
+  // widens the zone, so a point whose radius reaches the other side queries both.
+  function noSeBorderLon(lat) { return 11.4 + 0.91 * (lat - 59); }
+  function nearCountry(lat, lon, cc, marginKm) {
+    var mk = marginKm || 0, dLat = mk / 111, dLon = mk / ((111 * Math.cos(lat * Math.PI / 180)) || 1);
+    var bl = noSeBorderLon(lat);
+    if (cc === "NO") return lat >= 57.5 - dLat && lat <= 71.5 + dLat && lon >= 3.5 - dLon && lon <= bl + dLon;
+    if (cc === "SE") return lat >= 55.0 - dLat && lat <= 69.3 + dLat && lon >= bl - dLon && lon <= 24.6 + dLon;
+    return false;
   }
   function directSources() {
     var stored = window.GeoState.get("directSources", null);
@@ -1590,18 +1597,13 @@
     var c = { lat: lat, lon: lon, d2: d2, range: range, rkm: rkm, tok: ebirdKey(),
       dateBack: function (n) { var d = new Date(); d.setDate(d.getDate() - n); return fmtD(d); } };
     var failed = [];
-    // National DBs are country-gated. Use the precise reverse-geocode when it's
-    // available; if it fails or is empty (offline / rate-limited), fall back to a
-    // coarse bounding box so the national source still runs in/near its country.
-    var ccP = countryCode(lat, lon).then(function (cc) { return cc; }, function () { return ""; });
+    // National DBs run when the search radius reaches their country, so both NO
+    // and SE are queried near the border. The API itself filters by the radius,
+    // so a country the radius doesn't actually reach just returns nothing.
     var jobs = obsSources().map(function (s) {
       if (!s.enabled()) return Promise.resolve([]);
-      if (!s.country) return guardFetch(failed, s.name, obsTrack(s.run(c)));
-      return ccP.then(function (cc) {
-        var ok = cc ? (String(cc).toUpperCase() === s.country) : inCountryBox(lat, lon, s.country);
-        if (!ok) return [];
-        return guardFetch(failed, s.name, obsTrack(s.run(c)));
-      });
+      if (s.country && !nearCountry(lat, lon, s.country, rkm)) return Promise.resolve([]);
+      return guardFetch(failed, s.name, obsTrack(s.run(c)));
     });
     var pr = Promise.all(jobs).then(function (parts) {
       var records = [];

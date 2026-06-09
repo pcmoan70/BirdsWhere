@@ -33,13 +33,18 @@ window.GDriveSync = (function () {
   var LS_CONNECTED = "gdrive-connected";
   var LS_FILE_ID = "gdrive-file-id";
   var LS_CLIENT_ID = "gdrive-client-id";
+  var LS_TOKEN = "gdrive-token";       // cached access token + expiry (appdata scope,
+  var LS_TOKEN_EXP = "gdrive-token-exp"; // ~1 h) — reused across reloads so a page load
+                                       // doesn't trigger a fresh OAuth request every time.
 
   var connected = (function () { try { return localStorage.getItem(LS_CONNECTED) === "1"; } catch (e) { return false; } })();
   var fileId = (function () { try { return localStorage.getItem(LS_FILE_ID) || ""; } catch (e) { return ""; } })();
 
   var tokenClient = null;
-  var accessToken = null;
-  var tokenExpiry = 0;               // ms epoch; token treated as expired past this
+  // Restore a still-valid token so a reload reuses it (no OAuth UI) instead of
+  // re-authenticating on every startup — the main cause of the OAuth flash.
+  var accessToken = (function () { try { return localStorage.getItem(LS_TOKEN) || null; } catch (e) { return null; } })();
+  var tokenExpiry = (function () { try { return +localStorage.getItem(LS_TOKEN_EXP) || 0; } catch (e) { return 0; } })();
   var tokenResolve = null, tokenReject = null;
 
   var syncing = false;               // re-entrancy guard
@@ -79,6 +84,7 @@ window.GDriveSync = (function () {
         if (resp && resp.access_token) {
           accessToken = resp.access_token;
           tokenExpiry = Date.now() + ((+resp.expires_in || 3600) * 1000) - 60000;
+          try { localStorage.setItem(LS_TOKEN, accessToken); localStorage.setItem(LS_TOKEN_EXP, String(tokenExpiry)); } catch (e) {}
           if (tokenResolve) { tokenResolve(accessToken); }
         } else if (tokenReject) { tokenReject(new Error("no access token")); }
         tokenResolve = tokenReject = null;
@@ -269,7 +275,7 @@ window.GDriveSync = (function () {
     disconnect: function () {
       try { if (accessToken && window.google && google.accounts && google.accounts.oauth2) google.accounts.oauth2.revoke(accessToken, function () {}); } catch (e) {}
       accessToken = null; tokenExpiry = 0; connected = false; fileId = "";
-      try { localStorage.removeItem(LS_CONNECTED); localStorage.removeItem(LS_FILE_ID); } catch (e) {}
+      try { localStorage.removeItem(LS_CONNECTED); localStorage.removeItem(LS_FILE_ID); localStorage.removeItem(LS_TOKEN); localStorage.removeItem(LS_TOKEN_EXP); } catch (e) {}
       emit("idle");
     },
 
