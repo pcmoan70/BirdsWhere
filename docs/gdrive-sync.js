@@ -10,12 +10,16 @@
  * Collections (checklists/pins/lists) are always unioned; scalar settings follow
  * `incomingWins`, decided here by comparing change-stamps.
  *
- * Auth uses Google Identity Services (the browser token model): a short-lived
- * access token held only in memory — never persisted. We only request the
- * `drive.appdata` scope (no email/profile), so nothing identifies the user and
- * the OAuth verification path stays light. Because GIS ties token grants to a
- * user gesture, a token may need the user to click (Connect / Sync now); when a
- * background sync can't get one it degrades quietly to a "reconnect" state.
+ * Sync is MANUAL only — there is no background/automatic syncing. A sync (and
+ * therefore any OAuth popup) happens solely when the user taps Connect or Sync
+ * now. This keeps the model simple and means the Google sign-in window only ever
+ * appears in direct response to a click.
+ *
+ * Auth uses Google Identity Services (the browser token model). The access token
+ * is cached (localStorage, ~1 h) so repeated manual syncs within the hour reuse
+ * it without a popup. We only request the `drive.appdata` scope (no
+ * email/profile), so nothing identifies the user and the OAuth verification path
+ * stays light.
  *
  * Exposed as window.GDriveSync (no module system; loaded via <script>).
  */
@@ -29,7 +33,6 @@ window.GDriveSync = (function () {
 
   var SCOPE = "https://www.googleapis.com/auth/drive.appdata";
   var FILE_NAME = "migration_calendar.json";
-  var PUSH_DEBOUNCE_MS = 4000;       // coalesce bursts of local edits into one push
   var LS_CONNECTED = "gdrive-connected";
   var LS_FILE_ID = "gdrive-file-id";
   var LS_CLIENT_ID = "gdrive-client-id";
@@ -51,7 +54,6 @@ window.GDriveSync = (function () {
   var syncing = false;               // re-entrancy guard
   var armed = false;                 // ignore GeoState writes from this session's init churn
   var localDirty = false;            // a real user change happened this session → local scalars win
-  var pushTimer = null;
   var lastStatus = "idle";           // idle | syncing | error | reconnect
   var lastSyncAt = 0;                // ms epoch of the last successful sync
   var statusListeners = [];
@@ -98,18 +100,13 @@ window.GDriveSync = (function () {
     });
   }
 
-  // Resolve with a usable access token. A still-valid cached token (persisted
-  // ~1 h) is reused silently. Background sync NEVER opens an auth request: the
-  // only silent-refresh path Google offers needs third-party cookies for
-  // accounts.google.com, which Chrome now restricts — when that path is blocked
-  // GIS surfaces a popup, so a background refresh would pop "all the time". So a
-  // background caller without a valid cached token rejects with {paused:true}
-  // (sync pauses, no UI) and waits for the user to tap Sync now. Interactive
-  // (Connect / Sync now) is a gesture — it requests a token (chooser/consent),
-  // which is the only place a popup is expected. Single-flighted.
-  function ensureToken(interactive) {
+  // Resolve with a usable access token. Sync is manual-only, so this only ever
+  // runs from a user gesture (the Connect / Sync now buttons): a still-valid
+  // cached token (persisted ~1 h) is reused silently; otherwise we request one,
+  // which is the single place the Google popup is expected. Single-flighted so a
+  // double-tap can't open two requests.
+  function ensureToken() {
     if (accessToken && Date.now() < tokenExpiry) return Promise.resolve(accessToken);
-    if (!interactive) return Promise.reject({ paused: true });
     if (tokenPromise) return tokenPromise;
     if (!tokenClient) return Promise.reject(new Error("not initialized"));
     tokenPromise = new Promise(function (resolve, reject) {
@@ -123,37 +120,35 @@ window.GDriveSync = (function () {
   }
 
   // ---- Drive REST -----------------------------------------------------------
-  // `interactive` flows from the call site (gesture vs background) all the way
-  // down so a token request never shows UI during an automatic sync.
-  async function driveFetch(url, opts, interactive) {
-    var token = await ensureToken(interactive);
+  async function driveFetch(url, opts) {
+    var token = await ensureToken();
     opts = opts || {}; opts.headers = opts.headers || {};
     opts.headers["Authorization"] = "Bearer " + token;
     var r = await fetch(url, opts);
-    if (r.status === 401) {            // token rejected → drop it and re-auth (same context)
+    if (r.status === 401) {            // token rejected → drop it and re-auth
       accessToken = null; tokenExpiry = 0;
-      token = await ensureToken(interactive);
+      token = await ensureToken();
       opts.headers["Authorization"] = "Bearer " + token;
       r = await fetch(url, opts);
     }
     return r;
   }
 
-  async function findFile(interactive) {
+  async function findFile() {
     var q = encodeURIComponent("name='" + FILE_NAME + "'");
-    var r = await driveFetch("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,modifiedTime)&q=" + q, {}, interactive);
+    var r = await driveFetch("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,modifiedTime)&q=" + q, {});
     if (!r.ok) throw new Error("Drive list failed (" + r.status + ")");
     var j = await r.json();
     return (j.files && j.files[0]) || null;
   }
 
-  async function downloadFile(id, interactive) {
-    var r = await driveFetch("https://www.googleapis.com/drive/v3/files/" + id + "?alt=media", {}, interactive);
+  async function downloadFile(id) {
+    var r = await driveFetch("https://www.googleapis.com/drive/v3/files/" + id + "?alt=media", {});
     if (!r.ok) return null;
     try { return await r.json(); } catch (e) { return null; }
   }
 
-  async function createFile(payloadStr, interactive) {
+  async function createFile(payloadStr) {
     var boundary = "migcalsyncboundary";
     var body =
       "--" + boundary + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" +
@@ -164,33 +159,30 @@ window.GDriveSync = (function () {
       method: "POST",
       headers: { "Content-Type": "multipart/related; boundary=" + boundary },
       body: body
-    }, interactive);
+    });
     if (!r.ok) throw new Error("Drive create failed (" + r.status + ")");
     return await r.json();
   }
 
-  async function updateFile(id, payloadStr, interactive) {
+  async function updateFile(id, payloadStr) {
     var r = await driveFetch("https://www.googleapis.com/upload/drive/v3/files/" + id + "?uploadType=media&fields=id", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: payloadStr
-    }, interactive);
+    });
     if (!r.ok) throw new Error("Drive update failed (" + r.status + ")");
     return await r.json();
   }
 
   // ---- sync orchestration ---------------------------------------------------
-  async function sync(interactive) {
+  // One manual pull→merge→push, run only from the Connect / Sync now buttons.
+  async function sync() {
     if (!connected || syncing || !clientId() || !navigator.onLine) return;
-    // Background sync only proceeds with a valid cached token — it never opens an
-    // auth request (that's what pops). Token expired → quietly pause; the next
-    // tap on Sync now (interactive) re-acquires a token and resumes silent sync.
-    if (!interactive && !(accessToken && Date.now() < tokenExpiry)) { emit("paused"); return; }
     syncing = true; emit("syncing");
     try {
-      var meta = await findFile(interactive);
+      var meta = await findFile();
       if (meta && meta.id !== fileId) { fileId = meta.id; try { localStorage.setItem(LS_FILE_ID, fileId); } catch (e) {} }
-      var remote = meta ? await downloadFile(meta.id, interactive) : null;
+      var remote = meta ? await downloadFile(meta.id) : null;
 
       // Direction: let remote scalar settings win only when the remote copy has
       // advanced past what THIS device last saved (its load-time stamp) AND the
@@ -210,8 +202,8 @@ window.GDriveSync = (function () {
         (merged.ebirdKey && merged.ebirdKey !== (remote.ebirdKey || ""));
       if (needPush) {
         var str = JSON.stringify(merged);
-        if (fileId) { await updateFile(fileId, str, interactive); }
-        else { var created = await createFile(str, interactive); fileId = created.id; try { localStorage.setItem(LS_FILE_ID, fileId); } catch (e) {} }
+        if (fileId) { await updateFile(fileId, str); }
+        else { var created = await createFile(str); fileId = created.id; try { localStorage.setItem(LS_FILE_ID, fileId); } catch (e) {} }
       }
 
       localDirty = false;
@@ -230,59 +222,34 @@ window.GDriveSync = (function () {
         } catch (e) {}
       }
     } catch (e) {
-      emit(e && e.paused ? "paused" : "reconnect");
+      emit("reconnect");
     } finally {
       syncing = false;
     }
   }
 
-  function scheduleSync(delay) {
-    if (!connected) return;
-    if (pushTimer) clearTimeout(pushTimer);
-    pushTimer = setTimeout(function () { pushTimer = null; sync(false); }, delay == null ? PUSH_DEBOUNCE_MS : delay);
-  }
-
-  function flush() {
-    if (!connected) return;
-    if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
-    sync(false);
-  }
-
   // ---- public API -----------------------------------------------------------
   return {
-    // Called once by app.js at the end of init.
+    // Called once by app.js at the end of init. Sync is MANUAL only — nothing
+    // here reaches out to Google or runs a sync; we just track whether the user
+    // changed anything this session (so a later manual sync lets local win) and
+    // surface the connected/last-synced status. OAuth happens solely when the
+    // user taps Connect or Sync now.
     init: function () {
-      // A write after init armed = a genuine user change → local scalars win + push.
-      window.GeoState.onChange(function () { if (armed) { localDirty = true; scheduleSync(); } });
-      window.addEventListener("online", function () { scheduleSync(500); });
-      document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") flush(); });
-
-      var arm = function () { armed = true; };
-      if (connected) {
-        // Load-time sync uses the persisted token if it's still valid (silent);
-        // if it has expired, sync() pauses without any UI and waits for the user
-        // to tap Sync now. Deferred a couple of seconds so it isn't part of the
-        // busy startup.
-        setTimeout(function () {
-          waitForGis()
-            .then(function () { initTokenClient(); return sync(false); })
-            .catch(function () { emit("reconnect"); })
-            .then(arm, arm);
-        }, 2500);
-      } else {
-        arm();
-      }
+      armed = true;
+      window.GeoState.onChange(function () { if (armed) localDirty = true; });
+      emit(lastStatus);
     },
 
     // User pressed "Connect Google" (a gesture — required for the token popup).
     connect: function () {
       if (!clientId()) { emit("error"); return Promise.reject(new Error("no client id")); }
       return waitForGis()
-        .then(function () { initTokenClient(); return ensureToken(true); })
+        .then(function () { initTokenClient(); return ensureToken(); })
         .then(function () {
           connected = true; try { localStorage.setItem(LS_CONNECTED, "1"); } catch (e) {}
           emit("idle");
-          return sync(true);
+          return sync();
         })
         .catch(function (e) { emit("reconnect"); throw e; });
     },
@@ -294,11 +261,12 @@ window.GDriveSync = (function () {
       emit("idle");
     },
 
-    // Manual "Sync now" (a gesture, so it can acquire a token if needed).
+    // Manual "Sync now" (a gesture). If not connected yet, connect first — so a
+    // single button does everything and OAuth is asked for only on this click.
     syncNow: function () {
-      if (!connected) return Promise.resolve();
-      if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
-      return waitForGis().then(function () { initTokenClient(); return sync(true); });
+      if (!clientId()) { emit("error"); return Promise.resolve(); }
+      if (!connected) return this.connect().catch(function () {});
+      return waitForGis().then(function () { initTokenClient(); return sync(); });
     },
 
     setClientId: function (id) {
