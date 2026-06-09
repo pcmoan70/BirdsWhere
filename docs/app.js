@@ -2396,6 +2396,11 @@
                 '<p class="cu-hint" data-i18n="ctrl.rarepcthint">A plotted species is “rare locally” when its detection count is at most this % of the commonest plotted species. Rare dots get a black centre; filter them with the legend’s ◉ Rare.</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
+                '<label for="max-points" data-i18n="ctrl.maxpoints">Max points on map</label>' +
+                '<input id="max-points" type="number" min="50" max="100000" step="50" />' +
+                '<p class="cu-hint" data-i18n="ctrl.maxpointshint">Caps how many detection dots are drawn at once for speed. When more are plotted, only the newest this-many are shown on the map (the rest stay in the Detections list).</p>' +
+              '</div>' +
+              '<div class="ctrl-group">' +
                 '<label for="country-res" data-i18n="ctrl.countryres">Country sampling resolution</label>' +
                 '<select id="country-res">' +
                   '<option value="3">3 · ~60 km</option><option value="4">4 · ~22 km</option><option value="5">5 · ~8 km</option><option value="6">6 · ~3 km</option>' +
@@ -3737,6 +3742,30 @@
     var t = Date.parse(dateStr); if (isNaN(t)) return false;
     return (Date.now() - t) / 86400000 <= maxDays;
   }
+  // Cap on how many detection dots are DRAWN at once (markers are the draw-speed
+  // bottleneck). Data is never dropped — the rest still show in the Detections
+  // list and sync normally; only the map render is limited to the newest N.
+  function detMaxPoints() { var n = +window.GeoState.get("maxMapPoints", 1000); return (n > 0) ? n : 1000; }
+  // All rows that WOULD be drawn (visible species, passing the recency filter).
+  function eachDrawableRow(fn) {
+    var maxDays = detRecencyDays();
+    Object.keys(detPlot).forEach(function (k) {
+      if (!detIsVisible(k)) return;
+      (detPlot[k].rows || []).forEach(function (r) { if (recentEnough(r.date, maxDays)) fn(r); });
+    });
+  }
+  function detDrawableCount() { var n = 0; eachDrawableRow(function () { n++; }); return n; }
+  // The set of row objects allowed on the map: the newest detMaxPoints() across
+  // all visible species. Returns null when under the cap (draw everything).
+  function detDrawAllowed() {
+    var cap = detMaxPoints(), all = [];
+    eachDrawableRow(function (r) { all.push(r); });
+    if (all.length <= cap) return null;
+    all.sort(function (a, b) { return (b.date || "").localeCompare(a.date || ""); });   // newest first
+    var allowed = new Set();
+    for (var i = 0; i < cap; i++) allowed.add(all[i]);
+    return allowed;
+  }
   // Source label for a row: the GBIF origin dataset (shortened) when present,
   // else the raw source tag (eBird / iNaturalist / Checklist …).
   function srcLabel(r) { return (r.src === "GBIF" && r.origin) ? shortOrigin(r.origin) : (r.src || ""); }
@@ -3919,12 +3948,13 @@
   // disc for locally-rare ones, a ★ or disc with a black centre dot when both
   // rare and (starred/rare), else a plain coloured circle — all SVG so they keep
   // aligned with each other at the map's fractional zoom levels.
-  function renderDetGroup(name, rows, color, muted, starred, rare) {
+  function renderDetGroup(name, rows, color, muted, starred, rare, allowed) {
     var g = L.layerGroup(), maxDays = detRecencyDays(), visible = 0;
     var fill = muted ? DET_MUTE_COLOR : color;
     var fillOp = muted ? 0.35 : 0.9, strokeOp = muted ? 0.4 : 0.9;
     rows.forEach(function (r) {
       if (!recentEnough(r.date, maxDays)) return;
+      if (allowed && !allowed.has(r)) return;   // global cap: only the newest N are drawn
       visible++;
       var base = { color: "#1a1a1a", weight: 1, opacity: strokeOp, fillColor: fill, fillOpacity: fillOp, bubblingMouseEvents: false, renderer: detRenderer() };
       var m = starred
@@ -3978,7 +4008,15 @@
     detPlot[key] = e;
     recolorDetections();   // assign family-based colours now that this species is in the set
     recomputeRareMax();
-    if (detIsVisible(key)) { e.group = renderDetGroup(detName(e), merged, e.color, detIsMuted(key), isInteresting(e.key), detIsRare(key)); e.group.addTo(map); }
+    // Over the draw cap (single add) → re-render everything under the newest-N
+    // limit. Under the cap, or mid-bulk (defer), render just this species; a bulk
+    // run's trailing rebuildDetLayers() applies the cap once at the end.
+    if (!defer && detDrawableCount() > detMaxPoints()) {
+      rebuildDetLayers();
+    } else if (detIsVisible(key)) {
+      e.group = renderDetGroup(detName(e), merged, e.color, detIsMuted(key), isInteresting(e.key), detIsRare(key));
+      e.group.addTo(map);
+    }
     if (!defer) { updateDetLegend(); saveDetections(); }   // batch when plotting many at once
     if (fit && e.group) { try { map.fitBounds(e.group.getBounds().pad(0.25)); } catch (err) { /* single point / bad bounds */ } }
   }
@@ -3989,11 +4027,12 @@
     clearSpider();
     recolorDetections();
     recomputeRareMax();
+    var allowed = detDrawAllowed();   // newest-N cap across all species (null = under cap)
     Object.keys(detPlot).forEach(function (k) {
       var e = detPlot[k];
       if (e.group) { map.removeLayer(e.group); e.group = null; }
       if (!detIsVisible(k)) return;
-      e.group = renderDetGroup(detName(e), e.rows, e.color, detIsMuted(k), isInteresting(e.key), detIsRare(k));
+      e.group = renderDetGroup(detName(e), e.rows, e.color, detIsMuted(k), isInteresting(e.key), detIsRare(k), allowed);
       e.group.addTo(map);
     });
   }
@@ -5065,6 +5104,18 @@
         this.value = String(v);
         window.GeoState.save({ rarePct: v });
         rebuildDetLayers();   // re-evaluate rare markers + legend
+        updateDetLegend();
+      });
+    }
+
+    var maxPtsEl = document.getElementById("max-points");
+    if (maxPtsEl) {
+      maxPtsEl.value = String(detMaxPoints());
+      maxPtsEl.addEventListener("change", function () {
+        var v = Math.max(50, Math.min(100000, +this.value || 1000));
+        this.value = String(v);
+        window.GeoState.save({ maxMapPoints: v });
+        rebuildDetLayers();   // re-apply the newest-N draw cap
         updateDetLegend();
       });
     }
