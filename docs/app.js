@@ -2314,6 +2314,11 @@
                 '</select>' +
               '</div>' +
               '<div class="ctrl-group">' +
+                '<label for="rare-pct" data-i18n="ctrl.rarepct">Rare species threshold (%)</label>' +
+                '<input id="rare-pct" type="number" min="1" max="100" step="1" />' +
+                '<p class="cu-hint" data-i18n="ctrl.rarepcthint">A plotted species is “rare locally” when its detection count is at most this % of the commonest plotted species. Rare dots get a black centre; filter them with the legend’s ◉ Rare.</p>' +
+              '</div>' +
+              '<div class="ctrl-group">' +
                 '<label for="country-res" data-i18n="ctrl.countryres">Country sampling resolution</label>' +
                 '<select id="country-res">' +
                   '<option value="3">3 · ~60 km</option><option value="4">4 · ~22 km</option><option value="5">5 · ~8 km</option><option value="6">6 · ~3 km</option>' +
@@ -3595,7 +3600,19 @@
   // "Starred only" filter, driven by the legend dropdown: when on, the legend
   // lists (and the map shows) only the species the user has starred.
   var detStarFilter = false;
+  var detRareFilter = false;            // legend "Rare" filter: show only locally-rare species
   function detPassesStar(k) { return !detStarFilter || isInteresting((detPlot[k] && detPlot[k].key) || k); }
+  // "Rare locally": a plotted species whose detection count is at most rarePct%
+  // of the commonest plotted species' count (default 10%). detRareMax is cached
+  // and refreshed before each render (recomputeRareMax) so detIsRare is O(1).
+  function rarePct() { var p = +window.GeoState.get("rarePct", 10); return (p > 0 && p <= 100) ? p : 10; }
+  var detRareMax = 0;
+  function recomputeRareMax() {
+    detRareMax = 0;
+    Object.keys(detPlot).forEach(function (k) { var n = (detPlot[k].rows || []).length; if (n > detRareMax) detRareMax = n; });
+  }
+  function detIsRare(k) { var e = detPlot[k]; return !!e && detRareMax > 0 && (e.rows || []).length <= rarePct() / 100 * detRareMax; }
+  function detPassesRare(k) { return !detRareFilter || detIsRare(k); }
   // Taxonomic class of a plotted species: model species via the taxonomy table,
   // "extra" species (x:…) carry their own class on the detPlot entry (stored at
   // plot time). Used to honour the Settings "Species group" filter in the legend.
@@ -3605,8 +3622,8 @@
   }
   function detPassesGroup(k) { return speciesGroup === "all" || String(detClassOf(k)).toLowerCase() === String(speciesGroup).toLowerCase(); }
   var mapClickGuardUntil = 0;   // onMapClick ignores clicks before this time; each accepted click re-arms it (200 ms debounce), legend re-renders set a longer window
-  function detSelectionActive() { return Object.keys(detSelected).some(function (k) { return detPlot[k] && detPassesStar(k) && detPassesGroup(k); }); }
-  function detIsVisible(key) { return detPassesStar(key) && detPassesGroup(key) && (!detSelectionActive() || !!detSelected[key]); }
+  function detSelectionActive() { return Object.keys(detSelected).some(function (k) { return detPlot[k] && detPassesStar(k) && detPassesGroup(k) && detPassesRare(k); }); }
+  function detIsVisible(key) { return detPassesStar(key) && detPassesGroup(key) && detPassesRare(key) && (!detSelectionActive() || !!detSelected[key]); }
   // Dots are always shown in their species colour (no grey overview mode) — so
   // "all"/"1 day"/etc. all render coloured. Visibility (above) does the filtering.
   function detIsMuted(key) { return false; }
@@ -3618,11 +3635,13 @@
   // Localized display name for a plotted species (re-derived from the key so it
   // follows the UI language); falls back to the name stored at plot time.
   function detName(e) { var lbl = labelsByKey[e.key]; return (lbl && speciesName(lbl)) || e.name || e.key; }
-  // Legend / list swatch: a coloured ★ for starred species, else a coloured dot.
-  function detSwatch(color, starred) {
-    return starred
-      ? '<span class="det-sw det-sw-star" style="color:' + color + '">★</span>'
-      : '<span class="det-sw" style="background:' + color + '"></span>';
+  // Legend / list swatch: a coloured ★ for starred species, a coloured dot with a
+  // black centre for locally-rare species, a star-with-centre-dot when both, else
+  // a plain coloured dot.
+  function detSwatch(color, starred, rare) {
+    if (starred) return '<span class="det-sw det-sw-star" style="color:' + color + '">★' + (rare ? '<i class="det-ctr-dot"></i>' : "") + "</span>";
+    if (rare) return '<span class="det-sw det-sw-rare" style="background:' + color + '"><i class="det-ctr-dot"></i></span>';
+    return '<span class="det-sw" style="background:' + color + '"></span>';
   }
   // Recency filter (days) for plotted detections. 0 = no filter.
   function detRecencyDays() { return +window.GeoState.get("detRecencyDays", 30); }
@@ -3697,7 +3716,7 @@
   // and a ↗ affordance when the record links out.
   function detRowHtml(d, showDate) {
     var meta = [showDate ? d.date : "", srcLabel(d)].filter(Boolean).join(" · ");
-    var inner = detSwatch(d.color || "#888", isInteresting(d.key)) +
+    var inner = detSwatch(d.color || "#888", isInteresting(d.key), detIsRare(d.key)) +
       '<span class="dl-sp">' + escapeHtml(d.name) + "</span>" +
       '<span class="dl-meta">' + escapeHtml(meta) + "</span>";
     return d.url
@@ -3726,7 +3745,7 @@
         var last = g.items.reduce(function (acc, d) { return d.date > acc ? d.date : acc; }, "");
         var open = !!detListOpenSp[k];
         var head = '<button type="button" class="dl-sp-head' + (open ? " open" : "") + '" data-key="' + escapeHtml(k) + '">' +
-          detSwatch(g.color || "#888", isInteresting(k)) +
+          detSwatch(g.color || "#888", isInteresting(k), detIsRare(k)) +
           '<span class="dl-sp">' + escapeHtml(g.name) + "</span>" +
           '<span class="dl-meta">' + escapeHtml(last) + "</span>" +
           '<span class="dl-ct">' + g.items.length + "</span>" +
@@ -3769,16 +3788,24 @@
     map.openTooltip(detHoverTip);
   }
   function hideDetHover() { if (detHoverTip) map.closeTooltip(detHoverTip); }
-  function renderDetGroup(name, rows, color, muted, starred) {
+  // Marker glyph for a plotted detection: a ★ for starred species, a coloured
+  // disc with a black centre dot for locally-rare ones, a ★ with a centre dot
+  // when both — and a plain coloured circle otherwise.
+  function detMarkerIcon(fill, fillOp, starred, rare) {
+    if (starred) return L.divIcon({ className: "det-star-icon", iconSize: [18, 18], iconAnchor: [9, 9], html: '<span style="color:' + fill + ';opacity:' + fillOp + '">★</span>' + (rare ? '<i class="det-ctr-dot"></i>' : "") });
+    if (rare) return L.divIcon({ className: "det-rare-icon", iconSize: [14, 14], iconAnchor: [7, 7], html: '<span style="background:' + fill + ';opacity:' + fillOp + '"><i class="det-ctr-dot"></i></span>' });
+    return null;
+  }
+  function renderDetGroup(name, rows, color, muted, starred, rare) {
     var g = L.layerGroup(), maxDays = detRecencyDays(), visible = 0;
     var fill = muted ? DET_MUTE_COLOR : color;
     var fillOp = muted ? 0.35 : 0.9, strokeOp = muted ? 0.4 : 0.9;
+    var icon = detMarkerIcon(fill, fillOp, starred, rare);
     rows.forEach(function (r) {
       if (!recentEnough(r.date, maxDays)) return;
       visible++;
-      // Starred species draw as a coloured ★ glyph (divIcon) instead of a dot.
-      var m = starred
-        ? L.marker([r.lat, r.lon], { keyboard: false, bubblingMouseEvents: false, icon: L.divIcon({ className: "det-star-icon", iconSize: [18, 18], iconAnchor: [9, 9], html: '<span style="color:' + fill + ';opacity:' + fillOp + '">★</span>' }) })
+      var m = icon
+        ? L.marker([r.lat, r.lon], { keyboard: false, bubblingMouseEvents: false, icon: icon })
         : L.circleMarker([r.lat, r.lon], { radius: 5, color: "#1a1a1a", weight: 1, opacity: strokeOp, fillColor: fill, fillOpacity: fillOp, bubblingMouseEvents: false });
       // Metadata for the fan-out so it can reconstruct clones in place. Keep
       // the true species colour too, so fanned clones are distinguishable even
@@ -3824,7 +3851,8 @@
     var e = { key: key, name: (name || (prev && prev.name)), color: (prev && prev.color) || "#888", rows: merged, group: null, cls: eCls };
     detPlot[key] = e;
     recolorDetections();   // assign family-based colours now that this species is in the set
-    if (detIsVisible(key)) { e.group = renderDetGroup(detName(e), merged, e.color, detIsMuted(key), isInteresting(e.key)); e.group.addTo(map); }
+    recomputeRareMax();
+    if (detIsVisible(key)) { e.group = renderDetGroup(detName(e), merged, e.color, detIsMuted(key), isInteresting(e.key), detIsRare(key)); e.group.addTo(map); }
     if (!defer) { updateDetLegend(); saveDetections(); }   // batch when plotting many at once
     if (fit && e.group) { try { map.fitBounds(e.group.getBounds().pad(0.25)); } catch (err) { /* single point / bad bounds */ } }
   }
@@ -3834,11 +3862,12 @@
   function rebuildDetLayers() {
     clearSpider();
     recolorDetections();
+    recomputeRareMax();
     Object.keys(detPlot).forEach(function (k) {
       var e = detPlot[k];
       if (e.group) { map.removeLayer(e.group); e.group = null; }
       if (!detIsVisible(k)) return;
-      e.group = renderDetGroup(detName(e), e.rows, e.color, detIsMuted(k), isInteresting(e.key));
+      e.group = renderDetGroup(detName(e), e.rows, e.color, detIsMuted(k), isInteresting(e.key), detIsRare(k));
       e.group.addTo(map);
     });
   }
@@ -3941,7 +3970,7 @@
   // Persist the legend's UI state — collapsed, the starred-only filter, and the
   // row selection — so the map legend comes back the way the user left it.
   function saveLegendState() {
-    window.GeoState.save({ mapLegend: { mini: detLegendMini, starFilter: detStarFilter, selected: Object.keys(detSelected) } });
+    window.GeoState.save({ mapLegend: { mini: detLegendMini, starFilter: detStarFilter, rareFilter: detRareFilter, selected: Object.keys(detSelected) } });
   }
   function loadDetections() {
     var saved = window.GeoState.get("mapDetections", {}) || {};
@@ -3957,6 +3986,7 @@
     var ls = window.GeoState.get("mapLegend", {}) || {};
     detLegendMini = !!ls.mini;
     detStarFilter = !!ls.starFilter;
+    detRareFilter = !!ls.rareFilter;
     detSelected = {};
     (Array.isArray(ls.selected) ? ls.selected : []).forEach(function (k) { if (detPlot[k]) detSelected[k] = true; });
     rebuildDetLayers();
@@ -3979,7 +4009,8 @@
     // The dropdown's "Starred only" narrows which species the legend lists (and
     // the map shows). The legend itself stays up so the filter can be toggled.
     // Always list the species alphabetically by their (localised) display name.
-    var keys = allKeys.filter(function (k) { return detPassesStar(k) && detPassesGroup(k); }).sort(function (a, b) {
+    recomputeRareMax();
+    var keys = allKeys.filter(function (k) { return detPassesStar(k) && detPassesGroup(k) && detPassesRare(k); }).sort(function (a, b) {
       return detName(detPlot[a]).localeCompare(detName(detPlot[b]));
     });
     recolorDetections();   // keep swatches current with learned families / plotted set
@@ -4003,7 +4034,7 @@
     }
     var rDays = detRecencyDays();
     var recOpts = [[1, "1"], [7, "7"], [14, "14"], [30, "30"], [90, "90"], [0, ""]]
-      .map(function (o) { return '<option value="' + o[0] + '"' + (!detStarFilter && o[0] === rDays ? " selected" : "") + ">" + (o[0] ? o[1] + " " + escapeHtml(t("det.days")) : escapeHtml(t("det.allTime"))) + "</option>"; })
+      .map(function (o) { return '<option value="' + o[0] + '"' + (!detStarFilter && !detRareFilter && o[0] === rDays ? " selected" : "") + ">" + (o[0] ? o[1] + " " + escapeHtml(t("det.days")) : escapeHtml(t("det.allTime"))) + "</option>"; })
       .join("");
     el.innerHTML = '<div class="det-legend-head">' +
         '<button type="button" class="det-min" title="' + escapeHtml(t("det.minimise")) + '" aria-label="' + escapeHtml(t("det.minimise")) + '">−</button>' +
@@ -4011,7 +4042,8 @@
         '<button type="button" class="det-list-btn" title="' + escapeHtml(t("detlist.open")) + '" aria-label="' + escapeHtml(t("detlist.open")) + '">☰</button>' +
         '<button type="button" class="det-clear">' + escapeHtml(t("det.clearAll")) + "</button>" +
         '<select id="det-recency" title="' + escapeHtml(t("det.recency")) + '">' + recOpts +
-          '<option value="starred"' + (detStarFilter ? " selected" : "") + ">★ " + escapeHtml(t("det.starred")) + "</option>" + "</select>" +
+          '<option value="starred"' + (detStarFilter ? " selected" : "") + ">★ " + escapeHtml(t("det.starred")) + "</option>" +
+          '<option value="rare"' + (detRareFilter ? " selected" : "") + ">◉ " + escapeHtml(t("det.rare")) + "</option>" + "</select>" +
       "</div>" +
       (keys.length ? "" : '<div class="det-empty">' + escapeHtml(t("det.noStarred")) + "</div>") +
       keys.map(function (k) {
@@ -4023,7 +4055,7 @@
         var selActive = detSelectionActive(), sel = !!detSelected[k];
         var rowCls = "det-row det-row-click" + (selActive && !sel ? " det-row-off" : "") + (sel ? " det-row-on" : "");
         var sw = (selActive && !sel) ? DET_MUTE_COLOR : e.color;
-        return '<div class="' + rowCls + '" data-key="' + escapeHtml(k) + '">' + detSwatch(sw, isInteresting(e.key)) + '<span class="det-nm" title="' + nm + '">' + nm + '</span><span class="det-ct">' + ct + '</span><button type="button" class="det-del" data-key="' + escapeHtml(k) + '" aria-label="remove">×</button></div>';
+        return '<div class="' + rowCls + '" data-key="' + escapeHtml(k) + '">' + detSwatch(sw, isInteresting(e.key), detIsRare(k)) + '<span class="det-nm" title="' + nm + '">' + nm + '</span><span class="det-ct">' + ct + '</span><button type="button" class="det-del" data-key="' + escapeHtml(k) + '" aria-label="remove">×</button></div>';
       }).join("");
     el.querySelector(".det-clear").addEventListener("click", clearDetections);
     el.querySelector(".det-list-btn").addEventListener("click", function (e) { e.stopPropagation(); mapClickGuardUntil = Date.now() + 250; openDetListModal(); });
@@ -4046,11 +4078,12 @@
       });
     });
     el.querySelector("#det-recency").addEventListener("change", function () {
-      // "Starred only" is a persistent filter on which species show; the other
-      // values are the recency (time) filter. Switching to a recency value also
-      // turns the starred filter off.
-      if (this.value === "starred") { detStarFilter = true; }
-      else { detStarFilter = false; window.GeoState.save({ detRecencyDays: +this.value }); }
+      // "Starred only" / "Rare only" are persistent filters on which species
+      // show; the numeric values are the recency (time) filter. Picking a recency
+      // value clears both species filters; picking one clears the other.
+      if (this.value === "starred") { detStarFilter = true; detRareFilter = false; }
+      else if (this.value === "rare") { detRareFilter = true; detStarFilter = false; }
+      else { detStarFilter = false; detRareFilter = false; window.GeoState.save({ detRecencyDays: +this.value }); }
       saveLegendState();
       rebuildDetLayers();   // re-render layers under the new filter (no refetch)
       updateDetLegend();
@@ -4825,6 +4858,18 @@
       window.GeoState.save({ hotspotMin: +this.value || 0 });
       if (hotspotsLayer && hotspotsLayer._reload) hotspotsLayer._reload();   // re-filter if shown
     });
+
+    var rareEl = document.getElementById("rare-pct");
+    if (rareEl) {
+      rareEl.value = String(rarePct());
+      rareEl.addEventListener("change", function () {
+        var v = Math.max(1, Math.min(100, +this.value || 10));
+        this.value = String(v);
+        window.GeoState.save({ rarePct: v });
+        rebuildDetLayers();   // re-evaluate rare markers + legend
+        updateDetLegend();
+      });
+    }
 
     var crEl = document.getElementById("country-res");
     crEl.value = String(+window.GeoState.get("countryRes", 3) || 3);
