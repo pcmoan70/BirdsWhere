@@ -239,10 +239,15 @@ window.GDriveSync = (function () {
       if (connected) {
         // Silent attempt on load (prompt:'none'); never pops the chooser. If a
         // token can't be obtained without UI, sync() fails quietly → "reconnect".
-        waitForGis()
-          .then(function () { initTokenClient(); return sync(false); })
-          .catch(function () { emit("reconnect"); })
-          .then(arm, arm);
+        // Deferred a couple of seconds so the GIS auth iframe isn't part of the
+        // busy startup — on mobile Chrome it can briefly flash as a dark overlay
+        // (the CSS rule for accounts.google.com iframes also keeps it invisible).
+        setTimeout(function () {
+          waitForGis()
+            .then(function () { initTokenClient(); return sync(false); })
+            .catch(function () { emit("reconnect"); })
+            .then(arm, arm);
+        }, 2500);
       } else {
         arm();
       }

@@ -1,3 +1,17 @@
+/* Google Identity Services injects a hidden auth iframe for the silent
+   (prompt:'none') Drive-sync token request; on mobile Chrome it can briefly
+   flash as a dark, expanding overlay during startup. Keep it truly invisible —
+   it still loads and the silent token still works; only the visible flash is
+   suppressed. The interactive sign-in uses a popup window (not an iframe), so
+   it is unaffected by this rule. */
+iframe[src*="accounts.google.com"] {
+  position: fixed !important;
+  width: 1px !important; height: 1px !important;
+  left: -100px !important; top: -100px !important;
+  opacity: 0 !important; border: 0 !important;
+  pointer-events: none !important; z-index: -1 !important;
+}
+
 /* ===========================================================================
    Design tokens — one nature / teal-green theme drives the whole app.
    The app's CSS references MkDocs Material variable names (--md-*); we define
