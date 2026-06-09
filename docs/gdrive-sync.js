@@ -46,6 +46,7 @@ window.GDriveSync = (function () {
   var accessToken = (function () { try { return localStorage.getItem(LS_TOKEN) || null; } catch (e) { return null; } })();
   var tokenExpiry = (function () { try { return +localStorage.getItem(LS_TOKEN_EXP) || 0; } catch (e) { return 0; } })();
   var tokenResolve = null, tokenReject = null;
+  var tokenPromise = null;           // in-flight interactive token request (single-flight)
 
   var syncing = false;               // re-entrancy guard
   var armed = false;                 // ignore GeoState writes from this session's init churn
@@ -96,19 +97,26 @@ window.GDriveSync = (function () {
     });
   }
 
-  // Resolve with a usable access token. `interactive` (a user gesture) may show
-  // the Google popup with prompt:'' — chooser/consent only as needed. Otherwise
-  // use prompt:'none': Google returns a token silently if the user is already
-  // signed in and has consented, or fails WITHOUT any UI — so background syncs
-  // and page loads never pop the account chooser.
+  // Resolve with a usable access token.
+  // The GIS token client pops a Google window on EVERY requestAccessToken — even
+  // a "silent" prompt:'none' refresh flashes one. So we never request a token in
+  // the background: a cached (persisted, ~1 h) token is reused silently, and if
+  // it's gone the background sync just fails quietly (status → "reconnect").
+  // Only a user gesture (Connect / Sync now, interactive) actually fetches a new
+  // token — single-flighted so it can't open two windows at once.
   function ensureToken(interactive) {
-    return new Promise(function (resolve, reject) {
-      if (accessToken && Date.now() < tokenExpiry) return resolve(accessToken);
-      if (!tokenClient) return reject(new Error("not initialized"));
+    if (accessToken && Date.now() < tokenExpiry) return Promise.resolve(accessToken);
+    if (!interactive) return Promise.reject(new Error("no token (user gesture required)"));
+    if (tokenPromise) return tokenPromise;
+    if (!tokenClient) return Promise.reject(new Error("not initialized"));
+    tokenPromise = new Promise(function (resolve, reject) {
       tokenResolve = resolve; tokenReject = reject;
-      try { tokenClient.requestAccessToken({ prompt: interactive ? "" : "none" }); }
+      try { tokenClient.requestAccessToken({ prompt: "" }); }
       catch (e) { tokenResolve = tokenReject = null; reject(e); }
     });
+    var clear = function () { tokenPromise = null; };
+    tokenPromise.then(clear, clear);
+    return tokenPromise;
   }
 
   // ---- Drive REST -----------------------------------------------------------
