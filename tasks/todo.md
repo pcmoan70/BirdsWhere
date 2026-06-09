@@ -191,3 +191,45 @@ Create a Google Cloud OAuth Web client (Drive API enabled, consent scope
 the Client ID into Settings — or hard-code it in `gdrive-sync.js`
 (`DEFAULT_CLIENT_ID`).
 
+---
+
+# Maintenance tool: named detection sets ("trips")
+
+User asks: turn the plotted detection dots/stars into a named, stored set, and
+organise synced data as **named blobs** you can **delete wholesale** (trips).
+
+## Design
+A saved set = a snapshot of the currently-plotted dots/stars under a name,
+stored and synced as `GeoState.mapDetectionSets = [{ name, createdAt,
+detections: <mapDetections shape>, interesting: [keys] }]`. Deleting a set
+removes that whole blob; a tombstone list `mapDetectionSetsDel = [names]` makes
+the deletion propagate across devices (and free the Drive blob) — the normal
+detection merge only ever unions, so without a tombstone a delete would bounce
+back from the other device.
+
+## Tasks
+- [x] Refactor `saveDetections` to share a `serializeDetPlot()` helper.
+- [x] Data: `detSets()`, `saveDetSet(name)`, `loadDetSet(name)` (union into the
+      working set + adopt stars + fit bounds), `deleteDetSet(name)` (+ tombstone).
+- [x] Sync: `mergeDetectionSets` (union by name; same name → union rows + stars)
+      minus tombstones; wire into `applyRemote` (sets + tombstone list).
+- [x] UI: a "Saved sets" modal (mirror the Data-sources modal) listing sets with
+      Load + delete ×, and a "Save current detections as…" action. Entry button
+      in Settings → Share-between-devices.
+- [x] i18n `dset.*` (en + sv); CSS reuse the sources-modal box.
+- [x] Bump SW version (v250); `node --check`; verify headless.
+
+## Review
+Shipped in **v250**. A saved set = a named snapshot of the plotted dots/stars,
+stored/synced as `mapDetectionSets`. Entry point: Settings → Share between
+devices → "🗂 Saved sets…", opening a modal with "💾 Save current detections…"
+and a row per set (species·dots count, Load, delete ×). Load unions the set into
+the working plot and adopts its stars (never discards what's already shown), then
+fits the map to it. Delete writes a tombstone (`mapDetectionSetsDel`) so the
+removal propagates across devices — the only place the detection data uses
+deletion semantics rather than pure union. `applyRemote` merges sets by name
+(union rows + stars), drops tombstoned names, and unions tombstone lists.
+Verified: headless DOM render of the new modal; standalone tests of the
+set-merge, tombstone-survival, and (separately) the GBIF dedup + colour
+determinism + Artsobs URL helpers — all PASS.
+
