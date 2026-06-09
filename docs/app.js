@@ -1445,7 +1445,7 @@
     return (arr || []).map(function (o) {
       return { src: "eBird", speciesCode: o.speciesCode || "", sciName: o.sciName || "", comName: o.comName || "", family: "", cls: "Aves",
         lat: o.lat != null ? +o.lat : null, lon: o.lng != null ? +o.lng : null, date: (o.obsDt || "").slice(0, 10), dt: o.obsDt || "",
-        url: o.subId ? "https://ebird.org/checklist/" + o.subId : "", origin: "", place: o.locName || "" };
+        url: o.subId ? "https://ebird.org/checklist/" + o.subId : "", origin: "", place: o.locName || "", observer: "", count: o.howMany != null ? o.howMany : "" };
     });
   }
   function normInat(arr) {
@@ -1457,7 +1457,7 @@
       var ll = inatLatLon(o);
       out.push({ src: "iNaturalist", speciesCode: "", sciName: sn, comName: tax.preferred_common_name || "", family: "", cls: normClass(tax.iconic_taxon_name),
         lat: isFinite(ll.lat) ? ll.lat : null, lon: isFinite(ll.lon) ? ll.lon : null, date: o.observed_on || (o.time_observed_at || "").slice(0, 10), dt: o.time_observed_at || o.observed_on || "",
-        url: o.id ? "https://www.inaturalist.org/observations/" + o.id : "", origin: "", place: o.place_guess || "" });
+        url: o.id ? "https://www.inaturalist.org/observations/" + o.id : "", origin: "", place: o.place_guess || "", observer: (o.user && (o.user.login || o.user.name)) || "", count: "" });
     });
     return out;
   }
@@ -1473,9 +1473,21 @@
       if (!/\s/.test(sn)) return;
       out.push({ src: "GBIF", speciesCode: "", sciName: sn, comName: o.vernacularName || "", family: o.family || "", cls: normClass(o.class), kingdom: o.kingdom || "",
         lat: o.decimalLatitude != null ? +o.decimalLatitude : null, lon: o.decimalLongitude != null ? +o.decimalLongitude : null,
-        date: (o.eventDate || "").slice(0, 10), dt: o.eventDate || "", url: o.key ? "https://www.gbif.org/occurrence/" + o.key : "", origin: o.datasetName || "", place: o.locality || "" });
+        date: (o.eventDate || "").slice(0, 10), dt: o.eventDate || "", url: o.key ? "https://www.gbif.org/occurrence/" + o.key : "", origin: o.datasetName || "", place: o.locality || "",
+        observer: (Array.isArray(o.recordedBy) ? o.recordedBy.join(", ") : (o.recordedBy || "")), count: o.individualCount != null ? o.individualCount : "" });
     });
     return out;
+  }
+  // Artsobs link → the observation RECORD, not a photo. The API's DetailUrl is the
+  // sighting page only when the record has no media; with a photo it points at the
+  // image file (…/MediaLibrary/…image.jpg). The sighting id (= CatalogNumber) is
+  // stable, so build the record URL from it and fall back to the Artskart feature
+  // link for non-Artsobservasjoner institutions.
+  function artsobsUrl(o) {
+    var d = String(o.DetailUrl || ""), m = d.match(/\/sighting\/(\d+)/i);
+    var id = m ? m[1] : (/artsobservasjoner\.no/i.test(d) && /^\d+$/.test(String(o.CatalogNumber || "")) ? String(o.CatalogNumber) : "");
+    if (id) return "https://mobil.artsobservasjoner.no/sighting/" + id;
+    return o.ObsUrl || d || "";
   }
   function normArtsobs(obj) {
     var out = [];
@@ -1486,7 +1498,7 @@
       var dm = String(o.CollectedDate || "").match(/(\d{2})\.(\d{2})\.(\d{4})/), date = dm ? (dm[3] + "-" + dm[2] + "-" + dm[1]) : "";
       out.push({ src: "Artsobs", speciesCode: "", sciName: sn, comName: o.Name || "", family: o.family || "", cls: normClass(o.klass || o.Klass || o["class"]), kingdom: o.kingdom || o.Kingdom || "",
         lat: isFinite(la) ? la : null, lon: isFinite(lo) ? lo : null, date: date, dt: date,
-        url: o.DetailUrl || o.ObsUrl || "", origin: "", place: o.Municipality || o.County || "" });
+        url: artsobsUrl(o), origin: "", place: o.Municipality || o.County || "", observer: o.Collector || "", count: o.Count != null ? o.Count : "" });
     });
     return out;
   }
@@ -1498,7 +1510,8 @@
       var oid = String((o.occurrence && o.occurrence.occurrenceId) || ""), m = oid.match(/[Ss]ighting[:\/](\d+)/);
       out.push({ src: "Artportalen", speciesCode: "", sciName: sn, comName: tax.vernacularName || "", family: tax.family || "", cls: normClass(tax["class"]), kingdom: tax.kingdom || "",
         lat: loc.decimalLatitude != null ? +loc.decimalLatitude : null, lon: loc.decimalLongitude != null ? +loc.decimalLongitude : null,
-        date: (ev.startDate || "").slice(0, 10), dt: ev.startDate || "", url: m ? "https://www.artportalen.se/sighting/" + m[1] : "", origin: "", place: loc.locality || loc.municipality || "" });
+        date: (ev.startDate || "").slice(0, 10), dt: ev.startDate || "", url: m ? "https://www.artportalen.se/sighting/" + m[1] : "", origin: "", place: loc.locality || loc.municipality || "",
+        observer: (o.occurrence && o.occurrence.recordedBy) || "", count: (o.occurrence && o.occurrence.individualCount != null) ? o.occurrence.individualCount : "" });
     });
     return out;
   }
@@ -1523,8 +1536,24 @@
       extras[k].count++; pushRow(extras[k].rows, row);
       var t = Date.parse(dt); if (!isNaN(t) && t > extras[k].latestTs) extras[k].latestTs = t;
     }
+    // GBIF re-publishes the national databases (Artsobservasjoner, Artportalen,
+    // eBird, iNaturalist), so the same sighting can arrive once natively and once
+    // via GBIF. Build a set of keys for every non-GBIF record, then drop any GBIF
+    // record that matches one — keeping the native copy (fresher, better link).
+    // Key = species + location (~110 m) + observer + count, per the user's rule.
+    function dedupKey(r) {
+      return r.sciName.toLowerCase() + "|" +
+        (r.lat != null ? r.lat.toFixed(3) : "") + "," + (r.lon != null ? r.lon.toFixed(3) : "") + "|" +
+        String(r.observer || "").toLowerCase().replace(/\s+/g, " ").trim() + "|" + String(r.count != null ? r.count : "");
+    }
+    var nativeKeys = Object.create(null);
+    (records || []).forEach(function (r) {
+      if (r && r.sciName && r.src !== "GBIF" && r.observer) nativeKeys[dedupKey(r)] = 1;
+    });
     (records || []).forEach(function (r) {
       if (!r || !r.sciName) return;
+      // Skip a GBIF record that duplicates a sighting we already have natively.
+      if (r.src === "GBIF" && r.observer && nativeKeys[dedupKey(r)]) return;
       // Birds only — this is a BirdNET tool. Drop any record with a known
       // non-Aves class (that also removes mammals, insects, plants, fungi,
       // mosses, lichens…); the kingdom check additionally drops non-animals
@@ -1870,6 +1899,9 @@
     // sides so syncing merges pins instead of one device overwriting the other.
     var mergedDet = mergeDetections(local.mapDetections, incoming.mapDetections);
     var interestUnion = {}; (local.interesting || []).concat(incoming.interesting || []).forEach(function (k) { if (k) interestUnion[k] = 1; });
+    // Learned families (for dot colours): union both sides so a species keeps the
+    // family — and therefore the colour — learned on either device.
+    var mergedFam = {}; [local.detFamilies, incoming.detFamilies].forEach(function (m) { Object.keys(m || {}).forEach(function (k) { if (m[k]) mergedFam[k] = m[k]; }); });
     // Scalar settings: the winning side overrides, the other fills any gaps.
     var primary = opts.incomingWins ? incoming : local;
     var secondary = opts.incomingWins ? local : incoming;
@@ -1881,6 +1913,7 @@
     newState.mapPointSets = mergedSets;
     newState.mapDetections = mergedDet;
     newState.interesting = Object.keys(interestUnion);
+    newState.detFamilies = mergedFam;
     newState.mapPointSetActive = "";   // show the merged unsaved set after import
     try { localStorage.setItem("geomodel-explorer-v1", JSON.stringify(newState)); } catch (e) { throw new Error("storage write failed: " + e.message); }
     // eBird key: adopt incoming only when it should win, or when we have none.
@@ -3563,31 +3596,28 @@
   // them around the wheel; the lower saturation hints they're provisional
   // versus the family-coloured ones. Once GBIF supplies the family on a later
   // fetch, the species switches to its family hue and this entry is dropped.
-  var sessionColors = {};   // key -> colour, this session only (NOT persisted)
-  var sessionColorN = 0;
-  function sessionColor(key) {
-    if (!sessionColors[key]) sessionColors[key] = "hsl(" + Math.round((sessionColorN++ * 137.508) % 360) + ", 35%, 52%)";
-    return sessionColors[key];
-  }
-  // Recompute every plotted species' colour. The families currently on the map
-  // get evenly-spaced hues round the wheel (so two families never collide on the
-  // same hue); species within a family share that hue band but vary in shade and
-  // saturation so they stay distinguishable. Unknown family → neutral grey. Run
-  // whenever the plotted set changes or a family is newly learned from GBIF — so
-  // a grey dot turns its family's hue the moment GBIF supplies the family.
+  // A family's base hue is a deterministic function of its NAME (golden-angle
+  // hashed round the wheel), and a species' shade/saturation a deterministic
+  // function of its key — so the same species draws the same colour on every
+  // device, independent of which other species happen to be plotted. (An earlier
+  // even-spread over the locally-plotted families gave nicer separation but made
+  // colours differ across devices, which the user needs to be stable.)
+  function famHue(f) { return Math.round(strHash("fam:" + f) * 137.508) % 360; }
+  function keyHue(k) { return Math.round(strHash("key:" + k) * 137.508) % 360; }
+  // Recompute every plotted species' colour. Species within a family share its
+  // hue band but vary in shade and saturation so they stay distinguishable; a
+  // species whose family isn't known yet gets a stable per-key hue (still the
+  // same on every device). Run whenever the plotted set changes or a family is
+  // newly learned from GBIF — so a dot snaps to its family's hue the moment GBIF
+  // supplies the family.
   function recolorDetections() {
-    var seen = {}, fams = [];
-    Object.keys(detPlot).forEach(function (k) { var f = famIndex[k]; if (f && !seen[f]) { seen[f] = 1; fams.push(f); } });
-    fams.sort();
-    var hueOf = {}, n = fams.length || 1;
-    fams.forEach(function (f, i) { hueOf[f] = Math.round(360 * i / n); });
     Object.keys(detPlot).forEach(function (k) {
       var f = famIndex[k] || "";
       if (f) {
-        var hue = (hueOf[f] + (strHash("h:" + k) % 7) - 3 + 360) % 360;          // ±3° jitter within the family band
+        var hue = (famHue(f) + (strHash("h:" + k) % 7) - 3 + 360) % 360;          // ±3° jitter within the family band
         detPlot[k].color = "hsl(" + hue + ", " + (48 + strHash("a:" + k) % 26) + "%, " + (40 + strHash("s:" + k) % 24) + "%)";
       } else {
-        detPlot[k].color = sessionColor(k);   // no family yet → a distinct colour held for this session
+        detPlot[k].color = "hsl(" + keyHue(k) + ", 35%, 52%)";   // no family yet → a stable, distinct per-species colour
       }
     });
   }
@@ -3998,6 +4028,8 @@
     if (typeof map === "undefined" || !map) return;
     Object.keys(detPlot).forEach(function (k) { if (detPlot[k].group) map.removeLayer(detPlot[k].group); });
     detPlot = {};
+    // Pick up families merged in from another device so colours match it.
+    try { var ff = (window.GeoState && window.GeoState.get("detFamilies", {})) || {}; Object.keys(ff).forEach(function (k) { if (ff[k]) famIndex[k] = ff[k]; }); } catch (e) {}
     if (typeof loadInteresting === "function") loadInteresting();
     loadDetections();
   }
