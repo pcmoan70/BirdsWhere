@@ -1379,17 +1379,17 @@
     var pts = [toMercator(lat - dLat, lon - dLon), toMercator(lat - dLat, lon + dLon), toMercator(lat + dLat, lon + dLon), toMercator(lat + dLat, lon - dLon)];
     pts.push(pts[0]);
     var wkt = "POLYGON((" + pts.map(function (p) { return p[0].toFixed(1) + " " + p[1].toFixed(1); }).join(",") + "))";
-    var base = joinUrl(ep || "https://artskart.artsdatabanken.no/publicapi/api/observations/list",
-      "MaxFeatures=300&FromDate=" + d1 + "&ToDate=" + d2 + "&gmWktPolygon=" + encodeURIComponent(wkt));
-    var all = [];
-    for (var p = 0; p < 6; p++) {
-      var obs;
-      try { var resp = await fetch(base + "&Offset=" + (p * 300)); if (!resp.ok) break; obs = ((await resp.json()) || {}).Observations || []; }
-      catch (e) { break; }
-      all = all.concat(obs);
-      if (obs.length < 300) break;
-    }
-    return { Observations: all };
+    // The API ignores MaxFeatures (defaults to 20/page) and its Offset doesn't
+    // page (Offset=N returns the same first rows), so we ask for one large page
+    // via PageSize instead — otherwise a wide-radius query returns only ~20
+    // scattered records and misses everything near the centre.
+    var url = joinUrl(ep || "https://artskart.artsdatabanken.no/publicapi/api/observations/list",
+      "PageSize=3000&FromDate=" + d1 + "&ToDate=" + d2 + "&gmWktPolygon=" + encodeURIComponent(wkt));
+    try {
+      var resp = await fetch(url);
+      if (!resp.ok) return { Observations: [] };
+      return { Observations: ((await resp.json()) || {}).Observations || [] };
+    } catch (e) { return { Observations: [] }; }
   }
   // Sweden — SLU Artdatabanken SOS API (free subscription key; Artportalen + more).
   async function fetchArtportalenAll(lat, lon, d1, d2, rkm, key, ep) {
@@ -3614,14 +3614,17 @@
   var detListOpenSp = {};              // species keys expanded in the by-species view
   var detListNear = null;              // location scope: a clicked dot's { lat, lon, meters } (null = whole map)
   var detListQuery = "";               // fuzzy species-name filter for the list
-  // Lightweight fuzzy match: case-insensitive substring, else subsequence (the
-  // query's characters appear in order) — so "swal" or "bsw" finds "Barn Swallow".
+  // Forgiving filter: every whitespace-separated piece of the query must appear
+  // somewhere in the name (order-independent) — so "swal", "barn swal" and
+  // "swal barn" all find "Barn Swallow". Falls back to a subsequence match
+  // (query letters in order, spaces ignored) so "brnswl" still finds it.
   function fuzzyMatch(q, text) {
     q = String(q || "").toLowerCase().trim(); text = String(text || "").toLowerCase();
     if (!q) return true;
-    if (text.indexOf(q) >= 0) return true;
-    for (var i = 0, qi = 0; i < text.length && qi < q.length; i++) { if (text.charAt(i) === q.charAt(qi)) qi++; }
-    return qi === q.length;
+    if (q.split(/\s+/).every(function (tok) { return text.indexOf(tok) >= 0; })) return true;
+    var qc = q.replace(/\s+/g, ""), tc = text.replace(/\s+/g, ""), qi = 0;
+    for (var i = 0; i < tc.length && qi < qc.length; i++) { if (tc.charAt(i) === qc.charAt(qi)) qi++; }
+    return qi === qc.length;
   }
   // Open the consolidated detections list. Clicking a plotted dot scopes it to
   // that spot (`near`); the legend's list button opens it for the whole map.
