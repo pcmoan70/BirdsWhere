@@ -2320,8 +2320,8 @@
                 '<button type="button" id="offline-open" class="demo-btn" data-i18n="offline.manage">⬇ Manage offline maps…</button>' +
               '</div>' +
               '<div class="ctrl-group" id="install-wrap" hidden>' +
-                '<label data-i18n="install.label">Install app</label>' +
-                '<button type="button" id="install-settings" class="demo-btn" data-i18n="install.app">⤓ Install app</button>' +
+                '<label data-i18n="install.label">Offline mode</label>' +
+                '<button type="button" id="install-settings" class="demo-btn" data-i18n="install.app">⤓ Offline mode</button>' +
                 '<div class="install-steps cu-hint" hidden></div>' +
               '</div>' +
               '<button type="button" id="about-open" class="settings-about" data-i18n="ctrl.about">About &amp; how it works</button>' +
@@ -2493,7 +2493,7 @@
           '<p data-i18n="popup.perf"></p>' +
           '<p class="perf-feedback"><span data-i18n="popup.feedback"></span> <button type="button" class="feedback-open" data-i18n="feedback.send">✉ Send feedback</button></p>' +
           '<p class="perf-attrib" data-i18n="footer.attrib"></p>' +
-          '<div class="install-row"><button type="button" id="install-info" class="demo-btn demo-btn-light" hidden data-i18n="install.app">⤓ Install app</button><div class="install-steps cu-hint" hidden></div></div>' +
+          '<div class="install-row"><button type="button" id="install-info" class="demo-btn demo-btn-light" hidden data-i18n="install.app">⤓ Offline mode</button><div class="install-steps cu-hint" hidden></div></div>' +
           '<button id="perf-modal-ok" class="demo-btn" data-i18n="popup.ok">OK</button>' +
         '</div></div>' +
         '<div id="feedback-modal" style="display:none"><div id="feedback-box">' +
@@ -2536,6 +2536,7 @@
               '<button type="button" class="detlist-sort-btn" data-sort="species" data-i18n="detlist.bySpecies">By species</button>' +
             '</div>' +
           '</div>' +
+          '<input type="text" id="detlist-search" autocomplete="off" spellcheck="false" data-i18n-ph="detlist.search" placeholder="Filter species…" />' +
           '<div id="detlist-body"></div>' +
         '</div></div>' +
         '<div id="offline-modal" style="display:none"><div id="offline-box">' +
@@ -3602,6 +3603,16 @@
   var detListSort = "time";            // "time" (date sections) | "species" (per-species rows)
   var detListOpenSp = {};              // species keys expanded in the by-species view
   var detListNear = null;              // location scope: a clicked dot's { lat, lon, meters } (null = whole map)
+  var detListQuery = "";               // fuzzy species-name filter for the list
+  // Lightweight fuzzy match: case-insensitive substring, else subsequence (the
+  // query's characters appear in order) — so "swal" or "bsw" finds "Barn Swallow".
+  function fuzzyMatch(q, text) {
+    q = String(q || "").toLowerCase().trim(); text = String(text || "").toLowerCase();
+    if (!q) return true;
+    if (text.indexOf(q) >= 0) return true;
+    for (var i = 0, qi = 0; i < text.length && qi < q.length; i++) { if (text.charAt(i) === q.charAt(qi)) qi++; }
+    return qi === q.length;
+  }
   // Open the consolidated detections list. Clicking a plotted dot scopes it to
   // that spot (`near`); the legend's list button opens it for the whole map.
   function openDetListModal(near) {
@@ -3609,6 +3620,8 @@
     if (!m) return;
     detListNear = near || null;
     detListOpenSp = {};
+    detListQuery = "";
+    var si = document.getElementById("detlist-search"); if (si) si.value = "";
     m.style.display = "flex";
     navOpen("detlist", function () { m.style.display = "none"; });
     renderDetListModal();
@@ -3631,7 +3644,9 @@
     Array.prototype.forEach.call(sortBtns, function (b) { b.classList.toggle("active", b.getAttribute("data-sort") === detListSort); });
     recolorDetections();   // swatches reflect the latest family colours
     var rows = collectVisibleDetections(detListNear);
-    if (!rows.length) { body.innerHTML = '<div class="dl-empty">' + escapeHtml(t("detlist.empty")) + "</div>"; return; }
+    var emptyMsg = rows.length ? t("detlist.noMatch") : t("detlist.empty");
+    if (detListQuery) rows = rows.filter(function (d) { return fuzzyMatch(detListQuery, d.name); });
+    if (!rows.length) { body.innerHTML = '<div class="dl-empty">' + escapeHtml(emptyMsg) + "</div>"; return; }
     var html;
     if (detListSort === "species") {
       // One summary line per species (most-recent date + count); tap to expand
@@ -4747,6 +4762,8 @@
     Array.prototype.forEach.call(document.querySelectorAll("#detlist-sort .detlist-sort-btn"), function (b) {
       b.addEventListener("click", function () { detListSort = this.getAttribute("data-sort"); renderDetListModal(); });
     });
+    var detlistSearch = document.getElementById("detlist-search");
+    if (detlistSearch) detlistSearch.addEventListener("input", function () { detListQuery = this.value; renderDetListModal(); });
 
     document.getElementById("sync-export").addEventListener("click", exportAppData);
     document.getElementById("points-kml-export").addEventListener("click", exportPointsKml);
