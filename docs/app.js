@@ -1446,7 +1446,7 @@
       var sn = o.species || o.scientificName; if (!sn) return;
       sn = sn.replace(/\s+\([^)]*\)\s*/g, " ").replace(/,\s*\d{4}.*$/, "").trim();
       if (!/\s/.test(sn)) return;
-      out.push({ src: "GBIF", speciesCode: "", sciName: sn, comName: o.vernacularName || "", family: o.family || "", cls: normClass(o.class),
+      out.push({ src: "GBIF", speciesCode: "", sciName: sn, comName: o.vernacularName || "", family: o.family || "", cls: normClass(o.class), kingdom: o.kingdom || "",
         lat: o.decimalLatitude != null ? +o.decimalLatitude : null, lon: o.decimalLongitude != null ? +o.decimalLongitude : null,
         date: (o.eventDate || "").slice(0, 10), dt: o.eventDate || "", url: o.key ? "https://www.gbif.org/occurrence/" + o.key : "", origin: o.datasetName || "", place: o.locality || "" });
     });
@@ -1459,7 +1459,7 @@
       // Coordinates are WGS84 but decimal-comma strings; dates are dd.mm.yyyy.
       var la = parseFloat(String(o.Latitude || "").replace(",", ".")), lo = parseFloat(String(o.Longitude || "").replace(",", "."));
       var dm = String(o.CollectedDate || "").match(/(\d{2})\.(\d{2})\.(\d{4})/), date = dm ? (dm[3] + "-" + dm[2] + "-" + dm[1]) : "";
-      out.push({ src: "Artsobs", speciesCode: "", sciName: sn, comName: o.Name || "", family: o.family || "", cls: normClass(o.klass || o.Klass || o["class"]),
+      out.push({ src: "Artsobs", speciesCode: "", sciName: sn, comName: o.Name || "", family: o.family || "", cls: normClass(o.klass || o.Klass || o["class"]), kingdom: o.kingdom || o.Kingdom || "",
         lat: isFinite(la) ? la : null, lon: isFinite(lo) ? lo : null, date: date, dt: date,
         url: o.DetailUrl || o.ObsUrl || "", origin: "", place: o.Municipality || o.County || "" });
     });
@@ -1471,7 +1471,7 @@
       var tax = o.taxon || {}, loc = o.location || {}, ev = o.event || {};
       var sn = tax.scientificName; if (!sn || !/\s/.test(sn)) return;
       var oid = String((o.occurrence && o.occurrence.occurrenceId) || ""), m = oid.match(/[Ss]ighting[:\/](\d+)/);
-      out.push({ src: "Artportalen", speciesCode: "", sciName: sn, comName: tax.vernacularName || "", family: tax.family || "", cls: normClass(tax["class"]),
+      out.push({ src: "Artportalen", speciesCode: "", sciName: sn, comName: tax.vernacularName || "", family: tax.family || "", cls: normClass(tax["class"]), kingdom: tax.kingdom || "",
         lat: loc.decimalLatitude != null ? +loc.decimalLatitude : null, lon: loc.decimalLongitude != null ? +loc.decimalLongitude : null,
         date: (ev.startDate || "").slice(0, 10), dt: ev.startDate || "", url: m ? "https://www.artportalen.se/sighting/" + m[1] : "", origin: "", place: loc.locality || loc.municipality || "" });
     });
@@ -1500,6 +1500,12 @@
     }
     (records || []).forEach(function (r) {
       if (!r || !r.sciName) return;
+      // This is a fauna explorer — drop plants, fungi (incl. lichens), mosses,
+      // algae etc. Mosses/lichens keep their own class, so kingdom is the
+      // reliable discriminator; the cls check also catches iNaturalist's
+      // kingdom-level iconic taxa (Plantae / Fungi / …).
+      if (r.kingdom && /^(plant|fung|chromist|protozo|bacteri|archae)/i.test(r.kingdom)) return;
+      if (r.cls && /^(plantae|fungi|chromista|protozoa|bacteria)$/i.test(r.cls)) return;
       var row = { lat: r.lat, lon: r.lon, date: r.date || "", src: r.src, origin: r.origin || "", url: r.url || "", place: r.place || "" };
       // Match a model species by code (eBird) first, then scientific name.
       var key = (r.speciesCode && labelsByKey[r.speciesCode]) ? r.speciesCode : null;
@@ -1530,6 +1536,12 @@
     { id: "artportalen", name: "Artportalen",       url: "https://api.artdatabanken.se/species-observation-system/v1/Observations/Search", country: "SE", keyed: true,  days: 90 }
   ];
   var DIRECT_BY_ID = {}; DEFAULT_DIRECT_SOURCES.forEach(function (d) { DIRECT_BY_ID[d.id] = d; });
+  // Coarse country boxes [minLat,maxLat,minLon,maxLon] — a robust fallback for
+  // the national-database country gate when the reverse-geocode is unavailable.
+  var COUNTRY_BBOX = { NO: [57.5, 71.5, 4.0, 31.5], SE: [55.0, 69.3, 10.5, 24.5] };
+  function inCountryBox(lat, lon, cc) {
+    var b = COUNTRY_BBOX[cc]; return !!b && lat >= b[0] && lat <= b[1] && lon >= b[2] && lon <= b[3];
+  }
   function directSources() {
     var stored = window.GeoState.get("directSources", null);
     // An explicit (even empty) array is the user's list; only an unset value
@@ -1576,13 +1588,16 @@
     var c = { lat: lat, lon: lon, d2: d2, range: range, rkm: rkm, tok: ebirdKey(),
       dateBack: function (n) { var d = new Date(); d.setDate(d.getDate() - n); return fmtD(d); } };
     var failed = [];
-    // National DBs wait for the country lookup; global sources start immediately.
+    // National DBs are country-gated. Use the precise reverse-geocode when it's
+    // available; if it fails or is empty (offline / rate-limited), fall back to a
+    // coarse bounding box so the national source still runs in/near its country.
     var ccP = countryCode(lat, lon).then(function (cc) { return cc; }, function () { return ""; });
     var jobs = obsSources().map(function (s) {
       if (!s.enabled()) return Promise.resolve([]);
       if (!s.country) return guardFetch(failed, s.name, obsTrack(s.run(c)));
       return ccP.then(function (cc) {
-        if (String(cc || "").toUpperCase() !== s.country) return [];
+        var ok = cc ? (String(cc).toUpperCase() === s.country) : inCountryBox(lat, lon, s.country);
+        if (!ok) return [];
         return guardFetch(failed, s.name, obsTrack(s.run(c)));
       });
     });
