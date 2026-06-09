@@ -687,7 +687,7 @@
   var navSuppress = 0;    // popstate events to ignore (from our own history.back)
   // Pop-up overlays (vs. full-screen pages, which may legitimately stack). By
   // default only one of these shows at a time — opening one closes the others.
-  var MODAL_IDS = { feedback: 1, gbif: 1, natdb: 1, about: 1, recent: 1, distmap: 1, detlist: 1 };
+  var MODAL_IDS = { feedback: 1, gbif: 1, natdb: 1, about: 1, recent: 1, distmap: 1, detlist: 1, offline: 1 };
   // Close the open Leaflet map popups (detection dot, point-options, map-point
   // editor) and the sticky fan-out.
   function closeMapPopups() {
@@ -2110,13 +2110,8 @@
                 '<button type="button" id="points-kml-export" class="demo-btn" data-i18n="btn.exportPointsKml">⬇ Export KML</button>' +
               '</div>' +
               '<div class="ctrl-group" id="offline-wrap">' +
-                '<label for="offline-zoom" data-i18n="ctrl.offlineZoom">Download max zoom</label>' +
-                '<select id="offline-zoom">' +
-                  '<option value="11">11 · regional</option><option value="13">13 · town</option>' +
-                  '<option value="15">15 · street</option><option value="17" selected>17 · detailed (full)</option>' +
-                '</select>' +
-                '<p class="cu-hint" data-i18n="offline.hint">Use the ⬇ button on the map to download the current view.</p>' +
-                '<div id="offline-list"></div>' +
+                '<label data-i18n="offline.maps">Offline maps</label>' +
+                '<button type="button" id="offline-open" class="demo-btn" data-i18n="offline.manage">⬇ Manage offline maps…</button>' +
               '</div>' +
               '<button type="button" id="about-open" class="settings-about" data-i18n="ctrl.about">About &amp; how it works</button>' +
             '</div>' +
@@ -2330,6 +2325,19 @@
             '</div>' +
           '</div>' +
           '<div id="detlist-body"></div>' +
+        '</div></div>' +
+        '<div id="offline-modal" style="display:none"><div id="offline-box">' +
+          '<button type="button" id="offline-close" aria-label="Close">×</button>' +
+          '<h3 data-i18n="offline.maps">Offline maps</h3>' +
+          '<p class="cu-hint" data-i18n="offline.hint">Use the ⬇ button on the map to download the current view.</p>' +
+          '<div class="offline-zoom-row">' +
+            '<label for="offline-zoom" data-i18n="ctrl.offlineZoom">Download max zoom</label>' +
+            '<select id="offline-zoom">' +
+              '<option value="11">11 · regional</option><option value="13">13 · town</option>' +
+              '<option value="15">15 · street</option><option value="17" selected>17 · detailed (full)</option>' +
+            '</select>' +
+          '</div>' +
+          '<div id="offline-list"></div>' +
         '</div></div>' +
       '</div>';
 
@@ -4375,6 +4383,18 @@
       });
       document.getElementById("natdb-close").addEventListener("click", function () { navClose("natdb"); });
       document.getElementById("natdb-modal").addEventListener("click", function (e) { if (e.target === this) navClose("natdb"); });
+    }
+
+    var offlineOpenBtn = document.getElementById("offline-open");
+    if (offlineOpenBtn) {
+      offlineOpenBtn.addEventListener("click", function () {
+        closeDropdowns();
+        renderOfflineAreas();
+        document.getElementById("offline-modal").style.display = "flex";
+        navOpen("offline", function () { document.getElementById("offline-modal").style.display = "none"; });
+      });
+      document.getElementById("offline-close").addEventListener("click", function () { navClose("offline"); });
+      document.getElementById("offline-modal").addEventListener("click", function (e) { if (e.target === this) navClose("offline"); });
     }
 
 

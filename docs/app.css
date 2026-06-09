@@ -1273,22 +1273,25 @@ button.dd-name:hover { text-decoration: underline; }
 }
 #ebird-key-link { font-size: 0.72rem; margin-top: 4px; color: var(--brand-strong); }
 /* GBIF datasets / National databases popups. */
-#gbif-modal, #natdb-modal {
+#gbif-modal, #natdb-modal, #offline-modal {
   position: fixed; inset: 0; z-index: 5000; display: none;
   align-items: center; justify-content: center; background: rgba(0,0,0,0.55); padding: 20px;
 }
-#gbif-box, #natdb-box {
+#gbif-box, #natdb-box, #offline-box {
   position: relative; background: var(--surface); color: var(--ink);
   max-width: 640px; width: 100%; max-height: 80vh; overflow: auto;
   border-radius: 10px; padding: 20px 22px; box-shadow: var(--shadow-md, 0 6px 24px rgba(0,0,0,.35));
 }
-#gbif-box h3, #natdb-box h3 { margin: 0 28px 8px 0; font-size: 1.1rem; color: var(--brand-deep); }
-#gbif-close, #natdb-close {
+#gbif-box h3, #natdb-box h3, #offline-box h3 { margin: 0 28px 8px 0; font-size: 1.1rem; color: var(--brand-deep); }
+#gbif-close, #natdb-close, #offline-close {
   position: absolute; top: 10px; right: 12px; border: none; background: transparent;
   cursor: pointer; font-size: 1.5rem; line-height: 1; color: var(--ink-muted);
 }
-#gbif-close:hover, #natdb-close:hover { color: var(--ink); }
-#gbif-box .cu-hint, #natdb-box .cu-hint { font-size: 0.74rem; color: var(--ink-muted); margin: 0 0 12px; }
+#gbif-close:hover, #natdb-close:hover, #offline-close:hover { color: var(--ink); }
+#gbif-box .cu-hint, #natdb-box .cu-hint, #offline-box .cu-hint { font-size: 0.74rem; color: var(--ink-muted); margin: 0 0 12px; }
+.offline-zoom-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.offline-zoom-row label { font-size: 0.85rem; color: var(--ink); }
+.offline-zoom-row select { font: inherit; font-size: 0.85rem; padding: 5px 8px; border: 1px solid var(--border); border-radius: var(--radius-xs); background: var(--surface); color: var(--ink); }
 #natdb-box .cu-row { margin-bottom: 6px; }
 #natdb-box .cu-actions { display: flex; gap: 8px; margin-top: 10px; }
 .gbif-add-row { display: flex; gap: 8px; margin-bottom: 12px; }
