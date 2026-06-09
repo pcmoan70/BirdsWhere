@@ -3658,17 +3658,27 @@
   var detListOpenSp = {};              // species keys expanded in the by-species view
   var detListNear = null;              // location scope: a clicked dot's { lat, lon, meters } (null = whole map)
   var detListQuery = "";               // fuzzy species-name filter for the list
-  // Forgiving filter: every whitespace-separated piece of the query must appear
-  // somewhere in the name (order-independent) — so "swal", "barn swal" and
-  // "swal barn" all find "Barn Swallow". Falls back to a subsequence match
-  // (query letters in order, spaces ignored) so "brnswl" still finds it.
-  function fuzzyMatch(q, text) {
+  // Forgiving filter for the Detections list (named detFuzzy to avoid the other
+  // fuzzyMatch() defined later, which would shadow this one): every
+  // whitespace-separated piece of the query must appear somewhere in the text
+  // (order-independent) — "swal", "barn swal", "swal barn" all match — with a
+  // spaces-ignored subsequence fallback so "brnswl" still matches.
+  function detFuzzy(q, text) {
     q = String(q || "").toLowerCase().trim(); text = String(text || "").toLowerCase();
     if (!q) return true;
     if (q.split(/\s+/).every(function (tok) { return text.indexOf(tok) >= 0; })) return true;
     var qc = q.replace(/\s+/g, ""), tc = text.replace(/\s+/g, ""), qi = 0;
     for (var i = 0; i < tc.length && qi < qc.length; i++) { if (tc.charAt(i) === qc.charAt(qi)) qi++; }
     return qi === qc.length;
+  }
+  // Everything a species can be matched against: the displayed (localised) name,
+  // plus its English common name and scientific name — so a Norwegian-language
+  // list still finds "Bluethroat" / "Luscinia svecica".
+  function detSearchText(d) {
+    var parts = [d.name || ""], lbl = labelsByKey[d.key];
+    if (lbl) { if (lbl.common) parts.push(lbl.common); if (lbl.sci) parts.push(lbl.sci); }
+    else if (d.key && d.key.indexOf("x:") === 0) parts.push(d.key.slice(2));   // extras: sci name is in the key
+    return parts.join(" ");
   }
   // Open the consolidated detections list. Clicking a plotted dot scopes it to
   // that spot (`near`); the legend's list button opens it for the whole map.
@@ -3702,7 +3712,7 @@
     recolorDetections();   // swatches reflect the latest family colours
     var rows = collectVisibleDetections(detListNear);
     var emptyMsg = rows.length ? t("detlist.noMatch") : t("detlist.empty");
-    if (detListQuery) rows = rows.filter(function (d) { return fuzzyMatch(detListQuery, d.name); });
+    if (detListQuery) rows = rows.filter(function (d) { return detFuzzy(detListQuery, detSearchText(d)); });
     if (!rows.length) { body.innerHTML = '<div class="dl-empty">' + escapeHtml(emptyMsg) + "</div>"; return; }
     var html;
     if (detListSort === "species") {
