@@ -1952,10 +1952,7 @@
     if (!root) return;
 
     root.innerHTML =
-      '<div id="demo-loading">' +
-        '<div class="loading-row"><div class="spinner"></div><span data-i18n="app.loading">Loading\u2026</span></div>' +
-        '<button type="button" id="install-splash" class="demo-btn install-splash" hidden data-i18n="install.app">\u2913 Install app</button>' +
-      '</div>' +
+      '<div id="demo-loading"><div class="spinner"></div><span data-i18n="app.loading">Loading\u2026</span></div>' +
       '<div id="demo-app" style="display:none">' +
         '<div id="demo-controls">' +
           '<div class="ctrl-group" id="mode-wrap">' +
@@ -2338,10 +2335,6 @@
 
     // Restore saved language before building the UI text.
     setLang(window.GeoState.get("lang", defaultLang()), true);
-    // Wire the splash-screen install button and start listening for the install
-    // prompt now — it can fire while the model is still loading, when the splash
-    // is the only thing on screen.
-    initSplashInstall();
 
     try {
       await Promise.all([initWorker(), loadLabels(), loadTaxonomy()]);
@@ -2376,7 +2369,6 @@
       showLastChange();
       showPerfModal();
       initOfflineIndicator();
-      initInstallPrompt();
       var hasHere = false; try { hasHere = new URLSearchParams(location.search).has("here"); } catch (e) {}
       if (!hasHere) restoreSession();   // return to the view we left (reload-safe)
       maybeUrlAutoLocate();   // ?here=1 → geolocate + open species list
@@ -2405,58 +2397,6 @@
     window.addEventListener("online", sync);
     window.addEventListener("offline", sync);
     sync();
-  }
-
-  // Offer to install the app as a PWA. On Chrome/Edge/Android the browser fires
-  // `beforeinstallprompt`; we stash it (deferredInstall) and a tap triggers the
-  // native install. iOS Safari has no such event, so the buttons show the manual
-  // "Add to Home Screen" instruction. The offer appears on the splash/loading
-  // screen (wired early — the event can fire mid-load) and as a corner pill
-  // afterwards; both share the one stashed event. Hidden once installed.
-  var deferredInstall = null;
-  var installUI = [];   // elements to reveal when an install becomes possible
-  var installIsIOS = /iphone|ipad|ipod/i.test(navigator.userAgent || "");
-  function installIsStandalone() {
-    try { return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true; } catch (e) { return false; }
-  }
-  function offerInstall() { installUI.forEach(function (el) { if (el) el.hidden = false; }); }
-  function hideInstall() { installUI.forEach(function (el) { if (el) el.hidden = true; }); }
-  function triggerInstall(btn) {
-    if (deferredInstall) {
-      deferredInstall.prompt();
-      deferredInstall.userChoice.then(function () { deferredInstall = null; hideInstall(); });
-    } else if (btn) {
-      // No native prompt available (iOS, or the browser isn't offering one right
-      // now) — show how to install by hand instead of doing nothing.
-      btn.textContent = installIsIOS ? t("install.ios") : t("install.manual");
-    }
-  }
-  // Splash-screen button: wired before the model loads so an install offered
-  // mid-load is reachable while the splash is still the only thing on screen.
-  function initSplashInstall() {
-    if (installIsStandalone()) return;
-    window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); deferredInstall = e; offerInstall(); });
-    window.addEventListener("appinstalled", function () { hideInstall(); deferredInstall = null; });
-    var sb = document.getElementById("install-splash");
-    if (!sb) return;
-    installUI.push(sb);
-    sb.addEventListener("click", function () { triggerInstall(sb); });
-    sb.hidden = false;   // always offer install on the splash when not already installed
-  }
-  // Corner pill: the post-load fallback so the offer stays reachable after the
-  // splash is gone. Shares deferredInstall with the splash button.
-  function initInstallPrompt() {
-    if (installIsStandalone()) return;
-    var pill = document.createElement("div");
-    pill.id = "install-pill"; pill.className = "install-pill"; pill.hidden = true;
-    pill.innerHTML =
-      '<button type="button" id="install-go" class="demo-btn" data-i18n="install.app">⤓ Install app</button>' +
-      '<button type="button" id="install-x" aria-label="Dismiss">×</button>';
-    document.body.appendChild(pill);
-    installUI.push(pill);
-    pill.querySelector("#install-go").addEventListener("click", function () { triggerInstall(pill.querySelector("#install-go")); });
-    pill.querySelector("#install-x").addEventListener("click", function () { pill.hidden = true; });   // dismiss the pill only
-    pill.hidden = false;   // always reachable post-load when not already installed
   }
 
   // ---- Model & labels ------------------------------------------------------
