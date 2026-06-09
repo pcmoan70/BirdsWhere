@@ -1636,6 +1636,13 @@ table.chk-table .chk-text { min-width: 100px; }
   padding-top: 12px;
 }
 
+/* PWA install affordance (in the info screen + Settings; no floating pill).
+   Explicit hide rules because the hidden attribute alone is overridden by the
+   .ctrl-group / .demo-btn display values. */
+#install-info[hidden], #install-wrap[hidden] { display: none !important; }
+.install-row { margin: 4px 0 16px; }
+.install-steps { margin-top: 8px; font-size: 0.78rem; line-height: 1.45; color: var(--ink-muted); }
+.install-steps[hidden] { display: none; }
 
 /* "Last change" line in the footer */
 #last-change { font-size: 0.72rem; opacity: 0.6; }

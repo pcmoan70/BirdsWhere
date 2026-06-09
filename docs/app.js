@@ -2113,6 +2113,11 @@
                 '<label data-i18n="offline.maps">Offline maps</label>' +
                 '<button type="button" id="offline-open" class="demo-btn" data-i18n="offline.manage">⬇ Manage offline maps…</button>' +
               '</div>' +
+              '<div class="ctrl-group" id="install-wrap" hidden>' +
+                '<label data-i18n="install.label">Install app</label>' +
+                '<button type="button" id="install-settings" class="demo-btn" data-i18n="install.app">⤓ Install app</button>' +
+                '<div class="install-steps cu-hint" hidden></div>' +
+              '</div>' +
               '<button type="button" id="about-open" class="settings-about" data-i18n="ctrl.about">About &amp; how it works</button>' +
             '</div>' +
           '</div>' +
@@ -2282,6 +2287,7 @@
           '<p data-i18n="popup.perf"></p>' +
           '<p class="perf-feedback"><span data-i18n="popup.feedback"></span> <button type="button" class="feedback-open" data-i18n="feedback.send">✉ Send feedback</button></p>' +
           '<p class="perf-attrib" data-i18n="footer.attrib"></p>' +
+          '<div class="install-row"><button type="button" id="install-info" class="demo-btn demo-btn-light" hidden data-i18n="install.app">⤓ Install app</button><div class="install-steps cu-hint" hidden></div></div>' +
           '<button id="perf-modal-ok" class="demo-btn" data-i18n="popup.ok">OK</button>' +
         '</div></div>' +
         '<div id="feedback-modal" style="display:none"><div id="feedback-box">' +
@@ -2377,6 +2383,7 @@
       showLastChange();
       showPerfModal();
       initOfflineIndicator();
+      initInstall();
       var hasHere = false; try { hasHere = new URLSearchParams(location.search).has("here"); } catch (e) {}
       if (!hasHere) restoreSession();   // return to the view we left (reload-safe)
       maybeUrlAutoLocate();   // ?here=1 → geolocate + open species list
@@ -4256,6 +4263,47 @@
     if (m) m.style.display = "none";
   }
 
+  // ---- PWA install (exposed only from the info screen + Settings) -----------
+  // No floating pill or splash button (those proved flaky). We silently stash
+  // the browser's install prompt; a tap on either button runs it, or shows
+  // platform-specific manual steps when there's no prompt API (iOS, Firefox …).
+  var deferredInstall = null;
+  function installIsStandalone() {
+    try { return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true; } catch (e) { return false; }
+  }
+  function installIsIOS() {
+    var ua = navigator.userAgent || "";
+    return /iphone|ipad|ipod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  }
+  function installIsIOSSafari() {
+    return installIsIOS() && /safari/i.test(navigator.userAgent || "") && !/crios|fxios|edgios/i.test(navigator.userAgent || "");
+  }
+  // Show/hide the two install buttons by install state (hidden once installed).
+  function refreshInstallUI() {
+    var installed = installIsStandalone();
+    var info = document.getElementById("install-info");
+    if (info) info.hidden = installed;
+    var wrap = document.getElementById("install-wrap");
+    if (wrap) wrap.hidden = installed;
+  }
+  function initInstall() {
+    window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); deferredInstall = e; refreshInstallUI(); });
+    window.addEventListener("appinstalled", function () { deferredInstall = null; refreshInstallUI(); });
+    refreshInstallUI();
+  }
+  // Tapped an install button: native prompt if the browser offered one, else
+  // the right manual steps for this platform, shown in the adjacent hint line.
+  function doInstall(btn) {
+    var steps = btn && btn.parentNode && btn.parentNode.querySelector(".install-steps");
+    if (deferredInstall) {
+      deferredInstall.prompt();
+      deferredInstall.userChoice.then(function () { deferredInstall = null; refreshInstallUI(); });
+      return;
+    }
+    var msg = installIsIOS() ? (installIsIOSSafari() ? t("install.ios") : t("install.iosOther")) : t("install.manual");
+    if (steps) { steps.textContent = msg; steps.hidden = false; }
+  }
+
   // ---- Feedback (EmailJS) ---------------------------------------------------
   // The feedback form sends a message to the project address via EmailJS, so the
   // address is never exposed in the app. The recipient is set in the EmailJS
@@ -4521,6 +4569,11 @@
     document.getElementById("perf-modal").addEventListener("click", function (e) {
       if (e.target === this) hidePerfModal();   // click outside the box
     });
+    // Install buttons (info screen + Settings) → native prompt or manual steps.
+    var installInfoBtn = document.getElementById("install-info");
+    if (installInfoBtn) installInfoBtn.addEventListener("click", function () { doInstall(this); });
+    var installSettingsBtn = document.getElementById("install-settings");
+    if (installSettingsBtn) installSettingsBtn.addEventListener("click", function () { doInstall(this); });
     document.getElementById("distmap-close").addEventListener("click", function () { navClose("distmap"); });
     document.getElementById("distmap-modal").addEventListener("click", function (e) {
       if (e.target === this) navClose("distmap");
