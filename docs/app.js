@@ -1372,24 +1372,47 @@
     var R = 20037508.34;
     return [lon * R / 180, Math.log(Math.tan((90 + lat) * Math.PI / 360)) / (Math.PI / 180) * R / 180];
   }
+  // "YYYY-MM-DD" date arithmetic (UTC) for slicing the Artskart query window.
+  function dAdd(s, n) { return new Date(Date.parse(s + "T00:00:00Z") + n * 86400000).toISOString().slice(0, 10); }
+  function dDiff(a, b) { return Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / 86400000); }
   // Norway — Artskart public API (no key; aggregates Artsobservasjoner + others).
   // Geo filter is a WKT polygon in web-mercator metres around the point.
+  // The API ignores MaxFeatures (20/page default), Offset doesn't page, and it
+  // returns records OLDEST-FIRST with no sort option — so a single PageSize query
+  // over a dense/wide area returns only the oldest rows and misses everything
+  // recent near the centre. So: probe once for the total, and if it's truncated,
+  // re-fetch the MOST RECENT records in date slices sized to fit under the cap.
   async function fetchArtsobsAll(lat, lon, d1, d2, rkm, ep) {
     var dLat = rkm / 111, dLon = rkm / ((111 * Math.cos(lat * Math.PI / 180)) || 1);
     var pts = [toMercator(lat - dLat, lon - dLon), toMercator(lat - dLat, lon + dLon), toMercator(lat + dLat, lon + dLon), toMercator(lat + dLat, lon - dLon)];
     pts.push(pts[0]);
     var wkt = "POLYGON((" + pts.map(function (p) { return p[0].toFixed(1) + " " + p[1].toFixed(1); }).join(",") + "))";
-    // The API ignores MaxFeatures (defaults to 20/page) and its Offset doesn't
-    // page (Offset=N returns the same first rows), so we ask for one large page
-    // via PageSize instead — otherwise a wide-radius query returns only ~20
-    // scattered records and misses everything near the centre.
-    var url = joinUrl(ep || "https://artskart.artsdatabanken.no/publicapi/api/observations/list",
-      "PageSize=8000&FromDate=" + d1 + "&ToDate=" + d2 + "&gmWktPolygon=" + encodeURIComponent(wkt));
-    try {
-      var resp = await fetch(url);
-      if (!resp.ok) return { Observations: [] };
-      return { Observations: ((await resp.json()) || {}).Observations || [] };
-    } catch (e) { return { Observations: [] }; }
+    var endpoint = ep || "https://artskart.artsdatabanken.no/publicapi/api/observations/list";
+    var PAGE = 8000, BUDGET = 3;   // BUDGET recent slices ≈ the most recent (BUDGET × sliceDays) days
+    function q(from, to, ps) {
+      var url = joinUrl(endpoint, "PageSize=" + ps + "&FromDate=" + from + "&ToDate=" + to + "&gmWktPolygon=" + encodeURIComponent(wkt));
+      return fetch(url).then(function (r) { return r.ok ? r.json() : {}; }, function () { return {}; }).then(function (j) { return j || {}; });
+    }
+    // Cheap probe (just the count) → how dense is this window?
+    var total = +(await q(d1, d2, 50)).TotalCount || 0;
+    if (total <= PAGE) return { Observations: (await q(d1, d2, PAGE)).Observations || [] };   // small enough — one page has it all
+    // Truncated → fetch the MOST RECENT records as date slices sized to fit under
+    // the cap, queried in parallel (newest first). At a wide/dense radius this
+    // covers fewer days but gives the recent observations near the centre that an
+    // oldest-first single page would drop.
+    var sliceDays = Math.max(1, Math.floor(PAGE / (total / Math.max(1, dDiff(d1, d2))) * 0.8));
+    var ranges = [], to = d2;
+    for (var i = 0; i < BUDGET; i++) {
+      var from = dAdd(to, -(sliceDays - 1));
+      if (dDiff(d1, from) < 0) from = d1;
+      ranges.push([from, to]);
+      if (dDiff(d1, from) <= 0) break;
+      to = dAdd(from, -1);
+    }
+    var parts = await Promise.all(ranges.map(function (r) { return q(r[0], r[1], PAGE); }));
+    var seen = Object.create(null), all = [];
+    parts.forEach(function (j) { (j.Observations || []).forEach(function (o) { var id = o.Id; if (id) { if (seen[id]) return; seen[id] = 1; } all.push(o); }); });
+    return { Observations: all };
   }
   // Sweden — SLU Artdatabanken SOS API (free subscription key; Artportalen + more).
   async function fetchArtportalenAll(lat, lon, d1, d2, rkm, key, ep) {
