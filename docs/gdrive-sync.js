@@ -98,21 +98,20 @@ window.GDriveSync = (function () {
     });
   }
 
-  // Resolve with a usable access token.
-  // The GIS token client pops a Google window on EVERY requestAccessToken — even
-  // a "silent" prompt:'none' refresh flashes one. So we never request a token in
-  // the background: a cached (persisted, ~1 h) token is reused silently, and if
-  // it's gone the background sync just fails quietly (status → "reconnect").
-  // Only a user gesture (Connect / Sync now, interactive) actually fetches a new
-  // token — single-flighted so it can't open two windows at once.
+  // Resolve with a usable access token. A still-valid cached token (persisted
+  // ~1 h, so most page loads / pushes need no request at all) is reused silently.
+  // Otherwise we request one — background uses prompt:'none' (a hidden iframe that
+  // refreshes silently when the Google session is still valid, or fails without
+  // UI), so automatic cross-device sync keeps working; interactive (Connect /
+  // Sync now) uses '' for the chooser/consent. Single-flighted so a burst of sync
+  // triggers can never open more than one request at a time.
   function ensureToken(interactive) {
     if (accessToken && Date.now() < tokenExpiry) return Promise.resolve(accessToken);
-    if (!interactive) return Promise.reject(new Error("no token (user gesture required)"));
     if (tokenPromise) return tokenPromise;
     if (!tokenClient) return Promise.reject(new Error("not initialized"));
     tokenPromise = new Promise(function (resolve, reject) {
       tokenResolve = resolve; tokenReject = reject;
-      try { tokenClient.requestAccessToken({ prompt: "" }); }
+      try { tokenClient.requestAccessToken({ prompt: interactive ? "" : "none" }); }
       catch (e) { tokenResolve = tokenReject = null; reject(e); }
     });
     var clear = function () { tokenPromise = null; };
