@@ -559,6 +559,8 @@
     persistInteresting();
     keepListScroll = true;   // re-render in place — don't jump the list back to the top
     refreshCurrentView();
+    // If this species is plotted, flip its dots ↔ ★ on the map + legend now.
+    if (detPlot[key]) { rebuildDetLayers(); updateDetLegend(); }
   }
 
   // "★ " prefix for species the user has tagged as interesting (lists/cards).
@@ -3570,6 +3572,12 @@
   // Localized display name for a plotted species (re-derived from the key so it
   // follows the UI language); falls back to the name stored at plot time.
   function detName(e) { var lbl = labelsByKey[e.key]; return (lbl && speciesName(lbl)) || e.name || e.key; }
+  // Legend / list swatch: a coloured ★ for starred species, else a coloured dot.
+  function detSwatch(color, starred) {
+    return starred
+      ? '<span class="det-sw det-sw-star" style="color:' + color + '">★</span>'
+      : '<span class="det-sw" style="background:' + color + '"></span>';
+  }
   // Recency filter (days) for plotted detections. 0 = no filter.
   function detRecencyDays() { return +window.GeoState.get("detRecencyDays", 30); }
   function recentEnough(dateStr, maxDays) {
@@ -3630,7 +3638,7 @@
   // and a ↗ affordance when the record links out.
   function detRowHtml(d, showDate) {
     var meta = [showDate ? d.date : "", srcLabel(d)].filter(Boolean).join(" · ");
-    var inner = '<span class="det-sw" style="background:' + (d.color || "#888") + '"></span>' +
+    var inner = detSwatch(d.color || "#888", isInteresting(d.key)) +
       '<span class="dl-sp">' + escapeHtml(d.name) + "</span>" +
       '<span class="dl-meta">' + escapeHtml(meta) + "</span>";
     return d.url
@@ -3659,7 +3667,7 @@
         var last = g.items.reduce(function (acc, d) { return d.date > acc ? d.date : acc; }, "");
         var open = !!detListOpenSp[k];
         var head = '<button type="button" class="dl-sp-head' + (open ? " open" : "") + '" data-key="' + escapeHtml(k) + '">' +
-          '<span class="det-sw" style="background:' + (g.color || "#888") + '"></span>' +
+          detSwatch(g.color || "#888", isInteresting(k)) +
           '<span class="dl-sp">' + escapeHtml(g.name) + "</span>" +
           '<span class="dl-meta">' + escapeHtml(last) + "</span>" +
           '<span class="dl-ct">' + g.items.length + "</span>" +
@@ -3689,14 +3697,17 @@
     var ll = marker.getLatLng();
     openDetListModal({ lat: ll.lat, lon: ll.lng, meters: 50 });
   }
-  function renderDetGroup(name, rows, color, muted) {
+  function renderDetGroup(name, rows, color, muted, starred) {
     var g = L.layerGroup(), maxDays = detRecencyDays(), visible = 0;
     var fill = muted ? DET_MUTE_COLOR : color;
     var fillOp = muted ? 0.35 : 0.9, strokeOp = muted ? 0.4 : 0.9;
     rows.forEach(function (r) {
       if (!recentEnough(r.date, maxDays)) return;
       visible++;
-      var m = L.circleMarker([r.lat, r.lon], { radius: 5, color: "#1a1a1a", weight: 1, opacity: strokeOp, fillColor: fill, fillOpacity: fillOp, bubblingMouseEvents: false });
+      // Starred species draw as a coloured ★ glyph (divIcon) instead of a dot.
+      var m = starred
+        ? L.marker([r.lat, r.lon], { keyboard: false, bubblingMouseEvents: false, icon: L.divIcon({ className: "det-star-icon", iconSize: [18, 18], iconAnchor: [9, 9], html: '<span style="color:' + fill + ';opacity:' + fillOp + '">★</span>' }) })
+        : L.circleMarker([r.lat, r.lon], { radius: 5, color: "#1a1a1a", weight: 1, opacity: strokeOp, fillColor: fill, fillOpacity: fillOp, bubblingMouseEvents: false });
       // Metadata for the fan-out so it can reconstruct clones in place. Keep
       // the true species colour too, so fanned clones are distinguishable even
       // when the map is in the muted/grey (no-selection) state.
@@ -3738,7 +3749,7 @@
     var e = { key: key, name: (name || (prev && prev.name)), color: (prev && prev.color) || "#888", rows: merged, group: null, cls: eCls };
     detPlot[key] = e;
     recolorDetections();   // assign family-based colours now that this species is in the set
-    if (detIsVisible(key)) { e.group = renderDetGroup(detName(e), merged, e.color, detIsMuted(key)); e.group.addTo(map); }
+    if (detIsVisible(key)) { e.group = renderDetGroup(detName(e), merged, e.color, detIsMuted(key), isInteresting(e.key)); e.group.addTo(map); }
     if (!defer) { updateDetLegend(); saveDetections(); }   // batch when plotting many at once
     if (fit && e.group) { try { map.fitBounds(e.group.getBounds().pad(0.25)); } catch (err) { /* single point / bad bounds */ } }
   }
@@ -3752,7 +3763,7 @@
       var e = detPlot[k];
       if (e.group) { map.removeLayer(e.group); e.group = null; }
       if (!detIsVisible(k)) return;
-      e.group = renderDetGroup(detName(e), e.rows, e.color, detIsMuted(k));
+      e.group = renderDetGroup(detName(e), e.rows, e.color, detIsMuted(k), isInteresting(e.key));
       e.group.addTo(map);
     });
   }
@@ -3928,7 +3939,7 @@
         var selActive = detSelectionActive(), sel = !!detSelected[k];
         var rowCls = "det-row det-row-click" + (selActive && !sel ? " det-row-off" : "") + (sel ? " det-row-on" : "");
         var sw = (selActive && !sel) ? DET_MUTE_COLOR : e.color;
-        return '<div class="' + rowCls + '" data-key="' + escapeHtml(k) + '"><span class="det-sw" style="background:' + sw + '"></span><span class="det-nm" title="' + nm + '">' + interestingStar(e.key) + nm + '</span><span class="det-ct">' + ct + '</span><button type="button" class="det-del" data-key="' + escapeHtml(k) + '" aria-label="remove">×</button></div>';
+        return '<div class="' + rowCls + '" data-key="' + escapeHtml(k) + '">' + detSwatch(sw, isInteresting(e.key)) + '<span class="det-nm" title="' + nm + '">' + nm + '</span><span class="det-ct">' + ct + '</span><button type="button" class="det-del" data-key="' + escapeHtml(k) + '" aria-label="remove">×</button></div>';
       }).join("");
     el.querySelector(".det-clear").addEventListener("click", clearDetections);
     el.querySelector(".det-list-btn").addEventListener("click", function (e) { e.stopPropagation(); mapClickGuardUntil = Date.now() + 250; openDetListModal(); });
