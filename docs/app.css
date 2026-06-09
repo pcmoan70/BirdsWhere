@@ -1763,6 +1763,9 @@ th.clickable-head:hover { text-decoration: underline; }
    give the Drive status/hint lines room so they don't crowd the buttons. */
 .sync-row + .sync-row { margin-top: 8px; }
 #gd-status:empty { display: none; }
+#gd-status { font-size: 0.8rem; margin-top: 6px; }
+#gd-status.gd-syncing { color: var(--brand); animation: gd-pulse 1s ease-in-out infinite; }
+@keyframes gd-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 #sync-wrap .cu-hint { font-size: 0.72rem; color: var(--ink-muted); margin: 8px 0 0; }
 
 /* Species observed at the point that the prediction model doesn't cover —

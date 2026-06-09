@@ -53,6 +53,7 @@ window.GDriveSync = (function () {
   var localDirty = false;            // a real user change happened this session → local scalars win
   var pushTimer = null;
   var lastStatus = "idle";           // idle | syncing | error | reconnect
+  var lastSyncAt = 0;                // ms epoch of the last successful sync
   var statusListeners = [];
 
   // ---- small helpers --------------------------------------------------------
@@ -61,7 +62,7 @@ window.GDriveSync = (function () {
     try { return localStorage.getItem(LS_CLIENT_ID) || ""; } catch (e) { return ""; }
   }
   function localStateStr() { try { return localStorage.getItem("geomodel-explorer-v1") || "{}"; } catch (e) { return "{}"; } }
-  function snapshot() { return { connected: connected, hasClientId: !!clientId(), status: lastStatus, busy: syncing }; }
+  function snapshot() { return { connected: connected, hasClientId: !!clientId(), status: lastStatus, busy: syncing, lastSyncAt: lastSyncAt }; }
   function emit(s) { lastStatus = s; for (var i = 0; i < statusListeners.length; i++) { try { statusListeners[i](snapshot()); } catch (e) {} } }
 
   // ---- Google Identity Services / token -------------------------------------
@@ -208,6 +209,7 @@ window.GDriveSync = (function () {
       }
 
       localDirty = false;
+      lastSyncAt = Date.now();
       emit("idle");
 
       // A pull that overwrote scalar settings the UI already rendered needs a

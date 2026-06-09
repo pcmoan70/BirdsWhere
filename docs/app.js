@@ -1844,6 +1844,18 @@
   // where the local copy is newer). `opts.interactive` gates the same-named
   // list merge/replace prompt (off for background sync). Writes straight to
   // localStorage (bypassing GeoState) so it does not re-trigger a sync push.
+  // Merge two saved mapDetections objects (the plotted dots/stars): union each
+  // species' observation rows (deduped) so a sync combines both devices' pins.
+  function mergeDetections(a, b) {
+    a = a || {}; b = b || {}; var out = {};
+    Object.keys(a).forEach(function (k) { var e = a[k] || {}; out[k] = { key: e.key || k, name: e.name || "", color: e.color, cls: e.cls || "", rows: (e.rows || []).slice() }; });
+    Object.keys(b).forEach(function (k) {
+      var e = b[k] || {};
+      if (!out[k]) out[k] = { key: e.key || k, name: e.name || "", color: e.color, cls: e.cls || "", rows: (e.rows || []).slice() };
+      else { out[k].rows = mergeDetRows(out[k].rows, e.rows); if (!out[k].name) out[k].name = e.name; if (!out[k].cls) out[k].cls = e.cls; }
+    });
+    return out;
+  }
   function applyRemote(data, opts) {
     opts = opts || {};
     if (!data || data.app !== "migration_calendar") throw new Error(t("sync.notBackup"));
@@ -1854,6 +1866,10 @@
     // unioned into the working set; named lists are merged/overwritten by name.
     var mergedLoose = mergePins(loosePointsOf(local), loosePointsOf(incoming));
     var mergedSets = mergePointSets(local.mapPointSets, incoming.mapPointSets, opts.interactive);
+    // Plotted detections (dots/stars) and the starred-species list: union both
+    // sides so syncing merges pins instead of one device overwriting the other.
+    var mergedDet = mergeDetections(local.mapDetections, incoming.mapDetections);
+    var interestUnion = {}; (local.interesting || []).concat(incoming.interesting || []).forEach(function (k) { if (k) interestUnion[k] = 1; });
     // Scalar settings: the winning side overrides, the other fills any gaps.
     var primary = opts.incomingWins ? incoming : local;
     var secondary = opts.incomingWins ? local : incoming;
@@ -1863,11 +1879,15 @@
     newState.fieldChecklists = mergedCl;
     newState.mapPoints = mergedLoose;
     newState.mapPointSets = mergedSets;
+    newState.mapDetections = mergedDet;
+    newState.interesting = Object.keys(interestUnion);
     newState.mapPointSetActive = "";   // show the merged unsaved set after import
     try { localStorage.setItem("geomodel-explorer-v1", JSON.stringify(newState)); } catch (e) { throw new Error("storage write failed: " + e.message); }
     // eBird key: adopt incoming only when it should win, or when we have none.
     if (data.ebirdKey && (opts.incomingWins || !ebirdKey())) setEbirdKey(data.ebirdKey);
     if (data.artdbKey && (opts.incomingWins || !artKey())) setArtKey(data.artdbKey);
+    // Reflect the merged pins (dots/stars) on the map + legend immediately.
+    try { reloadPlottedFromStore(); } catch (e) {}
     return {
       checklistsIncoming: Object.keys(incoming.fieldChecklists || {}).length,
       checklistsTotal: Object.keys(mergedCl).length,
@@ -3932,6 +3952,15 @@
     rebuildDetLayers();
     updateDetLegend();
   }
+  // Re-load the plotted detections + starred list from storage (after a sync/
+  // import merged them) and re-render the map + legend in place.
+  function reloadPlottedFromStore() {
+    if (typeof map === "undefined" || !map) return;
+    Object.keys(detPlot).forEach(function (k) { if (detPlot[k].group) map.removeLayer(detPlot[k].group); });
+    detPlot = {};
+    if (typeof loadInteresting === "function") loadInteresting();
+    loadDetections();
+  }
   // Collapsed/expanded state for the detection legend (persisted in mapLegend).
   var detLegendMini = false;
   function updateDetLegend() {
@@ -4862,16 +4891,17 @@
         gdDisconnect.style.display = st.connected ? "" : "none";
         gdSync.disabled = !!st.busy;
         var msg = "";
-        if (st.status === "syncing") msg = t("gdrive.syncing");
+        if (st.status === "syncing") msg = "⟳ " + t("gdrive.syncing");
         else if (st.status === "reconnect") msg = t("gdrive.reconnect");
         else if (st.status === "error") msg = t("gdrive.error");
-        else if (st.connected) msg = t("gdrive.synced");
+        else if (st.connected) msg = "✓ " + t("gdrive.synced") + (st.lastSyncAt ? " · " + fmtClock(st.lastSyncAt) : "");
         gdStatus.textContent = msg;
+        gdStatus.classList.toggle("gd-syncing", st.status === "syncing");
       };
       window.GDriveSync.onStatus(renderGd);
 
       gdConnect.addEventListener("click", function () { window.GDriveSync.connect().catch(function () {}); });
-      gdSync.addEventListener("click", function () { window.GDriveSync.syncNow(); });
+      gdSync.addEventListener("click", function () { gdStatus.textContent = "⟳ " + t("gdrive.syncing"); gdStatus.classList.add("gd-syncing"); window.GDriveSync.syncNow(); });
       gdDisconnect.addEventListener("click", function () { window.GDriveSync.disconnect(); });
       var saveClientId = function () { window.GDriveSync.setClientId(gdClientId.value); };
       gdClientId.addEventListener("change", saveClientId);
