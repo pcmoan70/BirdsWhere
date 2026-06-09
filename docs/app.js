@@ -1383,7 +1383,13 @@
     });
     (ebird || []).forEach(function (o) {
       var row = { lat: o.lat != null ? +o.lat : null, lon: o.lng != null ? +o.lng : null, date: (o.obsDt || "").slice(0, 10), src: "eBird", url: o.subId ? "https://ebird.org/checklist/" + o.subId : "" };
-      if (labelsByKey[o.speciesCode]) bump(o.speciesCode, o.obsDt, row);
+      // Map to a model species by eBird code OR scientific name. The model's keys
+      // (e.g. "y00743") aren't eBird species codes, so without the sci-name
+      // fallback an eBird record would split off as a duplicate "extra" row even
+      // though GBIF/iNaturalist already matched the same species by sci-name.
+      var ek = labelsByKey[o.speciesCode] ? o.speciesCode : null;
+      if (!ek && o.sciName) { var el = sci[o.sciName.toLowerCase()]; if (el) ek = el.key; }
+      if (ek) bump(ek, o.obsDt, row);
       else bumpExtra(o.sciName || "", o.comName || "", o.obsDt, "Aves", row);
     });
     if (famDirty) saveFamIndex();
@@ -3332,9 +3338,17 @@
   // lists (and the map shows) only the species the user has starred.
   var detStarFilter = false;
   function detPassesStar(k) { return !detStarFilter || isInteresting((detPlot[k] && detPlot[k].key) || k); }
+  // Taxonomic class of a plotted species: model species via the taxonomy table,
+  // "extra" species (x:…) carry their own class on the detPlot entry (stored at
+  // plot time). Used to honour the Settings "Species group" filter in the legend.
+  function detClassOf(k) {
+    if (k && k.indexOf("x:") === 0) { var e = detPlot[k]; return (e && e.cls) || ""; }
+    return (taxByCode[k] && taxByCode[k].class_name) || "";
+  }
+  function detPassesGroup(k) { return speciesGroup === "all" || String(detClassOf(k)).toLowerCase() === String(speciesGroup).toLowerCase(); }
   var mapClickGuardUntil = 0;   // onMapClick ignores clicks before this time; each accepted click re-arms it (200 ms debounce), legend re-renders set a longer window
-  function detSelectionActive() { return Object.keys(detSelected).some(function (k) { return detPlot[k] && detPassesStar(k); }); }
-  function detIsVisible(key) { return detPassesStar(key) && (!detSelectionActive() || !!detSelected[key]); }
+  function detSelectionActive() { return Object.keys(detSelected).some(function (k) { return detPlot[k] && detPassesStar(k) && detPassesGroup(k); }); }
+  function detIsVisible(key) { return detPassesStar(key) && detPassesGroup(key) && (!detSelectionActive() || !!detSelected[key]); }
   // Dots are always shown in their species colour (no grey overview mode) — so
   // "all"/"1 day"/etc. all render coloured. Visibility (above) does the filtering.
   function detIsMuted(key) { return false; }
@@ -3485,7 +3499,7 @@
     });
     return out;
   }
-  function plotDetections(key, name, rows, fit, defer) {
+  function plotDetections(key, name, rows, fit, defer, cls) {
     var slim = detSlim(rows);
     if (!slim.length) { if (!defer) setStatus(t("det.none")); return; }
     var prev = detPlot[key];
@@ -3494,7 +3508,10 @@
     // several places/searches builds up the full set of dots. No cap.
     var merged = prev ? mergeDetRows(prev.rows, slim) : slim;
     if (prev && prev.group) map.removeLayer(prev.group);
-    var e = { key: key, name: (name || (prev && prev.name)), color: (prev && prev.color) || "#888", rows: merged, group: null };
+    // Taxonomic class for the Species-group legend filter: use the supplied one,
+    // else keep the previous, else derive it for model species from taxonomy.
+    var eCls = (cls != null && cls !== "") ? cls : ((prev && prev.cls) || (taxByCode[key] && taxByCode[key].class_name) || "");
+    var e = { key: key, name: (name || (prev && prev.name)), color: (prev && prev.color) || "#888", rows: merged, group: null, cls: eCls };
     detPlot[key] = e;
     recolorDetections();   // assign family-based colours now that this species is in the set
     if (detIsVisible(key)) { e.group = renderDetGroup(detName(e), merged, e.color, detIsMuted(key)); e.group.addTo(map); }
@@ -3532,11 +3549,11 @@
       var entries = [];
       Object.keys(result.agg).forEach(function (key) {
         var a = result.agg[key];
-        if (a.rows && a.rows.length && modelKeyInGroup(key)) entries.push({ key: key, name: (labelsByKey[key] && speciesName(labelsByKey[key])) || key, rows: a.rows, count: a.count });
+        if (a.rows && a.rows.length && modelKeyInGroup(key)) entries.push({ key: key, name: (labelsByKey[key] && speciesName(labelsByKey[key])) || key, rows: a.rows, count: a.count, cls: (taxByCode[key] || {}).class_name || "" });
       });
       Object.keys(result.extras).forEach(function (k) {
         var ex = result.extras[k];
-        if (ex.rows && ex.rows.length && extraInGroup(ex.cls)) entries.push({ key: "x:" + k, name: ex.name || ex.sci, rows: ex.rows, count: ex.count });
+        if (ex.rows && ex.rows.length && extraInGroup(ex.cls)) entries.push({ key: "x:" + k, name: ex.name || ex.sci, rows: ex.rows, count: ex.count, cls: ex.cls || "" });
       });
       var failNote = (result.failed && result.failed.length) ? " · " + t("fetch.failed", { sources: result.failed.join(", ") }) : "";
       if (!entries.length) { setStatus(failNote ? failNote.replace(/^ · /, "") : t("det.none")); return; }
@@ -3544,7 +3561,7 @@
       // Accumulate: plotDetections merges (deduped) into whatever is already on
       // the map, so plotting at several locations builds up the full picture.
       // Use the legend's "Clear" to start over. No species cap — plot them all.
-      entries.forEach(function (e) { plotDetections(e.key, e.name, e.rows, false, true); });
+      entries.forEach(function (e) { plotDetections(e.key, e.name, e.rows, false, true, e.cls); });
       rebuildDetLayers();                      // recolour existing dots if families were just learned
       updateDetLegend(); saveDetections();     // one batch update after the loop
       // Fit to the points just added (this location), not the whole accumulated set.
@@ -3608,7 +3625,7 @@
     updateDetLegend();
   }
   function saveDetections() {
-    var out = {}; Object.keys(detPlot).forEach(function (k) { var e = detPlot[k]; out[k] = { key: e.key, name: e.name, color: e.color, rows: e.rows }; });
+    var out = {}; Object.keys(detPlot).forEach(function (k) { var e = detPlot[k]; out[k] = { key: e.key, name: e.name, color: e.color, rows: e.rows, cls: e.cls || "" }; });
     window.GeoState.save({ mapDetections: out });
   }
   // Persist the legend's UI state — collapsed, the starred-only filter, and the
@@ -3621,7 +3638,10 @@
     Object.keys(saved).forEach(function (sk) {
       var d = saved[sk]; if (!d || !d.rows || !d.rows.length) return;
       var key = d.key || sk;   // older builds keyed by display name and had no .key
-      detPlot[key] = { key: key, name: d.name || sk, color: d.color, rows: d.rows, group: null };
+      // Class for the Species-group filter: stored for extras; model species
+      // derive it from the taxonomy so older saves still filter correctly.
+      var cls = d.cls || (taxByCode[key] && taxByCode[key].class_name) || "";
+      detPlot[key] = { key: key, name: d.name || sk, color: d.color, rows: d.rows, group: null, cls: cls };
     });
     // Restore the saved legend state, then render the layers honouring it.
     var ls = window.GeoState.get("mapLegend", {}) || {};
@@ -3640,7 +3660,7 @@
     // The dropdown's "Starred only" narrows which species the legend lists (and
     // the map shows). The legend itself stays up so the filter can be toggled.
     // Always list the species alphabetically by their (localised) display name.
-    var keys = allKeys.filter(detPassesStar).sort(function (a, b) {
+    var keys = allKeys.filter(function (k) { return detPassesStar(k) && detPassesGroup(k); }).sort(function (a, b) {
       return detName(detPlot[a]).localeCompare(detName(detPlot[b]));
     });
     recolorDetections();   // keep swatches current with learned families / plotted set
@@ -4615,6 +4635,9 @@
       if (currentMode === "richness") triggerRender();
       else if (currentMode === "barchart" && analysisData) renderActiveTab();
       else rerenderPointList();   // list or range (per-point list)
+      // Re-filter the plotted detections (legend + map dots) to the new group.
+      rebuildDetLayers();
+      updateDetLegend();
       // Refresh an open species-search dropdown.
       var resEl = document.getElementById("species-results");
       if (resEl && resEl.style.display === "block") showSearch(document.getElementById("species-search"), resEl);
