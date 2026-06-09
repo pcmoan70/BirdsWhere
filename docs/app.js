@@ -3699,6 +3699,19 @@
     var ll = marker.getLatLng();
     openDetListModal({ lat: ll.lat, lon: ll.lng, meters: 50 });
   }
+  // Hover tooltip: the distinct species names plotted within ~50 m of the point.
+  var detHoverTip = null;
+  function showDetHover(latlng) {
+    var near = collectVisibleDetections({ lat: latlng.lat, lon: latlng.lng, meters: 50 });
+    if (!near.length) return;
+    var seen = Object.create(null), names = [];
+    near.forEach(function (d) { if (!seen[d.key]) { seen[d.key] = 1; names.push(d.name); } });
+    names.sort(function (a, b) { return a.localeCompare(b); });
+    if (!detHoverTip) detHoverTip = L.tooltip({ direction: "top", offset: [0, -5], opacity: 0.97, className: "det-hover-tip" });
+    detHoverTip.setLatLng(latlng).setContent(names.map(function (n) { return escapeHtml(n); }).join("<br>"));
+    map.openTooltip(detHoverTip);
+  }
+  function hideDetHover() { if (detHoverTip) map.closeTooltip(detHoverTip); }
   function renderDetGroup(name, rows, color, muted, starred) {
     var g = L.layerGroup(), maxDays = detRecencyDays(), visible = 0;
     var fill = muted ? DET_MUTE_COLOR : color;
@@ -3720,6 +3733,9 @@
         if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent);
         onDetMarkerClick(m, name, r);
       });
+      // Hover (desktop) → a small tooltip listing the co-located species names.
+      m.on("mouseover", function () { showDetHover(m.getLatLng()); });
+      m.on("mouseout", hideDetHover);
       g.addLayer(m);
     });
     g._visibleCount = visible;

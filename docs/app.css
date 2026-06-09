@@ -1869,6 +1869,9 @@ a.dl-row:hover { background: var(--surface-2, rgba(0,0,0,.05)); }
 .det-star-icon { background: none; border: 0; }
 .det-star-icon span { display: block; font-size: 17px; line-height: 18px; text-align: center;
   text-shadow: 0 0 2px #000, 0 0 1px #000; }
+/* Hover tooltip listing co-located species names. */
+.leaflet-tooltip.det-hover-tip { font-size: 0.78rem; line-height: 1.35; font-weight: 600; padding: 4px 9px;
+  color: var(--ink, #222); max-width: 220px; }
 .det-nm { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .det-ct { color: var(--ink-muted, #777); font-variant-numeric: tabular-nums; }
 .det-del { border: none; background: transparent; cursor: pointer; color: var(--ink-muted, #777); font-size: 1rem; line-height: 1; padding: 0 2px; }
