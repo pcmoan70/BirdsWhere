@@ -3874,31 +3874,60 @@
     map.openTooltip(detHoverTip);
   }
   function hideDetHover() { if (detHoverTip) map.closeTooltip(detHoverTip); }
-  // Marker glyph for a plotted detection: a ★ for starred species, a coloured
-  // disc with a black centre dot for locally-rare ones, a ★ with a centre dot
-  // when both — and a plain coloured circle otherwise.
-  function detMarkerIcon(fill, fillOp, starred, rare) {
-    if (starred) return L.divIcon({ className: "det-star-icon", iconSize: [18, 18], iconAnchor: [9, 9], html: '<span style="color:' + fill + ';opacity:' + fillOp + '">★</span>' + (rare ? '<i class="det-ctr-dot"></i>' : "") });
-    if (rare) return L.divIcon({ className: "det-rare-icon", iconSize: [14, 14], iconAnchor: [7, 7], html: '<span style="background:' + fill + ';opacity:' + fillOp + '"><i class="det-ctr-dot"></i></span>' });
-    return null;
+  // SVG path for a 5-point star centred at (cx,cy), outer radius R. Drawn through
+  // Leaflet's SVG renderer (not an HTML divIcon) so a star sits in the SAME
+  // coordinate space as the circleMarker dots — at the map's fractional zoom
+  // levels (zoomSnap = one H3 step) HTML markers drift from SVG vectors by a
+  // position-dependent amount, which made stars visibly slide off their dots.
+  function detStarPathD(cx, cy, R) {
+    var r = R * 0.42, d = "", a = -Math.PI / 2, i, rad, x, y;
+    for (i = 0; i < 10; i++) {
+      rad = (i % 2 === 0) ? R : r;
+      x = cx + rad * Math.cos(a); y = cy + rad * Math.sin(a);
+      d += (i === 0 ? "M" : "L") + (Math.round(x * 10) / 10) + "," + (Math.round(y * 10) / 10);
+      a += Math.PI / 5;
+    }
+    return d + "Z";
   }
+  // A star-shaped vector marker (L.Path subclass), built lazily so Leaflet is
+  // certainly loaded. Same renderer as circleMarker → stays pixel-aligned.
+  var _DetStar = null;
+  function detStarMarker(latlng, options) {
+    if (!_DetStar) {
+      _DetStar = L.Path.extend({
+        options: { fill: true, fillOpacity: 0.9, radius: 9, weight: 1, color: "#1a1a1a" },
+        initialize: function (latlng, options) { L.Util.setOptions(this, options); this._latlng = L.latLng(latlng); },
+        setLatLng: function (ll) { this._latlng = L.latLng(ll); return this.redraw(); },
+        getLatLng: function () { return this._latlng; },
+        _project: function () { this._point = this._map.latLngToLayerPoint(this._latlng); this._updateBounds(); },
+        _updateBounds: function () { var r = this.options.radius + (this.options.weight || 0) / 2; this._pxBounds = new L.Bounds(this._point.subtract([r, r]), this._point.add([r, r])); },
+        _update: function () { if (this._map) this._updatePath(); },
+        _updatePath: function () { this._renderer._setPath(this, detStarPathD(this._point.x, this._point.y, this.options.radius)); },
+        _empty: function () { return this._pxBounds && !this._renderer._bounds.intersects(this._pxBounds); },
+        _containsPoint: function (p) { return this._point && p.distanceTo(this._point) <= this.options.radius + this._clickTolerance(); }
+      });
+    }
+    return new _DetStar(latlng, options);
+  }
+  // A plotted detection draws as: a ★ for starred species, a (larger) coloured
+  // disc for locally-rare ones, a ★ or disc with a black centre dot when both
+  // rare and (starred/rare), else a plain coloured circle — all SVG so they keep
+  // aligned with each other at the map's fractional zoom levels.
   function renderDetGroup(name, rows, color, muted, starred, rare) {
     var g = L.layerGroup(), maxDays = detRecencyDays(), visible = 0;
     var fill = muted ? DET_MUTE_COLOR : color;
     var fillOp = muted ? 0.35 : 0.9, strokeOp = muted ? 0.4 : 0.9;
-    var icon = detMarkerIcon(fill, fillOp, starred, rare);
     rows.forEach(function (r) {
       if (!recentEnough(r.date, maxDays)) return;
       visible++;
-      var m = icon
-        ? L.marker([r.lat, r.lon], { keyboard: false, bubblingMouseEvents: false, icon: icon })
-        : L.circleMarker([r.lat, r.lon], { radius: 5, color: "#1a1a1a", weight: 1, opacity: strokeOp, fillColor: fill, fillOpacity: fillOp, bubblingMouseEvents: false });
-      // Metadata for the fan-out so it can reconstruct clones in place. Keep
-      // the true species colour too, so fanned clones are distinguishable even
-      // when the map is in the muted/grey (no-selection) state.
+      var base = { color: "#1a1a1a", weight: 1, opacity: strokeOp, fillColor: fill, fillOpacity: fillOp, bubblingMouseEvents: false };
+      var m = starred
+        ? detStarMarker([r.lat, r.lon], L.extend({ radius: 9 }, base))
+        : L.circleMarker([r.lat, r.lon], L.extend({ radius: rare ? 6 : 5 }, base));
+      // Metadata kept for hover/identify and any future reconstruction; the true
+      // species colour rides along so it survives the muted (no-selection) state.
       m._detRow = r; m._detName = name; m._detColor = fill; m._detTrueColor = color;
-      // Click → group co-located observations by (species, day): one group shows
-      // a popup/list, several fan out (rose) — see onDetMarkerClick.
+      // Click → the co-located detections list for that spot (onDetMarkerClick).
       m.on("click", function (e) {
         if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent);
         onDetMarkerClick(m, name, r);
@@ -3907,6 +3936,11 @@
       m.on("mouseover", function () { showDetHover(m.getLatLng()); });
       m.on("mouseout", hideDetHover);
       g.addLayer(m);
+      // Locally-rare → a small black centre dot, its own SVG circle so it stays
+      // pixel-aligned with the shape above it at every zoom.
+      if (rare) {
+        g.addLayer(L.circleMarker([r.lat, r.lon], { radius: 1.8, stroke: false, fillColor: "#111", fillOpacity: Math.min(1, fillOp + 0.1), interactive: false, bubblingMouseEvents: false }));
+      }
     });
     g._visibleCount = visible;
     return g;

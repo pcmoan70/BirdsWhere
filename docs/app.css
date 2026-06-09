@@ -1871,19 +1871,13 @@ a.dl-row:hover { background: var(--surface-2, rgba(0,0,0,.05)); }
 .det-row-on .det-nm { font-weight: 700; }
 .det-row-off { opacity: 0.55; }
 .det-sw { position: relative; width: 11px; height: 11px; border-radius: 50%; flex: 0 0 auto; border: 1px solid #1a1a1a; }
-/* Starred species: the swatch is a coloured ★ (legend + Detections list). */
+/* Starred species: the swatch is a coloured ★ (legend + Detections list). The
+   on-map ★ and rare-disc are drawn as SVG vector markers (see detStarMarker /
+   renderDetGroup), not HTML, so this is legend/list styling only. */
 .det-sw-star { width: 14px; height: 14px; border: none; border-radius: 0; line-height: 14px;
   font-size: 14px; text-align: center; text-shadow: 0 0 1px rgba(0,0,0,.55); }
-/* Starred species on the map: a coloured ★ marker (divIcon) instead of a dot. */
-.det-star-icon { position: relative; background: none; border: 0; }
-.det-star-icon span { display: block; font-size: 17px; line-height: 18px; text-align: center;
-  text-shadow: 0 0 2px #000, 0 0 1px #000; }
-/* Locally-rare species: a coloured disc with a black centre dot (map marker),
-   and the matching swatch in the legend / list. A starred-and-rare species is a
-   ★ with the centre dot. */
-.det-rare-icon { background: none; border: 0; }
-.det-rare-icon span { display: block; width: 14px; height: 14px; box-sizing: border-box;
-  border-radius: 50%; border: 1px solid #1a1a1a; position: relative; }
+/* Locally-rare species swatch: a coloured disc with a black centre dot; a
+   starred-and-rare species is a ★ with the centre dot. */
 .det-ctr-dot { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px;
   margin: -2px 0 0 -2px; background: #111; border-radius: 50%; }
 /* Hover tooltip listing co-located species names. */
