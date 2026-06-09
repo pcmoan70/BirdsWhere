@@ -4233,7 +4233,11 @@
     // sum of the per-species counts in the rows below).
     var nDet = 0;
     keys.forEach(function (k) { var e = detPlot[k]; nDet += (e.group && e.group._visibleCount != null) ? e.group._visibleCount : e.rows.length; });
-    var detSummary = keys.length + "(" + nDet + ")";
+    // When the drawn-points cap is hit, the map only shows the newest N — flag the
+    // count in red so it's clear some detections are off the map (still in the list).
+    var capHit = nDet >= detMaxPoints();
+    var nDetHtml = capHit ? '<span class="det-cap" title="' + escapeHtml(t("det.capHit")) + '">' + nDet + "</span>" : String(nDet);
+    var detSummary = keys.length + "(" + nDetHtml + ")";
     if (!detLegend) {
       detLegend = L.control({ position: "bottomleft" });
       detLegend.onAdd = function () { var d = L.DomUtil.create("div", "det-legend"); d.id = "det-legend"; L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d); return d; };
