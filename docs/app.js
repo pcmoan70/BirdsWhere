@@ -687,7 +687,7 @@
   var navSuppress = 0;    // popstate events to ignore (from our own history.back)
   // Pop-up overlays (vs. full-screen pages, which may legitimately stack). By
   // default only one of these shows at a time — opening one closes the others.
-  var MODAL_IDS = { feedback: 1, gbif: 1, natdb: 1, about: 1, recent: 1, distmap: 1, detlist: 1, offline: 1 };
+  var MODAL_IDS = { feedback: 1, gbif: 1, natdb: 1, about: 1, recent: 1, distmap: 1, detlist: 1, offline: 1, sources: 1 };
   // Close the open Leaflet map popups (detection dot, point-options, map-point
   // editor) and the sticky fan-out.
   function closeMapPopups() {
@@ -1197,6 +1197,40 @@
   }
   // Render the dataset list into the popup as a Key | URL table (the URL links
   // to the dataset's GBIF page; its name is the link tooltip). Each row removable.
+  // The "Data sources" popup: one editable row per direct (non-GBIF) source —
+  // Name, Key (for keyed sources) and URL endpoint — with per-row delete.
+  function renderSourcesTable() {
+    var el = document.getElementById("sources-table"); if (!el) return;
+    var rows = directSources().map(function (s) {
+      var keyCell = s.keyed
+        ? '<input type="text" class="src-key" data-id="' + escapeHtml(s.id) + '" value="' + escapeHtml(directKey(s.id)) + '" autocomplete="off" spellcheck="false" placeholder="' + escapeHtml(t("sources.keyPh")) + '" />'
+        : '<span class="src-nokey" title="' + escapeHtml(t("sources.nokey")) + '">—</span>';
+      var flag = s.country ? '<span class="src-cc">' + escapeHtml(s.country) + "</span>" : "";
+      return '<tr>' +
+        '<td><input type="text" class="src-name" data-id="' + escapeHtml(s.id) + '" value="' + escapeHtml(s.name) + '" />' + flag + "</td>" +
+        '<td>' + keyCell + "</td>" +
+        '<td><input type="text" class="src-url" data-id="' + escapeHtml(s.id) + '" value="' + escapeHtml(s.url) + '" autocomplete="off" spellcheck="false" /></td>' +
+        '<td><button type="button" class="src-del" data-id="' + escapeHtml(s.id) + '" aria-label="remove">×</button></td>' +
+      "</tr>";
+    }).join("");
+    el.innerHTML = '<table class="src-tbl"><thead><tr><th>' + escapeHtml(t("sources.colName")) + "</th><th>" + escapeHtml(t("sources.colKey")) +
+      "</th><th>" + escapeHtml(t("sources.colUrl")) + "</th><th></th></tr></thead><tbody>" +
+      (rows || '<tr><td colspan="4" class="cu-hint">' + escapeHtml(t("sources.empty")) + "</td></tr>") + "</tbody></table>";
+    function patch(id, field, value) {
+      saveDirectSources(directSources().map(function (s) { var o = { id: s.id, name: s.name, url: s.url }; if (s.id === id) o[field] = value; return o; }));
+    }
+    el.querySelectorAll(".src-name").forEach(function (inp) { inp.addEventListener("change", function () { patch(this.getAttribute("data-id"), "name", this.value.trim()); }); });
+    el.querySelectorAll(".src-url").forEach(function (inp) { inp.addEventListener("change", function () { patch(this.getAttribute("data-id"), "url", this.value.trim()); }); });
+    el.querySelectorAll(".src-key").forEach(function (inp) { inp.addEventListener("input", function () { setDirectKey(this.getAttribute("data-id"), this.value); allSightingsCache = {}; }); });
+    el.querySelectorAll(".src-del").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var id = this.getAttribute("data-id");
+        saveDirectSources(directSources().filter(function (s) { return s.id !== id; }).map(function (s) { return { id: s.id, name: s.name, url: s.url }; }));
+        renderSourcesTable();
+      });
+    });
+  }
+  function resetSources() { window.GeoState.save({ directSources: null }); allSightingsCache = {}; renderSourcesTable(); }
   function renderGbifTable() {
     var el = document.getElementById("gbif-table"); if (!el) return;
     var body = gbifDatasets().map(function (d) {
@@ -1303,9 +1337,11 @@
       if (changed) window.GeoState.save({ gbifDatasets: out });
     } catch (e) { /* discovery is best-effort */ }
   }
-  async function fetchInatAll(lat, lon, d1, d2, rkm) {
-    var base = "https://api.inaturalist.org/v1/observations?verifiable=true&order_by=observed_on&order=desc&per_page=200&d1=" +
-      d1 + "&d2=" + d2 + "&lat=" + lat.toFixed(4) + "&lng=" + lon.toFixed(4) + "&radius=" + rkm;
+  // Append a query string to a (possibly already-parameterised) endpoint URL.
+  function joinUrl(base, params) { return base + (base.indexOf("?") < 0 ? "?" : "&") + params; }
+  async function fetchInatAll(lat, lon, d1, d2, rkm, ep) {
+    var base = joinUrl(ep || "https://api.inaturalist.org/v1/observations",
+      "verifiable=true&order_by=observed_on&order=desc&per_page=200&d1=" + d1 + "&d2=" + d2 + "&lat=" + lat.toFixed(4) + "&lng=" + lon.toFixed(4) + "&radius=" + rkm);
     var all = [];
     // Page deep enough to cover busy spots over the 3-month window; stops early
     // once a page comes back short (source exhausted). iNat caps total at 10k.
@@ -1318,10 +1354,10 @@
     }
     return all;
   }
-  async function fetchEbirdAll(lat, lon, tok, rkm) {
+  async function fetchEbirdAll(lat, lon, tok, rkm, ep) {
     var dist = Math.max(1, Math.min(50, rkm));
-    var url = "https://api.ebird.org/v2/data/obs/geo/recent?lat=" + lat.toFixed(4) + "&lng=" + lon.toFixed(4) +
-      "&dist=" + dist + "&back=30&maxResults=10000&includeProvisional=true";
+    var url = joinUrl(ep || "https://api.ebird.org/v2/data/obs/geo/recent",
+      "lat=" + lat.toFixed(4) + "&lng=" + lon.toFixed(4) + "&dist=" + dist + "&back=30&maxResults=10000&includeProvisional=true");
     var r = await fetch(url, { headers: { "X-eBirdApiToken": tok } });
     return r.ok ? await r.json() : [];
   }
@@ -1332,12 +1368,13 @@
   }
   // Norway — Artskart public API (no key; aggregates Artsobservasjoner + others).
   // Geo filter is a WKT polygon in web-mercator metres around the point.
-  async function fetchArtsobsAll(lat, lon, d1, d2, rkm) {
+  async function fetchArtsobsAll(lat, lon, d1, d2, rkm, ep) {
     var dLat = rkm / 111, dLon = rkm / ((111 * Math.cos(lat * Math.PI / 180)) || 1);
     var pts = [toMercator(lat - dLat, lon - dLon), toMercator(lat - dLat, lon + dLon), toMercator(lat + dLat, lon + dLon), toMercator(lat + dLat, lon - dLon)];
     pts.push(pts[0]);
     var wkt = "POLYGON((" + pts.map(function (p) { return p[0].toFixed(1) + " " + p[1].toFixed(1); }).join(",") + "))";
-    var base = "https://artskart.artsdatabanken.no/publicapi/api/observations/list?MaxFeatures=300&FromDate=" + d1 + "&ToDate=" + d2 + "&gmWktPolygon=" + encodeURIComponent(wkt);
+    var base = joinUrl(ep || "https://artskart.artsdatabanken.no/publicapi/api/observations/list",
+      "MaxFeatures=300&FromDate=" + d1 + "&ToDate=" + d2 + "&gmWktPolygon=" + encodeURIComponent(wkt));
     var all = [];
     for (var p = 0; p < 6; p++) {
       var obs;
@@ -1349,14 +1386,15 @@
     return { Observations: all };
   }
   // Sweden — SLU Artdatabanken SOS API (free subscription key; Artportalen + more).
-  async function fetchArtportalenAll(lat, lon, d1, d2, rkm, key) {
+  async function fetchArtportalenAll(lat, lon, d1, d2, rkm, key, ep) {
     var body = { geographics: { geometries: [{ type: "point", coordinates: [lon, lat] }], maxDistanceFromPoint: Math.round(rkm * 1000) },
       date: { startDate: d1, endDate: d2, dateFilterType: "OverlappingStartDateAndEndDate" }, output: { fieldSet: "Extended" } };
+    var endpoint = ep || "https://api.artdatabanken.se/species-observation-system/v1/Observations/Search";
     var all = [];
     for (var p = 0; p < 6; p++) {
       var recs;
       try {
-        var resp = await fetch("https://api.artdatabanken.se/species-observation-system/v1/Observations/Search?skip=" + (p * 300) + "&take=300",
+        var resp = await fetch(joinUrl(endpoint, "skip=" + (p * 300) + "&take=300"),
           { method: "POST", headers: { "Content-Type": "application/json", "Ocp-Apim-Subscription-Key": key }, body: JSON.stringify(body) });
         if (!resp.ok) break; recs = ((await resp.json()) || {}).records || [];
       } catch (e) { break; }
@@ -1476,14 +1514,46 @@
   // The observation sources, behind one interface. `country` (ISO-2) gates a
   // source to its own country — the national databases are only queried when the
   // point is inside that country; the global sources always run (if enabled).
+  // The non-GBIF "direct" sources are user-manageable (Settings → Data sources):
+  // Name / key / endpoint, editable and deletable. GBIF is excluded (it has its
+  // own datasets manager). `country` gates national databases to their own
+  // country; `keyed` says which need an API key (stored in their own slot).
+  var DEFAULT_DIRECT_SOURCES = [
+    { id: "ebird",       name: "eBird",             url: "https://api.ebird.org/v2/data/obs/geo/recent",                                   country: null, keyed: true },
+    { id: "inat",        name: "iNaturalist",       url: "https://api.inaturalist.org/v1/observations",                                    country: null, keyed: false },
+    { id: "artsobs",     name: "Artsobservasjoner", url: "https://artskart.artsdatabanken.no/publicapi/api/observations/list",             country: "NO", keyed: false },
+    { id: "artportalen", name: "Artportalen",       url: "https://api.artdatabanken.se/species-observation-system/v1/Observations/Search", country: "SE", keyed: true }
+  ];
+  var DIRECT_BY_ID = {}; DEFAULT_DIRECT_SOURCES.forEach(function (d) { DIRECT_BY_ID[d.id] = d; });
+  function directSources() {
+    var stored = window.GeoState.get("directSources", null);
+    // An explicit (even empty) array is the user's list; only an unset value
+    // (null) falls back to the built-in defaults — so "delete all" stays empty.
+    var list = Array.isArray(stored) ? stored : DEFAULT_DIRECT_SOURCES.map(function (d) { return { id: d.id, name: d.name, url: d.url }; });
+    return list.filter(function (s) { return s && s.id; }).map(function (s) {
+      var d = DIRECT_BY_ID[s.id] || {};
+      return { id: s.id, name: s.name || d.name || s.id, url: s.url || d.url || "", keyed: !!d.keyed, country: d.country || null };
+    });
+  }
+  function saveDirectSources(list) { window.GeoState.save({ directSources: list }); allSightingsCache = {}; }
+  // A keyed source's key lives in its own store (also editable from the popup).
+  function directKey(id) { return id === "ebird" ? ebirdKey() : (id === "artportalen" ? artKey() : ""); }
+  function setDirectKey(id, v) { if (id === "ebird") setEbirdKey(v); else if (id === "artportalen") setArtKey(v); }
+  function runDirectSource(s, c) {
+    if (s.id === "ebird") return fetchEbirdAll(c.lat, c.lon, c.tok, c.rkm, s.url).then(normEbird);
+    if (s.id === "inat") return fetchInatAll(c.lat, c.lon, c.d1, c.d2, c.rkm, s.url).then(normInat);
+    if (s.id === "artsobs") return fetchArtsobsAll(c.lat, c.lon, c.d1, c.d2, c.rkm, s.url).then(normArtsobs);
+    if (s.id === "artportalen") return fetchArtportalenAll(c.lat, c.lon, c.d1, c.d2, c.rkm, artKey(), s.url).then(normArtportalen);
+    return Promise.resolve([]);
+  }
   function obsSources() {
-    return [
-      { name: "eBird", country: null, enabled: function () { return !!ebirdKey(); }, run: function (c) { return fetchEbirdAll(c.lat, c.lon, c.tok, c.rkm).then(normEbird); } },
-      { name: "iNaturalist", country: null, enabled: function () { return true; }, run: function (c) { return fetchInatAll(c.lat, c.lon, c.d1, c.d2, c.rkm).then(normInat); } },
-      { name: "GBIF", country: null, enabled: function () { return true; }, run: function (c) { return fetchGbifAll(c.lat, c.lon, c.range, c.rkm).then(normGbif); } },
-      { name: "Artsobservasjoner", country: "NO", enabled: function () { return true; }, run: function (c) { return fetchArtsobsAll(c.lat, c.lon, c.d1, c.d2, c.rkm).then(normArtsobs); } },
-      { name: "Artportalen", country: "SE", enabled: function () { return !!artKey(); }, run: function (c) { return fetchArtportalenAll(c.lat, c.lon, c.d1, c.d2, c.rkm, artKey()).then(normArtportalen); } }
+    var list = [
+      { name: "GBIF", country: null, enabled: function () { return true; }, run: function (c) { return fetchGbifAll(c.lat, c.lon, c.range, c.rkm).then(normGbif); } }
     ];
+    directSources().forEach(function (s) {
+      list.push({ name: s.name, country: s.country, enabled: function () { return !s.keyed || !!directKey(s.id); }, run: function (c) { return runDirectSource(s, c); } });
+    });
+    return list;
   }
   // Cached fetch of every species' recent detections at a point (last 3 months;
   // eBird is still capped at its 30-day API limit). The resolved object carries
@@ -2161,11 +2231,9 @@
                 '<input id="ebird-key" type="text" autocomplete="off" spellcheck="false" />' +
                 '<a id="ebird-key-link" href="https://ebird.org/api/keygen" target="_blank" rel="noopener" data-i18n="ctrl.ebirdkeyget">Get a free key</a>' +
               '</div>' +
-              '<div class="ctrl-group" id="artdb-key-wrap">' +
-                '<label for="artdb-key" data-i18n="ctrl.artdbkey">Artportalen key (SE)</label>' +
-                '<input id="artdb-key" type="text" autocomplete="off" spellcheck="false" />' +
-                '<a id="artdb-key-link" href="https://api-portal.artdatabanken.se/products/sos" target="_blank" rel="noopener" data-i18n="ctrl.artdbkeyget">Get a free key</a>' +
-                '<p class="cu-hint" data-i18n="ctrl.artdbhint">Adds fresher Swedish (Artportalen) and Norwegian (Artsobservasjoner, no key) observations — queried only when the point is in that country.</p>' +
+              '<div class="ctrl-group" id="sources-wrap">' +
+                '<label data-i18n="sources.label">Data sources</label>' +
+                '<button type="button" id="sources-open" class="demo-btn" data-i18n="sources.manage">🛰 Manage data sources…</button>' +
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label for="hotspot-min" data-i18n="ctrl.hotspotmin">Hotspot min. species</label>' +
@@ -2458,6 +2526,15 @@
             '</select>' +
           '</div>' +
           '<div id="offline-list"></div>' +
+        '</div></div>' +
+        '<div id="sources-modal" style="display:none"><div id="sources-box">' +
+          '<button type="button" id="sources-close" aria-label="Close">×</button>' +
+          '<h3 data-i18n="sources.title">Data sources</h3>' +
+          '<p class="cu-hint" data-i18n="sources.hint">Direct queries to external databases (GBIF has its own list). Edit the name, API key and endpoint, or delete a row. National databases are queried only inside their country.</p>' +
+          '<div id="sources-table"></div>' +
+          '<div class="cu-actions">' +
+            '<button type="button" id="sources-reset" class="demo-btn demo-btn-light" data-i18n="sources.reset">Reset to defaults</button>' +
+          '</div>' +
         '</div></div>' +
       '</div>';
 
@@ -4573,6 +4650,19 @@
       document.getElementById("offline-modal").addEventListener("click", function (e) { if (e.target === this) navClose("offline"); });
     }
 
+    var sourcesOpenBtn = document.getElementById("sources-open");
+    if (sourcesOpenBtn) {
+      sourcesOpenBtn.addEventListener("click", function () {
+        closeDropdowns();
+        renderSourcesTable();
+        document.getElementById("sources-modal").style.display = "flex";
+        navOpen("sources", function () { document.getElementById("sources-modal").style.display = "none"; });
+      });
+      document.getElementById("sources-close").addEventListener("click", function () { navClose("sources"); });
+      document.getElementById("sources-modal").addEventListener("click", function (e) { if (e.target === this) navClose("sources"); });
+      document.getElementById("sources-reset").addEventListener("click", resetSources);
+    }
+
 
 
     // Range cache budget (MB) → persist to localStorage; 0 disables and clears.
@@ -4594,13 +4684,6 @@
     ebKeyEl.addEventListener("input", saveEbKey);    // save as typed/pasted, not only on blur
     ebKeyEl.addEventListener("change", saveEbKey);
 
-    var artKeyEl = document.getElementById("artdb-key");
-    if (artKeyEl) {
-      artKeyEl.value = artKey();
-      var saveArtKey = function () { setArtKey(artKeyEl.value); allSightingsCache = {}; window.GeoState.touch(); };
-      artKeyEl.addEventListener("input", saveArtKey);
-      artKeyEl.addEventListener("change", saveArtKey);
-    }
 
     var hsMinEl = document.getElementById("hotspot-min");
     hsMinEl.value = String(+window.GeoState.get("hotspotMin", 200) || 0);
