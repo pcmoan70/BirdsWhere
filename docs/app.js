@@ -1206,26 +1206,29 @@
         ? '<input type="text" class="src-key" data-id="' + escapeHtml(s.id) + '" value="' + escapeHtml(directKey(s.id)) + '" autocomplete="off" spellcheck="false" placeholder="' + escapeHtml(t("sources.keyPh")) + '" />'
         : '<span class="src-nokey" title="' + escapeHtml(t("sources.nokey")) + '">—</span>';
       var flag = s.country ? '<span class="src-cc">' + escapeHtml(s.country) + "</span>" : "";
+      var cap = s.id === "ebird" ? ' title="' + escapeHtml(t("sources.ebirdCap")) + '"' : "";
       return '<tr>' +
         '<td><input type="text" class="src-name" data-id="' + escapeHtml(s.id) + '" value="' + escapeHtml(s.name) + '" />' + flag + "</td>" +
         '<td>' + keyCell + "</td>" +
+        '<td><input type="number" class="src-days" data-id="' + escapeHtml(s.id) + '" min="1" max="365" value="' + s.days + '"' + cap + " /></td>" +
         '<td><input type="text" class="src-url" data-id="' + escapeHtml(s.id) + '" value="' + escapeHtml(s.url) + '" autocomplete="off" spellcheck="false" /></td>' +
         '<td><button type="button" class="src-del" data-id="' + escapeHtml(s.id) + '" aria-label="remove">×</button></td>' +
       "</tr>";
     }).join("");
     el.innerHTML = '<table class="src-tbl"><thead><tr><th>' + escapeHtml(t("sources.colName")) + "</th><th>" + escapeHtml(t("sources.colKey")) +
-      "</th><th>" + escapeHtml(t("sources.colUrl")) + "</th><th></th></tr></thead><tbody>" +
-      (rows || '<tr><td colspan="4" class="cu-hint">' + escapeHtml(t("sources.empty")) + "</td></tr>") + "</tbody></table>";
+      "</th><th>" + escapeHtml(t("sources.colDays")) + "</th><th>" + escapeHtml(t("sources.colUrl")) + "</th><th></th></tr></thead><tbody>" +
+      (rows || '<tr><td colspan="5" class="cu-hint">' + escapeHtml(t("sources.empty")) + "</td></tr>") + "</tbody></table>";
     function patch(id, field, value) {
-      saveDirectSources(directSources().map(function (s) { var o = { id: s.id, name: s.name, url: s.url }; if (s.id === id) o[field] = value; return o; }));
+      saveDirectSources(directSources().map(function (s) { var o = { id: s.id, name: s.name, url: s.url, days: s.days }; if (s.id === id) o[field] = value; return o; }));
     }
     el.querySelectorAll(".src-name").forEach(function (inp) { inp.addEventListener("change", function () { patch(this.getAttribute("data-id"), "name", this.value.trim()); }); });
     el.querySelectorAll(".src-url").forEach(function (inp) { inp.addEventListener("change", function () { patch(this.getAttribute("data-id"), "url", this.value.trim()); }); });
+    el.querySelectorAll(".src-days").forEach(function (inp) { inp.addEventListener("change", function () { patch(this.getAttribute("data-id"), "days", Math.max(1, Math.min(365, +this.value || 1))); }); });
     el.querySelectorAll(".src-key").forEach(function (inp) { inp.addEventListener("input", function () { setDirectKey(this.getAttribute("data-id"), this.value); allSightingsCache = {}; }); });
     el.querySelectorAll(".src-del").forEach(function (b) {
       b.addEventListener("click", function () {
         var id = this.getAttribute("data-id");
-        saveDirectSources(directSources().filter(function (s) { return s.id !== id; }).map(function (s) { return { id: s.id, name: s.name, url: s.url }; }));
+        saveDirectSources(directSources().filter(function (s) { return s.id !== id; }).map(function (s) { return { id: s.id, name: s.name, url: s.url, days: s.days }; }));
         renderSourcesTable();
       });
     });
@@ -1354,10 +1357,11 @@
     }
     return all;
   }
-  async function fetchEbirdAll(lat, lon, tok, rkm, ep) {
+  async function fetchEbirdAll(lat, lon, tok, rkm, ep, back) {
     var dist = Math.max(1, Math.min(50, rkm));
+    var bk = Math.max(1, Math.min(30, +back || 30));   // eBird caps "back" at 30 days
     var url = joinUrl(ep || "https://api.ebird.org/v2/data/obs/geo/recent",
-      "lat=" + lat.toFixed(4) + "&lng=" + lon.toFixed(4) + "&dist=" + dist + "&back=30&maxResults=10000&includeProvisional=true");
+      "lat=" + lat.toFixed(4) + "&lng=" + lon.toFixed(4) + "&dist=" + dist + "&back=" + bk + "&maxResults=10000&includeProvisional=true");
     var r = await fetch(url, { headers: { "X-eBirdApiToken": tok } });
     return r.ok ? await r.json() : [];
   }
@@ -1518,21 +1522,22 @@
   // Name / key / endpoint, editable and deletable. GBIF is excluded (it has its
   // own datasets manager). `country` gates national databases to their own
   // country; `keyed` says which need an API key (stored in their own slot).
+  // `days` = how far back each source is queried (eBird is API-capped at 30).
   var DEFAULT_DIRECT_SOURCES = [
-    { id: "ebird",       name: "eBird",             url: "https://api.ebird.org/v2/data/obs/geo/recent",                                   country: null, keyed: true },
-    { id: "inat",        name: "iNaturalist",       url: "https://api.inaturalist.org/v1/observations",                                    country: null, keyed: false },
-    { id: "artsobs",     name: "Artsobservasjoner", url: "https://artskart.artsdatabanken.no/publicapi/api/observations/list",             country: "NO", keyed: false },
-    { id: "artportalen", name: "Artportalen",       url: "https://api.artdatabanken.se/species-observation-system/v1/Observations/Search", country: "SE", keyed: true }
+    { id: "ebird",       name: "eBird",             url: "https://api.ebird.org/v2/data/obs/geo/recent",                                   country: null, keyed: true,  days: 30 },
+    { id: "inat",        name: "iNaturalist",       url: "https://api.inaturalist.org/v1/observations",                                    country: null, keyed: false, days: 90 },
+    { id: "artsobs",     name: "Artsobservasjoner", url: "https://artskart.artsdatabanken.no/publicapi/api/observations/list",             country: "NO", keyed: false, days: 90 },
+    { id: "artportalen", name: "Artportalen",       url: "https://api.artdatabanken.se/species-observation-system/v1/Observations/Search", country: "SE", keyed: true,  days: 90 }
   ];
   var DIRECT_BY_ID = {}; DEFAULT_DIRECT_SOURCES.forEach(function (d) { DIRECT_BY_ID[d.id] = d; });
   function directSources() {
     var stored = window.GeoState.get("directSources", null);
     // An explicit (even empty) array is the user's list; only an unset value
     // (null) falls back to the built-in defaults — so "delete all" stays empty.
-    var list = Array.isArray(stored) ? stored : DEFAULT_DIRECT_SOURCES.map(function (d) { return { id: d.id, name: d.name, url: d.url }; });
+    var list = Array.isArray(stored) ? stored : DEFAULT_DIRECT_SOURCES.map(function (d) { return { id: d.id, name: d.name, url: d.url, days: d.days }; });
     return list.filter(function (s) { return s && s.id; }).map(function (s) {
       var d = DIRECT_BY_ID[s.id] || {};
-      return { id: s.id, name: s.name || d.name || s.id, url: s.url || d.url || "", keyed: !!d.keyed, country: d.country || null };
+      return { id: s.id, name: s.name || d.name || s.id, url: s.url || d.url || "", keyed: !!d.keyed, country: d.country || null, days: (s.days != null && +s.days > 0) ? +s.days : (d.days || 90) };
     });
   }
   function saveDirectSources(list) { window.GeoState.save({ directSources: list }); allSightingsCache = {}; }
@@ -1540,10 +1545,12 @@
   function directKey(id) { return id === "ebird" ? ebirdKey() : (id === "artportalen" ? artKey() : ""); }
   function setDirectKey(id, v) { if (id === "ebird") setEbirdKey(v); else if (id === "artportalen") setArtKey(v); }
   function runDirectSource(s, c) {
-    if (s.id === "ebird") return fetchEbirdAll(c.lat, c.lon, c.tok, c.rkm, s.url).then(normEbird);
-    if (s.id === "inat") return fetchInatAll(c.lat, c.lon, c.d1, c.d2, c.rkm, s.url).then(normInat);
-    if (s.id === "artsobs") return fetchArtsobsAll(c.lat, c.lon, c.d1, c.d2, c.rkm, s.url).then(normArtsobs);
-    if (s.id === "artportalen") return fetchArtportalenAll(c.lat, c.lon, c.d1, c.d2, c.rkm, artKey(), s.url).then(normArtportalen);
+    var days = (+s.days > 0) ? +s.days : 90;
+    var d1 = c.dateBack(days);   // start date = today − days (per source)
+    if (s.id === "ebird") return fetchEbirdAll(c.lat, c.lon, c.tok, c.rkm, s.url, Math.min(30, days)).then(normEbird);
+    if (s.id === "inat") return fetchInatAll(c.lat, c.lon, d1, c.d2, c.rkm, s.url).then(normInat);
+    if (s.id === "artsobs") return fetchArtsobsAll(c.lat, c.lon, d1, c.d2, c.rkm, s.url).then(normArtsobs);
+    if (s.id === "artportalen") return fetchArtportalenAll(c.lat, c.lon, d1, c.d2, c.rkm, artKey(), s.url).then(normArtportalen);
     return Promise.resolve([]);
   }
   function obsSources() {
@@ -1565,7 +1572,9 @@
     var to = new Date(), from = new Date(); from.setMonth(from.getMonth() - 3);
     var fmtD = function (d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); };
     var d1 = fmtD(from), d2 = fmtD(to), range = d1 + "," + d2;
-    var c = { lat: lat, lon: lon, d1: d1, d2: d2, range: range, rkm: rkm, tok: ebirdKey() };
+    // dateBack(n) = today − n days; each direct source uses its own time range.
+    var c = { lat: lat, lon: lon, d2: d2, range: range, rkm: rkm, tok: ebirdKey(),
+      dateBack: function (n) { var d = new Date(); d.setDate(d.getDate() - n); return fmtD(d); } };
     var failed = [];
     // National DBs wait for the country lookup; global sources start immediately.
     var ccP = countryCode(lat, lon).then(function (cc) { return cc; }, function () { return ""; });
