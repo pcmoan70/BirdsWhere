@@ -10,16 +10,16 @@
  * Collections (checklists/pins/lists) are always unioned; scalar settings follow
  * `incomingWins`, decided here by comparing change-stamps.
  *
- * Sync is MANUAL only — there is no background/automatic syncing. A sync (and
- * therefore any OAuth popup) happens solely when the user taps Connect or Sync
- * now. This keeps the model simple and means the Google sign-in window only ever
- * appears in direct response to a click.
+ * Sync is MANUAL and ONE-SHOT — there is no background/automatic syncing, and
+ * no standing connection. Tapping "Synchronize" signs in (OAuth), runs one full
+ * pull→merge→push, then disconnects, so the button returns to "Synchronize" and
+ * the next tap signs in and syncs again from scratch. The Google sign-in window
+ * only ever appears in direct response to a click.
  *
- * Auth uses Google Identity Services (the browser token model). The access token
- * is cached (localStorage, ~1 h) so repeated manual syncs within the hour reuse
- * it without a popup. We only request the `drive.appdata` scope (no
- * email/profile), so nothing identifies the user and the OAuth verification path
- * stays light.
+ * Auth uses Google Identity Services (the browser token model). The token is
+ * dropped after each sync (teardown), so every Synchronize re-acquires one. We
+ * only request the `drive.appdata` scope (no email/profile), so nothing
+ * identifies the user and the OAuth verification path stays light.
  *
  * Exposed as window.GDriveSync (no module system; loaded via <script>).
  */
@@ -228,45 +228,44 @@ window.GDriveSync = (function () {
     }
   }
 
+  // Drop the access token + connected flag so we never hold a standing
+  // connection. Each Sync re-acquires a token (so Google's sign-in shows) and
+  // calls this when done, leaving the button back at "Synchronize". Does not
+  // emit — the caller keeps whatever status the sync produced.
+  function teardown() {
+    accessToken = null; tokenExpiry = 0; connected = false; fileId = "";
+    try { localStorage.removeItem(LS_TOKEN); localStorage.removeItem(LS_TOKEN_EXP); localStorage.removeItem(LS_CONNECTED); localStorage.removeItem(LS_FILE_ID); } catch (e) {}
+  }
+
   // ---- public API -----------------------------------------------------------
   return {
-    // Called once by app.js at the end of init. Sync is MANUAL only — nothing
-    // here reaches out to Google or runs a sync; we just track whether the user
-    // changed anything this session (so a later manual sync lets local win) and
-    // surface the connected/last-synced status. OAuth happens solely when the
-    // user taps Connect or Sync now.
+    // Called once by app.js at the end of init. Sync is MANUAL + one-shot —
+    // nothing here reaches out to Google or runs a sync; we just track whether
+    // the user changed anything this session (so the sync lets local win) and
+    // surface the last-synced status. OAuth happens solely when Synchronize is
+    // tapped, and the connection is dropped again as soon as the sync finishes.
     init: function () {
       armed = true;
       window.GeoState.onChange(function () { if (armed) localDirty = true; });
       emit(lastStatus);
     },
 
-    // User pressed "Connect Google" (a gesture — required for the token popup).
-    connect: function () {
-      if (!clientId()) { emit("error"); return Promise.reject(new Error("no client id")); }
-      return waitForGis()
-        .then(function () { initTokenClient(); return ensureToken(); })
-        .then(function () {
-          connected = true; try { localStorage.setItem(LS_CONNECTED, "1"); } catch (e) {}
-          emit("idle");
-          return sync();
-        })
-        .catch(function (e) { emit("reconnect"); throw e; });
-    },
+    // Kept for the (now hidden) Connect button — same one-shot behaviour.
+    connect: function () { return this.syncNow(); },
 
     disconnect: function () {
       try { if (accessToken && window.google && google.accounts && google.accounts.oauth2) google.accounts.oauth2.revoke(accessToken, function () {}); } catch (e) {}
-      accessToken = null; tokenExpiry = 0; connected = false; fileId = "";
-      try { localStorage.removeItem(LS_CONNECTED); localStorage.removeItem(LS_FILE_ID); localStorage.removeItem(LS_TOKEN); localStorage.removeItem(LS_TOKEN_EXP); } catch (e) {}
-      emit("idle");
+      teardown(); emit("idle");
     },
 
-    // Manual "Sync now" (a gesture). If not connected yet, connect first — so a
-    // single button does everything and OAuth is asked for only on this click.
+    // "Synchronize" (a gesture): sign in (OAuth), run one full pull→merge→push,
+    // then disconnect — so the next tap signs in and syncs again from scratch.
     syncNow: function () {
       if (!clientId()) { emit("error"); return Promise.resolve(); }
-      if (!connected) return this.connect().catch(function () {});
-      return waitForGis().then(function () { initTokenClient(); return sync(); });
+      return waitForGis()
+        .then(function () { initTokenClient(); connected = true; return sync(); })  // sync() emits idle/reconnect and never rejects
+        .catch(function () { emit("reconnect"); })                                  // only a GIS-load failure lands here
+        .then(function () { teardown(); emit(lastStatus); });                       // drop the connection, keep the result status
     },
 
     setClientId: function (id) {

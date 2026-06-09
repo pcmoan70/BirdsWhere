@@ -5137,20 +5137,19 @@
       try { gdClientId.value = localStorage.getItem("gdrive-client-id") || ""; } catch (e) {}
 
       var renderGd = function (st) {
-        // Manual-only: one "Sync now" button does everything (it connects on the
-        // first tap), so the separate Connect button is hidden; Disconnect shows
-        // once connected.
+        // One-shot: a single "Synchronize" button signs in, syncs, then
+        // disconnects — so it's the only control (Connect/Disconnect hidden).
         var needId = !st.hasClientId;
         gdClientId.style.display = needId ? "" : "none";
         gdConnect.style.display = "none";
         gdSync.style.display = needId ? "none" : "";
-        gdDisconnect.style.display = st.connected ? "" : "none";
+        gdDisconnect.style.display = "none";
         gdSync.disabled = !!st.busy;
         var msg = "";
         if (st.status === "syncing") msg = "⟳ " + t("gdrive.syncing");
         else if (st.status === "reconnect") msg = t("gdrive.reconnect");
         else if (st.status === "error") msg = t("gdrive.error");
-        else if (st.connected) msg = "✓ " + t("gdrive.synced") + (st.lastSyncAt ? " · " + fmtClock(st.lastSyncAt) : "");
+        else if (st.lastSyncAt) msg = "✓ " + t("gdrive.synced") + " · " + fmtClock(st.lastSyncAt);
         gdStatus.textContent = msg;
         gdStatus.classList.toggle("gd-syncing", st.status === "syncing");
       };

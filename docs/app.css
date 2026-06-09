@@ -1243,14 +1243,14 @@ button.dd-name:hover { text-decoration: underline; }
   min-width: 280px;
   max-width: min(94vw, 420px);   /* wider than other dropdowns so URLs fit */
   max-height: min(80vh, 560px);
-  padding: 12px 14px;
+  padding: 10px 12px;
   left: 0;           /* drops down from the header bird icon (upper-left) */
   right: auto;
 }
 .settings-panel .ctrl-group {
   display: flex;
   flex-direction: column;
-  margin-bottom: 11px;
+  margin-bottom: 7px;
 }
 .settings-panel .ctrl-group:last-of-type { margin-bottom: 0; }
 .settings-panel label {
@@ -1259,11 +1259,11 @@ button.dd-name:hover { text-decoration: underline; }
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--ink-muted);
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 .settings-panel select {
   width: 100%;
-  height: 36px;
+  height: 32px;
   box-sizing: border-box;
   padding: 0 10px;
   font-size: 0.88rem;
@@ -1281,7 +1281,7 @@ button.dd-name:hover { text-decoration: underline; }
   box-shadow: 0 0 0 3px var(--brand-soft);
 }
 .settings-panel input[type="text"] {
-  width: 100%; height: 36px; box-sizing: border-box; padding: 0 10px; font: inherit; font-size: 0.88rem;
+  width: 100%; height: 32px; box-sizing: border-box; padding: 0 10px; font: inherit; font-size: 0.88rem;
   border: 1px solid var(--border); border-radius: var(--radius-xs);
   background: var(--surface); color: var(--ink); transition: border-color .15s, box-shadow .15s;
 }
@@ -1341,7 +1341,7 @@ button.dd-name:hover { text-decoration: underline; }
 .gbif-url a { color: var(--brand); word-break: break-all; }
 .gbif-del { border: none; background: transparent; color: var(--danger, #c0392b); font-size: 1.1rem; line-height: 1; cursor: pointer; padding: 0 6px; }
 .gbif-del:hover { color: var(--danger-strong, #a93226); }
-.settings-divider { border-top: 1px solid var(--border); margin: 12px 0; }
+.settings-divider { border-top: 1px solid var(--border); margin: 8px 0; }
 .settings-about {
   display: block;
   width: 100%;
