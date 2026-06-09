@@ -5105,6 +5105,7 @@
         gdSync.disabled = !!st.busy;
         var msg = "";
         if (st.status === "syncing") msg = "⟳ " + t("gdrive.syncing");
+        else if (st.status === "paused") msg = "⏸ " + t("gdrive.paused");
         else if (st.status === "reconnect") msg = t("gdrive.reconnect");
         else if (st.status === "error") msg = t("gdrive.error");
         else if (st.connected) msg = "✓ " + t("gdrive.synced") + (st.lastSyncAt ? " · " + fmtClock(st.lastSyncAt) : "");

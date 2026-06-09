@@ -99,19 +99,22 @@ window.GDriveSync = (function () {
   }
 
   // Resolve with a usable access token. A still-valid cached token (persisted
-  // ~1 h, so most page loads / pushes need no request at all) is reused silently.
-  // Otherwise we request one — background uses prompt:'none' (a hidden iframe that
-  // refreshes silently when the Google session is still valid, or fails without
-  // UI), so automatic cross-device sync keeps working; interactive (Connect /
-  // Sync now) uses '' for the chooser/consent. Single-flighted so a burst of sync
-  // triggers can never open more than one request at a time.
+  // ~1 h) is reused silently. Background sync NEVER opens an auth request: the
+  // only silent-refresh path Google offers needs third-party cookies for
+  // accounts.google.com, which Chrome now restricts — when that path is blocked
+  // GIS surfaces a popup, so a background refresh would pop "all the time". So a
+  // background caller without a valid cached token rejects with {paused:true}
+  // (sync pauses, no UI) and waits for the user to tap Sync now. Interactive
+  // (Connect / Sync now) is a gesture — it requests a token (chooser/consent),
+  // which is the only place a popup is expected. Single-flighted.
   function ensureToken(interactive) {
     if (accessToken && Date.now() < tokenExpiry) return Promise.resolve(accessToken);
+    if (!interactive) return Promise.reject({ paused: true });
     if (tokenPromise) return tokenPromise;
     if (!tokenClient) return Promise.reject(new Error("not initialized"));
     tokenPromise = new Promise(function (resolve, reject) {
       tokenResolve = resolve; tokenReject = reject;
-      try { tokenClient.requestAccessToken({ prompt: interactive ? "" : "none" }); }
+      try { tokenClient.requestAccessToken({ prompt: "" }); }
       catch (e) { tokenResolve = tokenReject = null; reject(e); }
     });
     var clear = function () { tokenPromise = null; };
@@ -179,6 +182,10 @@ window.GDriveSync = (function () {
   // ---- sync orchestration ---------------------------------------------------
   async function sync(interactive) {
     if (!connected || syncing || !clientId() || !navigator.onLine) return;
+    // Background sync only proceeds with a valid cached token — it never opens an
+    // auth request (that's what pops). Token expired → quietly pause; the next
+    // tap on Sync now (interactive) re-acquires a token and resumes silent sync.
+    if (!interactive && !(accessToken && Date.now() < tokenExpiry)) { emit("paused"); return; }
     syncing = true; emit("syncing");
     try {
       var meta = await findFile(interactive);
@@ -223,7 +230,7 @@ window.GDriveSync = (function () {
         } catch (e) {}
       }
     } catch (e) {
-      emit("reconnect");
+      emit(e && e.paused ? "paused" : "reconnect");
     } finally {
       syncing = false;
     }
@@ -252,11 +259,10 @@ window.GDriveSync = (function () {
 
       var arm = function () { armed = true; };
       if (connected) {
-        // Silent attempt on load (prompt:'none'); never pops the chooser. If a
-        // token can't be obtained without UI, sync() fails quietly → "reconnect".
-        // Deferred a couple of seconds so the GIS auth iframe isn't part of the
-        // busy startup — on mobile Chrome it can briefly flash as a dark overlay
-        // (the CSS rule for accounts.google.com iframes also keeps it invisible).
+        // Load-time sync uses the persisted token if it's still valid (silent);
+        // if it has expired, sync() pauses without any UI and waits for the user
+        // to tap Sync now. Deferred a couple of seconds so it isn't part of the
+        // busy startup.
         setTimeout(function () {
           waitForGis()
             .then(function () { initTokenClient(); return sync(false); })
