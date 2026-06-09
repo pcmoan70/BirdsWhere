@@ -1384,7 +1384,7 @@
     // via PageSize instead — otherwise a wide-radius query returns only ~20
     // scattered records and misses everything near the centre.
     var url = joinUrl(ep || "https://artskart.artsdatabanken.no/publicapi/api/observations/list",
-      "PageSize=3000&FromDate=" + d1 + "&ToDate=" + d2 + "&gmWktPolygon=" + encodeURIComponent(wkt));
+      "PageSize=8000&FromDate=" + d1 + "&ToDate=" + d2 + "&gmWktPolygon=" + encodeURIComponent(wkt));
     try {
       var resp = await fetch(url);
       if (!resp.ok) return { Observations: [] };
@@ -1502,12 +1502,13 @@
     }
     (records || []).forEach(function (r) {
       if (!r || !r.sciName) return;
-      // This is a fauna explorer — drop plants, fungi (incl. lichens), mosses,
-      // algae etc. Mosses/lichens keep their own class, so kingdom is the
-      // reliable discriminator; the cls check also catches iNaturalist's
-      // kingdom-level iconic taxa (Plantae / Fungi / …).
+      // Birds only — this is a BirdNET tool. Drop any record with a known
+      // non-Aves class (that also removes mammals, insects, plants, fungi,
+      // mosses, lichens…); the kingdom check additionally drops non-animals
+      // whose class field is blank. Records with an unknown class are kept
+      // (they may be birds the source didn't classify).
+      if (r.cls && r.cls !== "Aves") return;
       if (r.kingdom && /^(plant|fung|chromist|protozo|bacteri|archae)/i.test(r.kingdom)) return;
-      if (r.cls && /^(plantae|fungi|chromista|protozoa|bacteria)$/i.test(r.cls)) return;
       var row = { lat: r.lat, lon: r.lon, date: r.date || "", src: r.src, origin: r.origin || "", url: r.url || "", place: r.place || "" };
       // Match a model species by code (eBird) first, then scientific name.
       var key = (r.speciesCode && labelsByKey[r.speciesCode]) ? r.speciesCode : null;
