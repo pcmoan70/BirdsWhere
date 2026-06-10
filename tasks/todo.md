@@ -233,3 +233,37 @@ Verified: headless DOM render of the new modal; standalone tests of the
 set-merge, tombstone-survival, and (separately) the GBIF dedup + colour
 determinism + Artsobs URL helpers — all PASS.
 
+---
+
+# Observations → points list (replaces "Saved sets")
+
+User: the stored detection sets shouldn't be a separate feature — reuse the
+existing map-points lists. Flow: load observations, filter them, add them to a
+list.
+
+## Done (v258)
+- **New action**: a "➕ Add to points list" button in the Detections list modal
+  (`#detlist-foot`). It takes the exact observations currently listed — the
+  legend filters (star/rare/group/recency/selection + the click-scope) narrowed
+  by the search box, factored into a shared `detListRows()` helper — and turns
+  each into a normal map point via `detToMapPoint` (species → first tag so the
+  marker colours per species, source → second tag, date/place/link → note,
+  `source:"observation"`). `addObservationsToList(name, dets)` appends them to a
+  typed list (new or existing); when the target is the active list they join the
+  working set and show at once, otherwise they drop straight into that saved
+  collection. `collectVisibleDetections` now also carries `lat`/`lon`.
+- **Removed** the standalone "Saved sets" / trips feature entirely: the Settings
+  entry button + modal, `renderDetSetsTable`, the `detSets`/`saveDetSet`/
+  `loadDetSet`/`deleteDetSet`/`detSetCounts`/`plottedInterestingKeys` helpers,
+  the `mapDetectionSets`/`mapDetectionSetsDel` sync-merge block, the `dset.*`
+  i18n keys (165 lines across 15 langs), and the `#det-sets-*` CSS. Old synced
+  `mapDetectionSets` blobs are no longer read but pass through the export/merge
+  spread harmlessly.
+- **i18n**: `points.addObs*` + `points.obsName` added to en + sv (others fall
+  back to English per the file's documented contract).
+- SW bumped v257 → v258.
+
+Verified: `node --check` on app.js / strings.js / sw.js; grep confirms zero
+remaining `dset`/`det-sets`/`mapDetectionSets` references in app.js and zero
+`"dset."` keys. No browser tooling in the env for a live DOM check.
+

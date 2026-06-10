@@ -1236,30 +1236,6 @@
     });
   }
   function resetSources() { window.GeoState.save({ directSources: null }); allSightingsCache = {}; renderSourcesTable(); }
-  // The "Saved sets" manager body: a "Save current…" action (handled outside) and
-  // a row per saved set with its counts, a Load button and a delete ×.
-  function renderDetSetsTable() {
-    var el = document.getElementById("det-sets-list"); if (!el) return;
-    var sets = detSets().slice().sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
-    var saveBtn = document.getElementById("det-sets-save");
-    if (saveBtn) saveBtn.disabled = (typeof detPlot === "undefined") || !Object.keys(detPlot).length;
-    if (!sets.length) { el.innerHTML = '<p class="cu-hint">' + escapeHtml(t("dset.empty")) + "</p>"; return; }
-    el.innerHTML = '<table class="src-tbl"><tbody>' + sets.map(function (s) {
-      var c = detSetCounts(s);
-      return '<tr><td class="dset-name">' + escapeHtml(s.name) + '<span class="dset-count">' + escapeHtml(t("dset.counts", { sp: c.species, n: c.dots })) + "</span></td>" +
-        '<td class="dset-actions"><button type="button" class="demo-btn dset-load" data-name="' + escapeHtml(s.name) + '">' + escapeHtml(t("dset.load")) + "</button>" +
-        '<button type="button" class="src-del dset-del" data-name="' + escapeHtml(s.name) + '" aria-label="' + escapeHtml(t("dset.delete")) + '">×</button></td></tr>';
-    }).join("") + "</tbody></table>";
-    el.querySelectorAll(".dset-load").forEach(function (b) {
-      b.addEventListener("click", function () { loadDetSet(this.getAttribute("data-name")); navClose("detsets"); });
-    });
-    el.querySelectorAll(".dset-del").forEach(function (b) {
-      b.addEventListener("click", function () {
-        var name = this.getAttribute("data-name");
-        modalConfirm(t("dset.deletePrompt", { name: name })).then(function (ok) { if (ok) { deleteDetSet(name); renderDetSetsTable(); } });
-      });
-    });
-  }
   function renderGbifTable() {
     var el = document.getElementById("gbif-table"); if (!el) return;
     var body = gbifDatasets().map(function (d) {
@@ -1926,24 +1902,6 @@
     // Learned families (for dot colours): union both sides so a species keeps the
     // family — and therefore the colour — learned on either device.
     var mergedFam = {}; [local.detFamilies, incoming.detFamilies].forEach(function (m) { Object.keys(m || {}).forEach(function (k) { if (m[k]) mergedFam[k] = m[k]; }); });
-    // Named detection sets ("trips"): tombstoned names are dropped on both sides
-    // (so a delete sticks); the rest are unioned by name (same name → union dots
-    // and stars), so every device's saved trips survive the merge.
-    var setTomb = {}; [local.mapDetectionSetsDel, incoming.mapDetectionSetsDel].forEach(function (a) { (a || []).forEach(function (n) { if (n) setTomb[n] = 1; }); });
-    var setByName = Object.create(null), setOrder = [];
-    [local.mapDetectionSets, incoming.mapDetectionSets].forEach(function (arr) {
-      (Array.isArray(arr) ? arr : []).forEach(function (s) {
-        if (!s || !s.name || setTomb[s.name]) return;
-        var cur = setByName[s.name];
-        if (!cur) { setByName[s.name] = { name: s.name, createdAt: s.createdAt || 0, detections: s.detections || {}, interesting: (s.interesting || []).slice() }; setOrder.push(s.name); }
-        else {
-          cur.detections = mergeDetections(cur.detections, s.detections);
-          var iu = {}; cur.interesting.concat(s.interesting || []).forEach(function (k) { if (k) iu[k] = 1; }); cur.interesting = Object.keys(iu);
-          cur.createdAt = Math.max(cur.createdAt, s.createdAt || 0);
-        }
-      });
-    });
-    var mergedSetsList = setOrder.map(function (n) { return setByName[n]; });
     // Scalar settings: the winning side overrides, the other fills any gaps.
     var primary = opts.incomingWins ? incoming : local;
     var secondary = opts.incomingWins ? local : incoming;
@@ -1956,8 +1914,6 @@
     newState.mapDetections = mergedDet;
     newState.interesting = Object.keys(interestUnion);
     newState.detFamilies = mergedFam;
-    newState.mapDetectionSets = mergedSetsList;
-    newState.mapDetectionSetsDel = Object.keys(setTomb);
     newState.mapPointSetActive = "";   // show the merged unsaved set after import
     try { localStorage.setItem("geomodel-explorer-v1", JSON.stringify(newState)); } catch (e) { throw new Error("storage write failed: " + e.message); }
     // eBird key: adopt incoming only when it should win, or when we have none.
@@ -2445,9 +2401,6 @@
                 '<input type="text" id="gd-clientid" autocomplete="off" spellcheck="false" data-i18n-ph="gdrive.clientIdPh" placeholder="Google OAuth client ID" style="display:none" />' +
                 '<div id="gd-status" class="cu-hint"></div>' +
                 '<p class="cu-hint" data-i18n="gdrive.hint">Syncs settings, checklists and points to your private Google Drive app folder. Deletions don’t sync between devices.</p>' +
-                '<div class="sync-row">' +
-                  '<button type="button" id="det-sets-open" class="demo-btn" data-i18n="dset.manage">🗂 Saved sets…</button>' +
-                '</div>' +
               '</div>' +
               '<div class="ctrl-group" id="points-kml-wrap">' +
                 '<label data-i18n="ctrl.exportPoints">Map points</label>' +
@@ -2676,6 +2629,9 @@
           '</div>' +
           '<input type="text" id="detlist-search" autocomplete="off" spellcheck="false" data-i18n-ph="detlist.search" placeholder="Filter species…" />' +
           '<div id="detlist-body"></div>' +
+          '<div id="detlist-foot">' +
+            '<button type="button" id="detlist-tolist" class="demo-btn" data-i18n="points.addObs">➕ Add to points list</button>' +
+          '</div>' +
         '</div></div>' +
         '<div id="offline-modal" style="display:none"><div id="offline-box">' +
           '<button type="button" id="offline-close" aria-label="Close">×</button>' +
@@ -2698,15 +2654,6 @@
           '<div class="cu-actions">' +
             '<button type="button" id="sources-reset" class="demo-btn demo-btn-light" data-i18n="sources.reset">Reset to defaults</button>' +
           '</div>' +
-        '</div></div>' +
-        '<div id="det-sets-modal" style="display:none"><div id="det-sets-box">' +
-          '<button type="button" id="det-sets-close" aria-label="Close">×</button>' +
-          '<h3 data-i18n="dset.title">Saved sets</h3>' +
-          '<p class="cu-hint" data-i18n="dset.hint">Save the plotted sightings as a named set (e.g. a trip) you can reload or delete. Sets sync across your devices; deleting one removes it everywhere.</p>' +
-          '<div class="cu-actions">' +
-            '<button type="button" id="det-sets-save" class="demo-btn" data-i18n="dset.saveCurrent">💾 Save current detections…</button>' +
-          '</div>' +
-          '<div id="det-sets-list"></div>' +
         '</div></div>' +
       '</div>';
 
@@ -3783,7 +3730,7 @@
       (e.rows || []).forEach(function (r) {
         if (!recentEnough(r.date, maxDays)) return;
         if (center && map.distance(center, L.latLng(r.lat, r.lon)) > near.meters) return;
-        out.push({ key: k, name: nm, color: e.color, date: r.date || "", src: r.src || "", origin: r.origin || "", url: r.url || "", place: r.place || "" });
+        out.push({ key: k, name: nm, color: e.color, lat: r.lat, lon: r.lon, date: r.date || "", src: r.src || "", origin: r.origin || "", url: r.url || "", place: r.place || "" });
       });
     });
     return out;
@@ -3838,15 +3785,25 @@
       ? '<a class="dl-row dl-link" href="' + escapeHtml(d.url) + '" target="_blank" rel="noopener">' + inner + '<span class="dl-go">↗</span></a>'
       : '<div class="dl-row">' + inner + "</div>";
   }
+  // The observations currently shown in the list modal: the filtered/scoped set
+  // (legend filters via collectVisibleDetections) narrowed by the search box.
+  // Shared by the renderer and the "Add to points list" action so they agree.
+  function detListRows() {
+    var rows = collectVisibleDetections(detListNear);
+    if (detListQuery) rows = rows.filter(function (d) { return detFuzzy(detListQuery, detSearchText(d)); });
+    return rows;
+  }
   function renderDetListModal() {
     var body = document.getElementById("detlist-body");
     if (!body) return;
     var sortBtns = document.querySelectorAll("#detlist-sort .detlist-sort-btn");
     Array.prototype.forEach.call(sortBtns, function (b) { b.classList.toggle("active", b.getAttribute("data-sort") === detListSort); });
     recolorDetections();   // swatches reflect the latest family colours
-    var rows = collectVisibleDetections(detListNear);
-    var emptyMsg = rows.length ? t("detlist.noMatch") : t("detlist.empty");
-    if (detListQuery) rows = rows.filter(function (d) { return detFuzzy(detListQuery, detSearchText(d)); });
+    var unfiltered = collectVisibleDetections(detListNear);
+    var emptyMsg = unfiltered.length ? t("detlist.noMatch") : t("detlist.empty");
+    var rows = detListRows();
+    var addBtn = document.getElementById("detlist-tolist");
+    if (addBtn) addBtn.disabled = !rows.length;
     if (!rows.length) { body.innerHTML = '<div class="dl-empty">' + escapeHtml(emptyMsg) + "</div>"; return; }
     var html;
     if (detListSort === "species") {
@@ -4134,52 +4091,6 @@
     return out;
   }
   function saveDetections() { window.GeoState.save({ mapDetections: serializeDetPlot() }); }
-  // ---- Named detection sets ("trips") ---------------------------------------
-  // A saved snapshot of the plotted dots/stars under a name, so a trip's/day's
-  // sightings can be reloaded or deleted as a unit. Stored (and synced) as
-  // GeoState.mapDetectionSets = [{ name, createdAt, detections, interesting[] }].
-  // A tombstone list (mapDetectionSetsDel) lets a delete propagate across
-  // devices — the detection merge only unions, so otherwise a deleted set would
-  // come straight back from the other device on the next sync.
-  function detSets() { return (window.GeoState.get("mapDetectionSets", []) || []).filter(function (s) { return s && s.name; }); }
-  function detSetTombstones() { return (window.GeoState.get("mapDetectionSetsDel", []) || []).filter(Boolean); }
-  // Starred species currently plotted, so a set carries its own stars.
-  function plottedInterestingKeys() {
-    return Object.keys(detPlot).map(function (k) { return detPlot[k].key || k; }).filter(function (key) { return isInteresting(key); });
-  }
-  function saveDetSet(name) {
-    name = String(name || "").trim(); if (!name) return false;
-    var det = serializeDetPlot(); if (!Object.keys(det).length) return false;
-    var list = detSets(), cur = list.filter(function (x) { return x.name === name; })[0];
-    var blob = { name: name, createdAt: Date.now(), detections: det, interesting: plottedInterestingKeys() };
-    if (cur) { cur.detections = blob.detections; cur.interesting = blob.interesting; cur.createdAt = blob.createdAt; }
-    else list.push(blob);
-    // Saving a name un-tombstones it (a fresh set with that name should stick).
-    window.GeoState.save({ mapDetectionSets: list, mapDetectionSetsDel: detSetTombstones().filter(function (n) { return n !== name; }) });
-    return true;
-  }
-  function loadDetSet(name) {
-    var s = detSets().filter(function (x) { return x.name === name; })[0]; if (!s) return;
-    // Union the set's dots into the working store (never discard what's plotted)
-    // and adopt its stars, then re-render from the store and fit to the set.
-    var merged = mergeDetections(window.GeoState.get("mapDetections", {}) || {}, s.detections || {});
-    var interest = {}; (window.GeoState.get("interesting", []) || []).concat(s.interesting || []).forEach(function (k) { if (k) interest[k] = 1; });
-    window.GeoState.save({ mapDetections: merged, interesting: Object.keys(interest) });
-    reloadPlottedFromStore();
-    try {
-      var pts = []; Object.keys(s.detections || {}).forEach(function (k) { (s.detections[k].rows || []).forEach(function (r) { if (r.lat != null && r.lon != null) pts.push([r.lat, r.lon]); }); });
-      if (pts.length && map) map.fitBounds(L.latLngBounds(pts).pad(0.2));
-    } catch (e) {}
-  }
-  function deleteDetSet(name) {
-    var tomb = detSetTombstones(); if (tomb.indexOf(name) === -1) tomb.push(name);
-    window.GeoState.save({ mapDetectionSets: detSets().filter(function (x) { return x.name !== name; }), mapDetectionSetsDel: tomb });
-  }
-  function detSetCounts(s) {
-    var sp = Object.keys(s.detections || {}).length, dots = 0;
-    Object.keys(s.detections || {}).forEach(function (k) { dots += ((s.detections[k] || {}).rows || []).length; });
-    return { species: sp, dots: dots };
-  }
   // Persist the legend's UI state — collapsed, the starred-only filter, and the
   // row selection — so the map legend comes back the way the user left it.
   function saveLegendState() {
@@ -4433,6 +4344,41 @@
     // Detach first so we don't sync the now-empty working set onto the saved
     // list — the named list survives "Delete"; only the live pins are cleared.
     mpActiveName = ""; mapPoints = []; mpFilter = []; saveMapPoints(); renderMapPoints();
+  }
+  // Turn a plotted observation (from collectVisibleDetections) into a map point:
+  // its species name leads the tags (so the marker colours per species) with the
+  // source as a second tag; the note keeps the date / place / source link.
+  function detToMapPoint(d) {
+    var tags = [];
+    if (d.name) tags.push(d.name);
+    var src = srcLabel(d); if (src && tags.indexOf(src) < 0) tags.push(src);
+    var bits = [];
+    if (d.date) bits.push(d.date);
+    if (d.place) bits.push(d.place);
+    if (d.url) bits.push(d.url);
+    return {
+      id: mpUid(), lat: d.lat, lon: d.lon,
+      name: d.name || t("points.obsName"), tags: tags, note: bits.join(" · "),
+      source: "observation", createdAt: new Date().toISOString()
+    };
+  }
+  // Append a batch of observations (already filtered) to a points list, creating
+  // the list if it's new. When the target is the active list the pins join the
+  // working set and show at once; otherwise they go straight into that saved
+  // list. Returns how many points were added.
+  function addObservationsToList(name, dets) {
+    name = String(name || "").trim(); if (!name || !dets || !dets.length) return 0;
+    var pts = dets.filter(function (d) { return isFinite(d.lat) && isFinite(d.lon); }).map(detToMapPoint);
+    if (!pts.length) return 0;
+    if (name === mpActiveName) {
+      pts.forEach(function (p) { mapPoints.push(p); });
+    } else {
+      var c = mpCollections.filter(function (x) { return x.name === name; })[0];
+      if (c) c.points = (c.points || []).concat(pts);
+      else mpCollections.push({ name: name, points: pts });
+    }
+    saveMapPoints(); renderMapPoints();
+    return pts.length;
   }
   // Distinct tag pool across all stored points, alphabetically sorted.
   function mpAllTags() {
@@ -5049,29 +4995,6 @@
       document.getElementById("sources-reset").addEventListener("click", resetSources);
     }
 
-    var detSetsOpenBtn = document.getElementById("det-sets-open");
-    if (detSetsOpenBtn) {
-      detSetsOpenBtn.addEventListener("click", function () {
-        closeDropdowns();
-        renderDetSetsTable();
-        document.getElementById("det-sets-modal").style.display = "flex";
-        navOpen("detsets", function () { document.getElementById("det-sets-modal").style.display = "none"; });
-      });
-      document.getElementById("det-sets-close").addEventListener("click", function () { navClose("detsets"); });
-      document.getElementById("det-sets-modal").addEventListener("click", function (e) { if (e.target === this) navClose("detsets"); });
-      document.getElementById("det-sets-save").addEventListener("click", function () {
-        if (typeof detPlot === "undefined" || !Object.keys(detPlot).length) return;
-        modalPrompt(t("dset.saveAsPrompt"), "").then(function (n) {
-          if (!n || !n.trim()) return;
-          var name = n.trim();
-          var exists = detSets().some(function (x) { return x.name === name; });
-          if (exists) modalConfirm(t("dset.overwritePrompt", { name: name })).then(function (ok) { if (ok && saveDetSet(name)) renderDetSetsTable(); });
-          else if (saveDetSet(name)) renderDetSetsTable();
-        });
-      });
-    }
-
-
 
     // Range cache budget (MB) → persist to localStorage; 0 disables and clears.
     h3CacheMB = +window.GeoState.get("h3CacheMB", 2) || 0;
@@ -5157,6 +5080,19 @@
     });
     var detlistSearch = document.getElementById("detlist-search");
     if (detlistSearch) detlistSearch.addEventListener("input", function () { detListQuery = this.value; renderDetListModal(); });
+    // "➕ Add to points list": turn the currently-listed observations into pins in
+    // a named points list (typed name = new or existing). The detection dots stay
+    // plotted; this just captures the filtered set as reusable map points.
+    var detlistToList = document.getElementById("detlist-tolist");
+    if (detlistToList) detlistToList.addEventListener("click", function () {
+      var rows = detListRows();
+      if (!rows.length) { setStatus(t("points.addObsEmpty")); return; }
+      modalPrompt(t("points.addObsPrompt", { n: rows.length }), mpActiveName || "").then(function (n) {
+        n = (n || "").trim(); if (!n) return;
+        var added = addObservationsToList(n, rows);
+        if (added) { navClose("detlist"); setStatus(t("points.addObsDone", { n: added, name: n })); }
+      });
+    });
 
     document.getElementById("sync-export").addEventListener("click", exportAppData);
     document.getElementById("points-kml-export").addEventListener("click", exportPointsKml);
