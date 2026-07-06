@@ -3399,7 +3399,7 @@
           '<div id="demo-legend"></div>' +
           '<div id="nearby-page" style="display:none">' +
             '<div class="nb-bar">' +
-              '<h3 id="nb-title" data-i18n="nearby.title">Birds close by</h3>' +
+              '<h3 id="nb-title" data-i18n="nearby.title">Close by</h3>' +
               '<button id="nb-tomap" class="nb-tomap" title="Show on map" aria-label="Show on map">' + ico("pin") + '</button>' +
             '</div>' +
             '<div id="nb-ref" class="nb-ref"></div>' +
