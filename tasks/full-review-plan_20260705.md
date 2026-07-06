@@ -184,11 +184,25 @@ Pure ergonomics or grounded in captured/observed data. Highest value‑per‑eff
 ### Tier B — OBSERVATION‑grounded "smart" features (trustworthy — real sightings, not model precision)
 These are the genuinely valuable "intelligent" features, because they run on real recent
 detections, not model guesses.
-- [ ] **3.9 Proactive "rare/target nearby" alerter** *(L)* — page‑visible timer re‑fetches
-  **recent detections** around GPS; fires a `Notification`+vibrate on a needs/rare‑local match.
-  Grounded entirely in observed data (the model's rarity blind spot is irrelevant here). Honest
-  limits: no true background on iOS PWAs (foreground/near‑foreground only); rate‑limit; banner
-  only while driving. **This is now the top "bigger bet," ahead of the model planners.**
+- **What already exists (do NOT rebuild):** the map dots **already indicate both** rare and
+  target. `detIsRare` marks a plotted species with ≤ `rarePct`% (default 5%) of the commonest
+  plotted species' record count (black‑centre dot + legend ◉ Rare filter), and year/life
+  **needs** already carry the yellow "needs" edges (`detNeedWeight`/`detEdgeStyle`). Two
+  limits of the existing cue: it's **passive** (you must have already fetched the data and be
+  looking at the map), and "rare" is **relative to what you plotted**, not absolute local
+  scarcity — a rarity you haven't fetched yet isn't flagged until you pull it.
+- [ ] **3.9a "Refresh detections here" — one tap at current GPS** *(S, RECOMMENDED)* — the cheap,
+  defensible core: a button that re‑runs the recent‑detections fetch at the live position and
+  re‑plots, so "what's here now" updates as you move **without** a background timer or
+  notifications. The existing rare‑dot + needs‑edge styling then does the flagging. No
+  battery/background/iOS caveats. This is the part actually worth building.
+- [ ] **3.9b Proactive notification/haptic layer** *(L, OPTIONAL — smaller delta than it looks)* —
+  ONLY adds attention delivery on top of 3.9a: a page‑visible timer + `Notification`/vibrate when
+  a **needs** or rare‑local species appears within radius, so you learn of it without watching
+  the map. NOT a new detection capability (the dots already show it). Gated behind heavy caveats:
+  no true background on iOS PWAs (foreground/near‑foreground only), continuous‑GPS + polling
+  battery cost, rate‑limit, banner‑only while driving. Build only if "I miss things because I
+  have to keep looking/fetching" is a real pain — otherwise skip.
 - [ ] **3.14 Seed a checklist from a nearby BirdWeather station** *(M)* — pull the station's
   recent detections (`fetchBirdweatherAll`) as **unchecked, "acoustic‑unconfirmed"** rows.
 - [ ] **3.B1 Model × observation confidence cue** *(M, NEW)* — where a species is **both**
@@ -234,7 +248,12 @@ Kept but deliberately down‑scoped so they don't imply precision the model lack
 2. **1.3 CSP** (defence‑in‑depth) and **1.4** (shrink blast radius), then **1.5**.
 3. **Phase 2.1–2.4** — the HIGH robustness bugs (blog sync clobber/tombstone, Laji non‑bird,
    silent quota loss) that bite in normal use. Then 2.5–2.9.
-4. **Phase 3A** quick wins, then the two ★ model‑planner bets (3.7/3.8).
+4. **Phase 3 (reconsidered):** **Tier A** model‑independent quick wins (wake‑lock, haptics,
+   share/QR, compass‑to‑a‑real‑dot) + **3.9a** "refresh detections here" first — all low‑risk,
+   no model‑accuracy exposure. Then **Tier B** observation‑grounded (3.14, **3.B1** the model×
+   observation cue) and the reframed **Tier C** coarse‑prior features (3.3′ "in season", 3.5′).
+   **3.7/3.8 stay PARKED** (they present model noise as a ranking); **3.9b** notifications only
+   if the "I keep missing things" pain is real.
 
 ## Verification (no test harness in this repo)
 
