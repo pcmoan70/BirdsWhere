@@ -1488,6 +1488,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { date: "2026-07-06", text: "Birds close by: the ☰ button (top-left of the map) opens a big-text list of the plotted detections sorted by distance from your live/fixed cross or placed pin. Tap the 📍 to jump back to the map zoomed to fit them. Set how many rows in Settings." },
     { date: "2026-07-01", text: "Stored locations can fetch observations: give each saved spot a radius, tick the ones you want, and hit “Fetch observations” to pull sightings from all of them onto the map at once." },
     { date: "2026-06-30", text: "Stored locations: tap a map point and choose “📍 Save location”, then press-and-hold (or right-click) the crosshair button to recall your saved spots and fly to them." },
     { date: "2026-06-24", text: "Add photos to a checklist species: tap the 📷 button on its card to attach pictures (stored on this device); a 📷 count shows on the card, and the photos are included in the exported checklist report." },
@@ -3282,6 +3283,11 @@
                 '<p class="cu-hint" data-i18n="ctrl.maxpointshint">Caps how many detection dots are drawn at once for speed. When more are plotted, only the newest this-many are shown on the map (the rest stay in the Detections list).</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
+                '<label for="nearby-count" data-i18n="ctrl.nearbycount">Birds close by — rows shown</label>' +
+                '<input id="nearby-count" type="number" min="1" max="500" step="1" />' +
+                '<p class="cu-hint" data-i18n="ctrl.nearbycounthint">How many nearest detections the “Birds close by” list shows, sorted by distance from the live/fixed cross or placed pin.</p>' +
+              '</div>' +
+              '<div class="ctrl-group">' +
                 '<label for="rare-pct" data-i18n="ctrl.rarepct">Rare species threshold (%)</label>' +
                 '<input id="rare-pct" type="number" min="1" max="100" step="1" />' +
                 '<p class="cu-hint" data-i18n="ctrl.rarepcthint">A plotted species is “rare locally” when its detection count is at most this % of the commonest plotted species. Rare dots get a black centre; filter them with the legend’s ◉ Rare.</p>' +
@@ -3390,6 +3396,14 @@
             '<div id="computing-progress-wrap"><div id="computing-progress-bar"></div></div>' +
           '</div>' +
           '<div id="demo-legend"></div>' +
+          '<div id="nearby-page" style="display:none">' +
+            '<div class="nb-bar">' +
+              '<h3 id="nb-title" data-i18n="nearby.title">Birds close by</h3>' +
+              '<button id="nb-tomap" class="nb-tomap" title="Show on map" aria-label="Show on map">' + ico("pin") + '</button>' +
+            '</div>' +
+            '<div id="nb-ref" class="nb-ref"></div>' +
+            '<div id="nb-list" class="nb-list"></div>' +
+          '</div>' +
         '</div>' +
         '<div id="csv-btn-wrap" style="display:none">' +
           '<button id="csv-download-btn" class="demo-btn ico-btn" title="Download CSV">' + ico("download") + '<span class="ico-label" data-i18n="btn.csv">CSV</span></button>' +
@@ -4000,6 +4014,26 @@
     });
     map.addControl(new LocateControl());
     map.on("locationerror", function () { setStatus(t("status.locateError")); });
+
+    // "Birds close by" — opens the distance-sorted list page (see openNearby).
+    var NearbyControl = L.Control.extend({
+      options: { position: "topleft" },
+      onAdd: function () {
+        var c = L.DomUtil.create("div", "leaflet-bar leaflet-control");
+        var a = L.DomUtil.create("a", "nearby-btn", c);
+        a.href = "#";
+        a.title = t("ctrl.nearby");
+        a.setAttribute("aria-label", t("ctrl.nearby"));
+        a.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+          '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>' +
+          '<circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg>';
+        L.DomEvent.on(a, "click", function (e) { L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e); openNearby(); });
+        return c;
+      }
+    });
+    map.addControl(new NearbyControl());
+    var nbToMap = document.getElementById("nb-tomap");
+    if (nbToMap) nbToMap.addEventListener("click", function () { closeNearby(true); });
 
     // Place (location-name) search — a map-pointer button below the crosshairs
     // that expands into a search box. The panel itself lives in the map wrapper
@@ -5053,6 +5087,65 @@
     });
     return out;
   }
+  // ── "Birds close by" — a full-page list of the plotted detections, sorted by
+  // distance from the active reference point (blue live cross → red fixed cross →
+  // placed pin → map centre). Toggles with the map; toggling back fits the map to
+  // the shown detections. Count is configurable in Settings; text is kept large.
+  var nearbyShownRows = [];
+  function nearbyCount() { var n = +window.GeoState.get("nearbyCount", 25); return (n > 0 && n <= 500) ? n : 25; }
+  function nearbyRefPoint() {
+    var m = posMarker || posFixedMarker || marker || placeMarker;   // live blue → fixed red → pin
+    if (m && m.getLatLng) { var ll = m.getLatLng(); return { lat: ll.lat, lon: ll.lng, kind: m === posMarker ? "live" : (m === posFixedMarker ? "fixed" : "pin") }; }
+    if (map) { var c = map.getCenter(); return { lat: c.lat, lon: c.lng, kind: "center" }; }
+    return null;
+  }
+  function nearbyFmtDist(km) { return km < 1 ? Math.round(km * 1000) + " m" : (km < 10 ? km.toFixed(1) : Math.round(km)) + " km"; }
+  function nearbyData() {
+    var ref = nearbyRefPoint(); if (!ref) return { ref: null, rows: [] };
+    var rows = collectVisibleDetections(null).filter(function (r) { return isFinite(+r.lat) && isFinite(+r.lon); });
+    rows.forEach(function (r) { r._dist = haversineKm(ref.lat, ref.lon, +r.lat, +r.lon); });
+    rows.sort(function (a, b) { return a._dist - b._dist; });
+    return { ref: ref, rows: rows.slice(0, nearbyCount()) };
+  }
+  function renderNearby() {
+    var body = document.getElementById("nb-list"); if (!body) return;
+    var refEl = document.getElementById("nb-ref");
+    var d = nearbyData();
+    nearbyShownRows = d.rows;
+    if (refEl) refEl.textContent = d.ref ? (t("nearby.from") + " " + t("nearby.ref." + d.ref.kind)) : "";
+    if (!d.rows.length) { body.innerHTML = '<p class="nb-empty">' + escapeHtml(t("nearby.empty")) + "</p>"; return; }
+    body.innerHTML = d.rows.map(function (r, i) {
+      return '<button type="button" class="nb-row" data-i="' + i + '">' +
+        '<span class="nb-sw" style="background:' + escapeHtml(r.color || "#888") + '"></span>' +
+        '<span class="nb-name">' + escapeHtml(r.name) + "</span>" +
+        '<span class="nb-dist">' + escapeHtml(nearbyFmtDist(r._dist)) + "</span></button>";
+    }).join("");
+    body.querySelectorAll(".nb-row").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var r = nearbyShownRows[+this.getAttribute("data-i")]; if (!r) return;
+        closeNearby(false);
+        if (map) map.setView([+r.lat, +r.lon], Math.max(map.getZoom(), 14));
+      });
+    });
+  }
+  function nearbyIsOpen() { var p = document.getElementById("nearby-page"); return !!p && p.style.display !== "none"; }
+  function openNearby() {
+    renderNearby();
+    var p = document.getElementById("nearby-page"); if (p) p.style.display = "flex";
+    document.body.setAttribute("data-nearby", "1");
+  }
+  function closeNearby(fit) {
+    var p = document.getElementById("nearby-page"); if (p) p.style.display = "none";
+    document.body.removeAttribute("data-nearby");
+    if (!map) return;
+    map.invalidateSize();
+    if (fit && nearbyShownRows.length) {
+      var pts = nearbyShownRows.map(function (r) { return [+r.lat, +r.lon]; });
+      var ref = nearbyRefPoint(); if (ref) pts.push([ref.lat, ref.lon]);
+      try { if (pts.length === 1) map.setView(pts[0], Math.max(map.getZoom(), 13)); else map.fitBounds(L.latLngBounds(pts).pad(0.25)); } catch (e) {}
+    }
+  }
+  function toggleNearby() { if (nearbyIsOpen()) closeNearby(true); else openNearby(); }
   var detListSort = "time";            // "time" (date sections) | "species" (per-species rows)
   var detListOpenSp = {};              // species keys expanded in the by-species view
   var detListNear = null;              // location scope: a clicked dot's { lat, lon, meters } (null = whole map)
@@ -7544,6 +7637,7 @@
       document.getElementById("field-page").style.display = "none";
       stopFieldGeoWatch();
       if (crossState === 1) setCrosshairState(0);   // stop GPS follow so it doesn't keep recentring the new mode's view
+      closeNearby(false);   // don't leave the "birds close by" page over a different mode
       navClose("page");   // drop the page's Back-history entry (it was just closed)
       hideCsvBtn();
       hideFetchArea();   // drop the live pointer box unless we're (still) in list/historic
@@ -7704,6 +7798,17 @@
         window.GeoState.save({ maxMapPoints: v });
         rebuildDetLayers();   // re-apply the newest-N draw cap
         updateDetLegend();
+      });
+    }
+
+    var nearbyEl = document.getElementById("nearby-count");
+    if (nearbyEl) {
+      nearbyEl.value = String(nearbyCount());
+      nearbyEl.addEventListener("change", function () {
+        var v = Math.max(1, Math.min(500, +this.value || 25));
+        this.value = String(v);
+        window.GeoState.save({ nearbyCount: v });
+        if (nearbyIsOpen()) renderNearby();
       });
     }
 

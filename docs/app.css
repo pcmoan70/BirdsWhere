@@ -434,6 +434,47 @@ input:focus-visible {
   margin-bottom: 0;
 }
 
+/* "Birds close by" — full-page distance-sorted list overlaying the map. Text is
+   kept as large as possible (clamp) for at-a-glance field reading. */
+#nearby-page {
+  position: absolute; inset: 0; z-index: 1200;   /* above Leaflet controls (z 1000) */
+  display: none;                 /* toggled to flex when open */
+  flex-direction: column;
+  background: var(--surface);
+}
+.nb-bar {
+  flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+}
+.nb-bar h3 { margin: 0; color: var(--ink); font-size: clamp(18px, 4.5vw, 26px); }
+.nb-tomap {
+  flex: 0 0 auto;
+  width: 46px; height: 40px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface-2); color: var(--ink); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.nb-tomap:hover { background: var(--border); }
+.nb-ref { flex: 0 0 auto; padding: 4px 14px; color: var(--ink); opacity: .7; font-size: 14px; }
+.nb-list { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.nb-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; cursor: pointer;
+  padding: 14px 16px; border: 0; border-bottom: 1px solid var(--border);
+  background: var(--surface); color: var(--ink);
+}
+.nb-row:hover { background: var(--surface-2); }
+.nb-sw { flex: 0 0 auto; width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.25); }
+.nb-name {
+  flex: 1 1 auto; min-width: 0; font-weight: 600; line-height: 1.15;
+  font-size: clamp(20px, 5.2vw, 32px);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.nb-dist {
+  flex: 0 0 auto; color: var(--ink); opacity: .85; font-variant-numeric: tabular-nums;
+  font-size: clamp(18px, 4.6vw, 28px);
+}
+.nb-empty { padding: 24px 16px; color: var(--ink); opacity: .7; }
+
 #demo-computing {
   position: absolute;
   inset: 0;

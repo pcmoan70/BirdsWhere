@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-07-06 — "Birds close by" distance-sorted list page (sw v565)
+
+- New feature: a ☰ list button on the top-left of the map opens a full-page,
+  big-text list of the plotted bird detections sorted by distance from the
+  reference point (blue live cross → red fixed cross → placed pin → map centre).
+  Each row shows the species and distance; tapping a row centres the map on it.
+  The on-page 📍 button (top-right) toggles back to the map, zoomed to fit the
+  listed detections with a margin. The number of rows is configurable in Settings
+  ("Birds close by — rows shown"). Localised in all 15 languages.
+
+
 ## 2026-07-05 — Robustness fixes: blogs sync, Laji non-birds, quota, group races (Phase 2, sw v564)
 
 - Blogs now sync correctly: applyRemote UNIONS blogLinks + blogRemoved (by cc|url)
