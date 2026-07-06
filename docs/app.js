@@ -4207,6 +4207,15 @@
         var ty = Math.min(Math.max(cp.y, my), size.y - my);
         if (tx !== cp.x || ty !== cp.y) map.panBy([cp.x - tx, cp.y - ty]);   // panBy moves the pointer to (tx,ty): new = cp − offset
       }
+      // Live "Birds close by": recompute distances against the fresh position, but
+      // only after moving ≥ 50 m from the last render (ignore GPS jitter / churn).
+      if (nearbyIsOpen()) {
+        var rk = nearbyRefPoint();
+        if (rk && rk.kind === "live" &&
+            (!nearbyLastRefLL || haversineKm(nearbyLastRefLL.lat, nearbyLastRefLL.lon, e.latlng.lat, e.latlng.lng) * 1000 >= 50)) {
+          renderNearby();
+        }
+      }
     });
 
     setupAreaOverlays();   // protected/priority-area overlay toggles (off by default)
@@ -5092,6 +5101,7 @@
   // placed pin → map centre). Toggles with the map; toggling back fits the map to
   // the shown detections. Count is configurable in Settings; text is kept large.
   var nearbyShownRows = [];
+  var nearbyLastRefLL = null;          // the reference lat/lon used for the last render (live-mode 50 m recalc gate)
   function nearbyCount() { var n = +window.GeoState.get("nearbyCount", 25); return (n > 0 && n <= 500) ? n : 25; }
   function nearbyRefPoint() {
     var m = posMarker || posFixedMarker || marker || placeMarker;   // live blue → fixed red → pin
@@ -5112,6 +5122,7 @@
     var refEl = document.getElementById("nb-ref");
     var d = nearbyData();
     nearbyShownRows = d.rows;
+    nearbyLastRefLL = d.ref ? { lat: d.ref.lat, lon: d.ref.lon } : null;
     if (refEl) refEl.textContent = d.ref ? (t("nearby.from") + " " + t("nearby.ref." + d.ref.kind)) : "";
     if (!d.rows.length) { body.innerHTML = '<p class="nb-empty">' + escapeHtml(t("nearby.empty")) + "</p>"; return; }
     body.innerHTML = d.rows.map(function (r, i) {

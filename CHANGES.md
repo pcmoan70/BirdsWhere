@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-06 — Birds close by: live recalc on movement (sw v566)
+
+- When GPS live-follow is active and the "Birds close by" list is open, the list
+  now recomputes distances against each fresh position fix — but only after the
+  position has moved at least 50 m since the last update (ignores GPS jitter).
+
+
 ## 2026-07-06 — "Birds close by" distance-sorted list page (sw v565)
 
 - New feature: a ☰ list button on the top-left of the map opens a full-page,
