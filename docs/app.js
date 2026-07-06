@@ -3286,6 +3286,7 @@
                 '<label for="nearby-count" data-i18n="ctrl.nearbycount">Birds close by — rows shown</label>' +
                 '<input id="nearby-count" type="number" min="1" max="500" step="1" />' +
                 '<p class="cu-hint" data-i18n="ctrl.nearbycounthint">How many nearest detections the “Birds close by” list shows, sorted by distance from the live/fixed cross or placed pin.</p>' +
+                '<label class="ctrl-check"><input type="checkbox" id="nearby-points-toggle"> <span data-i18n="ctrl.nearbypoints">Also include active map points</span></label>' +
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label for="rare-pct" data-i18n="ctrl.rarepct">Rare species threshold (%)</label>' +
@@ -5103,6 +5104,23 @@
   var nearbyShownRows = [];
   var nearbyLastRefLL = null;          // the reference lat/lon used for the last render (live-mode 50 m recalc gate)
   function nearbyCount() { var n = +window.GeoState.get("nearbyCount", 25); return (n > 0 && n <= 500) ? n : 25; }
+  function nearbyInclPoints() { return window.GeoState.get("nearbyInclPoints", false) === true; }
+  // Active (shown) map points to fold into the list: the working pins (respecting
+  // the tag filter) plus shown saved-list points that AREN'T detections — a list's
+  // detection points already come through collectVisibleDetections via detPlot.
+  function nearbyMapPoints() {
+    var out = [];
+    (mapPoints || []).forEach(function (p) {
+      if (p && isFinite(p.lat) && isFinite(p.lon) && mpVisible(p)) out.push({ point: true, name: p.name || t("nearby.point"), lat: +p.lat, lon: +p.lon });
+    });
+    (mpCollections || []).forEach(function (c) {
+      if (!shownColls[c.name]) return;
+      (c.points || []).forEach(function (p) {
+        if (p && !p.spKey && isFinite(p.lat) && isFinite(p.lon)) out.push({ point: true, name: p.name || c.name || t("nearby.point"), lat: +p.lat, lon: +p.lon });
+      });
+    });
+    return out;
+  }
   function nearbyRefPoint() {
     var m = posMarker || posFixedMarker || marker || placeMarker;   // live blue → fixed red → pin
     if (m && m.getLatLng) { var ll = m.getLatLng(); return { lat: ll.lat, lon: ll.lng, kind: m === posMarker ? "live" : (m === posFixedMarker ? "fixed" : "pin") }; }
@@ -5113,6 +5131,7 @@
   function nearbyData() {
     var ref = nearbyRefPoint(); if (!ref) return { ref: null, rows: [] };
     var rows = collectVisibleDetections(null).filter(function (r) { return isFinite(+r.lat) && isFinite(+r.lon); });
+    if (nearbyInclPoints()) rows = rows.concat(nearbyMapPoints());   // fold in active map points
     rows.forEach(function (r) { r._dist = haversineKm(ref.lat, ref.lon, +r.lat, +r.lon); });
     rows.sort(function (a, b) { return a._dist - b._dist; });
     return { ref: ref, rows: rows.slice(0, nearbyCount()) };
@@ -5126,9 +5145,11 @@
     if (refEl) refEl.textContent = d.ref ? (t("nearby.from") + " " + t("nearby.ref." + d.ref.kind)) : "";
     if (!d.rows.length) { body.innerHTML = '<p class="nb-empty">' + escapeHtml(t("nearby.empty")) + "</p>"; return; }
     body.innerHTML = d.rows.map(function (r, i) {
-      return '<button type="button" class="nb-row" data-i="' + i + '">' +
-        '<span class="nb-sw" style="background:' + escapeHtml(r.color || "#888") + '"></span>' +
-        '<span class="nb-name">' + escapeHtml(r.name) + "</span>" +
+      var sw = r.point
+        ? '<span class="nb-sw nb-sw-point">📍</span>'                                   // 📍 marks a saved map point
+        : '<span class="nb-sw" style="background:' + escapeHtml(r.color || "#888") + '"></span>';
+      return '<button type="button" class="nb-row' + (r.point ? " nb-row-point" : "") + '" data-i="' + i + '">' +
+        sw + '<span class="nb-name">' + escapeHtml(r.name) + "</span>" +
         '<span class="nb-dist">' + escapeHtml(nearbyFmtDist(r._dist)) + "</span></button>";
     }).join("");
     body.querySelectorAll(".nb-row").forEach(function (btn) {
@@ -7819,6 +7840,14 @@
         var v = Math.max(1, Math.min(500, +this.value || 25));
         this.value = String(v);
         window.GeoState.save({ nearbyCount: v });
+        if (nearbyIsOpen()) renderNearby();
+      });
+    }
+    var nearbyPtsEl = document.getElementById("nearby-points-toggle");
+    if (nearbyPtsEl) {
+      nearbyPtsEl.checked = nearbyInclPoints();
+      nearbyPtsEl.addEventListener("change", function () {
+        window.GeoState.save({ nearbyInclPoints: this.checked });
         if (nearbyIsOpen()) renderNearby();
       });
     }

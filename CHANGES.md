@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-06 — Birds close by: option to include active map points (sw v568)
+
+- New Settings toggle "Also include active map points": when on, the "Birds close
+  by" list also folds in your active map points (working pins + shown saved-list
+  points that aren’t detections), sorted by distance alongside the detections and
+  marked with a 📍. Off by default. Localised in all 15 languages.
+
+
 ## 2026-07-06 — Birds close by: live recalc on movement (sw v566)
 
 - When GPS live-follow is active and the "Birds close by" list is open, the list
