@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-06 — Birds close by: show count + days since per row (sw v569)
+
+- Each species row in the "Birds close by" list now shows "n(Nd)" behind the
+  name — n = the observation count (blank if unknown) and Nd = days since that
+  observation (0d = today). Map-point rows show no meta.
+
+
 ## 2026-07-06 — Birds close by: option to include active map points (sw v568)
 
 - New Settings toggle "Also include active map points": when on, the "Birds close

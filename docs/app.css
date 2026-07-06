@@ -466,10 +466,15 @@ input:focus-visible {
 .nb-sw { flex: 0 0 auto; width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.25); }
 .nb-sw-point { background: none; box-shadow: none; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; line-height: 1; }
 .nb-row-point .nb-name { font-style: italic; }
+.nb-namewrap { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
 .nb-name {
-  flex: 1 1 auto; min-width: 0; font-weight: 600; line-height: 1.15;
+  flex: 0 1 auto; min-width: 0; font-weight: 600; line-height: 1.15;
   font-size: clamp(20px, 5.2vw, 32px);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.nb-meta {
+  flex: 0 0 auto; color: var(--ink); opacity: .6; font-variant-numeric: tabular-nums;
+  font-size: clamp(13px, 3.2vw, 19px);
 }
 .nb-dist {
   flex: 0 0 auto; color: var(--ink); opacity: .85; font-variant-numeric: tabular-nums;

@@ -5128,6 +5128,16 @@
     return null;
   }
   function nearbyFmtDist(km) { return km < 1 ? Math.round(km * 1000) + " m" : (km < 10 ? km.toFixed(1) : Math.round(km)) + " km"; }
+  // "n(Nd)" behind the species name: n = count for that observation (blank if
+  // unknown), Nd = days since it. Empty for map-point rows.
+  function nearbyMeta(r) {
+    if (r.point) return "";
+    var n = (r.count !== "" && r.count != null) ? String(r.count) : "";
+    var dstr = String(r.date || "").slice(0, 10);                 // date portion only
+    var ts = dstr ? Date.parse(dstr + "T00:00:00") : NaN;         // local midnight → whole calendar days
+    var d = isNaN(ts) ? "" : "(" + Math.max(0, Math.floor((Date.now() - ts) / 86400000)) + "d)";
+    return n + d;
+  }
   function nearbyData() {
     var ref = nearbyRefPoint(); if (!ref) return { ref: null, rows: [] };
     var rows = collectVisibleDetections(null).filter(function (r) { return isFinite(+r.lat) && isFinite(+r.lon); });
@@ -5148,8 +5158,10 @@
       var sw = r.point
         ? '<span class="nb-sw nb-sw-point">📍</span>'                                   // 📍 marks a saved map point
         : '<span class="nb-sw" style="background:' + escapeHtml(r.color || "#888") + '"></span>';
+      var meta = nearbyMeta(r);
       return '<button type="button" class="nb-row' + (r.point ? " nb-row-point" : "") + '" data-i="' + i + '">' +
-        sw + '<span class="nb-name">' + escapeHtml(r.name) + "</span>" +
+        sw + '<span class="nb-namewrap"><span class="nb-name">' + escapeHtml(r.name) + "</span>" +
+        (meta ? '<span class="nb-meta">' + escapeHtml(meta) + "</span>" : "") + "</span>" +
         '<span class="nb-dist">' + escapeHtml(nearbyFmtDist(r._dist)) + "</span></button>";
     }).join("");
     body.querySelectorAll(".nb-row").forEach(function (btn) {
