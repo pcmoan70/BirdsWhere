@@ -1488,7 +1488,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
-    { date: "2026-07-06", text: "Birds close by: the ☰ button (top-left of the map) opens a big-text list of the plotted detections sorted by distance from your live/fixed cross or placed pin. Tap the 📍 to jump back to the map zoomed to fit them. Set how many rows in Settings." },
+    { date: "2026-07-06", text: "Close by: the ☰ button (top-left of the map) opens a big-text list of the plotted detections sorted by distance from your live/fixed cross or placed pin. Tap the 📍 to jump back to the map zoomed to fit them. Set how many rows in Settings." },
     { date: "2026-07-01", text: "Stored locations can fetch observations: give each saved spot a radius, tick the ones you want, and hit “Fetch observations” to pull sightings from all of them onto the map at once." },
     { date: "2026-06-30", text: "Stored locations: tap a map point and choose “📍 Save location”, then press-and-hold (or right-click) the crosshair button to recall your saved spots and fly to them." },
     { date: "2026-06-24", text: "Add photos to a checklist species: tap the 📷 button on its card to attach pictures (stored on this device); a 📷 count shows on the card, and the photos are included in the exported checklist report." },
@@ -3283,9 +3283,9 @@
                 '<p class="cu-hint" data-i18n="ctrl.maxpointshint">Caps how many detection dots are drawn at once for speed. When more are plotted, only the newest this-many are shown on the map (the rest stay in the Detections list).</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
-                '<label for="nearby-count" data-i18n="ctrl.nearbycount">Birds close by — rows shown</label>' +
+                '<label for="nearby-count" data-i18n="ctrl.nearbycount">Close by — rows shown</label>' +
                 '<input id="nearby-count" type="number" min="1" max="500" step="1" />' +
-                '<p class="cu-hint" data-i18n="ctrl.nearbycounthint">How many nearest detections the “Birds close by” list shows, sorted by distance from the live/fixed cross or placed pin.</p>' +
+                '<p class="cu-hint" data-i18n="ctrl.nearbycounthint">How many of the nearest detections the Close by list shows, sorted by distance from the live/fixed cross or placed pin.</p>' +
                 '<label class="ctrl-check"><input type="checkbox" id="nearby-points-toggle"> <span data-i18n="ctrl.nearbypoints">Also include active map points</span></label>' +
               '</div>' +
               '<div class="ctrl-group">' +
