@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-08 — Data sources: "Get a free key" link when no key is set (sw v577)
+
+- In the data-source detail view, a keyed source with no API key entered now
+  shows a "Get a free key ↗" link to that provider's signup/keygen page
+  (eBird, Artportalen/Artdatabanken, Laji.fi). Localised in all 15 languages.
+
+
 ## 2026-07-08 — Map touch: gate the detection-dot popup too (sw v576)
 
 - The ≥200 ms press gate now also covers the plotted detection dots (not just

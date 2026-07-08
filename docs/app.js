@@ -1684,6 +1684,13 @@
   // enable toggle, and its editable settings. srcDetailId = the open source (null
   // = list).
   var srcDetailId = null;
+  // Where to make a free account / get an API key for each keyed source — shown as a
+  // link in the source detail view when no key is set yet.
+  var KEY_SIGNUP_URL = {
+    ebird: "https://ebird.org/api/keygen",
+    artportalen: "https://api-portal.artdatabanken.se/",
+    laji: "https://laji.fi/about/806"
+  };
   function srcInfo(id) {
     if (id === "gbif") return { id: "gbif", name: "GBIF", url: "", days: gbifDays(), keyed: false, country: null, global: true, removable: false, isGbif: true };
     var s = directSources().filter(function (x) { return x.id === id; })[0]; if (!s) return null;
@@ -1762,7 +1769,7 @@
     if (info.keyed) h += '<div class="src-detail-field"><label>' + escapeHtml(t("sources.colKey")) + '</label>' +
       '<span class="src-key-wrap"><input type="text" class="src-key" data-id="' + escapeHtml(id) + '" value="' + escapeHtml(directKey(id)) + '" autocomplete="off" spellcheck="false" placeholder="' + escapeHtml(t("sources.keyPh")) + '" />' +
       '<span class="src-key-status" data-id="' + escapeHtml(id) + '"></span>' +
-      (id === "ebird" ? '<a class="src-key-link" href="https://ebird.org/api/keygen" target="_blank" rel="noopener">' + escapeHtml(t("ctrl.ebirdkeyget")) + "</a>" : "") +
+      ((!directKey(id) && KEY_SIGNUP_URL[id]) ? '<a class="src-key-link" href="' + escapeHtml(KEY_SIGNUP_URL[id]) + '" target="_blank" rel="noopener">' + escapeHtml(t("sources.getKey")) + " ↗</a>" : "") +
       "</span></div>";
     h += '<div class="src-detail-field"><label>' + escapeHtml(t("sources.colDays")) + '</label><input type="number" class="src-days" min="1" max="' + (info.isGbif ? 92 : 365) + '" value="' + info.days + '" /></div>';
     if (!info.isGbif) h += '<div class="src-detail-field"><label>' + escapeHtml(t("sources.colUrl")) + '</label><input type="text" class="src-url" value="' + escapeHtml(info.url) + '" autocomplete="off" spellcheck="false" /></div>';
