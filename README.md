@@ -139,10 +139,15 @@ docs/
 - **App code**: MIT (see `LICENSE`).
 - **BirdNET Geomodel** by the [BirdNET team](https://github.com/birdnet-team/geomodel):
   source MIT; **trained weights (`geomodel_fp16.onnx`) are CC BY-SA 4.0** and redistributed
-  here under those terms.
+  here under those terms (share-alike + attribution required).
+- **Bundled libraries** (`docs/vendor/`): Leaflet (BSD-2-Clause), ONNX Runtime Web (MIT),
+  h3-js (Apache-2.0). Loaded from a CDN: @emailjs/browser (MIT), Google Identity Services.
 - Observations © their respective providers (eBird/Cornell Lab, GBIF, iNaturalist,
   Artsdatabanken, SLU Artdatabanken, FinBIF/Laji.fi, BirdWeather). Map tiles © OpenStreetMap
-  contributors, © CARTO.
+  contributors, © CARTO, OpenTopoMap, Esri, UNEP-WCMC, EEA.
+
+Full third-party license texts and attributions are in
+[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
 
 Predictions are model estimates, not ground truth; BirdWeather detections are AI acoustic
 identifications, not human-verified.
