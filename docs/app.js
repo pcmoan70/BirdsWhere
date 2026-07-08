@@ -5786,7 +5786,6 @@
       m._detRow = r; m._detName = name; m._detColor = fill; m._detTrueColor = color;
       // Click → the co-located detections list for that spot (onDetMarkerClick).
       m.on("click", function (e) {
-        if (mapPtrIsTouch && touchHeldMs() < 200) return;   // ignore an accidental brush (<200 ms touch)
         if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent);
         onDetMarkerClick(m);
       });
@@ -6981,7 +6980,6 @@
     return out;
   }
   function onMpPinClick(rec) {
-    if (mapPtrIsTouch && touchHeldMs() < 200) return;   // ignore an accidental brush (<200 ms touch)
     clearSpider();
     var group = mpOverlaps(rec, 16);
     if (group.length <= 1) { mpPinAction(rec); return; }
@@ -7004,7 +7002,7 @@
       layer.addLayer(L.polyline([center, ll], { color: "#888", weight: 1, opacity: 0.6, interactive: false }));
       var fm = L.circleMarker(ll, { radius: 7, color: "#111", weight: 1, fillColor: mpColorFor(o.p), fillOpacity: 0.95 });
       fm.bindTooltip(mpTipHtml(o.p), { direction: "top", className: o.p && o.p.spColor ? "det-hover-tip" : "area-tip" });
-      fm.on("click", function (e) { if (mapPtrIsTouch && touchHeldMs() < 200) return; if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent); clearSpider(); mpPinAction(o); });
+      fm.on("click", function (e) { if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent); clearSpider(); mpPinAction(o); });
       layer.addLayer(fm);
     });
     layer.addTo(map);
@@ -9555,6 +9553,9 @@
     else bindPointPopup(marker, lat, lon);   // list (and any click-driven default)
   }
   function onMapClick(e) {
+    // Ignore an accidental brush on the empty map: opening the point popup / placing
+    // a location needs a deliberate ≥200 ms touch. Mouse/pen clicks are not gated.
+    if (mapPtrIsTouch && touchHeldMs() < 200) return;
     // Debounce every map click: ignore any click that lands within 200 ms of the
     // previous one (rapid double-taps, or a legend re-render leaking through).
     if (Date.now() < mapClickGuardUntil) return;
