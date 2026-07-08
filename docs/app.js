@@ -6970,7 +6970,7 @@
     return out;
   }
   function onMpPinClick(rec) {
-    if (mapPtrIsTouch && touchHeldMs() < 100) return;   // ignore an accidental brush (<100 ms touch)
+    if (mapPtrIsTouch && touchHeldMs() < 200) return;   // ignore an accidental brush (<200 ms touch)
     clearSpider();
     var group = mpOverlaps(rec, 16);
     if (group.length <= 1) { mpPinAction(rec); return; }
@@ -6993,7 +6993,7 @@
       layer.addLayer(L.polyline([center, ll], { color: "#888", weight: 1, opacity: 0.6, interactive: false }));
       var fm = L.circleMarker(ll, { radius: 7, color: "#111", weight: 1, fillColor: mpColorFor(o.p), fillOpacity: 0.95 });
       fm.bindTooltip(mpTipHtml(o.p), { direction: "top", className: o.p && o.p.spColor ? "det-hover-tip" : "area-tip" });
-      fm.on("click", function (e) { if (mapPtrIsTouch && touchHeldMs() < 100) return; if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent); clearSpider(); mpPinAction(o); });
+      fm.on("click", function (e) { if (mapPtrIsTouch && touchHeldMs() < 200) return; if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent); clearSpider(); mpPinAction(o); });
       layer.addLayer(fm);
     });
     layer.addTo(map);
