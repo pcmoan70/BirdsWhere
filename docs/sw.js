@@ -14,7 +14,7 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v571";
+var VERSION = "v572";
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs
 // version-INDEPENDENT shared pool: map tiles AND the app's computed range-data
@@ -67,6 +67,7 @@ var SHELL = [
   "countries-lite.json",
   "manifest.webmanifest",
   "icon.svg",
+  "qr-app.svg",
   "icon-192.png",
   "icon-512.png",
   "apple-touch-icon.png",

@@ -1729,6 +1729,10 @@ button.dd-name:hover { text-decoration: underline; }
 }
 .settings-about::before { content: "\2139  "; }   /* ℹ */
 .settings-about:hover { background: var(--surface-2); }
+/* QR to open/share the app URL — white padded box so it scans on any theme. */
+.app-qr { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 14px 0 6px; }
+.app-qr img { display: block; background: #fff; padding: 8px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+.app-qr-cap { font-size: 13px; color: var(--ink); opacity: .7; text-align: center; }
 
 /* About — model & methodology modal (opened from Settings) */
 #about-modal {

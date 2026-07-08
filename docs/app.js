@@ -3378,6 +3378,7 @@
               '<div class="ctrl-group">' +
                 '<label class="ctrl-check"><input type="checkbox" id="show-sci-toggle" checked> <span data-i18n="ctrl.showsci">Scientific names</span></label>' +
               '</div>' +
+              '<div class="app-qr"><img src="qr-app.svg" alt="" width="140" height="140" /><span class="app-qr-cap" data-i18n="settings.qrShare">Scan to open / share this app</span></div>' +
               '<button type="button" id="about-open" class="settings-about" data-i18n="ctrl.about">About &amp; how it works</button>' +
               '<div class="settings-section" data-i18n="settings.secWhatsNew">What’s new</div>' +
               '<div id="whatsnew-list" class="whatsnew-list"></div>' +
@@ -4035,6 +4036,7 @@
     map.addControl(new NearbyControl());
     var nbToMap = document.getElementById("nb-tomap");
     if (nbToMap) nbToMap.addEventListener("click", function () { closeNearby(true); });
+    window.addEventListener("resize", function () { if (nearbyIsOpen()) fitNearbyNames(); });   // re-fit names on rotate/resize
 
     // Place (location-name) search — a map-pointer button below the crosshairs
     // that expands into a search box. The panel itself lives in the map wrapper
@@ -5171,12 +5173,28 @@
         if (map) map.setView([+r.lat, +r.lon], Math.max(map.getZoom(), 14));
       });
     });
+    fitNearbyNames();
+  }
+  // Shrink each species name's font just enough to fit on one line (no ellipsis) —
+  // CSS can't fit-text-to-width. Needs the page to be laid out (non-zero widths).
+  function fitNearbyNames() {
+    var body = document.getElementById("nb-list"); if (!body) return;
+    body.querySelectorAll(".nb-name").forEach(function (el) {
+      el.style.fontSize = "";                                  // back to the CSS clamp base
+      var avail = el.clientWidth, full = el.scrollWidth;
+      if (avail > 0 && full > avail) {
+        var base = parseFloat(getComputedStyle(el).fontSize) || 24;
+        var size = Math.max(11, Math.floor(base * avail / full));
+        el.style.fontSize = size + "px";
+        if (el.scrollWidth > el.clientWidth) el.style.fontSize = Math.max(11, size - 1) + "px";   // rounding guard
+      }
+    });
   }
   function nearbyIsOpen() { var p = document.getElementById("nearby-page"); return !!p && p.style.display !== "none"; }
   function openNearby() {
-    renderNearby();
-    var p = document.getElementById("nearby-page"); if (p) p.style.display = "flex";
+    var p = document.getElementById("nearby-page"); if (p) p.style.display = "flex";   // show first so names can be measured/fitted
     document.body.setAttribute("data-nearby", "1");
+    renderNearby();
   }
   function closeNearby(fit) {
     var p = document.getElementById("nearby-page"); if (p) p.style.display = "none";

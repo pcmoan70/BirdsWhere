@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-07 — Close by: fit-to-width names; QR to share the app (sw v572)
+
+- Close by list: each species name now scales its font down to fit on one line
+  (no truncation), re-fitting on rotate/resize.
+- Settings: added a QR code (static SVG) above the "About # Changes how it works" link
+  that encodes the app URL, so you can open/share the app by scanning. Works
+  offline (precached); caption localised in all 15 languages.
+
+
 ## 2026-07-06 — Birds close by: show count + days since per row (sw v569)
 
 - Each species row in the "Birds close by" list now shows "n(Nd)" behind the
