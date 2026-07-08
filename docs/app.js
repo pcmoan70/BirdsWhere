@@ -3998,6 +3998,9 @@
       mc.addEventListener("pointerdown", function (e) {
         mapPtrDownTs = Date.now(); mapPtrIsTouch = (e.pointerType === "touch");
       }, true);
+      // touchstart fallback: guarantees the touch flag + start time are set on
+      // Android even if pointer events report an unexpected type.
+      mc.addEventListener("touchstart", function () { mapPtrDownTs = Date.now(); mapPtrIsTouch = true; }, true);
     })();
     map.on("mousedown movestart", hideStoredLocations);   // dismiss the stored-locations list on any map interaction
     // Follow the pointer with the fetch-area box in Species List mode.
@@ -5776,6 +5779,7 @@
       m._detRow = r; m._detName = name; m._detColor = fill; m._detTrueColor = color;
       // Click → the co-located detections list for that spot (onDetMarkerClick).
       m.on("click", function (e) {
+        if (mapPtrIsTouch && touchHeldMs() < 200) return;   // ignore an accidental brush (<200 ms touch)
         if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent);
         onDetMarkerClick(m);
       });

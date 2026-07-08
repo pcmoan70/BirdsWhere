@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-08 — Map touch: gate the detection-dot popup too (sw v576)
+
+- The ≥200 ms press gate now also covers the plotted detection dots (not just
+  saved map-point pins), so a quick brush on a dot no longer opens its popup.
+  Added a touchstart fallback so the press-timing is reliable on Android.
+
+
 ## 2026-07-08 — Map touch: press-duration gates (sw v574)
 
 - Tapping a map point now needs a ≥100 ms press to open its popup, so an
