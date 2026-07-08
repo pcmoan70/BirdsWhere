@@ -4249,6 +4249,7 @@
     renderMapPoints();
     map.on("contextmenu", onMapContextMenu);   // right-click / long-press → add point dialog
     map.on("movestart zoomstart click", clearSpider);   // collapse the fan-out when the view changes / map is clicked
+    map.on("movestart zoomstart", function () { clearTimeout(mapClickDelayTimer); });   // a pan/zoom cancels a pending tap→popup
     document.addEventListener("keydown", function (e) { if (e.key === "Escape") clearSpider(); });
     map.on("popupopen", function () {
       closeModals();   // a map popup opened — close any open modal overlay
@@ -4955,6 +4956,7 @@
   var mapClickGuardUntil = 0;   // onMapClick ignores clicks before this time; each accepted click re-arms it (200 ms debounce), legend re-renders set a longer window
   var mapPtrDownTs = 0, mapPtrIsTouch = false;   // last map pointer-down time + whether it was touch (press-duration gating)
   function touchHeldMs() { return Date.now() - mapPtrDownTs; }   // how long the current touch has been held
+  var mapClickDelayTimer = null;   // pending touch-tap → point-popup open (cancelled by a pan/zoom in the delay window)
   function detSelectionActive() { return Object.keys(detSelected).some(function (k) { return detPlot[k] && detPassesStar(k) && detPassesGroup(k) && detPassesRare(k) && detPassesYear(k); }); }
   // `selActive` lets a render loop compute detSelectionActive() ONCE and pass it
   // in, instead of this re-scanning all selected keys for every species.
@@ -9554,8 +9556,6 @@
   }
   function onMapClick(e) {
     // Ignore an accidental brush on the empty map: opening the point popup / placing
-    // a location needs a deliberate ≥200 ms touch. Mouse/pen clicks are not gated.
-    if (mapPtrIsTouch && touchHeldMs() < 200) return;
     // Debounce every map click: ignore any click that lands within 200 ms of the
     // previous one (rapid double-taps, or a legend re-render leaking through).
     if (Date.now() < mapClickGuardUntil) return;
@@ -9568,7 +9568,13 @@
     if (clickNearDetection(e.latlng)) return;
     // Normalize: latitude clamped to [-90, 90]; longitude wrapped to [-180, 180]
     // (a click on a panned world-copy can otherwise give e.g. lon = 635).
-    selectMapPoint(Math.max(-90, Math.min(90, e.latlng.lat)), wrapLon(e.latlng.lng));
+    var lat = Math.max(-90, Math.min(90, e.latlng.lat)), lon = wrapLon(e.latlng.lng);
+    // On touch: open the popup after a tiny delay instead of instantly, so a
+    // fleeting graze that's really the start of a pan/zoom doesn't pop it up — a
+    // movestart/zoomstart (or another tap) in that window cancels it. Mouse = instant.
+    clearTimeout(mapClickDelayTimer);
+    if (mapPtrIsTouch) mapClickDelayTimer = setTimeout(function () { selectMapPoint(lat, lon); }, 180);
+    else selectMapPoint(lat, lon);
   }
 
   function makePopupBtn(label, cls, fn) {

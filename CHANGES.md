@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-08 — Map touch: empty-map tap opens the popup after a tiny delay (sw v579)
+
+- Replaced the minimum-hold gate on the empty-map tap (which rejected normal short
+  taps, so nothing happened) with a small delay: a touch on empty map now opens the
+  point popup after ~180 ms, and a pan/zoom in that window cancels it, so a fleeting
+  graze that's really the start of a pan doesn't pop it up. Normal taps work again.
+
 ## 2026-07-08 — Map touch: move the press-delay off the dots onto the empty-map tap (sw v578)
 
 - Reverted the ≥200 ms press gate on detection dots / map-point pins — a normal tap is
