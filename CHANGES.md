@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-08 — Map touch: press-duration gates (sw v574)
+
+- Tapping a map point now needs a ≥100 ms press to open its popup, so an
+  accidental brush no longer triggers it. Registering a location by long-press
+  now requires a deliberate ≥500 ms hold. Mouse/pen clicks are unaffected.
+
+
 ## 2026-07-07 — Close by: fit-to-width names; QR to share the app (sw v572)
 
 - Close by list: each species name now scales its font down to fit on one line

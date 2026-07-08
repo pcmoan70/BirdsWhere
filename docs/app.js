@@ -3989,6 +3989,16 @@
     L.control.scale({ position: "bottomleft", imperial: false, maxWidth: 140 }).addTo(map);
 
     map.on("click", onMapClick);
+    // Track how long the last pointer was held on the map, so a touch can be gated:
+    // a pin popup needs a ≥100 ms press (filters accidental brushes) and registering
+    // a location via long-press needs ≥500 ms. Capture phase so it also sees presses
+    // that start on a marker; mouse/pen are never gated.
+    (function () {
+      var mc = map.getContainer();
+      mc.addEventListener("pointerdown", function (e) {
+        mapPtrDownTs = Date.now(); mapPtrIsTouch = (e.pointerType === "touch");
+      }, true);
+    })();
     map.on("mousedown movestart", hideStoredLocations);   // dismiss the stored-locations list on any map interaction
     // Follow the pointer with the fetch-area box in Species List mode.
     map.on("mousemove", function (e) { updateFetchArea(e.latlng); });
@@ -4933,6 +4943,8 @@
   }
   function detPassesGroup(k) { return speciesGroup === "all" || String(detClassOf(k)).toLowerCase() === String(speciesGroup).toLowerCase(); }
   var mapClickGuardUntil = 0;   // onMapClick ignores clicks before this time; each accepted click re-arms it (200 ms debounce), legend re-renders set a longer window
+  var mapPtrDownTs = 0, mapPtrIsTouch = false;   // last map pointer-down time + whether it was touch (press-duration gating)
+  function touchHeldMs() { return Date.now() - mapPtrDownTs; }   // how long the current touch has been held
   function detSelectionActive() { return Object.keys(detSelected).some(function (k) { return detPlot[k] && detPassesStar(k) && detPassesGroup(k) && detPassesRare(k) && detPassesYear(k); }); }
   // `selActive` lets a render loop compute detSelectionActive() ONCE and pass it
   // in, instead of this re-scanning all selected keys for every species.
@@ -6958,6 +6970,7 @@
     return out;
   }
   function onMpPinClick(rec) {
+    if (mapPtrIsTouch && touchHeldMs() < 100) return;   // ignore an accidental brush (<100 ms touch)
     clearSpider();
     var group = mpOverlaps(rec, 16);
     if (group.length <= 1) { mpPinAction(rec); return; }
@@ -6980,7 +6993,7 @@
       layer.addLayer(L.polyline([center, ll], { color: "#888", weight: 1, opacity: 0.6, interactive: false }));
       var fm = L.circleMarker(ll, { radius: 7, color: "#111", weight: 1, fillColor: mpColorFor(o.p), fillOpacity: 0.95 });
       fm.bindTooltip(mpTipHtml(o.p), { direction: "top", className: o.p && o.p.spColor ? "det-hover-tip" : "area-tip" });
-      fm.on("click", function (e) { if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent); clearSpider(); mpPinAction(o); });
+      fm.on("click", function (e) { if (mapPtrIsTouch && touchHeldMs() < 100) return; if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent); clearSpider(); mpPinAction(o); });
       layer.addLayer(fm);
     });
     layer.addTo(map);
@@ -7230,6 +7243,9 @@
   }
   // Right-click on desktop, long-press on touch — Leaflet fires both as "contextmenu".
   function onMapContextMenu(e) {
+    // Registering a location by long-press must be a deliberate ≥500 ms hold (a
+    // shorter touch shouldn't drop a point). Mouse right-click is not gated.
+    if (mapPtrIsTouch && touchHeldMs() < 500) return;
     // A long-press fires contextmenu then often a trailing click — re-arm the
     // debounce so that click doesn't also open the point-options popup.
     mapClickGuardUntil = Date.now() + 200;
