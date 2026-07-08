@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-08 — Map touch: move the press-delay off the dots onto the empty-map tap (sw v578)
+
+- Reverted the ≥200 ms press gate on detection dots / map-point pins — a normal tap is
+  often shorter than that, which made dots almost impossible to open. Dots and pins are
+  instantly clickable again. The accidental-touch delay now applies to tapping the EMPTY
+  map (opens the point popup / places a location): ≥200 ms. Long-press to register a saved
+  location stays ≥500 ms.
+
 ## 2026-07-08 — Data sources: "Get a free key" link when no key is set (sw v577)
 
 - In the data-source detail view, a keyed source with no API key entered now
