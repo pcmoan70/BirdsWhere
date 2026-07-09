@@ -3,8 +3,10 @@
  * online at least once.
  *
  * Strategy by request type:
- *   - App shell (html/js/css/i18n/manifest/icon)  network-first, cache fallback
- *       → fresh code when online, full offline fallback.
+ *   - App shell (html/js/css/i18n/manifest/icon)  network-first w/ 2 s timeout
+ *       → fresh code when online; if the network is slow/dead, serve the cached
+ *         shell after 2 s (and keep updating it in the background) so an offline
+ *         or dead-network boot doesn't stall on failing fetches.
  *   - Big immutable data (model, labels, taxonomy) + vendored libs  cache-first
  *       → fetched once, then served instantly offline.
  *   - Map tiles  cache-first, capped (LRU-ish FIFO trim)
@@ -14,7 +16,7 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v579";
+var VERSION = "v580";
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs
 // version-INDEPENDENT shared pool: map tiles AND the app's computed range-data
@@ -25,6 +27,7 @@ var TILE_CACHE = "map-pool";            // map tiles + computed range data
 var API_CACHE = "api-" + VERSION;       // geocode / overpass / species lookups
 var META_CACHE = "meta-config";         // version-independent: holds the user's cache-cap setting
 var DEFAULT_MAX_TILES = 11000;          // fallback LRU tile cap before the app pushes its setting
+var SHELL_NET_TIMEOUT = 2000;           // app-shell: serve cache if the network is slower than this (offline/dead-network boot stays instant)
 var PINNED_PREFIX = "pinned-";          // explicitly downloaded offline areas (never auto-purged)
 // The "Map cache buffer" (Settings) in tiles, set by the app via postMessage and
 // persisted in META_CACHE so it survives SW restarts. ~22 KB per tile.
@@ -166,7 +169,7 @@ self.addEventListener("fetch", function (event) {
         /inference-worker\.js$/.test(url.pathname)) {
       event.respondWith(cacheFirst(req, DATA_CACHE));
     } else {
-      event.respondWith(networkFirst(req, SHELL_CACHE));
+      event.respondWith(networkFirst(req, SHELL_CACHE, SHELL_NET_TIMEOUT));
     }
     return;
   }
@@ -202,7 +205,12 @@ function cacheFirst(req, cacheName) {
   });
 }
 
-function networkFirst(req, cacheName) {
+// timeoutMs (optional): if a cached copy exists and the network hasn't answered
+// within this many ms, serve the cache immediately and let the network keep
+// updating it in the background (stale-while-revalidate). Used for the app shell
+// so an offline / dead-network boot doesn't stall on failing fetches. Omitted for
+// the API cache, which should wait for fresh data and only fall back on failure.
+function networkFirst(req, cacheName, timeoutMs) {
   // Bypass the browser HTTP cache for the network attempt ("no-store") so a
   // fresh deploy is picked up immediately — GitHub Pages' max-age would
   // otherwise let the SW serve a stale copy even though we try the network
@@ -210,24 +218,41 @@ function networkFirst(req, cacheName) {
   // Build from the Request (not just its URL) so request headers — e.g. the
   // eBird X-eBirdApiToken — are preserved on the network attempt.
   return caches.open(cacheName).then(function (cache) {
-    return fetch(new Request(req, { cache: "no-store" }))
+    var netP = fetch(new Request(req, { cache: "no-store" }))
       .then(function (res) {
-        if (res && res.ok) cache.put(req, res.clone());
+        if (res && res.ok) cache.put(req, res.clone());   // refresh cache (also for the bg update)
         return res;
-      })
-      .catch(function () {
-        return cache.match(req).then(function (hit) {
-          if (hit) return hit;
-          // A navigation must always get the shell, even uncached/offline, rather
-          // than a hard network error — fall back to the precached index/root.
-          if (req.mode === "navigate") {
-            return cache.match("index.html")
-              .then(function (idx) { return idx || cache.match("./"); })
-              .then(function (s) { return s || offlineResponse(); });
-          }
-          return offlineResponse();
+      });
+    function fallback() {
+      return cache.match(req).then(function (hit) {
+        if (hit) return hit;
+        // A navigation must always get the shell, even uncached/offline, rather
+        // than a hard network error — fall back to the precached index/root.
+        if (req.mode === "navigate") {
+          return cache.match("index.html")
+            .then(function (idx) { return idx || cache.match("./"); })
+            .then(function (s) { return s || offlineResponse(); });
+        }
+        return offlineResponse();
+      });
+    }
+    if (!timeoutMs) return netP.catch(fallback);   // classic network-first (API)
+    // Stale-while-revalidate with a timeout: serve the cache fast when the network
+    // is slow/dead, but prefer a fresh response if it arrives within the window.
+    return cache.match(req).then(function (hit) {
+      if (!hit) return netP.catch(fallback);       // nothing cached → must wait for the network
+      return new Promise(function (resolve) {
+        var done = false;
+        var timer = setTimeout(function () { if (!done) { done = true; resolve(hit); } }, timeoutMs);
+        netP.then(function (res) {
+          if (done) return; done = true; clearTimeout(timer);
+          resolve(res && res.ok ? res : hit);
+        }, function () {
+          if (done) return; done = true; clearTimeout(timer);
+          resolve(hit);                             // network failed fast → serve cache
         });
       });
+    });
   });
 }
 

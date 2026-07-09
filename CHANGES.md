@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-09 — Faster offline/slow-network boot (sw v580)
+
+- The app shell (HTML/JS/CSS/i18n) is now served network-first with a 2 s
+  timeout: if the network is slow or dead, the cached shell is served after 2 s
+  and refreshed in the background, instead of the boot stalling on failing
+  fetches. Fresh-deploy pickup on a healthy connection is unchanged. The API
+  cache (observations/geocode) still waits for fresh data.
+
+
 ## 2026-07-08 — Map touch: empty-map tap opens the popup after a tiny delay (sw v579)
 
 - Replaced the minimum-hold gate on the empty-map tap (which rejected normal short
