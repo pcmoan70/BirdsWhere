@@ -49,7 +49,7 @@
 
 - Close by list: each species name now scales its font down to fit on one line
   (no truncation), re-fitting on rotate/resize.
-- Settings: added a QR code (static SVG) above the "About # Changes how it works" link
+- Settings: added a QR code (static SVG) above the "About & how it works" link
   that encodes the app URL, so you can open/share the app by scanning. Works
   offline (precached); caption localised in all 15 languages.
 
