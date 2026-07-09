@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-09 — Trip dots easier to tap (sw v581)
+
+- A shown trip's detection dots now have a larger, near-invisible tap target and
+  reveal the species (tooltip) on tap — a 5 px dot was a tiny touch target, so
+  opening a trip point to see its species was hard on a phone. The visible dot is
+  unchanged.
+
 ## 2026-07-09 — Faster offline/slow-network boot (sw v580)
 
 - The app shell (HTML/JS/CSS/i18n) is now served network-first with a 2 s

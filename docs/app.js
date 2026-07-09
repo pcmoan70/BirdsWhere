@@ -7078,9 +7078,16 @@
       var e = set.detections[k] || {};
       (e.rows || []).forEach(function (r) {
         if (r.lat == null || r.lon == null) return;
-        var m = L.circleMarker([r.lat, r.lon], { radius: 5, color: "#1a1a1a", weight: 1, opacity: 0.9, fillColor: e.color || "#888", fillOpacity: 0.85, renderer: detRenderer() });
-        m.bindTooltip(escapeHtml((e.name || k) + (r.date ? " · " + fmtDate(r.date) : "")), { direction: "top", className: "det-hover-tip" });
-        g.addLayer(m);
+        var tip = escapeHtml((e.name || k) + (r.date ? " · " + fmtDate(r.date) : ""));
+        // A larger, near-invisible hit circle so a trip dot is easy to TAP (a 5 px
+        // dot is a tiny touch target); a tap/hover opens the species tooltip.
+        var hit = L.circleMarker([r.lat, r.lon], { radius: 12, stroke: false, fillColor: "#000", fillOpacity: 0.01, renderer: detRenderer() });
+        hit.bindTooltip(tip, { direction: "top", className: "det-hover-tip" });
+        hit.on("click", function () { this.openTooltip(); });   // guarantee tap reveals the species on touch
+        g.addLayer(hit);
+        // Visible dot on top, non-interactive so the taps go to the hit circle.
+        var dot = L.circleMarker([r.lat, r.lon], { radius: 5, color: "#1a1a1a", weight: 1, opacity: 0.9, fillColor: e.color || "#888", fillOpacity: 0.85, interactive: false, renderer: detRenderer() });
+        g.addLayer(dot);
       });
     });
     return g;
