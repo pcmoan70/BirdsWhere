@@ -7350,6 +7350,7 @@
     panel.innerHTML =
       (Object.keys(detPlot).length ? '<div class="mp-head">' +
         '<button type="button" id="mp-save-det" class="demo-btn ico-btn">' + ico("save") + '<span class="ico-label" data-i18n="points.savePoints">' + escapeHtml(tLabel("points.savePoints")) + "</span></button>" +
+        '<button type="button" id="mp-share-det" class="demo-btn demo-btn-light ico-btn">' + ico("share") + '<span class="ico-label">' + escapeHtml(tLabel("share.link")) + "</span></button>" +
       "</div>" : "") +
       collSection +
       (mpHasUnsaved() ? '<div class="mp-unsaved">' + escapeHtml(t("points.unsaved", { n: mapPoints.length })) +
@@ -7474,6 +7475,8 @@
       panel.style.display = "none";   // close the points dropdown so the chooser isn't clipped
       showDetSaveMenu(r.left, r.bottom + 4, rows);
     });
+    var shareDet = panel.querySelector("#mp-share-det");
+    if (shareDet) shareDet.addEventListener("click", function (e) { e.stopPropagation(); shareCurrentDetections(); });
   }
 
   // ---- Sticky fan-out for overlapping detection markers ---------------------
@@ -9825,15 +9828,28 @@
     });
     doShare({ v: 1, type: "points", name: name, points: points }, name);
   }
-  function shareDetSet(name) {
-    var s = detSets().filter(function (x) { return x.name === name; })[0]; if (!s) return;
+  // Strip a detections map to just what a shared overlay needs (species name +
+  // colour, and per row lat/lon/date/count) — keeps the URL small.
+  function stripDetForShare(detections) {
     var dets = {};
-    Object.keys(s.detections || {}).forEach(function (k) {
-      var en = s.detections[k] || {};
+    Object.keys(detections || {}).forEach(function (k) {
+      var en = detections[k] || {};
       dets[k] = { name: en.name || k, color: en.color || "#888",
         rows: (en.rows || []).map(function (r) { var o = { lat: r.lat, lon: r.lon }; if (r.date) o.date = r.date; if (r.count != null && r.count !== "") o.count = r.count; return o; }) };
     });
-    doShare({ v: 1, type: "det", name: name, detections: dets }, name);
+    return dets;
+  }
+  function shareDetSet(name) {
+    var s = detSets().filter(function (x) { return x.name === name; })[0]; if (!s) return;
+    doShare({ v: 1, type: "det", name: name, detections: stripDetForShare(s.detections) }, name);
+  }
+  // Share the detections currently loaded from data sources (the live plot), no
+  // need to save them as a trip first.
+  function shareCurrentDetections() {
+    var det = serializeDetPlot();
+    if (!det || !Object.keys(det).length) { setStatus(t("det.none")); return; }
+    var name = t("share.detName");
+    doShare({ v: 1, type: "det", name: name, detections: stripDetForShare(det) }, name);
   }
   function uniqueShareName(base, taken) { var n = base, i = 2; while (taken(n)) n = base + " (" + (i++) + ")"; return n; }
   function fitSharedLatLngs(pts) {

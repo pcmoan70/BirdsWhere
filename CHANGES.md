@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-10 — Share the currently loaded detections (sw v587)
+
+- The Points panel now has a 🔗 Share button next to Save (shown when detections
+  are plotted): it shares the observations currently loaded from the data sources
+  as a link, without needing to save them as a trip first. The recipient sees them
+  with no API keys.
+
+
 ## 2026-07-10 — Share: show a copyable link (sw v586)
 
 - Sharing a point/list/trip now copies the full link to the clipboard AND shows
