@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-10 — Copy a point's coordinates as text (sw v588)
+
+- A single detection point (its detections popup), a tapped map point (its popup),
+  and the point editor now offer "Copy coordinates" — copies "lat, lon" (decimal
+  degrees) to the clipboard, ready to paste into Google/Apple Maps or a message.
+
+
 ## 2026-07-10 — Share the currently loaded detections (sw v587)
 
 - The Points panel now has a 🔗 Share button next to Save (shown when detections

@@ -218,7 +218,8 @@
       tag:      '<path d="M3 11.3 11.3 3H20a1 1 0 0 1 1 1v8.3l-8.3 8.3a1.4 1.4 0 0 1-2 0L3 13.3a1.4 1.4 0 0 1 0-2z"/><circle cx="16" cy="8" r="1.3"/>',
       mail:     '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 7l8.5 6 8.5-6"/>',
       menu:     '<path d="M4 7h16M4 12h16M4 17h16"/>',
-      share:    '<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8 15.8 6.2M8.2 13.2l7.6 4.6"/>'
+      share:    '<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8 15.8 6.2M8.2 13.2l7.6 4.6"/>',
+      copy:     '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/>'
     };
     return '<svg class="btn-ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (P[name] || "") + "</svg>";
   }
@@ -3600,6 +3601,7 @@
             '<h3 data-i18n="detlist.title">Detections</h3>' +
             '<button type="button" id="detlist-save" class="detlist-save-btn ico-btn">' + ico("save") + '<span class="ico-label" data-i18n="detlist.save">Save as list</span></button>' +
             '<button type="button" id="detlist-nav" class="detlist-save-btn ico-btn" data-i18n-title="nav.send" title="Open as pins in Google My Maps" aria-label="Open as pins in Google My Maps">' + ico("nav") + "</button>" +
+            '<button type="button" id="detlist-coords" class="detlist-save-btn ico-btn" data-i18n-title="coords.copyBtn" title="Copy coordinates" aria-label="Copy coordinates">' + ico("copy") + "</button>" +
             '<div id="detlist-sort">' +
               '<button type="button" class="detlist-sort-btn" data-sort="time" data-i18n="detlist.byTime">By date</button>' +
               '<button type="button" class="detlist-sort-btn" data-sort="species" data-i18n="detlist.bySpecies">By species</button>' +
@@ -7185,7 +7187,7 @@
       mpColorRow(p) +
       '<label>' + esc(t("points.note")) + '<textarea id="mp-note" rows="2">' + esc(p.note || "") + '</textarea></label>' +
       listSel +
-      '<div class="mp-meta">' + p.lat.toFixed(5) + ", " + p.lon.toFixed(5) + "</div>" +
+      '<button type="button" class="mp-meta mp-coords-copy" data-lat="' + p.lat + '" data-lon="' + p.lon + '" title="' + esc(t("coords.copyBtn")) + '">' + p.lat.toFixed(5) + ", " + p.lon.toFixed(5) + " " + ico("copy") + "</button>" +
       '<div id="mp-natlist" class="mp-natlist" style="display:none"></div>' +
       '<div class="mp-actions">' +
         '<button type="button" id="mp-save" class="demo-btn">' + esc(t("points.save")) + '</button>' +
@@ -7223,6 +7225,8 @@
   }
   function wireEditorPopup(p, isEdit) {
     wireMpColorRow();
+    var cc = document.querySelector(".mp-coords-copy");
+    if (cc) cc.addEventListener("click", function () { copyCoords(this.getAttribute("data-lat"), this.getAttribute("data-lon")); });
     var nv = document.getElementById("mp-nav");
     if (nv) nv.addEventListener("click", function () { navigatePoints([{ lat: p.lat, lon: p.lon }]); });
     var rt = document.getElementById("mp-route");
@@ -8035,6 +8039,14 @@
       sendPointsToGoogle(t("detlist.title"), (detListLastRows || []).map(function (d) {
         return { lat: d.lat, lon: d.lon, name: d.name || "", desc: [d.date, srcLabel(d)].filter(Boolean).join(" · "), color: d.color, star: isInteresting(d.key), rare: detIsRare(d.key) };
       }));
+    });
+    var detlistCoords = document.getElementById("detlist-coords");
+    if (detlistCoords) detlistCoords.addEventListener("click", function (e) {
+      e.stopPropagation();
+      // Copy the clicked spot's coordinates (the dot the list was opened from), else
+      // the single row's / first row's location.
+      var pt = detListNear || (detListLastRows && detListLastRows[0]);
+      if (pt) copyCoords(pt.lat, pt.lon != null ? pt.lon : pt.lng);
     });
 
     document.getElementById("sync-export").addEventListener("click", exportAppData);
@@ -9910,12 +9922,23 @@
     try { history.replaceState(null, "", location.pathname); } catch (e) {}   // consume it → no re-import on reload
     importShared(enc);
   }
+  // Copy a point's coordinates as plain "lat, lon" text (decimal degrees) — pastes
+  // straight into Google/Apple Maps and most tools.
+  function coordsText(lat, lon) { return (+lat).toFixed(5) + ", " + wrapLon(+lon).toFixed(5); }
+  function copyCoords(lat, lon) {
+    if (!isFinite(+lat) || !isFinite(+lon)) return;
+    var txt = coordsText(lat, lon);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(function () { setStatus(t("coords.copied", { coords: txt })); }, function () { modalPrompt(t("coords.copyManual"), txt); });
+    } else { modalPrompt(t("coords.copyManual"), txt); }
+  }
   function bindPointPopup(mk, lat, lon) {
     var wrap = document.createElement("div");
     wrap.className = "map-choose";
     wrap.appendChild(makePopupBtn(t("mode.list"), "", function () { mk.closePopup(); renderSpeciesList(lat, lon); }));
     wrap.appendChild(makePopupBtn("📍 " + t("loc.save"), "demo-btn-light", function () { mk.closePopup(); registerLocationPrompt(lat, lon); }));
     wrap.appendChild(makePopupBtn("🔗 " + t("share.link"), "demo-btn-light", function () { mk.closePopup(); doShare({ v: 1, type: "point", lat: lat, lon: lon }, t("share.link")); }));
+    wrap.appendChild(makePopupBtn("📋 " + coordsText(lat, lon), "demo-btn-light", function () { mk.closePopup(); copyCoords(lat, lon); }));
     wrap.appendChild(makePopupBtn(t("link.birdingplaces") + " ↗", "demo-btn-light", function () {
       mk.closePopup(); openExternal(birdingPlacesUrl(lat, lon));
     }));
