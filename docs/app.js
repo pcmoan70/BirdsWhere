@@ -3600,7 +3600,7 @@
           '<div id="detlist-head">' +
             '<h3 data-i18n="detlist.title">Detections</h3>' +
             '<button type="button" id="detlist-save" class="detlist-save-btn ico-btn">' + ico("save") + '<span class="ico-label" data-i18n="detlist.save">Save as list</span></button>' +
-            '<button type="button" id="detlist-nav" class="detlist-save-btn ico-btn" data-i18n-title="nav.send" title="Open as pins in Google My Maps" aria-label="Open as pins in Google My Maps">' + ico("nav") + "</button>" +
+            '<button type="button" id="detlist-nav" class="detlist-save-btn ico-btn" data-i18n-title="nav.title" title="Navigate in Google Maps" aria-label="Navigate in Google Maps">' + ico("nav") + "</button>" +
             '<button type="button" id="detlist-coords" class="detlist-save-btn ico-btn" data-i18n-title="coords.copyBtn" title="Copy coordinates" aria-label="Copy coordinates">' + ico("copy") + "</button>" +
             '<div id="detlist-sort">' +
               '<button type="button" class="detlist-sort-btn" data-sort="time" data-i18n="detlist.byTime">By date</button>' +
@@ -8051,9 +8051,9 @@
     var detlistNav = document.getElementById("detlist-nav");
     if (detlistNav) detlistNav.addEventListener("click", function (e) {
       e.stopPropagation();
-      sendPointsToGoogle(t("detlist.title"), (detListLastRows || []).map(function (d) {
-        return { lat: d.lat, lon: d.lon, name: d.name || "", desc: [d.date, srcLabel(d)].filter(Boolean).join(" · "), color: d.color, star: isInteresting(d.key), rare: detIsRare(d.key) };
-      }));
+      // Navigate to the detection location(s) in Google Maps (directions), NOT the
+      // My-Maps KML import — a clicked spot's co-located dots collapse to one stop.
+      navigatePoints((detListLastRows || []).map(function (d) { return { lat: d.lat, lon: d.lon }; }));
     });
     var detlistCoords = document.getElementById("detlist-coords");
     if (detlistCoords) detlistCoords.addEventListener("click", function (e) {

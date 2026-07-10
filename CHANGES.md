@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-10 — Detection-list navigate button opens Google Maps at the location (sw v592)
+
+- The 🧭 button in the detections popup now opens Google Maps directions to the
+  detection's location, instead of downloading a KML and opening the Google My
+  Maps import page (which showed no location). Co-located dots collapse to one
+  stop. (The My-Maps pin export is still available per saved list/trip in the
+  Points panel.)
+
+
 ## 2026-07-10 — Country resources moved to their own button (sw v591)
 
 - The country-related links (Blogs, BirdLife, national observation/registration
