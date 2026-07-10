@@ -5193,6 +5193,7 @@
     body.querySelectorAll(".nb-row").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var r = nearbyShownRows[+this.getAttribute("data-i")]; if (!r) return;
+        if (crossState === 1) setCrosshairState(0);   // stop GPS follow, else the next fix recentres away from the observation
         closeNearby(false);
         if (map) map.setView([+r.lat, +r.lon], Math.max(map.getZoom(), 14));
       });
