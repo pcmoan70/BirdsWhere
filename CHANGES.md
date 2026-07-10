@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-10 — Share points / locations / detections via URL (sw v584)
+
+- New 🔗 Share on a saved location-list or trip (Points panel per-row), and on a
+  map point's popup: builds a self-contained URL (deflated + base64url in the
+  hash) that embeds the data, so the recipient sees the points/detections with
+  **no API keys** — nothing is re-fetched. Opening such a link imports it (after a
+  confirm for lists/trips) and shows it on the map. Localised in all 15 languages.
+
 ## 2026-07-09 — Trip dots easier to tap (sw v581)
 
 - A shown trip's detection dots now have a larger, near-invisible tap target and

@@ -1359,9 +1359,9 @@ button.dd-name:hover { text-decoration: underline; }
 .mp-coll-del:hover:not([disabled]) { color: #c0392b; border-color: #c0392b; }
 .mp-coll-del[disabled] { opacity: 0.4; cursor: not-allowed; }
 /* Per-list "navigate in Google Maps" icon button. */
-.mp-coll-nav { flex: 0 0 auto; display: inline-flex; align-items: center; border: 1px solid var(--border, #ccc); border-radius: var(--radius-xs, 4px); background: var(--surface, #fff); cursor: pointer; padding: 3px 7px; color: var(--brand-deep); }
-.mp-coll-nav:hover { color: var(--brand); border-color: var(--brand); }
-.mp-coll-nav .btn-ico { width: 15px; height: 15px; }
+.mp-coll-nav, .mp-coll-share { flex: 0 0 auto; display: inline-flex; align-items: center; border: 1px solid var(--border, #ccc); border-radius: var(--radius-xs, 4px); background: var(--surface, #fff); cursor: pointer; padding: 3px 7px; color: var(--brand-deep); }
+.mp-coll-nav:hover, .mp-coll-share:hover { color: var(--brand); border-color: var(--brand); }
+.mp-coll-nav .btn-ico, .mp-coll-share .btn-ico { width: 15px; height: 15px; }
 .detlist-save-btn .btn-ico { width: 16px; height: 16px; }
 /* Route basket pill — floats bottom-centre while stops are picked. */
 #route-chip { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 1200;

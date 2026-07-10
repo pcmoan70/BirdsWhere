@@ -217,7 +217,8 @@
       save:     '<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7M8 20v-6h8v6"/>',
       tag:      '<path d="M3 11.3 11.3 3H20a1 1 0 0 1 1 1v8.3l-8.3 8.3a1.4 1.4 0 0 1-2 0L3 13.3a1.4 1.4 0 0 1 0-2z"/><circle cx="16" cy="8" r="1.3"/>',
       mail:     '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 7l8.5 6 8.5-6"/>',
-      menu:     '<path d="M4 7h16M4 12h16M4 17h16"/>'
+      menu:     '<path d="M4 7h16M4 12h16M4 17h16"/>',
+      share:    '<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8 15.8 6.2M8.2 13.2l7.6 4.6"/>'
     };
     return '<svg class="btn-ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (P[name] || "") + "</svg>";
   }
@@ -1488,6 +1489,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { date: "2026-07-10", text: "Share via link: the 🔗 button on a saved location-list or trip (in the Points panel), or on a map point's popup, makes a self-contained URL — the recipient sees the points/detections with no API keys needed (nothing is re-fetched). Opening such a link imports it." },
     { date: "2026-07-06", text: "Close by: the ☰ button (top-left of the map) opens a big-text list of the plotted detections sorted by distance from your live/fixed cross or placed pin. Tap the 📍 to jump back to the map zoomed to fit them. Set how many rows in Settings." },
     { date: "2026-07-01", text: "Stored locations can fetch observations: give each saved spot a radius, tick the ones you want, and hit “Fetch observations” to pull sightings from all of them onto the map at once." },
     { date: "2026-06-30", text: "Stored locations: tap a map point and choose “📍 Save location”, then press-and-hold (or right-click) the crosshair button to recall your saved spots and fly to them." },
@@ -3696,6 +3698,7 @@
       var hasHere = false; try { hasHere = new URLSearchParams(location.search).has("here"); } catch (e) {}
       if (!hasHere) restoreSession();   // return to the view we left (reload-safe)
       maybeUrlAutoLocate();   // ?here=1 → geolocate + open species list
+      maybeImportShared();    // #s=… → import a shared point / list / detection set
       // Start Google Drive sync last, after all init-time GeoState writes, so
       // its open-time pull isn't fooled into thinking local is newer.
       if (window.GDriveSync) window.GDriveSync.init();
@@ -7329,10 +7332,11 @@
         ? '<span class="mp-coll-lock" title="' + escapeHtml(t("lists.protect")) + '">' + ico("lock") + "</span>"
         : '<button type="button" class="mp-coll-del" data-type="' + type + '" data-name="' + escapeHtml(name) + '" aria-label="' + escapeHtml(delTip) + '" title="' + escapeHtml(delTip) + '">×</button>';
       var navBtn = '<button type="button" class="mp-coll-nav ico-btn" data-type="' + type + '" data-name="' + escapeHtml(name) + '" title="' + escapeHtml(t("nav.send")) + '" aria-label="' + escapeHtml(t("nav.send")) + '">' + ico("nav") + "</button>";
+      var shareBtn = '<button type="button" class="mp-coll-share ico-btn" data-type="' + type + '" data-name="' + escapeHtml(name) + '" title="' + escapeHtml(t("share.link")) + '" aria-label="' + escapeHtml(t("share.link")) + '">' + ico("share") + "</button>";
       return '<div class="mp-coll-row">' +
         '<label class="mp-coll-lbl"><input type="checkbox" class="mp-coll-cb" data-type="' + type + '" data-name="' + escapeHtml(name) + '"' + (checked ? " checked" : "") + ">" +
           swatch + '<span class="mp-coll-name">' + escapeHtml(name) + ' <span class="mp-coll-n">(' + count + ")</span></span></label>" +
-        navBtn + del +
+        navBtn + shareBtn + del +
         "</div>";
     }
     var collItems = mpCollections.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (c) {
@@ -7428,6 +7432,14 @@
           pts = (c.points || []).map(function (p) { return { lat: p.lat, lon: p.lon, name: p.name || "", desc: (p.note || ""), color: p.spColor || col, star: !!p.star, rare: !!p.rare }; });
         }
         sendPointsToGoogle(name, pts);   // whole list → pin overlay
+      });
+    });
+    // Per-row 🔗: share this list / detection set as a self-contained URL (no keys needed).
+    panel.querySelectorAll(".mp-coll-share").forEach(function (b) {
+      b.addEventListener("click", function (e) {
+        e.preventDefault();
+        var type = this.getAttribute("data-type"), name = this.getAttribute("data-name");
+        if (type === "d") shareDetSet(name); else sharePointList(name);
       });
     });
     // Per-row × deletes that saved list / detection set (after confirming).
@@ -9749,11 +9761,141 @@
   // Map-click popup: choose the Species list, or open the country's Fatbirder /
   // BirdLife page (resolved by reverse-geocoding the point). Checklists are
   // started from within the Species list itself.
+  // ---- Shareable links -------------------------------------------------------
+  // Encode a point / location-list / detection set into a self-contained URL so a
+  // recipient sees the embedded data WITHOUT any API keys (nothing is re-fetched).
+  // Payload is deflated (CompressionStream, when available) + base64url in the URL
+  // hash — the hash is never sent to the server and keeps big sets out of the query.
+  function b64urlFromBytes(bytes) {
+    var bin = ""; for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function bytesFromB64url(s) {
+    s = String(s).replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "=";
+    var bin = atob(s), b = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
+    return b;
+  }
+  function encodeShare(obj) {
+    var bytes = new TextEncoder().encode(JSON.stringify(obj));
+    if (typeof CompressionStream !== "undefined") {
+      try {
+        return new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream("deflate-raw"))).arrayBuffer()
+          .then(function (buf) { return "1" + b64urlFromBytes(new Uint8Array(buf)); });
+      } catch (e) { /* fall through to raw */ }
+    }
+    return Promise.resolve("0" + b64urlFromBytes(bytes));
+  }
+  function decodeShare(str) {
+    var tag = String(str).charAt(0), bytes = bytesFromB64url(String(str).slice(1));
+    if (tag === "1") {
+      if (typeof DecompressionStream === "undefined") return Promise.reject(new Error("no-decompress"));
+      return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer()
+        .then(function (buf) { return JSON.parse(new TextDecoder().decode(new Uint8Array(buf))); });
+    }
+    return Promise.resolve(JSON.parse(new TextDecoder().decode(bytes)));
+  }
+  function doShare(obj, title) {
+    encodeShare(obj).then(function (enc) {
+      var url = location.origin + location.pathname + "#s=" + enc;
+      if (url.length > 20000) { setStatus(t("share.tooBig")); return; }   // too big for most share targets
+      if (navigator.share) {
+        navigator.share({ title: title || "", url: url }).catch(function () {});
+      } else if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(function () { setStatus(t("share.copied")); }, function () { modalPrompt(t("share.copyManual"), url); });
+      } else {
+        modalPrompt(t("share.copyManual"), url);
+      }
+    }).catch(function () { setStatus(t("share.failed")); });
+  }
+  function sharePointList(name) {
+    var c = mpCollections.filter(function (x) { return x.name === name; })[0]; if (!c) return;
+    var points = (c.points || []).map(function (p) {
+      var o = { lat: p.lat, lon: p.lon };
+      if (p.name) o.name = p.name;
+      if (p.tags && p.tags.length) o.tags = p.tags;
+      if (p.note) o.note = p.note;
+      if (p.spKey) o.spKey = p.spKey;
+      if (p.spColor) o.spColor = p.spColor;
+      if (p.date) o.date = p.date;
+      if (p.count != null && p.count !== "") o.count = p.count;
+      return o;
+    });
+    doShare({ v: 1, type: "points", name: name, points: points }, name);
+  }
+  function shareDetSet(name) {
+    var s = detSets().filter(function (x) { return x.name === name; })[0]; if (!s) return;
+    var dets = {};
+    Object.keys(s.detections || {}).forEach(function (k) {
+      var en = s.detections[k] || {};
+      dets[k] = { name: en.name || k, color: en.color || "#888",
+        rows: (en.rows || []).map(function (r) { var o = { lat: r.lat, lon: r.lon }; if (r.date) o.date = r.date; if (r.count != null && r.count !== "") o.count = r.count; return o; }) };
+    });
+    doShare({ v: 1, type: "det", name: name, detections: dets }, name);
+  }
+  function uniqueShareName(base, taken) { var n = base, i = 2; while (taken(n)) n = base + " (" + (i++) + ")"; return n; }
+  function fitSharedLatLngs(pts) {
+    if (!map || !pts.length) return;
+    try { map.fitBounds(L.latLngBounds(pts).pad(0.2)); } catch (e) {}
+  }
+  // Apply a payload decoded from #s= at boot. Points / detection sets are imported
+  // (after a confirm) into the recipient's saved lists, shown, and fitted; a single
+  // point just drops a marker and opens its popup.
+  function importShared(str) {
+    decodeShare(str).then(function (obj) {
+      if (!obj || !obj.type) { setStatus(t("share.badLink")); return; }
+      if (obj.type === "point") {
+        var la = Math.max(-90, Math.min(90, +obj.lat)), lo = wrapLon(+obj.lon);
+        if (!isFinite(la) || !isFinite(lo)) { setStatus(t("share.badLink")); return; }
+        if (map) map.setView([la, lo], Math.max(map.getZoom() || 0, 12));
+        selectMapPoint(la, lo);
+        return;
+      }
+      var nm = String(obj.name || t("share.defaultName"));
+      if (obj.type === "points") {
+        var pts = (obj.points || []).filter(function (p) { return p && isFinite(+p.lat) && isFinite(+p.lon); });
+        if (!pts.length) { setStatus(t("share.badLink")); return; }
+        modalConfirm(t("share.importPrompt", { name: nm, n: pts.length })).then(function (ok) {
+          if (!ok) return;
+          var name = uniqueShareName(nm, function (x) { return mpCollections.some(function (c) { return c.name === x; }); });
+          mpCollections.push({ name: name, points: pts.map(function (p) { return Object.assign({}, p, { lat: +p.lat, lon: +p.lon }); }) });
+          shownColls[name] = true; saveMapPoints(); saveShownState(); renderMapPoints();
+          fitSharedLatLngs(pts.map(function (p) { return [+p.lat, +p.lon]; }));
+          setStatus(t("share.imported", { name: name }));
+        });
+        return;
+      }
+      if (obj.type === "det") {
+        var keys = Object.keys(obj.detections || {}), n = 0, ll = [];
+        keys.forEach(function (k) { ((obj.detections[k] || {}).rows || []).forEach(function (r) { n++; if (isFinite(+r.lat) && isFinite(+r.lon)) ll.push([+r.lat, +r.lon]); }); });
+        if (!n) { setStatus(t("share.badLink")); return; }
+        modalConfirm(t("share.importPrompt", { name: nm, n: n })).then(function (ok) {
+          if (!ok) return;
+          var name = uniqueShareName(nm, function (x) { return detSets().some(function (s) { return s.name === x; }); });
+          var blob = { name: name, createdAt: 0, detections: obj.detections, interesting: [] };
+          detSetStore.push(blob); persistDetSet(name, blob);
+          window.GeoState.save({ mapDetectionSetsDel: detSetTombstones().filter(function (x) { return x !== name; }) });
+          shownDetSets[name] = true; saveShownState(); renderMapPoints();
+          fitSharedLatLngs(ll);
+          setStatus(t("share.imported", { name: name }));
+        });
+        return;
+      }
+      setStatus(t("share.badLink"));
+    }).catch(function () { setStatus(t("share.badLink")); });
+  }
+  function maybeImportShared() {
+    var h = ""; try { h = location.hash || ""; } catch (e) {}
+    var m = h.match(/[#&]s=([^&]+)/); if (!m) return;
+    try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}   // consume it → no re-import on reload
+    importShared(m[1]);
+  }
   function bindPointPopup(mk, lat, lon) {
     var wrap = document.createElement("div");
     wrap.className = "map-choose";
     wrap.appendChild(makePopupBtn(t("mode.list"), "", function () { mk.closePopup(); renderSpeciesList(lat, lon); }));
     wrap.appendChild(makePopupBtn("📍 " + t("loc.save"), "demo-btn-light", function () { mk.closePopup(); registerLocationPrompt(lat, lon); }));
+    wrap.appendChild(makePopupBtn("🔗 " + t("share.link"), "demo-btn-light", function () { mk.closePopup(); doShare({ v: 1, type: "point", lat: lat, lon: lon }, t("share.link")); }));
     wrap.appendChild(makePopupBtn(t("link.birdingplaces") + " ↗", "demo-btn-light", function () {
       mk.closePopup(); openExternal(birdingPlacesUrl(lat, lon));
     }));
