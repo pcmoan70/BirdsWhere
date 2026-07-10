@@ -9936,9 +9936,21 @@
     var wrap = document.createElement("div");
     wrap.className = "map-choose";
     wrap.appendChild(makePopupBtn(t("mode.list"), "", function () { mk.closePopup(); renderSpeciesList(lat, lon); }));
-    wrap.appendChild(makePopupBtn("📍 " + t("loc.save"), "demo-btn-light", function () { mk.closePopup(); registerLocationPrompt(lat, lon); }));
-    wrap.appendChild(makePopupBtn("🔗 " + t("share.link"), "demo-btn-light", function () { mk.closePopup(); doShare({ v: 1, type: "point", lat: lat, lon: lon }, t("share.link")); }));
-    wrap.appendChild(makePopupBtn("📋 " + coordsText(lat, lon), "demo-btn-light", function () { mk.closePopup(); copyCoords(lat, lon); }));
+    // "Location" submenu: Save location / Share link / Copy coordinates, collapsed
+    // under one entry so the popup stays tidy.
+    var locSub = document.createElement("div");
+    locSub.className = "choose-sub"; locSub.style.display = "none";
+    locSub.appendChild(makePopupBtn("📍 " + t("loc.save"), "demo-btn-light", function () { mk.closePopup(); registerLocationPrompt(lat, lon); }));
+    locSub.appendChild(makePopupBtn("🔗 " + t("share.link"), "demo-btn-light", function () { mk.closePopup(); doShare({ v: 1, type: "point", lat: lat, lon: lon }, t("share.link")); }));
+    locSub.appendChild(makePopupBtn("📋 " + coordsText(lat, lon), "demo-btn-light", function () { mk.closePopup(); copyCoords(lat, lon); }));
+    var locBtn = makePopupBtn("📍 " + t("popup.location") + " ▸", "demo-btn-light", function () {
+      var show = locSub.style.display === "none";
+      locSub.style.display = show ? "" : "none";
+      this.textContent = "📍 " + t("popup.location") + (show ? " ▾" : " ▸");
+      var pop = mk.getPopup(); if (pop && pop.isOpen()) pop.update();   // re-layout for the expanded items
+    });
+    wrap.appendChild(locBtn);
+    wrap.appendChild(locSub);
     wrap.appendChild(makePopupBtn(t("link.birdingplaces") + " ↗", "demo-btn-light", function () {
       mk.closePopup(); openExternal(birdingPlacesUrl(lat, lon));
     }));

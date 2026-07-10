@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-10 — Map point popup: "Location" submenu (sw v590)
+
+- The map-point popup groups Save location, Share link and Copy coordinates under
+  a single collapsible "📍 Location ▸" entry, keeping the popup tidy. Localised in
+  all 15 languages.
+
+
 ## 2026-07-10 — Translate the stored-locations strings (sw v589)
 
 - "Save location" and the rest of the stored-locations feature (saved toast,

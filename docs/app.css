@@ -344,6 +344,8 @@ input:focus-visible {
    vertically rather than side by side. */
 .map-choose { display: flex; flex-direction: column; gap: 6px; min-width: 160px; }
 .map-choose .demo-btn { width: 100%; }
+/* "Location" submenu: indented group under its toggle button */
+.choose-sub { display: flex; flex-direction: column; gap: 6px; margin-left: 12px; padding-left: 8px; border-left: 2px solid var(--border, #d8e1dd); }
 
 /* ---- Leaflet control styling (match the app theme) ---- */
 .leaflet-bar,
