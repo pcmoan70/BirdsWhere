@@ -4055,7 +4055,7 @@
     });
     map.addControl(new NearbyControl());
     var nbToMap = document.getElementById("nb-tomap");
-    if (nbToMap) nbToMap.addEventListener("click", function () { closeNearby(true); });
+    if (nbToMap) nbToMap.addEventListener("click", function () { resumeNearbyFollow(); closeNearby(true); });   // toggling to map resumes follow
     window.addEventListener("resize", function () { if (nearbyIsOpen()) fitNearbyNames(); });   // re-fit names on rotate/resize
 
     // Place (location-name) search — a map-pointer button below the crosshairs
@@ -5128,6 +5128,10 @@
   // placed pin → map centre). Toggles with the map; toggling back fits the map to
   // the shown detections. Count is configurable in Settings; text is kept large.
   var nearbyShownRows = [];
+  // GPS follow is suspended (not stopped for good) while viewing a detection picked
+  // from the Close by list — resumed when the list is reopened or toggled to map.
+  var nearbyFollowSuspended = false;
+  function resumeNearbyFollow() { if (nearbyFollowSuspended) { nearbyFollowSuspended = false; setCrosshairState(1); } }
   var nearbyLastRefLL = null;          // the reference lat/lon used for the last render (live-mode 50 m recalc gate)
   function nearbyCount() { var n = +window.GeoState.get("nearbyCount", 25); return (n > 0 && n <= 500) ? n : 25; }
   function nearbyInclPoints() { return window.GeoState.get("nearbyInclPoints", false) === true; }
@@ -5193,7 +5197,7 @@
     body.querySelectorAll(".nb-row").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var r = nearbyShownRows[+this.getAttribute("data-i")]; if (!r) return;
-        if (crossState === 1) setCrosshairState(0);   // stop GPS follow, else the next fix recentres away from the observation
+        if (crossState === 1) { setCrosshairState(0); nearbyFollowSuspended = true; }   // suspend follow while viewing this observation (else the next fix recentres away)
         closeNearby(false);
         if (map) map.setView([+r.lat, +r.lon], Math.max(map.getZoom(), 14));
       });
@@ -5217,6 +5221,7 @@
   }
   function nearbyIsOpen() { var p = document.getElementById("nearby-page"); return !!p && p.style.display !== "none"; }
   function openNearby() {
+    resumeNearbyFollow();   // reopening the list ends the "viewing a detection" state → follow resumes
     var p = document.getElementById("nearby-page"); if (p) p.style.display = "flex";   // show first so names can be measured/fitted
     document.body.setAttribute("data-nearby", "1");
     renderNearby();
@@ -7734,6 +7739,7 @@
       document.getElementById("field-page").style.display = "none";
       stopFieldGeoWatch();
       if (crossState === 1) setCrosshairState(0);   // stop GPS follow so it doesn't keep recentring the new mode's view
+      nearbyFollowSuspended = false;   // a mode change ends any Close-by "viewing" state; don't auto-resume follow later
       closeNearby(false);   // don't leave the "birds close by" page over a different mode
       navClose("page");   // drop the page's Back-history entry (it was just closed)
       hideCsvBtn();
