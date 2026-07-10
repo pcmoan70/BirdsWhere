@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-10 — Translate the stored-locations strings (sw v589)
+
+- "Save location" and the rest of the stored-locations feature (saved toast,
+  Stored locations panel, radius, Include, All/None, Fetch observations) were only
+  in English + Swedish; now translated in all 15 languages.
+
+
 ## 2026-07-10 — Copy a point's coordinates as text (sw v588)
 
 - A single detection point (its detections popup), a tapped map point (its popup),
