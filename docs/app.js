@@ -9797,18 +9797,17 @@
   }
   function doShare(obj, title) {
     encodeShare(obj).then(function (enc) {
-      // Data lives in a QUERY param, not the hash — the Web Share API and many
-      // share targets strip the URL fragment (#…), which left recipients with just
-      // the bare app link. base64url is query-safe, so no extra encoding needed.
+      // Data lives in a QUERY param, not the hash (share targets strip the #fragment).
+      // base64url is query-safe, so no extra encoding is needed.
       var url = location.origin + location.pathname + "?s=" + enc;
       if (url.length > 20000) { setStatus(t("share.tooBig")); return; }   // too big for most share targets
-      if (navigator.share) {
-        navigator.share({ title: title || "", url: url }).catch(function () {});
-      } else if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(url).then(function () { setStatus(t("share.copied")); }, function () { modalPrompt(t("share.copyManual"), url); });
-      } else {
-        modalPrompt(t("share.copyManual"), url);
+      // The native share sheet silently dropped the long URL on some devices, so
+      // copy the FULL link to the clipboard and show it in a copyable dialog — the
+      // reliable way to actually send it. Paste it into any message/app.
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        try { navigator.clipboard.writeText(url).then(function () { setStatus(t("share.copied")); }, function () {}); } catch (e) {}
       }
+      uiDialog({ message: t("share.copyManual"), input: true, value: url, alert: true });
     }).catch(function () { setStatus(t("share.failed")); });
   }
   function sharePointList(name) {

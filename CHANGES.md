@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-10 — Share: show a copyable link (sw v586)
+
+- Sharing a point/list/trip now copies the full link to the clipboard AND shows
+  it in a copyable dialog, instead of relying on the native share sheet (which
+  was silently dropping the long URL on some devices, leaving only the base app
+  link). Paste the shown link into any message or app.
+
+
 ## 2026-07-10 — Fix: share link now carries the data (sw v585)
 
 - Share links put the encoded data in a query parameter (?s=…) instead of the URL
