@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-10 — Country resources moved to their own button (sw v591)
+
+- The country-related links (Blogs, BirdLife, national observation/registration
+  services) moved out of the per-point popup into a new 🌐 "Country" button on the
+  right of the map — it resolves the country at the map centre. Point-specific
+  items (Species list, Location submenu, birdingplaces) stay in the point popup.
+  Localised in all 15 languages.
+
+
 ## 2026-07-10 — Map point popup: "Location" submenu (sw v590)
 
 - The map-point popup groups Save location, Share link and Copy coordinates under

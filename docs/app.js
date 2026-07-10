@@ -4212,6 +4212,21 @@
     });
     map.addControl(new DownloadControl());
 
+    // "Country" resources (Blogs / BirdLife / national services) for the country at
+    // the map centre — a globe button on the right.
+    var CountryControl = L.Control.extend({
+      options: { position: "topright" },
+      onAdd: function () {
+        var c = L.DomUtil.create("div", "leaflet-bar leaflet-control");
+        var a = L.DomUtil.create("a", "country-btn", c);
+        a.href = "#"; a.title = t("popup.country"); a.setAttribute("aria-label", t("popup.country"));
+        a.innerHTML = ico("globe");
+        L.DomEvent.on(a, "click", function (e) { L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e); openCountryMenu(); });
+        return c;
+      }
+    });
+    map.addControl(new CountryControl());
+
     // Live position (blue "follow" state): keep the plus marker on the current
     // location. On the first fix, centre the map and populate the click-driven modes
     // at that point. Later fixes move the plus and keep it AT LEAST 10% in from every
@@ -9932,6 +9947,32 @@
       navigator.clipboard.writeText(txt).then(function () { setStatus(t("coords.copied", { coords: txt })); }, function () { modalPrompt(t("coords.copyManual"), txt); });
     } else { modalPrompt(t("coords.copyManual"), txt); }
   }
+  // Country resources for the country at the map centre: Blogs, BirdLife, and the
+  // national observation/registration services — opened from the right-side globe.
+  function openCountryMenu() {
+    if (!map) return;
+    var c = map.getCenter();
+    AppGeo.countryInfo(c.lat, c.lng).then(function (info) { showCountryMenu(info.cc, info.name); },
+      function () { showCountryMenu("", ""); });
+  }
+  function showCountryMenu(cc, name) {
+    var ov = document.createElement("div"); ov.className = "ui-modal-overlay";
+    var box = document.createElement("div"); box.className = "ui-modal map-choose country-menu";
+    function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); document.removeEventListener("keydown", onKey, true); }
+    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); close(); } }
+    var head = document.createElement("div"); head.className = "ui-modal-msg";
+    head.textContent = t("popup.country") + (name ? " · " + name : "");
+    box.appendChild(head);
+    box.appendChild(makePopupBtn(t("blogs.title") + " ▸", "demo-btn-light", function () { close(); openBlogs(cc, name); }));
+    box.appendChild(makePopupBtn(t("link.birdlife") + " ↗", "demo-btn-light", function () { close(); openExternal(birdLifeCountryUrl(cc, name)); }));
+    natServicesFor(cc).forEach(function (s) {
+      box.appendChild(makePopupBtn(s.label + " ↗", "demo-btn-light", function () { close(); openExternal(s.url); }));
+    });
+    box.appendChild(makePopupBtn(t("btn.close"), "", function () { close(); }));
+    ov.appendChild(box); document.body.appendChild(ov);
+    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+    document.addEventListener("keydown", onKey, true);
+  }
   function bindPointPopup(mk, lat, lon) {
     var wrap = document.createElement("div");
     wrap.className = "map-choose";
@@ -9954,27 +9995,8 @@
     wrap.appendChild(makePopupBtn(t("link.birdingplaces") + " ↗", "demo-btn-light", function () {
       mk.closePopup(); openExternal(birdingPlacesUrl(lat, lon));
     }));
-    wrap.appendChild(makePopupBtn(t("blogs.title") + " ▸", "demo-btn-light", function () {
-      mk.closePopup();
-      AppGeo.countryInfo(lat, lon).then(function (info) { openBlogs(info.cc, info.name); });
-    }));
-    wrap.appendChild(makePopupBtn(t("link.birdlife") + " ↗", "demo-btn-light", function () {
-      mk.closePopup();
-      AppGeo.countryInfo(lat, lon).then(function (info) { openExternal(birdLifeCountryUrl(info.cc, info.name)); });
-    }));
-    // National observation/registration services for this point's country
-    // (built-in + the user's custom links). Appended once the reverse-geocode
-    // resolves so the popup opens instantly.
-    AppGeo.countryInfo(lat, lon).then(function (info) {
-      var svcs = natServicesFor(info.cc);
-      if (!svcs.length) return;
-      svcs.forEach(function (s) {
-        wrap.appendChild(makePopupBtn(s.label + " ↗", "demo-btn-light", function () {
-          mk.closePopup(); openExternal(s.url);
-        }));
-      });
-      var pop = mk.getPopup(); if (pop && pop.isOpen()) pop.update();   // re-layout for added buttons
-    }).catch(function () { /* leave as-is */ });
+    // Country resources (Blogs / BirdLife / national services) now live in the
+    // right-side "Country" button (openCountryMenu), not this per-point popup.
     mk.bindPopup(wrap, { closeButton: true, autoClose: true, autoPan: true, className: "choose-popup", offset: [0, -8] });
     mk.openPopup();
   }

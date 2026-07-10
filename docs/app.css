@@ -2419,8 +2419,9 @@ a.dl-row:hover, .dl-row-menu:hover { background: var(--surface-2, rgba(0,0,0,.05
 .leaflet-bar a.anim-btn,
 .leaflet-bar a.h3-detail-btn,
 .leaflet-bar a.nearby-btn,
+.leaflet-bar a.country-btn,
 .leaflet-bar a.map-dl-btn { display: flex; align-items: center; justify-content: center; color: var(--brand-deep); }
-.geo-locate-btn svg, .fs-toggle-btn svg, .place-search-btn svg, .anim-btn svg, .h3-detail-btn svg, .nearby-btn svg, .map-dl-btn svg { display: block; }
+.geo-locate-btn svg, .fs-toggle-btn svg, .place-search-btn svg, .anim-btn svg, .h3-detail-btn svg, .nearby-btn svg, .country-btn svg, .map-dl-btn svg { display: block; }
 /* Crosshair control has 3 states: off (grey) → follow (blue, filled) → read (red,
    filled). The filled states make the current mode unmistakable. */
 .leaflet-bar a.geo-locate-btn { color: #8a8a8a; }
