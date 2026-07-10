@@ -9797,7 +9797,10 @@
   }
   function doShare(obj, title) {
     encodeShare(obj).then(function (enc) {
-      var url = location.origin + location.pathname + "#s=" + enc;
+      // Data lives in a QUERY param, not the hash — the Web Share API and many
+      // share targets strip the URL fragment (#…), which left recipients with just
+      // the bare app link. base64url is query-safe, so no extra encoding needed.
+      var url = location.origin + location.pathname + "?s=" + enc;
       if (url.length > 20000) { setStatus(t("share.tooBig")); return; }   // too big for most share targets
       if (navigator.share) {
         navigator.share({ title: title || "", url: url }).catch(function () {});
@@ -9885,10 +9888,12 @@
     }).catch(function () { setStatus(t("share.badLink")); });
   }
   function maybeImportShared() {
-    var h = ""; try { h = location.hash || ""; } catch (e) {}
-    var m = h.match(/[#&]s=([^&]+)/); if (!m) return;
-    try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}   // consume it → no re-import on reload
-    importShared(m[1]);
+    var enc = "";
+    try { enc = new URLSearchParams(location.search).get("s") || ""; } catch (e) {}
+    if (!enc) { var m = (location.hash || "").match(/[#&]s=([^&]+)/); if (m) enc = m[1]; }   // legacy hash links
+    if (!enc) return;
+    try { history.replaceState(null, "", location.pathname); } catch (e) {}   // consume it → no re-import on reload
+    importShared(enc);
   }
   function bindPointPopup(mk, lat, lon) {
     var wrap = document.createElement("div");

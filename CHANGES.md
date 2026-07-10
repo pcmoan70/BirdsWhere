@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-10 — Fix: share link now carries the data (sw v585)
+
+- Share links put the encoded data in a query parameter (?s=…) instead of the URL
+  hash (#s=…). The Web Share API and many share targets strip the fragment, so
+  recipients were getting just the bare app link. Old hash links still import.
+
 ## 2026-07-10 — Share points / locations / detections via URL (sw v584)
 
 - New 🔗 Share on a saved location-list or trip (Points panel per-row), and on a
