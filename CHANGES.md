@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-11 — eBird hotspots: complete coverage, no partial ring (sw v596)
+
+- Replaced the fixed min-zoom with a viewport check: hotspots show whenever the
+  whole view fits within eBird's 500 km query cap (centre→corner ≤ 500 km), so
+  the dots always cover the entire visible area instead of only a confusing ring
+  around the centre when zoomed out.
+
+
 ## 2026-07-11 — eBird hotspots show at more zoom levels (sw v595)
 
 - Lowered the minimum zoom for the eBird hotspots layer from 6.5 to 4.5, so

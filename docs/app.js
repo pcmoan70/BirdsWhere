@@ -4825,11 +4825,13 @@
     function load() {
       var key = ebirdKey();
       if (!key) { grp.clearLayers(); setStatus(t("layer.hotspotsKey")); return; }
-      if (map.getZoom() < 4.5) { grp.clearLayers(); setStatus(t("layer.hotspotsZoom")); return; }
       var c = map.getCenter(), b = map.getBounds();
-      // eBird caps dist at 500 km; cover the viewport (centre→corner) up to that.
-      var radius = Math.max(2, Math.min(500, Math.round(haversineKm(c.lat, c.lng, b.getNorth(), b.getEast()))));
-      var url = "https://api.ebird.org/v2/ref/hotspot/geo?lat=" + c.lat.toFixed(4) + "&lng=" + c.lng.toFixed(4) + "&dist=" + radius + "&fmt=json";
+      // eBird caps hotspot queries at 500 km. Only show when the ENTIRE viewport
+      // fits inside that (centre→corner ≤ 500 km) so coverage is complete — a
+      // partial ring of hotspots near the centre at low zoom would just confuse.
+      var radius = Math.round(haversineKm(c.lat, c.lng, b.getNorth(), b.getEast()));
+      if (radius > 500) { grp.clearLayers(); setStatus(t("layer.hotspotsZoom")); return; }
+      var url = "https://api.ebird.org/v2/ref/hotspot/geo?lat=" + c.lat.toFixed(4) + "&lng=" + c.lng.toFixed(4) + "&dist=" + Math.max(2, radius) + "&fmt=json";
       var mine = ++tok, minSp = hotspotMin();
       fetch(url, { headers: { "X-eBirdApiToken": key } })
         .then(function (r) { if (!r.ok) { var er = new Error("HTTP " + r.status); er.status = r.status; throw er; } return r.json(); })
