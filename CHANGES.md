@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-07-11 — eBird hotspots: show capped + cache (sw v597)
+
+- Hotspots show again when zoomed out, but when the view is larger than eBird's
+  500 km query cap a dashed 500 km circle round the map centre marks the covered
+  area and a status line says so — so the partial coverage is clear, not
+  confusing.
+- Fetched hotspots are cached (0.25° grid + 25 km distance bucket, 1 h) so
+  panning around and re-showing the layer reuses results instead of re-querying.
+
+
 ## 2026-07-11 — eBird hotspots: complete coverage, no partial ring (sw v596)
 
 - Replaced the fixed min-zoom with a viewport check: hotspots show whenever the

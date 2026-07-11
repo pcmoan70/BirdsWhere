@@ -4822,42 +4822,64 @@
   // Filtered by all-time species count; richer hotspots get larger markers.
   function ebirdHotspotLayer() {
     var grp = L.layerGroup(), active = false, tok = 0;
+    // Cache fetched hotspots by a ~0.25° grid cell + distance bucket, so panning
+    // around (and re-showing the layer) reuses results instead of re-querying eBird.
+    var hsCache = {}, hsOrder = [];
+    function hsKey(lat, lng, dist) { return (Math.round(lat * 4) / 4) + "," + (Math.round(lng * 4) / 4) + ":" + dist; }
+    function hsCachePut(k, rows) {
+      hsCache[k] = { rows: rows, ts: Date.now() }; hsOrder.push(k);
+      while (hsOrder.length > 80) { var old = hsOrder.shift(); if (hsOrder.indexOf(old) < 0) delete hsCache[old]; }
+    }
+    function drawHotspots(rows, capped, c, dist) {
+      grp.clearLayers();
+      var minSp = hotspotMin(), shown = 0;
+      (rows || []).forEach(function (h) {
+        if (h.lat == null || h.lng == null) return;
+        var n = h.numSpeciesAllTime || 0;
+        if (minSp && n < minSp) return;   // skip trivial hotspots
+        var m = L.circleMarker([h.lat, h.lng], { radius: 4 + Math.min(7, Math.round(n / 40)), color: "#8a4b12", weight: 1.5, fillColor: "#f0992e", fillOpacity: 0.85 });
+        var sp = h.numSpeciesAllTime != null ? " · " + n + " " + t("layer.species") : "";
+        var last = h.latestObsDt ? " · " + String(h.latestObsDt).slice(0, 10) : "";
+        m.bindTooltip("<b>" + escapeHtml(h.locName || "") + "</b><span class='area-tip-sub'>" + escapeHtml(sp + last) + "</span>", { direction: "top", className: "area-tip" });
+        m.on("click", function () { openExternal("https://ebird.org/hotspot/" + h.locId); });
+        grp.addLayer(m); shown++;
+      });
+      // eBird caps a query at 500 km, so when the view is bigger the hotspots only
+      // cover a 500 km radius round the centre — draw that boundary + say so, so the
+      // partial coverage is clear rather than confusing.
+      if (capped) {
+        grp.addLayer(L.circle([c.lat, c.lng], { radius: dist * 1000, color: "#8a4b12", weight: 1.5, dashArray: "6 5", fill: false, interactive: false }));
+        setStatus(t("layer.hotspotsCapped"));
+      } else if (!shown) {
+        setStatus(t("layer.hotspotsNone"));
+      }
+    }
     function load() {
       var key = ebirdKey();
       if (!key) { grp.clearLayers(); setStatus(t("layer.hotspotsKey")); return; }
       var c = map.getCenter(), b = map.getBounds();
-      // eBird caps hotspot queries at 500 km. Only show when the ENTIRE viewport
-      // fits inside that (centre→corner ≤ 500 km) so coverage is complete — a
-      // partial ring of hotspots near the centre at low zoom would just confuse.
       var radius = Math.round(haversineKm(c.lat, c.lng, b.getNorth(), b.getEast()));
-      if (radius > 500) { grp.clearLayers(); setStatus(t("layer.hotspotsZoom")); return; }
-      var url = "https://api.ebird.org/v2/ref/hotspot/geo?lat=" + c.lat.toFixed(4) + "&lng=" + c.lng.toFixed(4) + "&dist=" + Math.max(2, radius) + "&fmt=json";
-      var mine = ++tok, minSp = hotspotMin();
+      var capped = radius > 500;
+      var dist = Math.min(500, Math.max(10, Math.ceil(radius / 25) * 25));   // 25 km buckets → cache-friendly
+      var ck = hsKey(c.lat, c.lng, dist);
+      var cached = hsCache[ck];
+      if (cached && (Date.now() - cached.ts) < 3600000) { drawHotspots(cached.rows, capped, c, dist); return; }   // 1 h TTL
+      var mine = ++tok;
+      var url = "https://api.ebird.org/v2/ref/hotspot/geo?lat=" + c.lat.toFixed(4) + "&lng=" + c.lng.toFixed(4) + "&dist=" + dist + "&fmt=json";
       fetch(url, { headers: { "X-eBirdApiToken": key } })
         .then(function (r) { if (!r.ok) { var er = new Error("HTTP " + r.status); er.status = r.status; throw er; } return r.json(); })
         .then(function (rows) {
-        if (mine !== tok || !active) return;
-        grp.clearLayers();
-        (rows || []).forEach(function (h) {
-          if (h.lat == null || h.lng == null) return;
-          var n = h.numSpeciesAllTime || 0;
-          if (minSp && n < minSp) return;   // skip trivial hotspots
-          var m = L.circleMarker([h.lat, h.lng], { radius: 4 + Math.min(7, Math.round(n / 40)), color: "#8a4b12", weight: 1.5, fillColor: "#f0992e", fillOpacity: 0.85 });
-          var sp = h.numSpeciesAllTime != null ? " · " + n + " " + t("layer.species") : "";
-          var last = h.latestObsDt ? " · " + String(h.latestObsDt).slice(0, 10) : "";
-          m.bindTooltip("<b>" + escapeHtml(h.locName || "") + "</b><span class='area-tip-sub'>" + escapeHtml(sp + last) + "</span>", { direction: "top", className: "area-tip" });
-          m.on("click", function () { openExternal("https://ebird.org/hotspot/" + h.locId); });
-          grp.addLayer(m);
+          if (mine !== tok || !active) return;
+          hsCachePut(ck, rows || []);
+          drawHotspots(rows, capped, c, dist);
+        }).catch(function (e) {
+          if (!active) return;
+          grp.clearLayers();
+          // 401/403 = eBird rejected the key (invalid/expired). Point the user at it
+          // rather than showing a raw "HTTP 403".
+          if (e.status === 401 || e.status === 403) setStatus(t("layer.hotspotsKeyBad"));
+          else setStatus(t("status.error", { msg: "eBird hotspots " + e.message }));
         });
-        if (!grp.getLayers().length) setStatus(t("layer.hotspotsNone"));
-      }).catch(function (e) {
-        if (!active) return;
-        grp.clearLayers();
-        // 401/403 = eBird rejected the key (invalid/expired). Point the user at it
-        // rather than showing a raw "HTTP 403".
-        if (e.status === 401 || e.status === 403) setStatus(t("layer.hotspotsKeyBad"));
-        else setStatus(t("status.error", { msg: "eBird hotspots " + e.message }));
-      });
     }
     grp._reload = function () { if (active) load(); };
     grp.on("add", function () { active = true; map.attributionControl.addAttribution(EBIRD_HS_ATTR); load(); });
