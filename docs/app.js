@@ -9960,6 +9960,10 @@
     var box = document.createElement("div"); box.className = "ui-modal map-choose country-menu";
     function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); document.removeEventListener("keydown", onKey, true); }
     function onKey(e) { if (e.key === "Escape") { e.preventDefault(); close(); } }
+    var x = document.createElement("button");
+    x.type = "button"; x.className = "cm-close"; x.textContent = "×"; x.setAttribute("aria-label", t("btn.close"));
+    x.addEventListener("click", close);
+    box.appendChild(x);
     var head = document.createElement("div"); head.className = "ui-modal-msg";
     head.textContent = t("popup.country") + (name ? " · " + name : "");
     box.appendChild(head);
@@ -9968,7 +9972,6 @@
     natServicesFor(cc).forEach(function (s) {
       box.appendChild(makePopupBtn(s.label + " ↗", "demo-btn-light", function () { close(); openExternal(s.url); }));
     });
-    box.appendChild(makePopupBtn(t("btn.close"), "", function () { close(); }));
     ov.appendChild(box); document.body.appendChild(ov);
     ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
     document.addEventListener("keydown", onKey, true);

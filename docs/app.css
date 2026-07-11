@@ -346,6 +346,14 @@ input:focus-visible {
 .map-choose .demo-btn { width: 100%; }
 /* "Location" submenu: indented group under its toggle button */
 .choose-sub { display: flex; flex-direction: column; gap: 6px; margin-left: 12px; padding-left: 8px; border-left: 2px solid var(--border, #d8e1dd); }
+/* Country menu: × close in the upper-right corner */
+.country-menu { position: relative; }
+.country-menu .cm-close {
+  position: absolute; top: 4px; right: 6px; width: 30px; height: 30px; line-height: 1;
+  border: none; background: transparent; color: var(--ink); font-size: 22px; cursor: pointer; border-radius: 6px;
+}
+.country-menu .cm-close:hover { background: var(--surface-2); }
+.country-menu .ui-modal-msg { padding-right: 28px; }   /* keep the title clear of the × */
 
 /* ---- Leaflet control styling (match the app theme) ---- */
 .leaflet-bar,
