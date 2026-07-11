@@ -1415,8 +1415,10 @@ button.dd-name:hover { text-decoration: underline; }
 .mp-form textarea { resize: vertical; min-height: 32px; }
 /* Per-point colour row (live + saved-point editors): checkbox · label · swatch. */
 .mp-color-row { display: flex; flex-direction: row; align-items: center; gap: 6px; font-size: 0.68rem; font-weight: 600; color: var(--ink-muted, #5b6f69); }
-.mp-color-row input[type="checkbox"] { width: auto; flex: 0 0 auto; }
-.mp-color-row input[type="color"] { flex: 0 0 auto; width: 34px; height: 22px; padding: 0; margin-left: auto; border: 1px solid var(--border, #ccc); border-radius: 4px; cursor: pointer; }
+.mp-color-row .mp-color-lbl { text-transform: uppercase; letter-spacing: .02em; }
+.mp-color-row input[type="color"] { flex: 0 0 auto; width: 30px; height: 22px; padding: 0; border: 1px solid var(--border, #ccc); border-radius: 4px; cursor: pointer; }
+.mp-color-reset { flex: 0 0 auto; width: 22px; height: 22px; line-height: 1; padding: 0; font-size: 13px; cursor: pointer; border: 1px solid var(--border, #ccc); border-radius: 4px; background: var(--surface, #fff); color: var(--ink-muted, #5b6f69); }
+.mp-color-reset:hover { border-color: var(--brand, #0b3a3a); color: var(--brand, #0b3a3a); }
 /* Coordinates → a subtle clickable pill (tap to copy) */
 .mp-meta.mp-coords-copy {
   display: inline-flex; align-items: center; gap: 5px; align-self: flex-start;

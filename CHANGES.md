@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-07-12 — Point editor: drop the colour checkbox, tidier row (sw v601)
+
+- Removed the "custom colour?" checkbox. The swatch starts at the point's
+  automatic (tag-based) colour; changing it makes the colour custom, and a ↺ button
+  resets it to automatic (on save, a swatch still equal to the auto colour is
+  stored as automatic). Colour label + swatch + ↺ sit inline next to the
+  coordinate pill. Also translated the "Colour" label in the 13 locales that
+  lacked it.
+
+
 ## 2026-07-11 — Manual point editor: drop website links, tighter card (sw v600)
 
 - Removed the national-service website links from the manual point-entry popup

@@ -6563,18 +6563,24 @@
   // Editor colour row: a "custom colour" checkbox + swatch. Unchecked = auto
   // (tag-derived, else grey). Shared by the live and saved-point editors.
   function mpColorRow(p) {
-    var custom = !!(p && p.color);
-    return '<label class="mp-color-row"><input type="checkbox" id="mp-colorcustom"' + (custom ? " checked" : "") + " /> " +
-      escapeHtml(t("points.color")) + ' <input type="color" id="mp-color" value="' + escapeHtml(mpHex6((p && p.color) || mpColorFor(p))) + '" /></label>';
+    // No "custom?" checkbox: the swatch starts at the point's automatic (tag-based)
+    // colour; changing it makes the colour custom, and ↺ resets it to automatic.
+    // data-auto carries the auto colour so mpReadColor can tell them apart.
+    var auto = mpHex6(mpColorFor(p));
+    var val = mpHex6((p && p.color) || auto);
+    return '<span class="mp-color-row"><span class="mp-color-lbl">' + escapeHtml(t("points.color")) + "</span>" +
+      '<input type="color" id="mp-color" data-auto="' + escapeHtml(auto) + '" value="' + escapeHtml(val) + '" />' +
+      '<button type="button" id="mp-color-auto" class="mp-color-reset" title="' + escapeHtml(t("points.colorAuto")) + '" aria-label="' + escapeHtml(t("points.colorAuto")) + '">↺</button></span>';
   }
   function mpReadColor() {
-    var cb = document.getElementById("mp-colorcustom"), ci = document.getElementById("mp-color");
-    return (cb && cb.checked && ci) ? ci.value : "";   // "" = auto (tag/grey)
+    var ci = document.getElementById("mp-color"); if (!ci) return "";
+    var auto = (ci.getAttribute("data-auto") || "").toLowerCase(), val = (ci.value || "").toLowerCase();
+    return (val && val !== auto) ? ci.value : "";   // still the auto colour → store "" (automatic)
   }
-  // Changing the swatch implies "custom" — tick the box automatically.
+  // ↺ resets the swatch to the point's automatic colour.
   function wireMpColorRow() {
-    var ci = document.getElementById("mp-color"), cb = document.getElementById("mp-colorcustom");
-    if (ci && cb) ci.addEventListener("input", function () { cb.checked = true; });
+    var reset = document.getElementById("mp-color-auto"), ci = document.getElementById("mp-color");
+    if (reset && ci) reset.addEventListener("click", function () { ci.value = ci.getAttribute("data-auto") || "#888888"; });
   }
   // Comma-separated free-form tag input → clean, deduped lowercase-trimmed array.
   function mpParseTags(s) {
