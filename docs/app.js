@@ -4841,7 +4841,16 @@
         var sp = h.numSpeciesAllTime != null ? " · " + n + " " + t("layer.species") : "";
         var last = h.latestObsDt ? " · " + String(h.latestObsDt).slice(0, 10) : "";
         m.bindTooltip("<b>" + escapeHtml(h.locName || "") + "</b><span class='area-tip-sub'>" + escapeHtml(sp + last) + "</span>", { direction: "top", className: "area-tip" });
-        m.on("click", function () { openExternal("https://ebird.org/hotspot/" + h.locId); });
+        // Click → a popup with the eBird hotspot page + a Navigate (Google Maps
+        // driving directions) option. (h and m are per-iteration here.)
+        var pop = document.createElement("div"); pop.className = "map-choose hs-popup";
+        var hd = document.createElement("div"); hd.className = "hs-pop-head";
+        hd.innerHTML = "<b>" + escapeHtml(h.locName || "") + "</b>" +
+          ((sp || last) ? "<span class='hs-pop-sub'>" + escapeHtml((sp + last).replace(/^ · /, "")) + "</span>" : "");
+        pop.appendChild(hd);
+        pop.appendChild(makePopupBtn("eBird ↗", "demo-btn-light", function () { m.closePopup(); openExternal("https://ebird.org/hotspot/" + h.locId); }));
+        pop.appendChild(makePopupBtn(t("nav.title") + " ↗", "demo-btn-light", function () { m.closePopup(); navigatePoints([{ lat: h.lat, lon: h.lng }]); }));
+        m.bindPopup(pop, { closeButton: true, className: "choose-popup", offset: [0, -4] });
         grp.addLayer(m); shown++;
       });
       // eBird caps a query at 500 km, so when the view is bigger the hotspots only

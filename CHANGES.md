@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-11 — eBird hotspot popup with eBird link + Navigate (sw v598)
+
+- Clicking an eBird hotspot now opens a popup (name + species/last-seen) with an
+  "eBird ↗" link to the hotspot page and a "Navigate in Google Maps ↗" option that
+  opens driving directions to the hotspot — instead of jumping straight to eBird.
+
+
 ## 2026-07-11 — eBird hotspots: show capped + cache (sw v597)
 
 - Hotspots show again when zoomed out, but when the view is larger than eBird's
