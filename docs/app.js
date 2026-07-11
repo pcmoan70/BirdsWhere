@@ -7229,14 +7229,13 @@
           '<option value="__new__">' + esc(t("points.listNew")) + "</option>" +
         "</select>" +
       "</label>";
+    var coordsPill = '<button type="button" class="mp-meta mp-coords-copy" data-lat="' + p.lat + '" data-lon="' + p.lon + '" title="' + esc(t("coords.copyBtn")) + '">' + p.lat.toFixed(5) + ", " + p.lon.toFixed(5) + " " + ico("copy") + "</button>";
     return '<div class="mp-form">' +
-      '<label>' + esc(t("points.name")) + '<input type="text" id="mp-name" value="' + esc(p.name || "") + '" /></label>' +
-      '<label>' + esc(t("points.tags")) + '<input type="text" id="mp-tags" value="' + esc((p.tags || []).join(", ")) + '" placeholder="' + esc(t("points.tagsPh")) + '" /></label>' +
-      mpColorRow(p) +
-      '<label>' + esc(t("points.note")) + '<textarea id="mp-note" rows="2">' + esc(p.note || "") + '</textarea></label>' +
+      '<input type="text" id="mp-name" aria-label="' + esc(t("points.name")) + '" placeholder="' + esc(t("points.name")) + '" value="' + esc(p.name || "") + '" />' +
+      '<input type="text" id="mp-tags" aria-label="' + esc(t("points.tags")) + '" placeholder="' + esc(t("points.tagsPh")) + '" value="' + esc((p.tags || []).join(", ")) + '" />' +
+      '<div class="mp-row">' + mpColorRow(p) + coordsPill + "</div>" +
+      '<textarea id="mp-note" aria-label="' + esc(t("points.note")) + '" placeholder="' + esc(t("points.note")) + '" rows="2">' + esc(p.note || "") + "</textarea>" +
       listSel +
-      '<button type="button" class="mp-meta mp-coords-copy" data-lat="' + p.lat + '" data-lon="' + p.lon + '" title="' + esc(t("coords.copyBtn")) + '">' + p.lat.toFixed(5) + ", " + p.lon.toFixed(5) + " " + ico("copy") + "</button>" +
-      '<div id="mp-natlist" class="mp-natlist" style="display:none"></div>' +
       '<div class="mp-actions">' +
         '<button type="button" id="mp-save" class="demo-btn">' + esc(t("points.save")) + '</button>' +
         '<button type="button" id="mp-nav" class="demo-btn demo-btn-light ico-btn" title="' + esc(t("nav.title")) + '">' + ico("nav") + "<span>" + esc(t("nav.go")) + "</span></button>" +
@@ -7308,17 +7307,8 @@
     });
     var del = document.getElementById("mp-del");
     if (del) del.addEventListener("click", function () { deleteMapPoint(p.id); map.closePopup(); });
-    // Country links (built-in national service + the user's custom links).
-    // Hidden until the reverse-geocode resolves.
-    AppGeo.countryCode(p.lat, p.lon).then(function (cc) {
-      var slot = document.getElementById("mp-natlist"); if (!slot) return;
-      var svcs = natServicesFor(cc);
-      if (!svcs.length) return;
-      slot.style.display = "";
-      slot.innerHTML = svcs.map(function (s) {
-        return '<a href="' + escapeHtml(safeHref(s.url)) + '" target="_blank" rel="noopener">' + escapeHtml(s.label) + " ↗</a>";
-      }).join("");
-    }).catch(function () { /* leave hidden */ });
+    // National-service website links moved to the right-side Country button — the
+    // point editor stays focused on the point itself.
   }
   // Right-click on desktop, long-press on touch — Leaflet fires both as "contextmenu".
   function onMapContextMenu(e) {

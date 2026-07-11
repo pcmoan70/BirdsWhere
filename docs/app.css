@@ -1426,9 +1426,9 @@ button.dd-name:hover { text-decoration: underline; }
 }
 .mp-meta.mp-coords-copy:hover { border-color: var(--brand, #0b3a3a); color: var(--brand, #0b3a3a); }
 .mp-meta.mp-coords-copy .btn-ico { width: 13px; height: 13px; }
-.mp-natlist { font-size: 0.78rem; padding-top: 2px; }
-.mp-natlist a { color: var(--brand, #0b3a3a); text-decoration: none; }
-.mp-natlist a:hover { text-decoration: underline; }
+/* colour row + coordinates pill share one line (wrap on very narrow popups) */
+.mp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 10px; }
+.mp-row .mp-color-row { flex: 1 1 120px; }
 .mp-actions { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; margin-top: 1px; }
 .mp-actions .demo-btn { font-size: 0.82rem; padding: 4px 9px; }
 .mp-actions .ico-btn { display: inline-flex; align-items: center; gap: 4px; }

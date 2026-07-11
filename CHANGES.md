@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-11 — Manual point editor: drop website links, tighter card (sw v600)
+
+- Removed the national-service website links from the manual point-entry popup
+  (they live on the right-side Country button now). Reorganised the card: name/
+  tags/note use placeholders instead of caption lines, and the colour row + the
+  coordinate copy-pill share one row — so it takes noticeably less space.
+
+
 ## 2026-07-11 — eBird hotspot popup with eBird link + Navigate (sw v598)
 
 - Clicking an eBird hotspot now opens a popup (name + species/last-seen) with an
