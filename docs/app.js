@@ -9960,12 +9960,13 @@
     var box = document.createElement("div"); box.className = "ui-modal map-choose country-menu";
     function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); document.removeEventListener("keydown", onKey, true); }
     function onKey(e) { if (e.key === "Escape") { e.preventDefault(); close(); } }
+    var head = document.createElement("div"); head.className = "cm-head";
+    var title = document.createElement("span"); title.className = "cm-title";
+    title.textContent = name || t("popup.country");
     var x = document.createElement("button");
     x.type = "button"; x.className = "cm-close"; x.textContent = "×"; x.setAttribute("aria-label", t("btn.close"));
     x.addEventListener("click", close);
-    box.appendChild(x);
-    var head = document.createElement("div"); head.className = "ui-modal-msg";
-    head.textContent = t("popup.country") + (name ? " · " + name : "");
+    head.appendChild(title); head.appendChild(x);
     box.appendChild(head);
     box.appendChild(makePopupBtn(t("blogs.title") + " ▸", "demo-btn-light", function () { close(); openBlogs(cc, name); }));
     box.appendChild(makePopupBtn(t("link.birdlife") + " ↗", "demo-btn-light", function () { close(); openExternal(birdLifeCountryUrl(cc, name)); }));

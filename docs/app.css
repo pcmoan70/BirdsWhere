@@ -346,14 +346,14 @@ input:focus-visible {
 .map-choose .demo-btn { width: 100%; }
 /* "Location" submenu: indented group under its toggle button */
 .choose-sub { display: flex; flex-direction: column; gap: 6px; margin-left: 12px; padding-left: 8px; border-left: 2px solid var(--border, #d8e1dd); }
-/* Country menu: × close in the upper-right corner */
-.country-menu { position: relative; }
+/* Country menu: bold country name on the left, × close aligned on the right */
+.country-menu .cm-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.country-menu .cm-title { font-weight: 700; font-size: 1.02rem; color: var(--ink); }
 .country-menu .cm-close {
-  position: absolute; top: 4px; right: 6px; width: 30px; height: 30px; line-height: 1;
+  flex: 0 0 auto; width: 30px; height: 30px; line-height: 1; margin: -4px -4px -4px 0;
   border: none; background: transparent; color: var(--ink); font-size: 22px; cursor: pointer; border-radius: 6px;
 }
 .country-menu .cm-close:hover { background: var(--surface-2); }
-.country-menu .ui-modal-msg { padding-right: 28px; }   /* keep the title clear of the × */
 
 /* ---- Leaflet control styling (match the app theme) ---- */
 .leaflet-bar,
