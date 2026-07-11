@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-11 — eBird hotspots show at more zoom levels (sw v595)
+
+- Lowered the minimum zoom for the eBird hotspots layer from 6.5 to 4.5, so
+  hotspots appear when more zoomed out. (eBird still caps the query at 500 km from
+  the map centre, so at the lowest zooms coverage is around the centre; the
+  all-time-species filter keeps the count sensible.)
+
+
 ## 2026-07-10 — Detection-list navigate button opens Google Maps at the location (sw v592)
 
 - The 🧭 button in the detections popup now opens Google Maps directions to the

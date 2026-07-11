@@ -4825,7 +4825,7 @@
     function load() {
       var key = ebirdKey();
       if (!key) { grp.clearLayers(); setStatus(t("layer.hotspotsKey")); return; }
-      if (map.getZoom() < 6.5) { grp.clearLayers(); setStatus(t("layer.hotspotsZoom")); return; }
+      if (map.getZoom() < 4.5) { grp.clearLayers(); setStatus(t("layer.hotspotsZoom")); return; }
       var c = map.getCenter(), b = map.getBounds();
       // eBird caps dist at 500 km; cover the viewport (centre→corner) up to that.
       var radius = Math.max(2, Math.min(500, Math.round(haversineKm(c.lat, c.lng, b.getNorth(), b.getEast()))));
