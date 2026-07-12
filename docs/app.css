@@ -2272,10 +2272,14 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
   cursor: pointer; font-size: 1.5rem; line-height: 1; color: var(--ink-muted);
 }
 #detlist-close:hover { color: var(--ink); }
-/* Wrap so the sort toggle never gets pushed off the (narrow) box edge by the
-   title + Save button — otherwise the right-most "By species" isn't clickable. */
-#detlist-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 0 28px 10px 0; }
-#detlist-head h3 { margin: 0; font-size: 1.1rem; color: var(--brand-deep); }
+/* Place name on its own line at the top; the action icons + sort toggle on the
+   line below. */
+#detlist-head { display: flex; flex-direction: column; gap: 7px; margin: 0 0 10px; }
+#detlist-head h3 {
+  margin: 0 28px 0 0; color: var(--brand-deep); font-size: 1.1rem; line-height: 1.15;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;   /* fitDetTitle shrinks the font so the full name fits; ellipsis is the last-resort */
+}
+#detlist-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 #detlist-sort { display: flex; margin-left: auto; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
 .detlist-sort-btn { border: none; background: transparent; cursor: pointer; font: inherit; font-size: 0.74rem; padding: 3px 10px; color: var(--ink-muted); }
 .detlist-sort-btn.active { background: var(--brand); color: #fff; }

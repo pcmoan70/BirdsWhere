@@ -3599,12 +3599,14 @@
           '<button type="button" id="detlist-close" aria-label="Close">×</button>' +
           '<div id="detlist-head">' +
             '<h3 id="detlist-title">Detections</h3>' +
-            '<button type="button" id="detlist-save" class="detlist-save-btn ico-btn">' + ico("save") + '<span class="ico-label" data-i18n="detlist.save">Save</span></button>' +
-            '<button type="button" id="detlist-nav" class="detlist-save-btn ico-btn" data-i18n-title="nav.title" title="Navigate in Google Maps" aria-label="Navigate in Google Maps">' + ico("nav") + "</button>" +
-            '<button type="button" id="detlist-coords" class="detlist-save-btn ico-btn" data-i18n-title="coords.copyBtn" title="Copy coordinates" aria-label="Copy coordinates">' + ico("copy") + "</button>" +
-            '<div id="detlist-sort">' +
-              '<button type="button" class="detlist-sort-btn" data-sort="time" data-i18n="detlist.byTime">By date</button>' +
-              '<button type="button" class="detlist-sort-btn" data-sort="species" data-i18n="detlist.bySpecies">By species</button>' +
+            '<div id="detlist-actions">' +
+              '<button type="button" id="detlist-save" class="detlist-save-btn ico-btn">' + ico("save") + '<span class="ico-label" data-i18n="detlist.save">Save</span></button>' +
+              '<button type="button" id="detlist-nav" class="detlist-save-btn ico-btn" data-i18n-title="nav.title" title="Navigate in Google Maps" aria-label="Navigate in Google Maps">' + ico("nav") + "</button>" +
+              '<button type="button" id="detlist-coords" class="detlist-save-btn ico-btn" data-i18n-title="coords.copyBtn" title="Copy coordinates" aria-label="Copy coordinates">' + ico("copy") + "</button>" +
+              '<div id="detlist-sort">' +
+                '<button type="button" class="detlist-sort-btn" data-sort="time" data-i18n="detlist.byTime">By date</button>' +
+                '<button type="button" class="detlist-sort-btn" data-sort="species" data-i18n="detlist.bySpecies">By species</button>' +
+              '</div>' +
             '</div>' +
           '</div>' +
           '<input type="text" id="detlist-search" autocomplete="off" spellcheck="false" data-i18n-ph="detlist.search" placeholder="Filter species…" />' +
@@ -5593,6 +5595,18 @@
     detRowMenuEl = el;
     setTimeout(function () { document.addEventListener("click", detRowMenuOutside, true); }, 0);
   }
+  // Shrink the popup's place-name heading so the full name fits on one line.
+  function fitDetTitle() {
+    var el = document.getElementById("detlist-title"); if (!el) return;
+    el.style.fontSize = "";                                   // back to the CSS base
+    var avail = el.clientWidth, full = el.scrollWidth;
+    if (avail > 0 && full > avail) {
+      var base = parseFloat(getComputedStyle(el).fontSize) || 18;
+      var size = Math.max(12, Math.floor(base * avail / full));
+      el.style.fontSize = size + "px";
+      if (el.scrollWidth > el.clientWidth) el.style.fontSize = Math.max(12, size - 1) + "px";   // rounding guard
+    }
+  }
   function renderDetListModal() {
     var body = document.getElementById("detlist-body");
     if (!body) return;
@@ -5615,11 +5629,12 @@
       });
       titleEl.textContent = explicit || firstPlace || t("detlist.title");
       titleEl.title = titleEl.textContent;
+      fitDetTitle();
       if (detListNear && !explicit && window.AppGeo && AppGeo.placeName) {
         var la = detListNear.lat, lo = detListNear.lon;
         AppGeo.placeName(la, lo).then(function (nm) {
           if (nm && detListNear && detListNear.lat === la && detListNear.lon === lo) {
-            var el = document.getElementById("detlist-title"); if (el) { el.textContent = nm; el.title = nm; }
+            var el = document.getElementById("detlist-title"); if (el) { el.textContent = nm; el.title = nm; fitDetTitle(); }
           }
         });
       }

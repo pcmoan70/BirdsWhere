@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-12 — Detections popup: place name on its own line (sw v605)
+
+- The place name now gets its own line at the top of the detections popup, with
+  the action icons (Save/Navigate/Copy) and the date/species sort toggle on the
+  line below. The title font auto-shrinks so the full place name fits on one line.
+
+
 ## 2026-07-12 — Detections popup: precise place name in the title (sw v603)
 
 - The place name shown as the detections-popup title now prefers an explicitly
