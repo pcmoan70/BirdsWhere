@@ -3598,7 +3598,7 @@
         '<div id="detlist-modal" style="display:none"><div id="detlist-box">' +
           '<button type="button" id="detlist-close" aria-label="Close">×</button>' +
           '<div id="detlist-head">' +
-            '<h3 data-i18n="detlist.title">Detections</h3>' +
+            '<h3 id="detlist-title">Detections</h3>' +
             '<button type="button" id="detlist-save" class="detlist-save-btn ico-btn">' + ico("save") + '<span class="ico-label" data-i18n="detlist.save">Save as list</span></button>' +
             '<button type="button" id="detlist-nav" class="detlist-save-btn ico-btn" data-i18n-title="nav.title" title="Navigate in Google Maps" aria-label="Navigate in Google Maps">' + ico("nav") + "</button>" +
             '<button type="button" id="detlist-coords" class="detlist-save-btn ico-btn" data-i18n-title="coords.copyBtn" title="Copy coordinates" aria-label="Copy coordinates">' + ico("copy") + "</button>" +
@@ -5601,6 +5601,14 @@
     Array.prototype.forEach.call(sortBtns, function (b) { b.classList.toggle("active", b.getAttribute("data-sort") === detListSort); });
     recolorDetections();   // swatches reflect the latest family colours
     var rows = collectVisibleDetections(detListNear);
+    // Title = the place name(s) at this spot (from the sources), else "Detections".
+    var titleEl = document.getElementById("detlist-title");
+    if (titleEl) {
+      var places = [];
+      if (detListNear) rows.forEach(function (r) { var pl = String(r.place || "").trim(); if (pl && places.indexOf(pl) < 0) places.push(pl); });
+      titleEl.textContent = places.length ? (places.slice(0, 2).join(" · ") + (places.length > 2 ? " …" : "")) : t("detlist.title");
+      titleEl.title = places.join(" · ");
+    }
     var emptyMsg = rows.length ? t("detlist.noMatch") : t("detlist.empty");
     if (detListQuery) {
       // Prefer exact (substring) matches; only when there are none fall back to

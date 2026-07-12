@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-12 — Detections popup: show the place name(s) as the title (sw v602)
+
+- The detections popup (opened from a dot) now shows the location's place name(s)
+  from the sources as its heading instead of the generic "Detections" (falls back
+  to "Detections" when no place name is available). Up to two distinct names shown,
+  full list on hover.
+
+
 ## 2026-07-12 — Point editor: drop the colour checkbox, tidier row (sw v601)
 
 - Removed the "custom colour?" checkbox. The swatch starts at the point's
