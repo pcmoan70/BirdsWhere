@@ -5601,13 +5601,28 @@
     Array.prototype.forEach.call(sortBtns, function (b) { b.classList.toggle("active", b.getAttribute("data-sort") === detListSort); });
     recolorDetections();   // swatches reflect the latest family colours
     var rows = collectVisibleDetections(detListNear);
-    // Title = the place name(s) at this spot (from the sources), else "Detections".
+    // Title = the place name at this spot. Prefer an EXPLICITLY named location
+    // (eBird hotspot / BirdWeather station); otherwise reverse-geocode to something
+    // finer than commune level (a municipality/county name from GBIF/Artsobs is too
+    // coarse). Shown immediately, then upgraded when the reverse-geocode resolves.
     var titleEl = document.getElementById("detlist-title");
     if (titleEl) {
-      var places = [];
-      if (detListNear) rows.forEach(function (r) { var pl = String(r.place || "").trim(); if (pl && places.indexOf(pl) < 0) places.push(pl); });
-      titleEl.textContent = places.length ? (places.slice(0, 2).join(" · ") + (places.length > 2 ? " …" : "")) : t("detlist.title");
-      titleEl.title = places.join(" · ");
+      var explicit = "", firstPlace = "";
+      if (detListNear) rows.forEach(function (r) {
+        var pl = String(r.place || "").trim(); if (!pl) return;
+        if (!firstPlace) firstPlace = pl;
+        if (!explicit && (r.src === "eBird" || r.src === "BirdWeather")) explicit = pl;
+      });
+      titleEl.textContent = explicit || firstPlace || t("detlist.title");
+      titleEl.title = titleEl.textContent;
+      if (detListNear && !explicit && window.AppGeo && AppGeo.placeName) {
+        var la = detListNear.lat, lo = detListNear.lon;
+        AppGeo.placeName(la, lo).then(function (nm) {
+          if (nm && detListNear && detListNear.lat === la && detListNear.lon === lo) {
+            var el = document.getElementById("detlist-title"); if (el) { el.textContent = nm; el.title = nm; }
+          }
+        });
+      }
     }
     var emptyMsg = rows.length ? t("detlist.noMatch") : t("detlist.empty");
     if (detListQuery) {

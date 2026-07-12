@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-12 — Detections popup: precise place name in the title (sw v603)
+
+- The place name shown as the detections-popup title now prefers an explicitly
+  named location (eBird hotspot / BirdWeather station); otherwise it reverse-
+  geocodes to a name finer than commune level (a specific feature/locality, never
+  the municipality/county), via a new AppGeo.placeName. Falls back to the source's
+  place, then "Detections".
+
+
 ## 2026-07-12 — Detections popup: show the place name(s) as the title (sw v602)
 
 - The detections popup (opened from a dot) now shows the location's place name(s)

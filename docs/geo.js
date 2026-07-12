@@ -38,6 +38,34 @@ window.AppGeo = (function () {
       .catch(function () { var info = { cc: "", name: "" }; countryCache[k] = info; return info; });
   }
   function countryCode(lat, lon) { return countryInfo(lat, lon).then(function (i) { return i.cc; }); }
+  // A precise place name for a point (finer than commune/municipality): the primary
+  // named feature, else the finest locality — never the municipality/county/state.
+  // Cached by ~10 m so repeated popups don't re-hit Nominatim. "" if none resolves.
+  var placeCache = {};
+  function placeName(lat, lon) {
+    var k = (+lat).toFixed(4) + "," + (+lon).toFixed(4);
+    if (placeCache[k] !== undefined) return Promise.resolve(placeCache[k]);
+    return fetch("https://nominatim.openstreetmap.org/reverse?format=json&zoom=16&addressdetails=1&accept-language=en&lat=" + lat + "&lon=" + lon, { headers: { Accept: "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        var name = "";
+        if (j) {
+          var a = j.address || {};
+          // Admin levels that are too coarse (commune and up) — never use these.
+          var coarse = [a.municipality, a.county, a.state, a.state_district, a.region, a.province, a.country]
+            .filter(Boolean).map(String);
+          var fine = a.natural || a.water || a.bay || a.peak || a.wetland || a.wood ||
+            a.leisure || a.tourism || a.building || a.road || a.hamlet || a.isolated_dwelling ||
+            a.neighbourhood || a.suburb || a.quarter || a.village || a.town || a.city_district || a.city || "";
+          name = j.name || "";
+          if (name && coarse.indexOf(name) >= 0) name = "";   // j.name is just the commune → not precise enough
+          if (!name) name = fine;
+          if (name && coarse.indexOf(name) >= 0) name = "";   // finest we found is still commune-level → give up
+        }
+        placeCache[k] = name; return name;
+      })
+      .catch(function () { placeCache[k] = ""; return ""; });
+  }
   // National-database gate. Norway and Sweden sit side by side, so a longitude
   // line approximates their border far better than overlapping rectangles: NO is
   // west of it, SE east. The border longitude rises with latitude (~11.4°E at
@@ -150,6 +178,7 @@ window.AppGeo = (function () {
     init: init,
     countryInfo: countryInfo,
     countryCode: countryCode,
+    placeName: placeName,
     countryMatch: countryMatch,
   };
 })();
