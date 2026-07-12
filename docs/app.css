@@ -2280,9 +2280,9 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;   /* fitDetTitle shrinks the font so the full name fits; ellipsis is the last-resort */
 }
 #detlist-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
-#detlist-sort { display: flex; margin-left: auto; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
-.detlist-sort-btn { border: none; background: transparent; cursor: pointer; font: inherit; font-size: 0.74rem; padding: 3px 10px; color: var(--ink-muted); }
-.detlist-sort-btn.active { background: var(--brand); color: #fff; }
+/* Single sort pill: shows only the active mode (tap to switch), to save space. */
+.detlist-sort-toggle { margin-left: auto; border: 1px solid var(--border); background: var(--surface); border-radius: 999px; cursor: pointer; font: inherit; font-size: 0.74rem; padding: 3px 12px; color: var(--ink-muted); white-space: nowrap; }
+.detlist-sort-toggle:hover { border-color: var(--brand); color: var(--brand-deep); }
 /* "Save as list" — saves the listed species as a map point-list. */
 .detlist-save-btn { border: 1px solid var(--border); background: var(--surface); cursor: pointer; font: inherit; font-size: 0.74rem;
   padding: 3px 10px; border-radius: 999px; color: var(--ink); white-space: nowrap; }

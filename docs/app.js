@@ -3603,10 +3603,7 @@
               '<button type="button" id="detlist-save" class="detlist-save-btn ico-btn">' + ico("save") + '<span class="ico-label" data-i18n="detlist.save">Save</span></button>' +
               '<button type="button" id="detlist-nav" class="detlist-save-btn ico-btn" data-i18n-title="nav.title" title="Navigate in Google Maps" aria-label="Navigate in Google Maps">' + ico("nav") + "</button>" +
               '<button type="button" id="detlist-coords" class="detlist-save-btn ico-btn" data-i18n-title="coords.copyBtn" title="Copy coordinates" aria-label="Copy coordinates">' + ico("copy") + "</button>" +
-              '<div id="detlist-sort">' +
-                '<button type="button" class="detlist-sort-btn" data-sort="time" data-i18n="detlist.byTime">By date</button>' +
-                '<button type="button" class="detlist-sort-btn" data-sort="species" data-i18n="detlist.bySpecies">By species</button>' +
-              '</div>' +
+              '<button type="button" id="detlist-sort" class="detlist-sort-toggle">By date</button>' +
             '</div>' +
           '</div>' +
           '<input type="text" id="detlist-search" autocomplete="off" spellcheck="false" data-i18n-ph="detlist.search" placeholder="Filter species…" />' +
@@ -5611,8 +5608,8 @@
     var body = document.getElementById("detlist-body");
     if (!body) return;
     closeDetRowMenu();   // any open per-record menu is stale once the list re-renders
-    var sortBtns = document.querySelectorAll("#detlist-sort .detlist-sort-btn");
-    Array.prototype.forEach.call(sortBtns, function (b) { b.classList.toggle("active", b.getAttribute("data-sort") === detListSort); });
+    var sortBtn = document.getElementById("detlist-sort");   // single toggle: shows only the ACTIVE mode, title = what a tap switches to
+    if (sortBtn) { var sp = detListSort === "species"; sortBtn.textContent = sp ? t("detlist.bySpecies") : t("detlist.byTime"); sortBtn.title = sp ? t("detlist.byTime") : t("detlist.bySpecies"); }
     recolorDetections();   // swatches reflect the latest family colours
     var rows = collectVisibleDetections(detListNear);
     // Title = the place name at this spot. Prefer an EXPLICITLY named location
@@ -8107,9 +8104,8 @@
     // list button). Close button, backdrop click, and the date/species sort toggle.
     document.getElementById("detlist-close").addEventListener("click", function () { navClose("detlist"); });
     document.getElementById("detlist-modal").addEventListener("click", function (e) { if (e.target === this) navClose("detlist"); });
-    Array.prototype.forEach.call(document.querySelectorAll("#detlist-sort .detlist-sort-btn"), function (b) {
-      b.addEventListener("click", function () { detListSort = this.getAttribute("data-sort"); renderDetListModal(); });
-    });
+    var sortToggle = document.getElementById("detlist-sort");
+    if (sortToggle) sortToggle.addEventListener("click", function () { detListSort = detListSort === "species" ? "time" : "species"; renderDetListModal(); });
     var detlistSearch = document.getElementById("detlist-search");
     if (detlistSearch) detlistSearch.addEventListener("input", function () { detListQuery = this.value; renderDetListModal(); });
     var detlistSave = document.getElementById("detlist-save");

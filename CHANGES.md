@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-12 — Detections popup: single sort toggle (sw v607)
+
+- The "By date / By species" toggle is now a single pill showing only the active
+  sort; tapping it switches to the other (its tooltip names what a tap does),
+  saving space in the header.
+
+
 ## 2026-07-12 — Detections popup: smarter place name (nearby feature) (sw v606)
 
 - The popup place name now resolves as: the record's explicit named location
