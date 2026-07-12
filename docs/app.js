@@ -5630,13 +5630,16 @@
       titleEl.textContent = explicit || firstPlace || t("detlist.title");
       titleEl.title = titleEl.textContent;
       fitDetTitle();
-      if (detListNear && !explicit && window.AppGeo && AppGeo.placeName) {
+      // If the record has no explicit named location, resolve the best map name:
+      // a nearby major geographic feature (lake/peak/… within 250 m) first, else
+      // the reverse-geocoded place name (finer than commune).
+      if (detListNear && !explicit && window.AppGeo) {
         var la = detListNear.lat, lo = detListNear.lon;
-        AppGeo.placeName(la, lo).then(function (nm) {
-          if (nm && detListNear && detListNear.lat === la && detListNear.lon === lo) {
-            var el = document.getElementById("detlist-title"); if (el) { el.textContent = nm; el.title = nm; fitDetTitle(); }
-          }
-        });
+        var same = function () { return detListNear && detListNear.lat === la && detListNear.lon === lo; };
+        var apply = function (nm) { if (nm && same()) { var el = document.getElementById("detlist-title"); if (el) { el.textContent = nm; el.title = nm; fitDetTitle(); } } };
+        (AppGeo.nearbyFeature ? AppGeo.nearbyFeature(la, lo, 250) : Promise.resolve(""))
+          .then(function (feat) { return feat || (AppGeo.placeName ? AppGeo.placeName(la, lo) : ""); })
+          .then(apply).catch(function () {});
       }
     }
     var emptyMsg = rows.length ? t("detlist.noMatch") : t("detlist.empty");

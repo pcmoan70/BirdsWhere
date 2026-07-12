@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-12 — Detections popup: smarter place name (nearby feature) (sw v606)
+
+- The popup place name now resolves as: the record's explicit named location
+  (eBird hotspot / BirdWeather station) → a nearby major geographic feature
+  (lake/water/bay/wetland/glacier/peak) within 250 m from OpenStreetMap (Overpass)
+  → the reverse-geocoded map name (finer than commune) → the source place. Falls
+  back gracefully if Overpass is unavailable.
+
+
 ## 2026-07-12 — Detections popup: place name on its own line (sw v605)
 
 - The place name now gets its own line at the top of the detections popup, with

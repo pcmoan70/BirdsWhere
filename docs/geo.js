@@ -66,6 +66,49 @@ window.AppGeo = (function () {
       })
       .catch(function () { placeCache[k] = ""; return ""; });
   }
+  function _distM(la1, lo1, la2, lo2) {
+    var R = 6371000, p = Math.PI / 180;
+    var dLa = (la2 - la1) * p, dLo = (lo2 - lo1) * p;
+    var a = Math.sin(dLa / 2) * Math.sin(dLa / 2) + Math.cos(la1 * p) * Math.cos(la2 * p) * Math.sin(dLo / 2) * Math.sin(dLo / 2);
+    return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+  // The nearest NAMED major geographic feature (lake/water/bay/wetland/glacier/
+  // peak…) within `radius` m of a point, via Overpass. Water bodies rank above
+  // peaks above other natural features; nearer wins ties. "" if none. Cached.
+  var featCache = {};
+  function nearbyFeature(lat, lon, radius) {
+    radius = radius || 250;
+    var k = (+lat).toFixed(4) + "," + (+lon).toFixed(4) + ":" + radius;
+    if (featCache[k] !== undefined) return Promise.resolve(featCache[k]);
+    var q = "[out:json][timeout:12];(" +
+      'way(around:' + radius + ',' + lat + ',' + lon + ')["natural"~"^(water|bay|wetland|glacier|beach|cape|strait)$"]["name"];' +
+      'relation(around:' + radius + ',' + lat + ',' + lon + ')["natural"~"^(water|bay|wetland|glacier)$"]["name"];' +
+      'way(around:' + radius + ',' + lat + ',' + lon + ')["water"]["name"];' +
+      'node(around:' + radius + ',' + lat + ',' + lon + ')["natural"~"^(peak|volcano|cape)$"]["name"];' +
+      ");out center tags 60;";
+    // Client-side timeout: Overpass can be slow — don't let it stall the caller
+    // (the header falls through to the reverse-geocoded name).
+    var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, 7000) : null;
+    return fetch("https://overpass-api.de/api/interpreter",
+      { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" }, signal: ctrl ? ctrl.signal : undefined })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (timer) clearTimeout(timer);
+        var best = "", bestScore = -Infinity;
+        ((j && j.elements) || []).forEach(function (e) {
+          var tg = e.tags || {}, nm = tg.name; if (!nm) return;
+          var c = e.center || (e.lat != null ? { lat: e.lat, lon: e.lon } : null); if (!c) return;
+          var d = _distM(+lat, +lon, c.lat, c.lon);
+          var rank = (tg.water || /^(water|bay|wetland|glacier)$/.test(tg.natural || "")) ? 3
+            : (tg.natural === "peak" || tg.natural === "volcano") ? 2 : 1;
+          var score = rank * 100000 - d;   // type first, then nearer
+          if (score > bestScore) { bestScore = score; best = nm; }
+        });
+        featCache[k] = best; return best;   // cache a real answer (incl. "no feature")
+      })
+      .catch(function () { if (timer) clearTimeout(timer); return ""; });   // transient failure → don't cache, retry next time
+  }
   // National-database gate. Norway and Sweden sit side by side, so a longitude
   // line approximates their border far better than overlapping rectangles: NO is
   // west of it, SE east. The border longitude rises with latitude (~11.4°E at
@@ -179,6 +222,7 @@ window.AppGeo = (function () {
     countryInfo: countryInfo,
     countryCode: countryCode,
     placeName: placeName,
+    nearbyFeature: nearbyFeature,
     countryMatch: countryMatch,
   };
 })();
