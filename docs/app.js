@@ -7452,7 +7452,8 @@
       "</div>" : "") +
       collSection +
       (mpHasUnsaved() ? '<div class="mp-unsaved">' + escapeHtml(t("points.unsaved", { n: mapPoints.length })) +
-        ' <button type="button" id="mp-saveas" class="mp-saveas-btn">' + escapeHtml(t("points.saveAsList")) + "</button></div>" : "") +
+        ' <button type="button" id="mp-saveas" class="mp-saveas-btn">' + escapeHtml(t("points.saveAsList")) + "</button>" +
+        ' <button type="button" id="mp-share-pts" class="mp-saveas-btn">🔗 ' + escapeHtml(t("share.link")) + "</button></div>" : "") +
       (chipsHtml ? '<div class="mp-chips">' + chipsHtml + "</div>" : "") +
       (unionPts.length > 1 ?
         '<div class="mp-sort"><span class="mp-sort-lbl">⇅</span>' +
@@ -7461,6 +7462,8 @@
         "</div>" : "") +
       '<div class="mp-list">' + listHtml + "</div>";
     // Wire interactions
+    var sharePtsBtn = panel.querySelector("#mp-share-pts");
+    if (sharePtsBtn) sharePtsBtn.addEventListener("click", function (e) { e.stopPropagation(); shareWorkingPoints(); });
     var saveAsBtn = panel.querySelector("#mp-saveas");
     if (saveAsBtn) saveAsBtn.addEventListener("click", function () {
       modalPrompt(t("points.saveAsPrompt"), "").then(function (n) {
@@ -9918,9 +9921,8 @@
       uiDialog({ message: t("share.copyManual"), input: true, value: url, alert: true });
     }).catch(function () { setStatus(t("share.failed")); });
   }
-  function sharePointList(name) {
-    var c = mpCollections.filter(function (x) { return x.name === name; })[0]; if (!c) return;
-    var points = (c.points || []).map(function (p) {
+  function packPoints(list) {
+    return (list || []).filter(function (p) { return p && isFinite(+p.lat) && isFinite(+p.lon); }).map(function (p) {
       var o = { lat: p.lat, lon: p.lon };
       if (p.name) o.name = p.name;
       if (p.tags && p.tags.length) o.tags = p.tags;
@@ -9931,7 +9933,17 @@
       if (p.count != null && p.count !== "") o.count = p.count;
       return o;
     });
-    doShare({ v: 1, type: "points", name: name, points: points }, name);
+  }
+  function sharePointList(name) {
+    var c = mpCollections.filter(function (x) { return x.name === name; })[0]; if (!c) return;
+    doShare({ v: 1, type: "points", name: name, points: packPoints(c.points) }, name);
+  }
+  // Share the loose working map points (user-placed pins not yet saved as a list).
+  function shareWorkingPoints() {
+    var pts = packPoints(mapPoints);
+    if (!pts.length) { setStatus(t("nav.empty")); return; }
+    var name = mpActiveName || t("share.defaultName");
+    doShare({ v: 1, type: "points", name: name, points: pts }, name);
   }
   // Per-source record-URL prefixes, so a link is stored as just its ID tail (the
   // prefix is re-added on decode) — keeps the "verify" links compact.

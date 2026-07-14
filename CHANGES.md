@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-14 — Share loose user-defined points too (sw v612)
+
+- The working (loose, not-yet-saved) map points now have a 🔗 share button next to
+  "Save as list" in the Points panel, so user-placed pins can be shared directly
+  (as a points link) without first saving them as a list.
+
+
 ## 2026-07-14 — Shared species names use the recipient's language (sw v611)
 
 - Detection share links now store the language-independent species CODE + class
