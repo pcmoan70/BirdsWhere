@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-14 — Shared species names use the recipient's language (sw v611)
+
+- Detection share links now store the language-independent species CODE + class
+  (not the sender's display name), so the recipient sees names in THEIR language
+  and scientific-name setting (resolved via the shared model). Also makes the URL
+  a bit smaller. Saved trips re-localise on the map too.
+
+
 ## 2026-07-14 — Share links carry the source (verify) (sw v610)
 
 - Detection share links now also encode each record's SOURCE (eBird/GBIF/…) and

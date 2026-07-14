@@ -5040,7 +5040,7 @@
       var l2 = AppAggregate.ensureSciIndex()[sci.toLowerCase()] || AppAggregate.labelBySciEpithet(sci, e.cls) || AppAggregate.labelBySciGenus(sci, e.cls);
       if (l2) return speciesName(l2);
     }
-    return speciesCase(lang, e.name || e.key);
+    return speciesCase(lang, e.name || (e.key && e.key.indexOf("x:") === 0 ? e.key.slice(2) : e.key));
   }
   // Legend / list swatch: a coloured ★ for starred species, a coloured dot with a
   // black centre for locally-rare species, a star-with-centre-dot when both, else
@@ -7182,7 +7182,7 @@
       var e = set.detections[k] || {};
       (e.rows || []).forEach(function (r) {
         if (r.lat == null || r.lon == null) return;
-        var nm = e.name || k;
+        var nm = detName({ key: e.key || k, cls: e.cls || "", name: e.name }) || e.name || k;   // localise to the recipient's language / sci-name setting
         // Popup: species + date/count/observer/source and a "verify at source" link,
         // so a shared trip's provenance is visible and checkable. A hover tooltip
         // shows just the species for quick scanning.
@@ -9964,7 +9964,9 @@
     function idx(arr, map, v) { if (map[v] == null) { map[v] = arr.length; arr.push(v); } return map[v]; }
     Object.keys(detections || {}).forEach(function (k) {
       var en = detections[k] || {};
-      var si = idx(sp, spI, (en.name || k) + "\t" + (en.color || "#888"));
+      // Store the language-independent species KEY + class (not the display name),
+      // so the recipient resolves the name in THEIR language / sci-name setting.
+      var si = idx(sp, spI, (en.key || k) + "\t" + (en.cls || "") + "\t" + (en.color || "#888"));
       (en.rows || []).forEach(function (r) {
         if (r.lat == null || r.lon == null) return;
         if (baseLat == null) { baseLat = Math.round(r.lat * 1e5) / 1e5; baseLon = Math.round(r.lon * 1e5) / 1e5; }
@@ -9976,7 +9978,7 @@
         urls.push(urlTail(r.url, r.src));
       });
     });
-    return { v: 2, t: "d", n: name, s: sp.map(function (x) { return x.split("\t"); }), d: dt, o: ob, sr: sr, b: [baseLat || 0, baseLon || 0], r: rows, u: urls };
+    return { v: 2, t: "d", n: name, s: sp.map(function (x) { var p = x.split("\t"); return [p[0], p[1], p[2]]; }), d: dt, o: ob, sr: sr, b: [baseLat || 0, baseLon || 0], r: rows, u: urls };
   }
   function shareDetSet(name) {
     var s = detSets().filter(function (x) { return x.name === name; })[0]; if (!s) return;
@@ -9997,8 +9999,10 @@
     var b = obj.b || [0, 0], baseLat = +b[0] || 0, baseLon = +b[1] || 0, dets = {};
     (obj.r || []).forEach(function (row, i) {
       var si = row[0] || 0, di = (row[3] == null ? -1 : row[3]), cnt = row[4] || 0, oi = (row[5] == null ? -1 : row[5]), ri = (row[6] == null ? -1 : row[6]);
-      var spx = (obj.s && obj.s[si]) || ["?", "#888"], key = "s" + si;
-      if (!dets[key]) dets[key] = { name: spx[0] || "?", color: spx[1] || "#888", rows: [] };
+      var spx = (obj.s && obj.s[si]) || ["", "", "#888"], key = "s" + si;
+      // Keep the species KEY + class so the recipient localises the name (detName);
+      // no frozen display name.
+      if (!dets[key]) dets[key] = { key: spx[0] || "", cls: spx[1] || "", color: spx[2] || "#888", rows: [] };
       var rr = { lat: baseLat + (row[1] || 0) / 1e5, lon: baseLon + (row[2] || 0) / 1e5 };
       if (di >= 0 && obj.d && obj.d[di]) rr.date = obj.d[di];
       if (cnt) rr.count = cnt;
