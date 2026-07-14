@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-14 — Share: file fallback for large shares (sw v615)
+
+- When a share is too big for a URL, it is now handed over as a small file
+  (.mcshare) via the native share sheet or a download, instead of just warning.
+  The recipient opens it with the new "Import shared file" button in the Points
+  panel. Localised in all 15 languages.
+
+
 ## 2026-07-14 — Share the whole map in one operation (sw v613)
 
 - New "Share map" button (Points panel) packs ALL plotted detections + ALL user

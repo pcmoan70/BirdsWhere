@@ -7448,9 +7448,11 @@
     var collSection = (collItems.length || dsItems.length) ? '<div class="mp-coll-list">' + collItems.join("") + dsItems.join("") + "</div>" : "";
     var hasMapContent = Object.keys(detPlot).length || allShownUserPoints().length;
     panel.innerHTML =
-      (hasMapContent ? '<div class="mp-head mp-head-share">' +
-        '<button type="button" id="mp-share-map" class="demo-btn ico-btn" title="' + escapeHtml(tLabel("share.mapBtn")) + '">' + ico("share") + '<span class="ico-label">' + escapeHtml(tLabel("share.mapBtn")) + "</span></button>" +
-      "</div>" : "") +
+      '<div class="mp-head mp-head-share">' +
+        (hasMapContent ? '<button type="button" id="mp-share-map" class="demo-btn ico-btn" title="' + escapeHtml(tLabel("share.mapBtn")) + '">' + ico("share") + '<span class="ico-label">' + escapeHtml(tLabel("share.mapBtn")) + "</span></button>" : "") +
+        '<button type="button" id="mp-import-share" class="demo-btn demo-btn-light ico-btn" title="' + escapeHtml(tLabel("share.importFile")) + '">' + ico("upload") + '<span class="ico-label">' + escapeHtml(tLabel("share.importFile")) + "</span></button>" +
+        '<input type="file" id="share-file-input" accept=".mcshare,.txt,text/plain" style="display:none" />' +
+      "</div>" +
       (Object.keys(detPlot).length ? '<div class="mp-head">' +
         '<button type="button" id="mp-save-det" class="demo-btn ico-btn">' + ico("save") + '<span class="ico-label" data-i18n="points.savePoints">' + escapeHtml(tLabel("points.savePoints")) + "</span></button>" +
         '<button type="button" id="mp-share-det" class="demo-btn demo-btn-light ico-btn">' + ico("share") + '<span class="ico-label">' + escapeHtml(tLabel("share.link")) + "</span></button>" +
@@ -7469,6 +7471,17 @@
     // Wire interactions
     var shareMapBtn = panel.querySelector("#mp-share-map");
     if (shareMapBtn) shareMapBtn.addEventListener("click", function (e) { e.stopPropagation(); shareMap(); });
+    var importShareBtn = panel.querySelector("#mp-import-share"), shareFileInput = panel.querySelector("#share-file-input");
+    if (importShareBtn && shareFileInput) {
+      importShareBtn.addEventListener("click", function (e) { e.stopPropagation(); shareFileInput.click(); });
+      shareFileInput.addEventListener("change", function (e) {
+        var f = e.target.files && e.target.files[0]; if (!f) return;
+        var rd = new FileReader();
+        rd.onload = function () { importShared(String(rd.result || "").trim()); };
+        rd.onerror = function () { setStatus(t("share.badLink")); };
+        rd.readAsText(f); e.target.value = "";
+      });
+    }
     var sharePtsBtn = panel.querySelector("#mp-share-pts");
     if (sharePtsBtn) sharePtsBtn.addEventListener("click", function (e) { e.stopPropagation(); shareWorkingPoints(); });
     var saveAsBtn = panel.querySelector("#mp-saveas");
@@ -9913,13 +9926,39 @@
     }
     return Promise.resolve(JSON.parse(new TextDecoder().decode(bytes)));
   }
+  // Fallback for shares too big for a URL: hand the encoded payload over as a small
+  // file (native share sheet if available, else download). The recipient opens it
+  // with "Import shared file" in the Points panel.
+  function shareAsFile(enc, title) {
+    var fname = "migration-share-" + fmtDateFile(new Date()) + ".mcshare";
+    try {
+      var file = new File([enc], fname, { type: "text/plain" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: title || t("share.mapName") }).then(
+          function () { setStatus(t("share.fileShared")); },
+          function (e) { if (!e || e.name !== "AbortError") shareFileDownload(fname, enc); });
+        return;
+      }
+    } catch (e) {}
+    shareFileDownload(fname, enc);
+  }
+  function fmtDateFile(d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
+  function shareFileDownload(fname, text) {
+    try {
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+      a.download = fname; document.body.appendChild(a); a.click();
+      setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(a.href); }, 1500);
+      setStatus(t("share.fileSaved"));
+    } catch (e) { uiDialog({ message: t("share.copyManual"), input: true, value: text, alert: true }); }
+  }
   function doShare(obj, title) {
     function warn() { uiDialog({ message: t("share.failed"), alert: true }); }
     encodeShare(obj).then(function (enc) {
       // Data lives in a QUERY param, not the hash (share targets strip the #fragment).
       // base64url is query-safe, so no extra encoding is needed.
       var url = location.origin + location.pathname + "?s=" + enc;
-      if (url.length > 20000) { setStatus(t("share.tooBig")); return; }   // too big for most share targets
+      if (url.length > 20000) { setStatus(t("share.tooBigFile")); shareAsFile(enc, title); return; }   // too big for a link → send as a file
       // Verify the link BEFORE handing it over: parse ?s= back out of the URL and
       // decode it — if the URL doesn't carry the data intact or it doesn't
       // reconstruct a valid payload, warn instead of sharing a broken link.
