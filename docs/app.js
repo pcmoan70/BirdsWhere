@@ -9922,20 +9922,31 @@
     });
     doShare({ v: 1, type: "points", name: name, points: points }, name);
   }
-  // Strip a detections map to just what a shared overlay needs (species name +
-  // colour, and per row lat/lon/date/count) — keeps the URL small.
-  function stripDetForShare(detections) {
-    var dets = {};
+  // Compact share payload for a detections set (v2): dictionaries for species,
+  // dates and observers (each unique value stored once), and per-observation rows
+  // of small integers — [speciesIdx, latΔ, lonΔ, dateIdx, count, observerIdx] —
+  // with coordinates as ×1e5 (~1 m) integer deltas from a base. Far smaller than
+  // the verbose form, and it deflates well. expandShared() reverses it.
+  function compactDet(name, detections) {
+    var sp = [], spI = {}, dt = [], dtI = {}, ob = [], obI = {}, rows = [], baseLat = null, baseLon = null;
+    function idx(arr, map, v) { if (map[v] == null) { map[v] = arr.length; arr.push(v); } return map[v]; }
     Object.keys(detections || {}).forEach(function (k) {
       var en = detections[k] || {};
-      dets[k] = { name: en.name || k, color: en.color || "#888",
-        rows: (en.rows || []).map(function (r) { var o = { lat: r.lat, lon: r.lon }; if (r.date) o.date = r.date; if (r.count != null && r.count !== "") o.count = r.count; return o; }) };
+      var si = idx(sp, spI, (en.name || k) + "\t" + (en.color || "#888"));
+      (en.rows || []).forEach(function (r) {
+        if (r.lat == null || r.lon == null) return;
+        if (baseLat == null) { baseLat = Math.round(r.lat * 1e5) / 1e5; baseLon = Math.round(r.lon * 1e5) / 1e5; }
+        var di = (r.date) ? idx(dt, dtI, r.date) : -1;
+        var oi = (r.observer && String(r.observer).trim()) ? idx(ob, obI, String(r.observer).trim()) : -1;
+        rows.push([si, Math.round((r.lat - baseLat) * 1e5), Math.round((r.lon - baseLon) * 1e5), di,
+          (r.count != null && r.count !== "") ? +r.count : 0, oi]);
+      });
     });
-    return dets;
+    return { v: 2, t: "d", n: name, s: sp.map(function (x) { return x.split("\t"); }), d: dt, o: ob, b: [baseLat || 0, baseLon || 0], r: rows };
   }
   function shareDetSet(name) {
     var s = detSets().filter(function (x) { return x.name === name; })[0]; if (!s) return;
-    doShare({ v: 1, type: "det", name: name, detections: stripDetForShare(s.detections) }, name);
+    doShare(compactDet(name, s.detections), name);
   }
   // Share the detections currently loaded from data sources (the live plot), no
   // need to save them as a trip first.
@@ -9943,7 +9954,24 @@
     var det = serializeDetPlot();
     if (!det || !Object.keys(det).length) { setStatus(t("det.none")); return; }
     var name = t("share.detName");
-    doShare({ v: 1, type: "det", name: name, detections: stripDetForShare(det) }, name);
+    doShare(compactDet(name, det), name);
+  }
+  // Reverse compactDet (v2) back into the { type:"det", name, detections } shape the
+  // importer expects; other payloads (v1 / point / points) pass through unchanged.
+  function expandShared(obj) {
+    if (!obj || obj.v !== 2 || obj.t !== "d") return obj;
+    var b = obj.b || [0, 0], baseLat = +b[0] || 0, baseLon = +b[1] || 0, dets = {};
+    (obj.r || []).forEach(function (row) {
+      var si = row[0] || 0, di = (row[3] == null ? -1 : row[3]), cnt = row[4] || 0, oi = (row[5] == null ? -1 : row[5]);
+      var spx = (obj.s && obj.s[si]) || ["?", "#888"], key = "s" + si;
+      if (!dets[key]) dets[key] = { name: spx[0] || "?", color: spx[1] || "#888", rows: [] };
+      var rr = { lat: baseLat + (row[1] || 0) / 1e5, lon: baseLon + (row[2] || 0) / 1e5 };
+      if (di >= 0 && obj.d && obj.d[di]) rr.date = obj.d[di];
+      if (cnt) rr.count = cnt;
+      if (oi >= 0 && obj.o && obj.o[oi]) rr.observer = obj.o[oi];
+      dets[key].rows.push(rr);
+    });
+    return { type: "det", name: obj.n || "", detections: dets };
   }
   function uniqueShareName(base, taken) { var n = base, i = 2; while (taken(n)) n = base + " (" + (i++) + ")"; return n; }
   function fitSharedLatLngs(pts) {
@@ -9954,7 +9982,8 @@
   // (after a confirm) into the recipient's saved lists, shown, and fitted; a single
   // point just drops a marker and opens its popup.
   function importShared(str) {
-    decodeShare(str).then(function (obj) {
+    decodeShare(str).then(function (raw) {
+      var obj = expandShared(raw);
       if (!obj || !obj.type) { setStatus(t("share.badLink")); return; }
       if (obj.type === "point") {
         var la = Math.max(-90, Math.min(90, +obj.lat)), lo = wrapLon(+obj.lon);

@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-14 — Compact share links for detections (sw v609)
+
+- Detection-set share links now use a compact encoding (v2): species, dates and
+  observers are stored once in dictionaries and each observation is a row of small
+  integers with ×1e5 delta coordinates. Roughly halves the URL length (a 120-
+  observation trip: ~3240 → ~1470 chars) while ALSO now including observers. Old
+  (v1) links still import.
+
+
 ## 2026-07-14 — Clear "Install for offline use" guide (sw v608)
 
 - Added a clear step-by-step "Install for offline use" section to the in-app
