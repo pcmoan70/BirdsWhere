@@ -2838,3 +2838,6 @@ a.place-search-btn.is-open { background: var(--brand-soft, #e6f0ee); }
   transition: transform 0.25s ease, opacity 0.25s ease;
 }
 #offline-badge.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+.dset-src { margin-top: 3px; font-size: 0.78rem; }
+.dset-src a { color: var(--brand, #0b3a3a); }

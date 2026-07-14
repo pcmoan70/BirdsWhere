@@ -7182,12 +7182,23 @@
       var e = set.detections[k] || {};
       (e.rows || []).forEach(function (r) {
         if (r.lat == null || r.lon == null) return;
-        var tip = escapeHtml((e.name || k) + (r.date ? " · " + fmtDate(r.date) : ""));
-        // A larger, near-invisible hit circle so a trip dot is easy to TAP (a 5 px
-        // dot is a tiny touch target); a tap/hover opens the species tooltip.
+        var nm = e.name || k;
+        // Popup: species + date/count/observer/source and a "verify at source" link,
+        // so a shared trip's provenance is visible and checkable. A hover tooltip
+        // shows just the species for quick scanning.
+        var meta = [];
+        if (r.date) meta.push(fmtDate(r.date));
+        if (r.count != null && r.count !== "") meta.push("×" + r.count);
+        if (r.observer) meta.push(String(r.observer));
+        var pop = "<b>" + escapeHtml(nm) + "</b>" +
+          (meta.length ? "<div class='area-tip-sub'>" + escapeHtml(meta.join(" · ")) + "</div>" : "") +
+          (r.src ? "<div class='dset-src'>" + (r.url
+            ? '<a href="' + escapeHtml(safeHref(r.url)) + '" target="_blank" rel="noopener">' + escapeHtml(r.src) + " ↗</a>"
+            : escapeHtml(r.src)) + "</div>" : "");
+        // A larger, near-invisible hit circle so a 5 px trip dot is easy to TAP.
         var hit = L.circleMarker([r.lat, r.lon], { radius: 12, stroke: false, fillColor: "#000", fillOpacity: 0.01, renderer: detRenderer() });
-        hit.bindTooltip(tip, { direction: "top", className: "det-hover-tip" });
-        hit.on("click", function () { this.openTooltip(); });   // guarantee tap reveals the species on touch
+        hit.bindTooltip(escapeHtml(nm), { direction: "top", className: "det-hover-tip" });
+        hit.bindPopup(pop, { className: "area-tip", closeButton: true });
         g.addLayer(hit);
         // Visible dot on top, non-interactive so the taps go to the hit circle.
         var dot = L.circleMarker([r.lat, r.lon], { radius: 5, color: "#1a1a1a", weight: 1, opacity: 0.9, fillColor: e.color || "#888", fillOpacity: 0.85, interactive: false, renderer: detRenderer() });
@@ -9922,13 +9933,34 @@
     });
     doShare({ v: 1, type: "points", name: name, points: points }, name);
   }
+  // Per-source record-URL prefixes, so a link is stored as just its ID tail (the
+  // prefix is re-added on decode) — keeps the "verify" links compact.
+  var SRC_URL_PREFIX = {
+    eBird: "https://ebird.org/checklist/",
+    iNaturalist: "https://www.inaturalist.org/observations/",
+    GBIF: "https://www.gbif.org/occurrence/",
+    Artsobs: "https://mobil.artsobservasjoner.no/sighting/",
+    Artportalen: "https://www.artportalen.se/sighting/",
+    BirdWeather: "https://app.birdweather.com/stations/"
+  };
+  function urlTail(url, src) {
+    url = String(url || ""); if (!url) return "";
+    var pfx = SRC_URL_PREFIX[src];
+    return (pfx && url.indexOf(pfx) === 0) ? url.slice(pfx.length) : url;   // tail only, else the full url
+  }
+  function urlFromTail(tail, src) {
+    tail = String(tail || ""); if (!tail) return "";
+    if (/^https?:\/\//i.test(tail)) return tail;   // a full url was stored
+    var pfx = SRC_URL_PREFIX[src]; return pfx ? pfx + tail : tail;
+  }
   // Compact share payload for a detections set (v2): dictionaries for species,
-  // dates and observers (each unique value stored once), and per-observation rows
-  // of small integers — [speciesIdx, latΔ, lonΔ, dateIdx, count, observerIdx] —
-  // with coordinates as ×1e5 (~1 m) integer deltas from a base. Far smaller than
-  // the verbose form, and it deflates well. expandShared() reverses it.
+  // dates, observers and SOURCES (each unique value stored once), per-observation
+  // rows of small integers — [speciesIdx, latΔ, lonΔ, dateIdx, count, observerIdx,
+  // sourceIdx] — with ×1e5 (~1 m) integer delta coordinates, plus a parallel `u`
+  // array of record-URL tails so the recipient can verify each record at its
+  // source. Far smaller than the verbose form and deflates well.
   function compactDet(name, detections) {
-    var sp = [], spI = {}, dt = [], dtI = {}, ob = [], obI = {}, rows = [], baseLat = null, baseLon = null;
+    var sp = [], spI = {}, dt = [], dtI = {}, ob = [], obI = {}, sr = [], srI = {}, rows = [], urls = [], baseLat = null, baseLon = null;
     function idx(arr, map, v) { if (map[v] == null) { map[v] = arr.length; arr.push(v); } return map[v]; }
     Object.keys(detections || {}).forEach(function (k) {
       var en = detections[k] || {};
@@ -9938,11 +9970,13 @@
         if (baseLat == null) { baseLat = Math.round(r.lat * 1e5) / 1e5; baseLon = Math.round(r.lon * 1e5) / 1e5; }
         var di = (r.date) ? idx(dt, dtI, r.date) : -1;
         var oi = (r.observer && String(r.observer).trim()) ? idx(ob, obI, String(r.observer).trim()) : -1;
+        var ri = (r.src) ? idx(sr, srI, r.src) : -1;
         rows.push([si, Math.round((r.lat - baseLat) * 1e5), Math.round((r.lon - baseLon) * 1e5), di,
-          (r.count != null && r.count !== "") ? +r.count : 0, oi]);
+          (r.count != null && r.count !== "") ? +r.count : 0, oi, ri]);
+        urls.push(urlTail(r.url, r.src));
       });
     });
-    return { v: 2, t: "d", n: name, s: sp.map(function (x) { return x.split("\t"); }), d: dt, o: ob, b: [baseLat || 0, baseLon || 0], r: rows };
+    return { v: 2, t: "d", n: name, s: sp.map(function (x) { return x.split("\t"); }), d: dt, o: ob, sr: sr, b: [baseLat || 0, baseLon || 0], r: rows, u: urls };
   }
   function shareDetSet(name) {
     var s = detSets().filter(function (x) { return x.name === name; })[0]; if (!s) return;
@@ -9961,14 +9995,17 @@
   function expandShared(obj) {
     if (!obj || obj.v !== 2 || obj.t !== "d") return obj;
     var b = obj.b || [0, 0], baseLat = +b[0] || 0, baseLon = +b[1] || 0, dets = {};
-    (obj.r || []).forEach(function (row) {
-      var si = row[0] || 0, di = (row[3] == null ? -1 : row[3]), cnt = row[4] || 0, oi = (row[5] == null ? -1 : row[5]);
+    (obj.r || []).forEach(function (row, i) {
+      var si = row[0] || 0, di = (row[3] == null ? -1 : row[3]), cnt = row[4] || 0, oi = (row[5] == null ? -1 : row[5]), ri = (row[6] == null ? -1 : row[6]);
       var spx = (obj.s && obj.s[si]) || ["?", "#888"], key = "s" + si;
       if (!dets[key]) dets[key] = { name: spx[0] || "?", color: spx[1] || "#888", rows: [] };
       var rr = { lat: baseLat + (row[1] || 0) / 1e5, lon: baseLon + (row[2] || 0) / 1e5 };
       if (di >= 0 && obj.d && obj.d[di]) rr.date = obj.d[di];
       if (cnt) rr.count = cnt;
       if (oi >= 0 && obj.o && obj.o[oi]) rr.observer = obj.o[oi];
+      var src = (ri >= 0 && obj.sr && obj.sr[ri]) ? obj.sr[ri] : "";
+      if (src) rr.src = src;
+      var tail = obj.u && obj.u[i]; if (tail) rr.url = urlFromTail(tail, src);
       dets[key].rows.push(rr);
     });
     return { type: "det", name: obj.n || "", detections: dets };

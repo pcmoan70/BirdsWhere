@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-14 — Share links carry the source (verify) (sw v610)
+
+- Detection share links now also encode each record's SOURCE (eBird/GBIF/…) and
+  a compact link to the original record (the per-source URL prefix is stripped and
+  re-added on import), so the recipient can verify each observation at its source.
+  A shared/saved trip's dots now open a popup with species, date/count/observer
+  and a "source ↗" verify link. Still compact (a 120-obs trip ≈ 1.9k-char URL).
+
+
 ## 2026-07-14 — Compact share links for detections (sw v609)
 
 - Detection-set share links now use a compact encoding (v2): species, dates and
