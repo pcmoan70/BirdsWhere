@@ -9914,19 +9914,28 @@
     return Promise.resolve(JSON.parse(new TextDecoder().decode(bytes)));
   }
   function doShare(obj, title) {
+    function warn() { uiDialog({ message: t("share.failed"), alert: true }); }
     encodeShare(obj).then(function (enc) {
       // Data lives in a QUERY param, not the hash (share targets strip the #fragment).
       // base64url is query-safe, so no extra encoding is needed.
       var url = location.origin + location.pathname + "?s=" + enc;
       if (url.length > 20000) { setStatus(t("share.tooBig")); return; }   // too big for most share targets
-      // The native share sheet silently dropped the long URL on some devices, so
-      // copy the FULL link to the clipboard and show it in a copyable dialog — the
-      // reliable way to actually send it. Paste it into any message/app.
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        try { navigator.clipboard.writeText(url).then(function () { setStatus(t("share.copied")); }, function () {}); } catch (e) {}
-      }
-      uiDialog({ message: t("share.copyManual"), input: true, value: url, alert: true });
-    }).catch(function () { setStatus(t("share.failed")); });
+      // Verify the link BEFORE handing it over: parse ?s= back out of the URL and
+      // decode it — if the URL doesn't carry the data intact or it doesn't
+      // reconstruct a valid payload, warn instead of sharing a broken link.
+      var got = ""; try { got = new URLSearchParams(new URL(url).search).get("s") || ""; } catch (e) {}
+      if (got !== enc) { warn(); return; }
+      decodeShare(enc).then(function (payload) {
+        if (!payload || (!payload.type && !payload.t)) { warn(); return; }
+        // The native share sheet silently dropped the long URL on some devices, so
+        // copy the FULL link to the clipboard and show it in a copyable dialog —
+        // the reliable way to actually send it. Paste it into any message/app.
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          try { navigator.clipboard.writeText(url).then(function () { setStatus(t("share.copied")); }, function () {}); } catch (e) {}
+        }
+        uiDialog({ message: t("share.copyManual"), input: true, value: url, alert: true });
+      }, warn);
+    }).catch(warn);
   }
   function packPoints(list) {
     return (list || []).filter(function (p) { return p && isFinite(+p.lat) && isFinite(+p.lon); }).map(function (p) {
