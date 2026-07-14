@@ -86,6 +86,11 @@ labels / taxonomy / vendor libs (cache-first), and map tiles + computed range da
 size-capped pool; areas can be pinned for offline use. Optional one-shot **Google Drive sync**
 of your settings, lists and points.
 
+**Install for offline use** — open the app **online at least once** so it can cache itself, then:
+- **iPhone / iPad:** open the page in **Safari** (iOS 11.3 or newer) → **Share** ⎙ → **Add to Home Screen**. On iOS only Safari can install web apps.
+- **Android:** in **Chrome** (or Edge / Firefox / Brave) → **⋮ menu → Install app** (or "Add to Home screen"); or tap the in-app **Offline mode** button when it appears.
+- For **offline maps**, download the areas you need first (Settings → Offline maps, or the ⤓ button on the map). The same steps are shown in the app under **Settings → About & how it works**.
+
 ### Persistence & i18n
 Settings, week, view, lists, checklists and detections persist across visits (localStorage
 for small settings, **IndexedDB** for bulky lists/detections). UI in **15 languages**, and

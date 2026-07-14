@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-14 — Clear "Install for offline use" guide (sw v608)
+
+- Added a clear step-by-step "Install for offline use" section to the in-app
+  About panel (Settings → About # Changes how it works) and the README, with separate
+  iPhone (Safari, iOS 11.3+) and Android (Chrome etc.) steps, version notes, and
+  the "load online once" + offline-maps reminders. Localised in all 15 languages.
+
+
 ## 2026-07-12 — Detections popup: single sort toggle (sw v607)
 
 - The "By date / By species" toggle is now a single pill showing only the active
