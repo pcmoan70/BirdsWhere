@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-14 — Smaller share links: columnar + coarser coords (sw v616)
+
+- Detection share payloads are now COLUMNAR (each field its own array) and use
+  ~11 m (4-decimal) coordinates, which deflates better — about 13% smaller links
+  (a 120-obs trip ≈ 1.5k chars, ~54% below the original verbose form). Older v1/v2
+  links still import. (A denser-than-base64 alphabet isn't reliably URL-safe, so
+  base64url stays; colours are per-species and per-user, so they're kept.)
+
+
 ## 2026-07-14 — Share: file fallback for large shares (sw v615)
 
 - When a share is too big for a URL, it is now handed over as a small file

@@ -10026,26 +10026,33 @@
   // sourceIdx] — with ×1e5 (~1 m) integer delta coordinates, plus a parallel `u`
   // array of record-URL tails so the recipient can verify each record at its
   // source. Far smaller than the verbose form and deflates well.
+  // Compact share (v3): COLUMNAR — each field is its own array (all species indices,
+  // all lat-deltas, …) so deflate finds far more repetition than interleaved rows.
+  // Coordinates are ×1e4 (~11 m) integer deltas from a base. Species stored by
+  // language-independent KEY + class (recipient localises the name), plus date /
+  // observer / source dictionaries and a parallel url-tail column for verification.
   function compactDet(name, detections) {
-    var sp = [], spI = {}, dt = [], dtI = {}, ob = [], obI = {}, sr = [], srI = {}, rows = [], urls = [], baseLat = null, baseLon = null;
+    var sp = [], spI = {}, dt = [], dtI = {}, ob = [], obI = {}, sr = [], srI = {};
+    var cSp = [], cLa = [], cLo = [], cDt = [], cCn = [], cOb = [], cSc = [], urls = [], baseLat = null, baseLon = null;
     function idx(arr, map, v) { if (map[v] == null) { map[v] = arr.length; arr.push(v); } return map[v]; }
     Object.keys(detections || {}).forEach(function (k) {
       var en = detections[k] || {};
-      // Store the language-independent species KEY + class (not the display name),
-      // so the recipient resolves the name in THEIR language / sci-name setting.
       var si = idx(sp, spI, (en.key || k) + "\t" + (en.cls || "") + "\t" + (en.color || "#888"));
       (en.rows || []).forEach(function (r) {
         if (r.lat == null || r.lon == null) return;
-        if (baseLat == null) { baseLat = Math.round(r.lat * 1e5) / 1e5; baseLon = Math.round(r.lon * 1e5) / 1e5; }
-        var di = (r.date) ? idx(dt, dtI, r.date) : -1;
-        var oi = (r.observer && String(r.observer).trim()) ? idx(ob, obI, String(r.observer).trim()) : -1;
-        var ri = (r.src) ? idx(sr, srI, r.src) : -1;
-        rows.push([si, Math.round((r.lat - baseLat) * 1e5), Math.round((r.lon - baseLon) * 1e5), di,
-          (r.count != null && r.count !== "") ? +r.count : 0, oi, ri]);
+        if (baseLat == null) { baseLat = Math.round(r.lat * 1e4) / 1e4; baseLon = Math.round(r.lon * 1e4) / 1e4; }
+        cSp.push(si);
+        cLa.push(Math.round((r.lat - baseLat) * 1e4));
+        cLo.push(Math.round((r.lon - baseLon) * 1e4));
+        cDt.push((r.date) ? idx(dt, dtI, r.date) : -1);
+        cCn.push((r.count != null && r.count !== "") ? +r.count : 0);
+        cOb.push((r.observer && String(r.observer).trim()) ? idx(ob, obI, String(r.observer).trim()) : -1);
+        cSc.push((r.src) ? idx(sr, srI, r.src) : -1);
         urls.push(urlTail(r.url, r.src));
       });
     });
-    return { v: 2, t: "d", n: name, s: sp.map(function (x) { var p = x.split("\t"); return [p[0], p[1], p[2]]; }), d: dt, o: ob, sr: sr, b: [baseLat || 0, baseLon || 0], r: rows, u: urls };
+    return { v: 3, t: "d", n: name, s: sp.map(function (x) { var p = x.split("\t"); return [p[0], p[1], p[2]]; }), d: dt, o: ob, sr: sr,
+      b: [baseLat || 0, baseLon || 0], c: { sp: cSp, la: cLa, lo: cLo, dt: cDt, cn: cCn, ob: cOb, sc: cSc }, u: urls };
   }
   function shareDetSet(name) {
     var s = detSets().filter(function (x) { return x.name === name; })[0]; if (!s) return;
@@ -10073,7 +10080,7 @@
     var hasDet = det && Object.keys(det).length, hasPts = pts.length;
     if (!hasDet && !hasPts) { setStatus(t("det.none")); return; }
     var name = t("share.mapName");
-    var payload = { v: 2, t: "m", n: name };
+    var payload = { v: 3, t: "m", n: name };
     if (hasDet) payload.d = compactDet(name, det);
     if (hasPts) payload.p = packPoints(pts);
     doShare(payload, name);
@@ -10081,15 +10088,23 @@
   // Reverse compactDet (v2) back into the { type:"det", name, detections } shape the
   // importer expects; other payloads (v1 / point / points) pass through unchanged.
   function expandShared(obj) {
-    if (!obj || obj.v !== 2 || obj.t !== "d") return obj;
+    if (obj && obj.t === "d" && (obj.v === 2 || obj.v === 3)) return expandDetShare(obj);
+    return obj;   // v1 / point / points / map wrapper pass through
+  }
+  // Rebuild the { type:"det", name, detections } shape from v3 (columnar, ×1e4) or
+  // legacy v2 (row-oriented, ×1e5). Species keep KEY + class so detName() localises
+  // the name for the recipient; src + record url are restored for verification.
+  function expandDetShare(obj) {
     var b = obj.b || [0, 0], baseLat = +b[0] || 0, baseLon = +b[1] || 0, dets = {};
-    (obj.r || []).forEach(function (row, i) {
-      var si = row[0] || 0, di = (row[3] == null ? -1 : row[3]), cnt = row[4] || 0, oi = (row[5] == null ? -1 : row[5]), ri = (row[6] == null ? -1 : row[6]);
+    var v3 = obj.v === 3, SC = v3 ? 1e4 : 1e5, c = obj.c || {};
+    var n = v3 ? (c.sp || []).length : (obj.r || []).length;
+    for (var i = 0; i < n; i++) {
+      var si, laI, loI, di, cnt, oi, ri;
+      if (v3) { si = c.sp[i] || 0; laI = c.la[i] || 0; loI = c.lo[i] || 0; di = (c.dt && c.dt[i] != null) ? c.dt[i] : -1; cnt = (c.cn && c.cn[i]) || 0; oi = (c.ob && c.ob[i] != null) ? c.ob[i] : -1; ri = (c.sc && c.sc[i] != null) ? c.sc[i] : -1; }
+      else { var row = obj.r[i] || []; si = row[0] || 0; laI = row[1] || 0; loI = row[2] || 0; di = (row[3] == null ? -1 : row[3]); cnt = row[4] || 0; oi = (row[5] == null ? -1 : row[5]); ri = (row[6] == null ? -1 : row[6]); }
       var spx = (obj.s && obj.s[si]) || ["", "", "#888"], key = "s" + si;
-      // Keep the species KEY + class so the recipient localises the name (detName);
-      // no frozen display name.
       if (!dets[key]) dets[key] = { key: spx[0] || "", cls: spx[1] || "", color: spx[2] || "#888", rows: [] };
-      var rr = { lat: baseLat + (row[1] || 0) / 1e5, lon: baseLon + (row[2] || 0) / 1e5 };
+      var rr = { lat: baseLat + laI / SC, lon: baseLon + loI / SC };
       if (di >= 0 && obj.d && obj.d[di]) rr.date = obj.d[di];
       if (cnt) rr.count = cnt;
       if (oi >= 0 && obj.o && obj.o[oi]) rr.observer = obj.o[oi];
@@ -10097,7 +10112,7 @@
       if (src) rr.src = src;
       var tail = obj.u && obj.u[i]; if (tail) rr.url = urlFromTail(tail, src);
       dets[key].rows.push(rr);
-    });
+    }
     return { type: "det", name: obj.n || "", detections: dets };
   }
   function uniqueShareName(base, taken) { var n = base, i = 2; while (taken(n)) n = base + " (" + (i++) + ")"; return n; }
