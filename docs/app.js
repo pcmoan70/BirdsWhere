@@ -1490,6 +1490,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { date: "2026-07-14", text: "Share the whole map in one go: the Points panel has a “Share map” button that packs every plotted detection AND your placed points into one link. The recipient (no API keys needed) sees names in their own language, plus each record’s source with a link to verify." },
     { date: "2026-07-10", text: "Share via link: the 🔗 button on a saved location-list or trip (in the Points panel), or on a map point's popup, makes a self-contained URL — the recipient sees the points/detections with no API keys needed (nothing is re-fetched). Opening such a link imports it." },
     { date: "2026-07-06", text: "Close by: the ☰ button (top-left of the map) opens a big-text list of the plotted detections sorted by distance from your live/fixed cross or placed pin. Tap the 📍 to jump back to the map zoomed to fit them. Set how many rows in Settings." },
     { date: "2026-07-01", text: "Stored locations can fetch observations: give each saved spot a radius, tick the ones you want, and hit “Fetch observations” to pull sightings from all of them onto the map at once." },
@@ -7445,7 +7446,11 @@
       return mpCollRowHtml("d", s.name, n, '<span class="mp-sw-set">' + ico("folder") + "</span>", !!shownDetSets[s.name], t("dset.delete"));
     });
     var collSection = (collItems.length || dsItems.length) ? '<div class="mp-coll-list">' + collItems.join("") + dsItems.join("") + "</div>" : "";
+    var hasMapContent = Object.keys(detPlot).length || allShownUserPoints().length;
     panel.innerHTML =
+      (hasMapContent ? '<div class="mp-head mp-head-share">' +
+        '<button type="button" id="mp-share-map" class="demo-btn ico-btn" title="' + escapeHtml(tLabel("share.mapBtn")) + '">' + ico("share") + '<span class="ico-label">' + escapeHtml(tLabel("share.mapBtn")) + "</span></button>" +
+      "</div>" : "") +
       (Object.keys(detPlot).length ? '<div class="mp-head">' +
         '<button type="button" id="mp-save-det" class="demo-btn ico-btn">' + ico("save") + '<span class="ico-label" data-i18n="points.savePoints">' + escapeHtml(tLabel("points.savePoints")) + "</span></button>" +
         '<button type="button" id="mp-share-det" class="demo-btn demo-btn-light ico-btn">' + ico("share") + '<span class="ico-label">' + escapeHtml(tLabel("share.link")) + "</span></button>" +
@@ -7462,6 +7467,8 @@
         "</div>" : "") +
       '<div class="mp-list">' + listHtml + "</div>";
     // Wire interactions
+    var shareMapBtn = panel.querySelector("#mp-share-map");
+    if (shareMapBtn) shareMapBtn.addEventListener("click", function (e) { e.stopPropagation(); shareMap(); });
     var sharePtsBtn = panel.querySelector("#mp-share-pts");
     if (sharePtsBtn) sharePtsBtn.addEventListener("click", function (e) { e.stopPropagation(); shareWorkingPoints(); });
     var saveAsBtn = panel.querySelector("#mp-saveas");
@@ -10004,6 +10011,25 @@
     var name = t("share.detName");
     doShare(compactDet(name, det), name);
   }
+  // Every user-defined point currently ON the map: loose working pins + shown
+  // saved-list points that aren't detections (list detection points already ride
+  // in the detections via detPlot).
+  function allShownUserPoints() {
+    var out = (mapPoints || []).slice();
+    (mpCollections || []).forEach(function (c) { if (shownColls[c.name]) (c.points || []).forEach(function (p) { if (p && !p.spKey) out.push(p); }); });
+    return out;
+  }
+  // Share the WHOLE map in one operation: all plotted detections + all user points.
+  function shareMap() {
+    var det = serializeDetPlot(), pts = allShownUserPoints();
+    var hasDet = det && Object.keys(det).length, hasPts = pts.length;
+    if (!hasDet && !hasPts) { setStatus(t("det.none")); return; }
+    var name = t("share.mapName");
+    var payload = { v: 2, t: "m", n: name };
+    if (hasDet) payload.d = compactDet(name, det);
+    if (hasPts) payload.p = packPoints(pts);
+    doShare(payload, name);
+  }
   // Reverse compactDet (v2) back into the { type:"det", name, detections } shape the
   // importer expects; other payloads (v1 / point / points) pass through unchanged.
   function expandShared(obj) {
@@ -10034,8 +10060,45 @@
   // Apply a payload decoded from #s= at boot. Points / detection sets are imported
   // (after a confirm) into the recipient's saved lists, shown, and fitted; a single
   // point just drops a marker and opens its popup.
+  // Add a shared detection set to the store (shown); returns { name, ll }.
+  function importDetSetColl(nm, detections) {
+    var name = uniqueShareName(nm, function (x) { return detSets().some(function (s) { return s.name === x; }); });
+    var blob = { name: name, createdAt: 0, detections: detections, interesting: [] };
+    detSetStore.push(blob); persistDetSet(name, blob);
+    window.GeoState.save({ mapDetectionSetsDel: detSetTombstones().filter(function (x) { return x !== name; }) });
+    shownDetSets[name] = true;
+    var ll = []; Object.keys(detections || {}).forEach(function (k) { ((detections[k] || {}).rows || []).forEach(function (r) { if (isFinite(+r.lat) && isFinite(+r.lon)) ll.push([+r.lat, +r.lon]); }); });
+    return { name: name, ll: ll };
+  }
+  // Add a shared point-list collection (shown); returns { name, ll }.
+  function importPointsColl(nm, pts) {
+    var name = uniqueShareName(nm, function (x) { return mpCollections.some(function (c) { return c.name === x; }); });
+    mpCollections.push({ name: name, points: pts.map(function (p) { return Object.assign({}, p, { lat: +p.lat, lon: +p.lon }); }) });
+    shownColls[name] = true;
+    return { name: name, ll: pts.map(function (p) { return [+p.lat, +p.lon]; }) };
+  }
+  function detRowCount(detections) {
+    var n = 0; Object.keys(detections || {}).forEach(function (k) { n += ((detections[k] || {}).rows || []).length; }); return n;
+  }
   function importShared(str) {
     decodeShare(str).then(function (raw) {
+      // Whole-map share: detections + user points in one payload.
+      if (raw && raw.t === "m") {
+        var detObj = raw.d ? expandShared(raw.d) : null;
+        var mpts = (raw.p || []).filter(function (p) { return p && isFinite(+p.lat) && isFinite(+p.lon); });
+        var nDet = detObj ? detRowCount(detObj.detections) : 0, nPts = mpts.length;
+        if (!nDet && !nPts) { setStatus(t("share.badLink")); return; }
+        var mnm = String(raw.n || t("share.mapName"));
+        modalConfirm(t("share.importMapPrompt", { d: nDet, p: nPts })).then(function (ok) {
+          if (!ok) return;
+          var ll = [];
+          if (nDet) ll = ll.concat(importDetSetColl(mnm, detObj.detections).ll);
+          if (nPts) { ll = ll.concat(importPointsColl(mnm, mpts).ll); saveMapPoints(); }
+          saveShownState(); renderMapPoints(); fitSharedLatLngs(ll);
+          setStatus(t("share.imported", { name: mnm }));
+        });
+        return;
+      }
       var obj = expandShared(raw);
       if (!obj || !obj.type) { setStatus(t("share.badLink")); return; }
       if (obj.type === "point") {
@@ -10051,27 +10114,18 @@
         if (!pts.length) { setStatus(t("share.badLink")); return; }
         modalConfirm(t("share.importPrompt", { name: nm, n: pts.length })).then(function (ok) {
           if (!ok) return;
-          var name = uniqueShareName(nm, function (x) { return mpCollections.some(function (c) { return c.name === x; }); });
-          mpCollections.push({ name: name, points: pts.map(function (p) { return Object.assign({}, p, { lat: +p.lat, lon: +p.lon }); }) });
-          shownColls[name] = true; saveMapPoints(); saveShownState(); renderMapPoints();
-          fitSharedLatLngs(pts.map(function (p) { return [+p.lat, +p.lon]; }));
-          setStatus(t("share.imported", { name: name }));
+          var r = importPointsColl(nm, pts); saveMapPoints(); saveShownState(); renderMapPoints();
+          fitSharedLatLngs(r.ll); setStatus(t("share.imported", { name: r.name }));
         });
         return;
       }
       if (obj.type === "det") {
-        var keys = Object.keys(obj.detections || {}), n = 0, ll = [];
-        keys.forEach(function (k) { ((obj.detections[k] || {}).rows || []).forEach(function (r) { n++; if (isFinite(+r.lat) && isFinite(+r.lon)) ll.push([+r.lat, +r.lon]); }); });
+        var n = detRowCount(obj.detections);
         if (!n) { setStatus(t("share.badLink")); return; }
         modalConfirm(t("share.importPrompt", { name: nm, n: n })).then(function (ok) {
           if (!ok) return;
-          var name = uniqueShareName(nm, function (x) { return detSets().some(function (s) { return s.name === x; }); });
-          var blob = { name: name, createdAt: 0, detections: obj.detections, interesting: [] };
-          detSetStore.push(blob); persistDetSet(name, blob);
-          window.GeoState.save({ mapDetectionSetsDel: detSetTombstones().filter(function (x) { return x !== name; }) });
-          shownDetSets[name] = true; saveShownState(); renderMapPoints();
-          fitSharedLatLngs(ll);
-          setStatus(t("share.imported", { name: name }));
+          var r = importDetSetColl(nm, obj.detections); saveShownState(); renderMapPoints();
+          fitSharedLatLngs(r.ll); setStatus(t("share.imported", { name: r.name }));
         });
         return;
       }

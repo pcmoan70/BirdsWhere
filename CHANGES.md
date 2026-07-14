@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-14 — Share the whole map in one operation (sw v613)
+
+- New "Share map" button (Points panel) packs ALL plotted detections + ALL user
+  points on the map into a single share link (compact v2 "map" payload). The
+  recipient imports both at once (a detection set + a point list), fitted to the
+  map. Localised in all 15 languages.
+
+
 ## 2026-07-14 — Share loose user-defined points too (sw v612)
 
 - The working (loose, not-yet-saved) map points now have a 🔗 share button next to
