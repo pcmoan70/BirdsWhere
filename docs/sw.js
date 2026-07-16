@@ -3,10 +3,13 @@
  * online at least once.
  *
  * Strategy by request type:
- *   - App shell (html/js/css/i18n/manifest/icon)  network-first w/ 2 s timeout
- *       → fresh code when online; if the network is slow/dead, serve the cached
- *         shell after 2 s (and keep updating it in the background) so an offline
- *         or dead-network boot doesn't stall on failing fetches.
+ *   - App shell (html/js/css/i18n/manifest/icon)  CACHE-FIRST
+ *       → once cached, the code is served straight from the device and is NOT
+ *         re-downloaded while online (no per-load ~1 MB refetch). Fresh code is
+ *         pulled ONLY when VERSION changes: a new SW installs, precaches a new
+ *         shell cache, and the old one is dropped. *** This makes bumping
+ *         VERSION on every user-visible deploy mandatory — without it, returning
+ *         users keep the cached app forever. ***
  *   - Big immutable data (model, labels, taxonomy) + vendored libs  cache-first
  *       → fetched once, then served instantly offline.
  *   - Map tiles  cache-first, capped (LRU-ish FIFO trim)
@@ -16,7 +19,7 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v616";
+var VERSION = "v617";
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs
 // version-INDEPENDENT shared pool: map tiles AND the app's computed range-data
@@ -27,7 +30,6 @@ var TILE_CACHE = "map-pool";            // map tiles + computed range data
 var API_CACHE = "api-" + VERSION;       // geocode / overpass / species lookups
 var META_CACHE = "meta-config";         // version-independent: holds the user's cache-cap setting
 var DEFAULT_MAX_TILES = 11000;          // fallback LRU tile cap before the app pushes its setting
-var SHELL_NET_TIMEOUT = 2000;           // app-shell: serve cache if the network is slower than this (offline/dead-network boot stays instant)
 var PINNED_PREFIX = "pinned-";          // explicitly downloaded offline areas (never auto-purged)
 // The "Map cache buffer" (Settings) in tiles, set by the app via postMessage and
 // persisted in META_CACHE so it survives SW restarts. ~22 KB per tile.
@@ -169,7 +171,7 @@ self.addEventListener("fetch", function (event) {
         /inference-worker\.js$/.test(url.pathname)) {
       event.respondWith(cacheFirst(req, DATA_CACHE));
     } else {
-      event.respondWith(networkFirst(req, SHELL_CACHE, SHELL_NET_TIMEOUT));
+      event.respondWith(shellCacheFirst(req));   // app code served from cache — not re-downloaded per load
     }
     return;
   }
@@ -199,6 +201,36 @@ function cacheFirst(req, cacheName) {
         // Leaflet marker/layer images are precached in the shell, so this is
         // what lets markers and icons render offline before they were ever
         // fetched into the data cache.
+        return caches.match(req).then(function (hit2) { return hit2 || offlineResponse(); });
+      });
+    });
+  });
+}
+
+// App shell (HTML/JS/CSS/i18n) — CACHE-FIRST. Once cached, the code is served
+// straight from the device and is NOT re-downloaded while online; fresh code is
+// pulled only when VERSION changes (a new SW installs and precaches a new
+// cache). This is what keeps an installed/offline app from re-fetching ~1 MB of
+// code on every load. Navigations resolve to the cached index.html so share
+// links (?s=…) and deep links still open the cached app offline.
+function shellCacheFirst(req) {
+  return caches.open(SHELL_CACHE).then(function (cache) {
+    if (req.mode === "navigate") {
+      return cache.match("index.html").then(function (idx) {
+        if (idx) return idx;
+        return cache.match("./").then(function (root) {
+          return root || fetch(req).catch(function () { return offlineResponse(); });
+        });
+      });
+    }
+    return cache.match(req).then(function (hit) {
+      if (hit) return hit;   // served from cache — not re-downloaded
+      // A shell asset that wasn't precached (e.g. added after install): fetch
+      // once and store it so the next load is cache-served too.
+      return fetch(req).then(function (res) {
+        if (res && res.ok) cache.put(req, res.clone());
+        return res;
+      }).catch(function () {
         return caches.match(req).then(function (hit2) { return hit2 || offlineResponse(); });
       });
     });

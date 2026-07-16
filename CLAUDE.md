@@ -38,7 +38,7 @@ Each non-app module is a **revealing module** exposing one global (`window.AppSo
 - **`gdrive-sync.js`** (`GDriveSync`) — optional, **manual one-shot** sync via the Drive `appdata` folder (OAuth token model, token dropped after each sync). Transport/auth only; payload build + merge live in `app.js`'s `AppData`.
 - **`analysis.js`** (`GeoAnalysis`) — stateless renderers for the location-analysis views (Probability / Arrivals / Scatter) from a single 48-week prediction.
 - **`i18n/strings.js`** (`GeoI18N`) — UI strings (en, sv) + the language↔`taxonomy.csv` column map. Species common names come from `taxonomy.csv` (~30 languages, joined to `labels.txt` by `species_code`).
-- **`sw.js`** — service worker. Per-type cache strategy; app shell is **network-first**, model/labels/taxonomy and vendor libs are **cache-first**. Map tiles + the app's computed range-data share one version-independent LRU pool (`map-pool`).
+- **`sw.js`** — service worker. Per-type cache strategy; app shell is **cache-first** (served from the device, never re-downloaded while online — fresh code only on a `VERSION` bump, which makes bumping mandatory), model/labels/taxonomy and vendor libs are **cache-first**. Map tiles + the app's computed range-data share one version-independent LRU pool (`map-pool`).
 
 ### Model assets (`docs/`, large, redistributed)
 `geomodel_fp16.onnx` (FP16 weights, CC BY-SA 4.0), `labels.txt` (output-index → species), `taxonomy.csv` (multilingual names). Vendored libs under `docs/vendor/` (ORT wasm, Leaflet, h3-js) so the app runs fully offline once cached.

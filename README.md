@@ -81,10 +81,11 @@ the screen. A route basket builds a Google Maps multi-stop route to chosen point
 fullscreen toggle sits at the right of the header.
 
 ### Offline & sync (PWA)
-Installable. A service worker (`sw.js`) caches the app shell (network-first), the model /
-labels / taxonomy / vendor libs (cache-first), and map tiles + computed range data in a
-size-capped pool; areas can be pinned for offline use. Optional one-shot **Google Drive sync**
-of your settings, lists and points.
+Installable. A service worker (`sw.js`) caches the app shell (**cache-first** — once installed,
+the code is served from the device and never re-downloaded while online; fresh code arrives only
+when `VERSION` is bumped on deploy), the model / labels / taxonomy / vendor libs (cache-first),
+and map tiles + computed range data in a size-capped pool; areas can be pinned for offline use.
+Optional one-shot **Google Drive sync** of your settings, lists and points.
 
 **Install for offline use** — open the app **online at least once** so it can cache itself, then:
 - **iPhone / iPad:** open the page in **Safari** (iOS 11.3 or newer) → **Share** ⎙ → **Add to Home Screen**. On iOS only Safari can install web apps.

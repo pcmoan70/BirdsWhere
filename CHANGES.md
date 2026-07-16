@@ -1,5 +1,19 @@
 # Changes
 
+## 2026-07-16 — Offline: stop re-downloading the app code (sw v617)
+
+- The app shell (HTML/JS/CSS/i18n — ~1 MB) is now served **cache-first** instead
+  of network-first. Once the app is cached, its code is served straight from the
+  device and is **not re-downloaded on every load while online**, which was the
+  main source of "excessive downloading" for installed/offline users. Fresh code
+  now arrives only when `VERSION` is bumped on deploy (a new service worker
+  installs, precaches the new shell, and drops the old cache) — so bumping
+  `VERSION` on every user-visible change is now mandatory. Navigations still
+  resolve to the cached `index.html`, so share links (`?s=…`) and deep links keep
+  opening the cached app offline. (Big model/labels/taxonomy/vendor files were
+  already cache-first; only the shell changed.)
+
+
 ## 2026-07-14 — Smaller share links: columnar + coarser coords (sw v616)
 
 - Detection share payloads are now COLUMNAR (each field its own array) and use
