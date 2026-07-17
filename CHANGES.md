@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-17 — Observer-lists editor: pick a list + "+" to add (sw v622)
+
+- The editor now edits **one list at a time**, chosen from a dropdown at the top,
+  instead of stacking every list. Adding an observer is a **"+" icon** (opens a
+  picker of everyone not yet in the list) rather than a visible per-list dropdown.
+  Delete is a 🗑 icon.
+
 ## 2026-07-17 — Quick "add to list" from the observer filter (sw v621)
 
 - Clicking an observer's **name** in the 👤 observer filter opens a small menu to

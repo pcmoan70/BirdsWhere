@@ -6396,50 +6396,85 @@
     var ov = document.createElement("div"); ov.className = "ui-modal-overlay";
     var box = document.createElement("div"); box.className = "ui-modal obs-editor";
     ov.appendChild(box); document.body.appendChild(ov);
-    var close = function () { if (ov.parentNode) ov.parentNode.removeChild(ov); if (document.getElementById("det-legend")) updateDetLegend(); };
+    var selLi = 0;                         // which list is currently being edited
+    var edMenuEl = null;                   // the "+" add-observer picker, if open
+    function closeEdMenu() { if (edMenuEl && edMenuEl.parentNode) edMenuEl.parentNode.removeChild(edMenuEl); edMenuEl = null; document.removeEventListener("click", closeEdMenu); }
+    var close = function () { closeEdMenu(); if (ov.parentNode) ov.parentNode.removeChild(ov); if (document.getElementById("det-legend")) updateDetLegend(); };
     ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
     function esc(s) { return escapeHtml(s); }
+    // The "+" icon opens a menu of observers not yet in the selected list.
+    function showObsPicker(anchor) {
+      closeEdMenu();
+      var a = getObserverLists(), L = a[selLi]; if (!L) return;
+      var known = allKnownObservers().filter(function (n) { return (L.observers || []).indexOf(n) < 0; });
+      var menu = document.createElement("div"); menu.className = "obs-addmenu";
+      menu.innerHTML = known.length
+        ? '<div class="obs-addmenu-head">' + esc(t("obs.addObs")) + "</div>" +
+            known.map(function (n) { return '<button type="button" class="obs-addmenu-item" data-obs="' + esc(n) + '">' + esc(observerLabel(n)) + "</button>"; }).join("")
+        : '<div class="obs-addmenu-head">' + esc(t("obs.noneToAdd")) + "</div>";
+      document.body.appendChild(menu); edMenuEl = menu;
+      var r = anchor.getBoundingClientRect();
+      menu.style.left = Math.max(6, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + "px";
+      menu.style.top = Math.min(r.bottom + 2, window.innerHeight - menu.offsetHeight - 8) + "px";
+      menu.querySelectorAll(".obs-addmenu-item").forEach(function (b) {
+        b.addEventListener("click", function (e) {
+          e.stopPropagation();
+          var a = getObserverLists(), n = this.getAttribute("data-obs");
+          if (a[selLi] && a[selLi].observers.indexOf(n) < 0) { a[selLi].observers.push(n); saveObserverLists(a); }
+          closeEdMenu(); render();
+        });
+      });
+      setTimeout(function () { document.addEventListener("click", closeEdMenu); }, 0);
+    }
     function render() {
+      closeEdMenu();
       var lists = getObserverLists(), nicks = getObserverNicks(), known = allKnownObservers();
-      box.innerHTML =
+      if (selLi >= lists.length) selLi = lists.length - 1;
+      if (selLi < 0) selLi = lists.length ? 0 : -1;
+      var L = selLi >= 0 ? lists[selLi] : null;
+      var html =
         '<div class="obs-ed-head"><span>' + esc(t("obs.editTitle")) + "</span>" +
           '<button type="button" class="obs-ed-close" aria-label="' + esc(t("btn.close")) + '">×</button></div>' +
-        '<button type="button" class="obs-ed-new demo-btn demo-btn-light">＋ ' + esc(t("obs.newList")) + "</button>" +
-        lists.map(function (L, li) {
-          var addOpts = known.filter(function (n) { return (L.observers || []).indexOf(n) < 0; })
-            .map(function (n) { return '<option value="' + esc(n) + '">' + esc(observerLabel(n)) + "</option>"; }).join("");
-          return '<div class="obs-ed-list">' +
-            '<div class="obs-ed-lhead"><input type="text" class="obs-ed-lname" data-li="' + li + '" value="' + esc(L.name) + '" />' +
-              '<button type="button" class="obs-ed-ldel" data-li="' + li + '" aria-label="' + esc(t("btn.delete")) + '">×</button></div>' +
-            '<div class="obs-ed-members">' + ((L.observers || []).length ? L.observers.map(function (n, oi) {
-              return '<span class="obs-ed-chip">' + esc(observerLabel(n)) + '<button type="button" class="obs-ed-rm" data-li="' + li + '" data-oi="' + oi + '" aria-label="×">×</button></span>';
-            }).join("") : '<span class="obs-ed-empty">' + esc(t("obs.noMembers")) + "</span>") + "</div>" +
-            (addOpts ? '<select class="obs-ed-add" data-li="' + li + '"><option value="">＋ ' + esc(t("obs.addObs")) + "</option>" + addOpts + "</select>" : "") +
-            "</div>";
-        }).join("") +
-        (known.length ? '<div class="obs-ed-nickhead">' + esc(t("obs.nicknames")) + "</div>" +
-          known.map(function (n) {
-            return '<div class="obs-ed-nickrow"><span class="obs-ed-nickname" title="' + esc(n) + '">' + esc(n) + "</span>" +
-              '<input type="text" class="obs-ed-nick" data-obs="' + esc(n) + '" value="' + esc(nicks[n] || "") + '" placeholder="' + esc(t("obs.nickPh")) + '" /></div>';
-          }).join("") : "");
+        '<div class="obs-ed-top">' +
+          (lists.length ? '<select class="obs-ed-pick">' + lists.map(function (Lx, i) {
+            return '<option value="' + i + '"' + (i === selLi ? " selected" : "") + ">" + esc(Lx.name) + "</option>";
+          }).join("") + "</select>" : "") +
+          '<button type="button" class="obs-ed-new demo-btn demo-btn-light">＋ ' + esc(t("obs.newList")) + "</button>" +
+        "</div>";
+      if (L) {
+        html += '<div class="obs-ed-list">' +
+          '<div class="obs-ed-lhead"><input type="text" class="obs-ed-lname" value="' + esc(L.name) + '" />' +
+            '<button type="button" class="obs-ed-addicon" aria-label="' + esc(t("obs.addObs")) + '" title="' + esc(t("obs.addObs")) + '">＋</button>' +
+            '<button type="button" class="obs-ed-ldel" aria-label="' + esc(t("btn.delete")) + '" title="' + esc(t("btn.delete")) + '">🗑</button></div>' +
+          '<div class="obs-ed-members">' + ((L.observers || []).length ? L.observers.map(function (n, oi) {
+            return '<span class="obs-ed-chip">' + esc(observerLabel(n)) + '<button type="button" class="obs-ed-rm" data-oi="' + oi + '" aria-label="×">×</button></span>';
+          }).join("") : '<span class="obs-ed-empty">' + esc(t("obs.noMembers")) + "</span>") + "</div></div>";
+      } else {
+        html += '<div class="obs-ed-empty">' + esc(t("obs.noLists")) + "</div>";
+      }
+      html += (known.length ? '<div class="obs-ed-nickhead">' + esc(t("obs.nicknames")) + "</div>" +
+        known.map(function (n) {
+          return '<div class="obs-ed-nickrow"><span class="obs-ed-nickname" title="' + esc(n) + '">' + esc(n) + "</span>" +
+            '<input type="text" class="obs-ed-nick" data-obs="' + esc(n) + '" value="' + esc(nicks[n] || "") + '" placeholder="' + esc(t("obs.nickPh")) + '" /></div>';
+        }).join("") : "");
+      box.innerHTML = html;
       wire();
     }
     function wire() {
       box.querySelector(".obs-ed-close").addEventListener("click", close);
+      var pick = box.querySelector(".obs-ed-pick");
+      if (pick) pick.addEventListener("change", function () { selLi = +this.value; render(); });
       box.querySelector(".obs-ed-new").addEventListener("click", function () {
-        modalPrompt(t("obs.newListPrompt"), "").then(function (nm) { nm = (nm || "").trim(); if (!nm) return; var a = getObserverLists(); a.push({ name: nm, observers: [] }); saveObserverLists(a); render(); });
+        modalPrompt(t("obs.newListPrompt"), "").then(function (nm) { nm = (nm || "").trim(); if (!nm) return; var a = getObserverLists(); a.push({ name: nm, observers: [] }); saveObserverLists(a); selLi = a.length - 1; render(); });
       });
-      box.querySelectorAll(".obs-ed-lname").forEach(function (inp) {
-        inp.addEventListener("change", function () { var a = getObserverLists(), i = +this.getAttribute("data-li"); if (a[i]) { a[i].name = this.value.trim() || a[i].name; saveObserverLists(a); } });
-      });
-      box.querySelectorAll(".obs-ed-ldel").forEach(function (b) {
-        b.addEventListener("click", function () { var a = getObserverLists(); a.splice(+this.getAttribute("data-li"), 1); saveObserverLists(a); render(); });
-      });
+      var nameInp = box.querySelector(".obs-ed-lname");
+      if (nameInp) nameInp.addEventListener("change", function () { var a = getObserverLists(); if (a[selLi]) { a[selLi].name = this.value.trim() || a[selLi].name; saveObserverLists(a); } });
+      var addIcon = box.querySelector(".obs-ed-addicon");
+      if (addIcon) addIcon.addEventListener("click", function (e) { e.stopPropagation(); showObsPicker(this); });
+      var del = box.querySelector(".obs-ed-ldel");
+      if (del) del.addEventListener("click", function () { var a = getObserverLists(); a.splice(selLi, 1); saveObserverLists(a); render(); });
       box.querySelectorAll(".obs-ed-rm").forEach(function (b) {
-        b.addEventListener("click", function () { var a = getObserverLists(), i = +this.getAttribute("data-li"), oi = +this.getAttribute("data-oi"); if (a[i]) { a[i].observers.splice(oi, 1); saveObserverLists(a); render(); } });
-      });
-      box.querySelectorAll(".obs-ed-add").forEach(function (sel) {
-        sel.addEventListener("change", function () { var v = this.value; if (!v) return; var a = getObserverLists(), i = +this.getAttribute("data-li"); if (a[i] && a[i].observers.indexOf(v) < 0) { a[i].observers.push(v); saveObserverLists(a); render(); } });
+        b.addEventListener("click", function () { var a = getObserverLists(), oi = +this.getAttribute("data-oi"); if (a[selLi]) { a[selLi].observers.splice(oi, 1); saveObserverLists(a); render(); } });
       });
       box.querySelectorAll(".obs-ed-nick").forEach(function (inp) {
         inp.addEventListener("change", function () { var nicks = getObserverNicks(), obs = this.getAttribute("data-obs"), v = this.value.trim(); if (v) nicks[obs] = v; else delete nicks[obs]; saveObserverNicks(nicks); });

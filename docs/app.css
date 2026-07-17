@@ -2273,17 +2273,20 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
 .obs-editor { text-align: left; max-width: 460px; max-height: 82vh; overflow-y: auto; }
 .obs-ed-head { display: flex; align-items: center; justify-content: space-between; font-weight: 700; font-size: 1rem; margin-bottom: 10px; }
 .obs-ed-close { border: none; background: transparent; font-size: 1.3rem; line-height: 1; cursor: pointer; color: var(--ink-muted, #888); padding: 0 2px; }
-.obs-ed-new { width: 100%; margin-bottom: 12px; }
+.obs-ed-top { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+.obs-ed-pick { flex: 1 1 auto; min-width: 0; font: inherit; font-size: 0.9rem; padding: 4px 6px; border: 1px solid var(--border, #d5d5d5); border-radius: 5px; background: var(--surface, #fff); }
+.obs-ed-new { flex: 0 0 auto; white-space: nowrap; }
 .obs-ed-list { border: 1px solid var(--border, #e3e3e3); border-radius: 8px; padding: 8px; margin-bottom: 10px; }
 .obs-ed-lhead { display: flex; gap: 6px; align-items: center; margin-bottom: 7px; }
-.obs-ed-lname { flex: 1 1 auto; font: inherit; font-weight: 600; padding: 3px 6px; border: 1px solid var(--border, #d5d5d5); border-radius: 5px; }
-.obs-ed-ldel { flex: 0 0 auto; border: none; background: transparent; color: var(--danger, #c0392b); font-size: 1.2rem; line-height: 1; cursor: pointer; padding: 0 4px; }
-.obs-ed-members { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 7px; }
+.obs-ed-lname { flex: 1 1 auto; min-width: 0; font: inherit; font-weight: 600; padding: 3px 6px; border: 1px solid var(--border, #d5d5d5); border-radius: 5px; }
+.obs-ed-addicon { flex: 0 0 auto; border: 1px solid var(--brand); background: var(--brand); color: #fff; font-size: 1rem; line-height: 1; width: 28px; height: 28px; border-radius: 6px; cursor: pointer; }
+.obs-ed-addicon:hover { filter: brightness(1.08); }
+.obs-ed-ldel { flex: 0 0 auto; border: none; background: transparent; font-size: 1.05rem; line-height: 1; cursor: pointer; padding: 0 4px; }
+.obs-ed-members { display: flex; flex-wrap: wrap; gap: 5px; }
 .obs-ed-empty { font-size: 0.8rem; color: var(--ink-muted, #999); }
 .obs-ed-chip { display: inline-flex; align-items: center; gap: 3px; background: var(--surface-2, #f0f0f0); border-radius: 999px; padding: 1px 4px 1px 10px; font-size: 0.8rem; }
 .obs-ed-chip .obs-ed-rm { border: none; background: transparent; color: var(--ink-muted, #888); font-size: 1rem; line-height: 1; cursor: pointer; padding: 0 2px; }
 .obs-ed-chip .obs-ed-rm:hover { color: var(--danger, #c0392b); }
-.obs-ed-add { width: 100%; font: inherit; font-size: 0.85rem; padding: 3px 6px; border: 1px solid var(--border, #d5d5d5); border-radius: 5px; background: var(--surface, #fff); }
 .obs-ed-nickhead { font-weight: 700; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted, #888); margin: 14px 0 6px; }
 .obs-ed-nickrow { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
 .obs-ed-nickname { flex: 1 1 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.82rem; }
