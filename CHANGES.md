@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-17 — Keep observer-list scroll when adding from the legend (sw v623)
+
+- Adding/removing an observer via the name-click menu in the 👤 filter no longer
+  jumps the observer checklist back to the top — the scroll position is preserved
+  across the legend rebuild.
+
 ## 2026-07-17 — Observer-lists editor: pick a list + "+" to add (sw v622)
 
 - The editor now edits **one list at a time**, chosen from a dropdown at the top,

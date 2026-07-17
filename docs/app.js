@@ -6490,6 +6490,12 @@
     addToListMenuEl = null;
     document.removeEventListener("click", closeAddToListMenu);
   }
+  // Rebuild the legend but keep the observer checklist scrolled where it was.
+  function updateDetLegendKeepObsScroll() {
+    var lst = document.querySelector("#det-legend .det-obs-list"), st = lst ? lst.scrollTop : 0;
+    updateDetLegend();
+    var nl = document.querySelector("#det-legend .det-obs-list"); if (nl) nl.scrollTop = st;
+  }
   function showAddToListMenu(name, anchor) {
     closeAddToListMenu();
     var lists = getObserverLists();
@@ -6512,14 +6518,14 @@
         var a = getObserverLists(), i = +this.getAttribute("data-li"); if (!a[i]) return;
         var idx = a[i].observers.indexOf(name);
         if (idx >= 0) a[i].observers.splice(idx, 1); else a[i].observers.push(name);
-        saveObserverLists(a); closeAddToListMenu(); updateDetLegend();
+        saveObserverLists(a); closeAddToListMenu(); updateDetLegendKeepObsScroll();
       });
     });
     menu.querySelector(".obs-addmenu-new").addEventListener("click", function (e) {
       e.stopPropagation(); closeAddToListMenu();
       modalPrompt(t("obs.newListPrompt"), "").then(function (nm) {
         nm = (nm || "").trim(); if (!nm) return;
-        var a = getObserverLists(); a.push({ name: nm, observers: [name] }); saveObserverLists(a); updateDetLegend();
+        var a = getObserverLists(); a.push({ name: nm, observers: [name] }); saveObserverLists(a); updateDetLegendKeepObsScroll();
       });
     });
     setTimeout(function () { document.addEventListener("click", closeAddToListMenu); }, 0);
