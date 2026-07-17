@@ -1,5 +1,20 @@
 # Changes
 
+## 2026-07-17 — Observer lists: cycle scope, hover-isolate, search editor (sw v624)
+
+- The 👤 observer filter's head now has a **scope-cycle button** (where "All" was)
+  that steps All → None → each saved list → All; its label shows the current scope.
+  The separate list-chips row is gone.
+- **Hovering** an observer's name now isolates just that observer's records on the
+  map (mouse only), the same way hovering a species does.
+- **Editor reworked:** nicknames removed; pick the list to edit from a dropdown;
+  members shown as a table (not chips); add members via a **fuzzy-search textbox**
+  over observers that have observations (click a match to add). The per-list
+  "Add observer" dropdown and the all-observers table are gone.
+- The observation-popup place name now also **de-duplicates comma-separated tokens**
+  (e.g. "Siragrunnen, Sokndal, Teinevigodden, Sokndal" → drops the earlier "Sokndal").
+- All new UI strings translated across **all 15 languages** (no English fallbacks).
+
 ## 2026-07-17 — Keep observer-list scroll when adding from the legend (sw v623)
 
 - Adding/removing an observer via the name-click menu in the 👤 filter no longer

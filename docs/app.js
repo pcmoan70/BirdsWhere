@@ -1490,7 +1490,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
-    { date: "2026-07-17", text: "Observer lists: in the 👤 observer filter, save named sets of observers and tap one to filter to just them. Tap an observer's name for a quick menu to add/remove them from a list; the “Lists ✎” button opens the full editor (create/rename/delete lists, add/remove observers, nicknames)." },
+    { date: "2026-07-17", text: "Observer lists: the 👤 observer filter has a scope button that cycles All → None → each of your saved lists. Hover an observer's name to isolate their records on the map; tap the name to add/remove them from a list. The ✎ button opens an editor (pick a list, rename/delete, remove members, and add members by fuzzy-searching observers with observations)." },
     { date: "2026-07-17", text: "Resize the “Sightings radius” with Shift + mouse-wheel over the map (scroll up = larger), as well as the Settings slider — the search box resizes live." },
     { date: "2026-07-14", text: "Share the whole map in one go: the Points panel has a “Share map” button that packs every plotted detection AND your placed points into one link. The recipient (no API keys needed) sees names in their own language, plus each record’s source with a link to verify." },
     { date: "2026-07-10", text: "Share via link: the 🔗 button on a saved location-list or trip (in the Points panel), or on a map point's popup, makes a self-contained URL — the recipient sees the points/detections with no API keys needed (nothing is re-fetched). Opening such a link imports it." },
@@ -4966,6 +4966,7 @@
   }
   var detPlot = {};     // speciesKey -> { key, name (fallback), color, rows, group }
   var detFocusKey = null;   // legend hover: this species keeps colour, the rest grey out
+  var detFocusObs = null;   // legend hover on an observer name: show only that observer's records
   var detLegend = null;
   // Legend-driven visibility: dots always draw in their species colour. Click a
   // legend row to "select" it — that isolates the selected species (the rest are
@@ -4998,6 +4999,7 @@
     if (detObsFilter) detObsFilter.forEach(function (n) { if (n) detObsNames.push(n); else detObsAllowNone = true; });
   }
   function detObsPasses(r) {
+    if (detFocusObs) return (r.observer || "").indexOf(detFocusObs) >= 0;   // legend hover isolates one observer
     if (!detObsFilter) return true;
     var obs = (r.observer || "").trim();
     if (!detObsRealNames(obs).length) return detObsAllowNone;   // empty, or only tags → "no observer" bucket
@@ -5640,10 +5642,24 @@
     try { getStoredLocations().forEach(function (l) { consider(l.name, l.lat, l.lon); }); } catch (e) {}
     return bestName;
   }
+  // Drop duplicated comma-separated tokens in a place name, keeping the LAST
+  // occurrence of each (e.g. "Siragrunnen, Sokndal, Teinevigodden, Sokndal" →
+  // "Siragrunnen, Teinevigodden, Sokndal").
+  function dedupeCommaTokens(s) {
+    var parts = String(s || "").split(",").map(function (p) { return p.trim(); });
+    var keep = [];
+    for (var i = 0; i < parts.length; i++) {
+      if (!parts[i]) continue;
+      var key = parts[i].toLowerCase(), laterDup = false;
+      for (var j = i + 1; j < parts.length; j++) { if (parts[j].toLowerCase() === key) { laterDup = true; break; } }
+      if (!laterDup) keep.push(parts[i]);
+    }
+    return keep.join(", ");
+  }
   // Join a map/place name with a user-defined name, avoiding duplicated strings:
   // if either fully contains the other, keep the richer one; else "map · user".
   function combineNames(mapName, userName) {
-    mapName = String(mapName || "").trim(); userName = String(userName || "").trim();
+    mapName = dedupeCommaTokens(mapName); userName = String(userName || "").trim();
     if (!mapName) return userName;
     if (!userName) return mapName;
     var a = mapName.toLowerCase(), b = userName.toLowerCase();
@@ -6065,6 +6081,18 @@
     detFocusKey = null;
     rebuildDetLayers();
   }
+  // Legend hover on an observer name: show only that observer's records (all
+  // species), the same way hovering a species isolates that species.
+  function focusDetObs(name) {
+    if (detFocusObs === name || !name) return;
+    detFocusObs = name;
+    rebuildDetLayers();
+  }
+  function unfocusDetObs() {
+    if (!detFocusObs) return;
+    detFocusObs = null;
+    rebuildDetLayers();
+  }
   // Plot every species' nearby observations from the cached all-species fetch
   // (GBIF + iNaturalist + eBird) on the map, one coloured layer per species.
   // Capped at 40 species (by count) to keep the legend and CPU sane.
@@ -6376,59 +6404,61 @@
   var detLegendMini = false;
   // Distinct observer names across all plotted detections, plus whether any record
   // has no observer. Used to build the legend's 👤 observer checklist.
-  // ---- Observer lists + nicknames -------------------------------------------
-  // Saved sets of observer names (to filter by), and per-observer nicknames.
+  // ---- Observer lists -------------------------------------------------------
+  // Saved sets of observer names (to filter by).
   function getObserverLists() { return window.GeoState.get("observerLists", []) || []; }
   function saveObserverLists(a) { window.GeoState.save({ observerLists: a }); }
-  function getObserverNicks() { return window.GeoState.get("observerNicks", {}) || {}; }
-  function saveObserverNicks(o) { window.GeoState.save({ observerNicks: o }); }
-  function observerLabel(name) { var n = getObserverNicks()[name]; return (n && String(n).trim()) || name; }
-  // Every observer name we know about: the ones plotted now + all list members.
+  // Observers that currently have observations plotted (the pool you can add from).
   function allKnownObservers() {
     var set = Object.create(null);
     try { detAllObservers().names.forEach(function (n) { if (n) set[n] = 1; }); } catch (e) {}
-    getObserverLists().forEach(function (L) { (L.observers || []).forEach(function (n) { if (n) set[n] = 1; }); });
-    return Object.keys(set).sort(function (a, b) { return observerLabel(a).localeCompare(observerLabel(b)); });
+    return Object.keys(set).sort(function (a, b) { return a.localeCompare(b); });
   }
-  // Popup to manage observer lists: create/rename/delete lists, add/remove
-  // members, and give observers nicknames.
+  // Popup to manage observer lists: pick a list to edit, rename/delete it, remove
+  // members, and add members by fuzzy-searching observers that have observations.
   function openObserverEditor() {
     var ov = document.createElement("div"); ov.className = "ui-modal-overlay";
     var box = document.createElement("div"); box.className = "ui-modal obs-editor";
     ov.appendChild(box); document.body.appendChild(ov);
     var selLi = 0;                         // which list is currently being edited
-    var edMenuEl = null;                   // the "+" add-observer picker, if open
-    function closeEdMenu() { if (edMenuEl && edMenuEl.parentNode) edMenuEl.parentNode.removeChild(edMenuEl); edMenuEl = null; document.removeEventListener("click", closeEdMenu); }
-    var close = function () { closeEdMenu(); if (ov.parentNode) ov.parentNode.removeChild(ov); if (document.getElementById("det-legend")) updateDetLegend(); };
+    var close = function () { if (ov.parentNode) ov.parentNode.removeChild(ov); if (document.getElementById("det-legend")) updateDetLegend(); };
     ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
     function esc(s) { return escapeHtml(s); }
-    // The "+" icon opens a menu of observers not yet in the selected list.
-    function showObsPicker(anchor) {
-      closeEdMenu();
-      var a = getObserverLists(), L = a[selLi]; if (!L) return;
-      var known = allKnownObservers().filter(function (n) { return (L.observers || []).indexOf(n) < 0; });
-      var menu = document.createElement("div"); menu.className = "obs-addmenu";
-      menu.innerHTML = known.length
-        ? '<div class="obs-addmenu-head">' + esc(t("obs.addObs")) + "</div>" +
-            known.map(function (n) { return '<button type="button" class="obs-addmenu-item" data-obs="' + esc(n) + '">' + esc(observerLabel(n)) + "</button>"; }).join("")
-        : '<div class="obs-addmenu-head">' + esc(t("obs.noneToAdd")) + "</div>";
-      document.body.appendChild(menu); edMenuEl = menu;
-      var r = anchor.getBoundingClientRect();
-      menu.style.left = Math.max(6, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + "px";
-      menu.style.top = Math.min(r.bottom + 2, window.innerHeight - menu.offsetHeight - 8) + "px";
-      menu.querySelectorAll(".obs-addmenu-item").forEach(function (b) {
-        b.addEventListener("click", function (e) {
-          e.stopPropagation();
+    // Members of the selected list, shown as a table (rebuilt on add/remove).
+    function renderMembers() {
+      var wrap = box.querySelector(".obs-ed-mwrap"); if (!wrap) return;
+      var L = getObserverLists()[selLi]; if (!L) return;
+      wrap.innerHTML = (L.observers || []).length
+        ? '<table class="obs-ed-mtable"><tbody>' + L.observers.map(function (n, oi) {
+            return '<tr><td class="obs-ed-mname">' + esc(n) + '</td><td class="obs-ed-mrm"><button type="button" class="obs-ed-rm" data-oi="' + oi + '" aria-label="' + esc(t("btn.delete")) + '">×</button></td></tr>';
+          }).join("") + "</tbody></table>"
+        : '<div class="obs-ed-empty">' + esc(t("obs.noMembers")) + "</div>";
+      wrap.querySelectorAll(".obs-ed-rm").forEach(function (b) {
+        b.addEventListener("click", function () { var a = getObserverLists(); if (a[selLi]) { a[selLi].observers.splice(+this.getAttribute("data-oi"), 1); saveObserverLists(a); renderMembers(); renderResults(); } });
+      });
+    }
+    // Fuzzy-search results for the "add member" box (observers with observations,
+    // not already in the list); clicking a result adds them.
+    function renderResults() {
+      var res = box.querySelector(".obs-ed-sresults"), inp = box.querySelector(".obs-ed-sinput");
+      if (!res || !inp) return;
+      var q = inp.value.trim(), L = getObserverLists()[selLi];
+      if (!L || !q) { res.innerHTML = ""; return; }
+      var pool = allKnownObservers().filter(function (n) { return L.observers.indexOf(n) < 0; });
+      var matches = pool.filter(function (n) { return fuzzyMatch(n, q); }).slice(0, 40);
+      res.innerHTML = matches.length
+        ? matches.map(function (n) { return '<button type="button" class="obs-ed-sitem" data-obs="' + esc(n) + '">' + esc(n) + "</button>"; }).join("")
+        : '<div class="obs-ed-empty">' + esc(pool.length ? t("obs.noMatches") : t("obs.noneToAdd")) + "</div>";
+      res.querySelectorAll(".obs-ed-sitem").forEach(function (b) {
+        b.addEventListener("click", function () {
           var a = getObserverLists(), n = this.getAttribute("data-obs");
           if (a[selLi] && a[selLi].observers.indexOf(n) < 0) { a[selLi].observers.push(n); saveObserverLists(a); }
-          closeEdMenu(); render();
+          renderMembers(); renderResults(); inp.focus();
         });
       });
-      setTimeout(function () { document.addEventListener("click", closeEdMenu); }, 0);
     }
     function render() {
-      closeEdMenu();
-      var lists = getObserverLists(), nicks = getObserverNicks(), known = allKnownObservers();
+      var lists = getObserverLists();
       if (selLi >= lists.length) selLi = lists.length - 1;
       if (selLi < 0) selLi = lists.length ? 0 : -1;
       var L = selLi >= 0 ? lists[selLi] : null;
@@ -6444,21 +6474,17 @@
       if (L) {
         html += '<div class="obs-ed-list">' +
           '<div class="obs-ed-lhead"><input type="text" class="obs-ed-lname" value="' + esc(L.name) + '" />' +
-            '<button type="button" class="obs-ed-addicon" aria-label="' + esc(t("obs.addObs")) + '" title="' + esc(t("obs.addObs")) + '">＋</button>' +
             '<button type="button" class="obs-ed-ldel" aria-label="' + esc(t("btn.delete")) + '" title="' + esc(t("btn.delete")) + '">🗑</button></div>' +
-          '<div class="obs-ed-members">' + ((L.observers || []).length ? L.observers.map(function (n, oi) {
-            return '<span class="obs-ed-chip">' + esc(observerLabel(n)) + '<button type="button" class="obs-ed-rm" data-oi="' + oi + '" aria-label="×">×</button></span>';
-          }).join("") : '<span class="obs-ed-empty">' + esc(t("obs.noMembers")) + "</span>") + "</div></div>";
+          '<div class="obs-ed-mwrap"></div>' +
+          '<div class="obs-ed-search"><input type="text" class="obs-ed-sinput" placeholder="' + esc(t("obs.searchPh")) + '" />' +
+            '<div class="obs-ed-sresults"></div></div>' +
+          "</div>";
       } else {
         html += '<div class="obs-ed-empty">' + esc(t("obs.noLists")) + "</div>";
       }
-      html += (known.length ? '<div class="obs-ed-nickhead">' + esc(t("obs.nicknames")) + "</div>" +
-        known.map(function (n) {
-          return '<div class="obs-ed-nickrow"><span class="obs-ed-nickname" title="' + esc(n) + '">' + esc(n) + "</span>" +
-            '<input type="text" class="obs-ed-nick" data-obs="' + esc(n) + '" value="' + esc(nicks[n] || "") + '" placeholder="' + esc(t("obs.nickPh")) + '" /></div>';
-        }).join("") : "");
       box.innerHTML = html;
       wire();
+      if (L) renderMembers();
     }
     function wire() {
       box.querySelector(".obs-ed-close").addEventListener("click", close);
@@ -6469,16 +6495,10 @@
       });
       var nameInp = box.querySelector(".obs-ed-lname");
       if (nameInp) nameInp.addEventListener("change", function () { var a = getObserverLists(); if (a[selLi]) { a[selLi].name = this.value.trim() || a[selLi].name; saveObserverLists(a); } });
-      var addIcon = box.querySelector(".obs-ed-addicon");
-      if (addIcon) addIcon.addEventListener("click", function (e) { e.stopPropagation(); showObsPicker(this); });
       var del = box.querySelector(".obs-ed-ldel");
       if (del) del.addEventListener("click", function () { var a = getObserverLists(); a.splice(selLi, 1); saveObserverLists(a); render(); });
-      box.querySelectorAll(".obs-ed-rm").forEach(function (b) {
-        b.addEventListener("click", function () { var a = getObserverLists(), oi = +this.getAttribute("data-oi"); if (a[selLi]) { a[selLi].observers.splice(oi, 1); saveObserverLists(a); render(); } });
-      });
-      box.querySelectorAll(".obs-ed-nick").forEach(function (inp) {
-        inp.addEventListener("change", function () { var nicks = getObserverNicks(), obs = this.getAttribute("data-obs"), v = this.value.trim(); if (v) nicks[obs] = v; else delete nicks[obs]; saveObserverNicks(nicks); });
-      });
+      var sinput = box.querySelector(".obs-ed-sinput");
+      if (sinput) sinput.addEventListener("input", renderResults);
     }
     render();
   }
@@ -6501,7 +6521,7 @@
     var lists = getObserverLists();
     var menu = document.createElement("div"); menu.className = "obs-addmenu";
     menu.innerHTML =
-      '<div class="obs-addmenu-head">' + escapeHtml(observerLabel(name)) + "</div>" +
+      '<div class="obs-addmenu-head">' + escapeHtml(name) + "</div>" +
       lists.map(function (L, i) {
         var inIt = (L.observers || []).indexOf(name) >= 0;
         return '<button type="button" class="obs-addmenu-item' + (inIt ? " on" : "") + '" data-li="' + i + '">' + (inIt ? "✓ " : "") + escapeHtml(L.name) + "</button>";
@@ -6555,22 +6575,37 @@
         : "<span>" + escapeHtml(label) + "</span>";
       return '<label class="det-obs-row"><input type="checkbox" class="det-obs-cb" data-obs="' + escapeHtml(key) + '"' + (on ? " checked" : "") + ">" + span + "</label>";
     }
-    var rows = ob.names.map(function (o) { return row(o, observerLabel(o)); });
+    var rows = ob.names.map(function (o) { return row(o, o); });
     if (ob.hasNone) rows.push(row("", t("det.noObserver")));
-    // Saved observer lists → chips that set the filter to that list, plus an
-    // edit button that opens the list/nickname editor.
-    var lists = getObserverLists();
-    var listRow = '<div class="det-obs-lists">' +
-      lists.map(function (L, i) {
-        var active = detObsFilter && sameNameSet(detObsFilter, L.observers);
-        return '<button type="button" class="det-obs-listchip' + (active ? " active" : "") + '" data-li="' + i + '">' + escapeHtml(L.name) + "</button>";
-      }).join("") +
-      '<button type="button" class="det-obs-editlists">' + escapeHtml(t("obs.lists")) + " ✎</button></div>";
+    // Head: an ✎ button opens the list editor; the cycle button (where "All" used
+    // to be) shows the current scope and steps All → None → each saved list.
     return '<div class="det-obs-panel">' +
       '<div class="det-obs-head"><span>' + escapeHtml(t("det.observers")) + "</span>" +
-        '<button type="button" class="det-obs-all">' + escapeHtml(t("det.allObs")) + "</button></div>" +
-      listRow +
+        '<button type="button" class="det-obs-editlists" title="' + escapeHtml(t("obs.lists")) + '">✎</button>' +
+        '<button type="button" class="det-obs-cycle" title="' + escapeHtml(t("det.obsCycleHint")) + '">' + escapeHtml(obsFilterLabel()) + "</button></div>" +
       '<div class="det-obs-list">' + rows.join("") + "</div></div>";
+  }
+  // Label for the cycle button: All / None / a saved list's name / Custom.
+  function obsFilterLabel() {
+    if (!detObsFilter) return t("det.allObs");
+    if (detObsFilter.size === 0) return t("det.obsNone");
+    var lists = getObserverLists();
+    for (var i = 0; i < lists.length; i++) if (sameNameSet(detObsFilter, lists[i].observers)) return lists[i].name;
+    return t("det.obsCustom");
+  }
+  // Step the observer scope: All (null) → None (empty) → list0 → list1 → … → All.
+  // A custom checkbox selection resets to All on the next step.
+  function cycleObsFilter() {
+    var lists = getObserverLists(), n = 2 + lists.length, cur = 0;
+    if (detObsFilter) {
+      if (detObsFilter.size === 0) cur = 1;
+      else { cur = -1; for (var i = 0; i < lists.length; i++) if (sameNameSet(detObsFilter, lists[i].observers)) { cur = 2 + i; break; } }
+    }
+    var next = cur < 0 ? 0 : (cur + 1) % n;
+    if (next === 0) setDetObsFilter(null);
+    else if (next === 1) setDetObsFilter(new Set());
+    else setDetObsFilter(new Set(lists[next - 2].observers));
+    saveLegendState(); rebuildDetLayers(); updateDetLegend();
   }
   // True if the current filter Set contains exactly the names in `arr`.
   function sameNameSet(set, arr) {
@@ -6603,6 +6638,7 @@
     // filter/refresh removed it), clear the focus so the map doesn't stay stuck
     // isolated to one species after its row's mouseleave never fired.
     if (detFocusKey && keys.indexOf(detFocusKey) < 0) detFocusKey = null;
+    if (detFocusObs && detAllObservers().names.indexOf(detFocusObs) < 0) detFocusObs = null;
     var detNameByKey = Object.create(null);
     keys.forEach(function (k) { detNameByKey[k] = detName(detPlot[k]); });   // compute once, not per comparison
     keys.sort(function (a, b) { return detNameByKey[a].localeCompare(detNameByKey[b]); });
@@ -6773,27 +6809,24 @@
     });
     // Click an observer's name → menu to add/remove them from a saved list.
     // preventDefault stops the surrounding <label> from toggling the checkbox.
+    // Hover (mouse only) isolates that observer's records on the map, mirroring
+    // the species-row hover.
+    var canHoverObs = !window.matchMedia || window.matchMedia("(hover: hover)").matches;
     el.querySelectorAll(".det-obs-name.det-obs-addable").forEach(function (nm) {
       nm.addEventListener("click", function (e) {
         e.preventDefault(); e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
         showAddToListMenu(this.getAttribute("data-obs"), this);
       });
+      if (canHoverObs) {
+        nm.addEventListener("mouseenter", function () { focusDetObs(this.getAttribute("data-obs")); });
+        nm.addEventListener("mouseleave", unfocusDetObs);
+      }
     });
-    var obsAll = el.querySelector(".det-obs-all");
-    if (obsAll) obsAll.addEventListener("click", function (e) {
+    // Scope cycle button: All → None → each saved list → All.
+    var obsCycle = el.querySelector(".det-obs-cycle");
+    if (obsCycle) obsCycle.addEventListener("click", function (e) {
       e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
-      // Toggle: all shown (null) → none (empty set); anything else → all shown.
-      setDetObsFilter(detObsFilter ? null : new Set());
-      saveLegendState(); rebuildDetLayers(); updateDetLegend();
-    });
-    // Saved observer-list chips: tap → filter to exactly that list (tap again to clear).
-    el.querySelectorAll(".det-obs-listchip").forEach(function (b) {
-      b.addEventListener("click", function (e) {
-        e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
-        var L = getObserverLists()[+this.getAttribute("data-li")]; if (!L) return;
-        setDetObsFilter(sameNameSet(detObsFilter, L.observers) ? null : new Set(L.observers));
-        saveLegendState(); rebuildDetLayers(); updateDetLegend();
-      });
+      cycleObsFilter();
     });
     var edLists = el.querySelector(".det-obs-editlists");
     if (edLists) edLists.addEventListener("click", function (e) { e.stopPropagation(); mapClickGuardUntil = Date.now() + 250; openObserverEditor(); });
