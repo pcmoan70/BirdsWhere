@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-17 — Add observers to lists from the point-observation list (sw v627)
+
+- In the detections list (by-time view), the observer name in each date/observer
+  header is now clickable → a menu to add/remove that observer from your observer
+  lists (same menu as the legend).
+- When an observation carries several observers (source-separated), the click first
+  shows a picker of the individual names; picking one drills into its add-to-list
+  menu. BirdWeather station headers stay non-clickable.
+
 ## 2026-07-17 — Legend control row no longer wraps (sw v626)
 
 - The legend header (minimise · list · days · mode · 👤 · × filters · × clear · ⚠)

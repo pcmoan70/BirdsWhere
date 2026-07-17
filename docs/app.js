@@ -1490,7 +1490,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
-    { date: "2026-07-17", text: "Observer lists: the 👤 observer filter has a scope button that cycles All → None → each of your saved lists. Hover an observer's name to isolate their records on the map; tap the name to add/remove them from a list. The ✎ button opens an editor (pick a list, rename/delete, remove members, and add members by fuzzy-searching observers with observations)." },
+    { date: "2026-07-17", text: "Observer lists: the 👤 observer filter has a scope button that cycles All → None → each of your saved lists. Hover an observer's name to isolate their records on the map; tap the name (in the legend OR the detections list) to add them to a list — a multi-observer record first shows a picker of the individual names. The ✎ button opens an editor (pick a list, rename/delete, remove members, and add members by fuzzy-searching observers with observations)." },
     { date: "2026-07-17", text: "Resize the “Sightings radius” with Shift + mouse-wheel over the map (scroll up = larger), as well as the Settings slider — the search box resizes live." },
     { date: "2026-07-14", text: "Share the whole map in one go: the Points panel has a “Share map” button that packs every plotted detection AND your placed points into one link. The recipient (no API keys needed) sees names in their own language, plus each record’s source with a link to verify." },
     { date: "2026-07-10", text: "Share via link: the 🔗 button on a saved location-list or trip (in the Points panel), or on a map point's popup, makes a self-contained URL — the recipient sees the points/detections with no API keys needed (nothing is re-fetched). Opening such a link imports it." },
@@ -5756,7 +5756,12 @@
         var dateLbl = escapeHtml(fmtDate(dt) || t("detlist.noDate"));
         return obs.map(function (o) {
           var items = byObs[o].slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
-          var head = dateLbl + (o ? ' <span class="dl-obs">· ' + escapeHtml(o) + "</span>" : "");
+          // BirdWeather groups by station name (not an observer) → not clickable.
+          var isBW = items[0] && items[0].src === "BirdWeather";
+          var obsSpan = !o ? "" : (isBW
+            ? ' <span class="dl-obs">· ' + escapeHtml(o) + "</span>"
+            : ' <span class="dl-obs dl-obs-add" data-obs="' + escapeHtml(o) + '" title="' + escapeHtml(t("obs.addToList")) + '">· ' + escapeHtml(o) + "</span>");
+          var head = dateLbl + obsSpan;
           var full = (fmtDate(dt) || t("detlist.noDate")) + (o ? " · " + o : "");   // plain text → full name(s) on hover when truncated
           return '<div class="dl-date-head"><span class="dl-date-lbl" title="' + escapeHtml(full) + '">' + head + '</span><span class="dl-ct">' + items.length + "</span></div>" +
             items.map(function (d) { return detRowHtml(d, false); }).join("");
@@ -5766,6 +5771,14 @@
     body.innerHTML = html;
     Array.prototype.forEach.call(body.querySelectorAll(".dl-sp-head"), function (b) {
       b.addEventListener("click", function () { var k = this.getAttribute("data-key"); if (detListOpenSp[k]) delete detListOpenSp[k]; else detListOpenSp[k] = true; renderDetListModal(); });
+    });
+    // Click an observer header → add them to an observer list (a picker of the
+    // individual names first when the observation has several observers).
+    Array.prototype.forEach.call(body.querySelectorAll(".dl-obs-add"), function (s) {
+      s.addEventListener("click", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        observerAddToList(this.getAttribute("data-obs"), this);
+      });
     });
     function detRowData(b) {
       return {
@@ -6516,7 +6529,13 @@
     updateDetLegend();
     var nl = document.querySelector("#det-legend .det-obs-list"); if (nl) nl.scrollTop = st;
   }
+  // Position an .obs-addmenu next to an anchor rect, kept on-screen.
+  function placeAddMenu(menu, r) {
+    menu.style.left = Math.max(6, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + "px";
+    menu.style.top = Math.min(r.bottom + 2, window.innerHeight - menu.offsetHeight - 8) + "px";
+  }
   function showAddToListMenu(name, anchor) {
+    var r = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;   // capture before close (anchor may be inside a menu we remove)
     closeAddToListMenu();
     var lists = getObserverLists();
     var menu = document.createElement("div"); menu.className = "obs-addmenu";
@@ -6529,9 +6548,7 @@
       '<button type="button" class="obs-addmenu-new">＋ ' + escapeHtml(t("obs.newList")) + "</button>";
     document.body.appendChild(menu);
     addToListMenuEl = menu;
-    var r = anchor.getBoundingClientRect();
-    menu.style.left = Math.max(6, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + "px";
-    menu.style.top = Math.min(r.bottom + 2, window.innerHeight - menu.offsetHeight - 8) + "px";
+    placeAddMenu(menu, r);
     menu.querySelectorAll(".obs-addmenu-item").forEach(function (b) {
       b.addEventListener("click", function (e) {
         e.stopPropagation();
@@ -6549,6 +6566,29 @@
       });
     });
     setTimeout(function () { document.addEventListener("click", closeAddToListMenu); }, 0);
+  }
+  // When an observation carries several observers, first show the individual
+  // names; picking one drills into that observer's add-to-list menu.
+  function showObserverPeopleMenu(names, anchor) {
+    var r = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;
+    closeAddToListMenu();
+    var menu = document.createElement("div"); menu.className = "obs-addmenu";
+    menu.innerHTML = '<div class="obs-addmenu-head">' + escapeHtml(t("obs.people")) + "</div>" +
+      names.map(function (n) { return '<button type="button" class="obs-people-item" data-obs="' + escapeHtml(n) + '">' + escapeHtml(n) + "</button>"; }).join("");
+    document.body.appendChild(menu);
+    addToListMenuEl = menu;
+    placeAddMenu(menu, r);
+    menu.querySelectorAll(".obs-people-item").forEach(function (b) {
+      b.addEventListener("click", function (e) { e.stopPropagation(); showAddToListMenu(this.getAttribute("data-obs"), this); });
+    });
+    setTimeout(function () { document.addEventListener("click", closeAddToListMenu); }, 0);
+  }
+  // Entry point from any displayed observer string (legend or detlist): one
+  // observer opens the add-to-list menu directly; several open a picker first.
+  function observerAddToList(obsString, anchor) {
+    var names = detObsRealNames(obsString);
+    if (names.length <= 1) showAddToListMenu(names[0] || String(obsString || "").trim(), anchor);
+    else showObserverPeopleMenu(names, anchor);
   }
   function detAllObservers() {
     var set = Object.create(null), hasNone = false;

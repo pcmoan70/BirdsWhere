@@ -2263,7 +2263,8 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
 .det-obs-addable:hover { color: var(--brand); text-decoration: underline; }
 .obs-addmenu { position: fixed; z-index: 6000; background: var(--surface, #fff); border: 1px solid var(--border, #ccc); border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.18); padding: 4px; min-width: 150px; max-width: 240px; }
 .obs-addmenu-head { font-size: 0.72rem; font-weight: 700; color: var(--ink-muted, #888); padding: 3px 8px 5px; border-bottom: 1px solid var(--border, #eee); margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.obs-addmenu-item, .obs-addmenu-new { display: block; width: 100%; text-align: left; border: none; background: transparent; font: inherit; font-size: 0.85rem; padding: 5px 8px; border-radius: 5px; cursor: pointer; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.obs-addmenu-item, .obs-addmenu-new, .obs-people-item { display: block; width: 100%; text-align: left; border: none; background: transparent; font: inherit; font-size: 0.85rem; padding: 5px 8px; border-radius: 5px; cursor: pointer; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.obs-people-item:hover { background: var(--surface-2, #f0f0f0); color: var(--brand); }
 .obs-addmenu-item:hover, .obs-addmenu-new:hover { background: var(--surface-2, #f0f0f0); }
 .obs-addmenu-item.on { color: var(--brand); font-weight: 600; }
 .obs-addmenu-new { color: var(--brand); margin-top: 2px; border-top: 1px solid var(--border, #eee); }
@@ -2342,6 +2343,8 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
   border-bottom: 1px solid var(--border, #e3e3e3); }
 .dl-date-head .dl-ct { margin-left: auto; flex: 0 0 auto; padding-left: 8px; color: var(--ink-muted); }
 .dl-date-head .dl-obs { font-weight: 400; color: var(--ink-muted); }
+.dl-date-head .dl-obs-add { cursor: pointer; }
+.dl-date-head .dl-obs-add:hover { color: var(--brand); text-decoration: underline; }
 /* Date + observer label: truncate with an ellipsis; the full name(s) stay
    available via the title tooltip on hover. */
 .dl-date-head .dl-date-lbl { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
