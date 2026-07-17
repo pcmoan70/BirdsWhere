@@ -5623,6 +5623,33 @@
       if (el.scrollWidth > el.clientWidth) el.style.fontSize = Math.max(12, size - 1) + "px";   // rounding guard
     }
   }
+  // The closest USER-DEFINED place name to a point — a manually-placed map point,
+  // a point in a saved list, or a stored location — within maxKm. Lets the
+  // detections popup show the name the user themselves gave the spot.
+  function nearestUserPlace(lat, lon, maxKm) {
+    var bestName = "", bestD = maxKm || 0.2;   // default 200 m
+    function consider(name, la, lo) {
+      name = String(name || "").trim();
+      if (!name || la == null || lo == null || !isFinite(+la) || !isFinite(+lo)) return;
+      var d = haversineKm(lat, lon, +la, +lo);
+      if (d <= bestD) { bestD = d; bestName = name; }
+    }
+    try { (mapPoints || []).forEach(function (p) { consider(p.name, p.lat, p.lon); }); } catch (e) {}
+    try { (mpCollections || []).forEach(function (c) { (c.points || []).forEach(function (p) { consider(p.name, p.lat, p.lon); }); }); } catch (e) {}
+    try { getStoredLocations().forEach(function (l) { consider(l.name, l.lat, l.lon); }); } catch (e) {}
+    return bestName;
+  }
+  // Join a map/place name with a user-defined name, avoiding duplicated strings:
+  // if either fully contains the other, keep the richer one; else "map · user".
+  function combineNames(mapName, userName) {
+    mapName = String(mapName || "").trim(); userName = String(userName || "").trim();
+    if (!mapName) return userName;
+    if (!userName) return mapName;
+    var a = mapName.toLowerCase(), b = userName.toLowerCase();
+    if (a === b || a.indexOf(b) >= 0) return mapName;   // user name already in the map name
+    if (b.indexOf(a) >= 0) return userName;             // map name already in the user name
+    return mapName + " · " + userName;
+  }
   function renderDetListModal() {
     var body = document.getElementById("detlist-body");
     if (!body) return;
@@ -5643,19 +5670,25 @@
         if (!firstPlace) firstPlace = pl;
         if (!explicit && (r.src === "eBird" || r.src === "BirdWeather")) explicit = pl;
       });
-      titleEl.textContent = explicit || firstPlace || t("detlist.title");
-      titleEl.title = titleEl.textContent;
-      fitDetTitle();
+      // A name the user gave this spot (nearby map point / saved point / stored
+      // location) is folded in — the map/source name plus the user's own name,
+      // de-duplicated so a shared string isn't repeated.
+      var userName = detListNear ? nearestUserPlace(detListNear.lat, detListNear.lon) : "";
+      var setTitle = function (mapName) {
+        var el = document.getElementById("detlist-title"); if (!el) return;
+        el.textContent = combineNames(mapName, userName) || t("detlist.title");
+        el.title = el.textContent; fitDetTitle();
+      };
+      setTitle(explicit || firstPlace);
       // If the record has no explicit named location, resolve the best map name:
       // a nearby major geographic feature (lake/peak/… within 250 m) first, else
       // the reverse-geocoded place name (finer than commune).
       if (detListNear && !explicit && window.AppGeo) {
         var la = detListNear.lat, lo = detListNear.lon;
         var same = function () { return detListNear && detListNear.lat === la && detListNear.lon === lo; };
-        var apply = function (nm) { if (nm && same()) { var el = document.getElementById("detlist-title"); if (el) { el.textContent = nm; el.title = nm; fitDetTitle(); } } };
         (AppGeo.nearbyFeature ? AppGeo.nearbyFeature(la, lo, 250) : Promise.resolve(""))
           .then(function (feat) { return feat || (AppGeo.placeName ? AppGeo.placeName(la, lo) : ""); })
-          .then(apply).catch(function () {});
+          .then(function (nm) { if (nm && same()) setTitle(nm); }).catch(function () {});
       }
     }
     var emptyMsg = rows.length ? t("detlist.noMatch") : t("detlist.empty");

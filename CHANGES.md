@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-17 — Detections popup: fold in the user's own place name (sw v619)
+
+- The detections-popup title now includes the name YOU gave the spot when one
+  exists nearby (a manually-placed map point, a point in a saved list, or a stored
+  location — within 200 m), combined with the map/source place name. The two are
+  de-duplicated so a shared string isn't repeated (if either name already contains
+  the other, only the richer one shows; otherwise "map name · your name").
+
 ## 2026-07-17 — Shift+wheel resizes the Sightings radius (sw v618)
 
 - The "Sightings radius" (the search box drawn on the map) can now be resized with
