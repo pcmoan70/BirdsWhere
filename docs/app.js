@@ -1490,6 +1490,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { date: "2026-07-17", text: "Faster reopen: the app now remembers the last few locations' downloaded observations, so reopening (or revisiting a place) reuses them instead of re-fetching — and a cached location even opens offline. Fresh data is still fetched for new places or after ~12 h." },
     { date: "2026-07-17", text: "Observer lists: the 👤 observer filter has a scope button that cycles All → None → each of your saved lists. Hover an observer's name to isolate their records on the map; tap the name (in the legend OR the detections list) to add them to a list — a multi-observer record first shows a picker of the individual names. The ✎ button opens an editor (pick a list, rename/delete, remove members, and add members by fuzzy-searching observers with observations)." },
     { date: "2026-07-17", text: "Resize the “Sightings radius” with Shift + mouse-wheel over the map (scroll up = larger), as well as the Settings slider — the search box resizes live." },
     { date: "2026-07-14", text: "Share the whole map in one go: the Points panel has a “Share map” button that packs every plotted detection AND your placed points into one link. The recipient (no API keys needed) sees names in their own language, plus each record’s source with a link to verify." },
@@ -2187,6 +2188,42 @@
   // Cached fetch of every species' recent detections at a point (last 3 months;
   // eBird is still capped at its 30-day API limit). The resolved object carries
   // `failed` — the source names that errored.
+  // ---- Persistent sightings cache -------------------------------------------
+  // Re-opening the app used to re-run the last location's observation fetch every
+  // time. We now keep the most-recent location fetches (IndexedDB, a structured
+  // clone of the aggregated result) so a reopen — or re-clicking a place visited
+  // in an earlier session — REUSES the already-downloaded detections instead of
+  // hitting the network, as long as the source config is unchanged and the copy
+  // is still fresh (< SIGHT_TTL_MS). A NEW location, a changed radius/group, or a
+  // changed source config still fetches. (Also helps offline: a cached location
+  // opens with no network.)
+  var SIGHT_TTL_MS = 12 * 3600 * 1000;   // reuse a downloaded location for 12 h
+  var persistedSightings = {};           // ck -> { ts, sig, out }, loaded once at boot
+  function sightCK(lat, lon, rkm, group) { return lat.toFixed(2) + "," + lon.toFixed(2) + ":" + rkm + ":" + group; }
+  // Signature of the settings that change what a fetch returns; a mismatch means a
+  // cached copy is stale for the current config and must not be reused.
+  function sightConfigSig() {
+    try {
+      var srcs = obsSources().filter(function (s) { return s.enabled(); }).map(function (s) { return s.name; }).sort().join(",");
+      return srcs + "|bw" + window.GeoState.get("bwMinDet", 2) + "," + window.GeoState.get("bwMinConf", 0) + "|ds" + ((gbifDatasets || []).length);
+    } catch (e) { return ""; }
+  }
+  function loadPersistedSightings() {
+    if (!window.AppIDB) return Promise.resolve();
+    return AppIDB.get("sightingsCache").then(function (m) { if (m && typeof m === "object") persistedSightings = m; }).catch(function () {});
+  }
+  function persistSightings(ck, out) {
+    if (!window.AppIDB) return;
+    try {
+      persistedSightings[ck] = { ts: Date.now(), sig: sightConfigSig(), out: out };
+      var keys = Object.keys(persistedSightings);
+      if (keys.length > 6) {   // keep the 6 most-recently fetched locations
+        keys.sort(function (a, b) { return (persistedSightings[b].ts || 0) - (persistedSightings[a].ts || 0); });
+        keys.slice(6).forEach(function (k) { delete persistedSightings[k]; });
+      }
+      AppIDB.put("sightingsCache", persistedSightings).catch(function () {});
+    } catch (e) {}
+  }
   // onPartial (optional) is called after EACH source resolves with a cumulative
   // aggregation of everything in so far ({agg, extras, bySrc, failed, timedOut,
   // partial:true}) — so the species list can fill in progressively and "pin to
@@ -2195,8 +2232,16 @@
   function fetchAllSightingsAt(lat, lon, onPartial, radiusOverride) {
     var rkm = (radiusOverride > 0) ? radiusOverride : recentRadiusKm();
     var fetchGroup = speciesGroup;   // group at fetch-start — aggregate/plot use THIS, not a value the user may switch mid-fetch
-    var ck = lat.toFixed(2) + "," + lon.toFixed(2) + ":" + rkm + ":" + fetchGroup;   // group-keyed: switching group refetches that class set
+    var ck = sightCK(lat, lon, rkm, fetchGroup);   // group-keyed: switching group refetches that class set
     if (allSightingsCache[ck]) return allSightingsCache[ck];
+    // Reuse a previously-downloaded result for this exact location (same radius,
+    // group + source config) that is still fresh — no network, no refetch on reopen.
+    var pf = persistedSightings[ck];
+    if (pf && pf.out && pf.sig === sightConfigSig() && (Date.now() - (pf.ts || 0)) < SIGHT_TTL_MS) {
+      var cachedPr = Promise.resolve(pf.out);
+      allSightingsCache[ck] = cachedPr;
+      return cachedPr;
+    }
     var fmtD = function (d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); };
     var d2 = fmtD(new Date());   // today; each source's start is today − its own "days" (c.dateBack)
     var failed = [], timedOut = [];
@@ -2261,6 +2306,7 @@
       var noData = !out || !(out.dedupTotal > 0);
       var anyFail = out && ((out.failed && out.failed.length) || (out.timedOut && out.timedOut.length));
       if (noData && anyFail && allSightingsCache[ck] === pr) delete allSightingsCache[ck];
+      else if (out && out.dedupTotal > 0) persistSightings(ck, out);   // keep the download so a reopen doesn't refetch
     }, function () { if (allSightingsCache[ck] === pr) delete allSightingsCache[ck]; });
     return pr;
   }
@@ -3162,6 +3208,7 @@
     // Hydrate saved trips from IndexedDB (and migrate any still in the localStorage
     // blob) before anything reads them. Never block startup on a storage hiccup.
     try { await initDetSetStore(); } catch (e) {}
+    try { await loadPersistedSightings(); } catch (e) {}   // so a reopen reuses the last downloads instead of refetching
     ensurePersistentStorage();   // keep offline-map tiles + saved data from being evicted
     setTimeout(maybeAskRedownloadOffline, 3000);   // offer to re-fetch any browser-evicted offline areas
 

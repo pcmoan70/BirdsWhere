@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-07-17 — Reopening reuses downloaded observations (no refetch) (sw v630)
+
+- Location observation fetches are now cached to IndexedDB (the 6 most-recent
+  locations, a structured clone of the aggregated result). Reopening the app — or
+  re-visiting a place from an earlier session — REUSES the already-downloaded
+  detections instead of re-fetching, as long as the source config is unchanged and
+  the copy is fresh (< 12 h). A new location, a changed radius/group, or a changed
+  source config still fetches; and a cached location now also opens offline.
+- Previously `restoreSession()` re-ran the last location's fetch on every open
+  because the sightings cache was in-memory only (lost on reload).
+
 ## 2026-07-17 — Offline: app stays on local code until a full reload (sw v629)
 
 - The service worker no longer calls `skipWaiting()`. A newly deployed version
