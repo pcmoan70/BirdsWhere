@@ -199,6 +199,15 @@ window.AppAggregate = (function () {
         if (!l && !r.noFuzzy && r.comName) { var lc = comByLower[comNorm(r.comName)]; if (lc) l = lc; }   // shared English common name (split synonyms, e.g. Tyto alba vs furcata "American Barn Owl")
         if (l) key = l.key;
       }
+      // Cross-class guard: never fold a record with a KNOWN class onto a model
+      // species of a DIFFERENT class (name/epithet/common-name collisions, e.g. an
+      // insect whose name matches a bird). Drop the match so it lands in extras
+      // under its own name + class — otherwise it would inherit the model species'
+      // class and, in "all"→birds filtering, show as an exotic bird.
+      if (key && r.cls) {
+        var mCls = (getTaxByCode()[key] || {}).class_name || "";
+        if (mCls && mCls.toLowerCase() !== r.cls.toLowerCase()) key = null;
+      }
       if (key) { bump(key, r.dt || r.date, row); if (r.family && recordFamily(key, r.family)) famDirty = true; }
       else { bumpExtra(r.sciName, r.comName, r.dt || r.date, r.cls, row); if (r.family && recordFamily("x:" + snLower, r.family)) famDirty = true; }
     });

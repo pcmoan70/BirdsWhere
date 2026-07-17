@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-07-17 — Fix: insects no longer shown as birds (cross-class match) (sw v633)
+
+- Aggregation no longer folds a record with a KNOWN class onto a model species of a
+  DIFFERENT class. Previously, fetching "all groups" could match e.g. an insect
+  (by a shared/near name or common name) onto a bird species, so it inherited the
+  bird's class and appeared — with an exotic bird name — when filtering to Birds.
+  Such records now land in the extras list under their own name + class, so the
+  species-group filter treats them correctly. Matches are only rejected when both
+  the record's and the model species' classes are known and differ.
+
 ## 2026-07-17 — Source key panel: sign-up + API-key links (sw v632)
 
 - Each keyed source's detail panel (Settings → Sources) now shows two links: "Create
