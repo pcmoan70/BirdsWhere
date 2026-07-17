@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-17 — Source key panel: sign-up + API-key links (sw v632)
+
+- Each keyed source's detail panel (Settings → Sources) now shows two links: "Create
+  an account" and "Get a free key" — pointing at the sign-up page and the API-key
+  page for eBird, Artportalen (Artdatabanken) and Laji.fi. Shown for keyed sources
+  whether or not a key is set (previously only a single key link, and only when unset).
+
 ## 2026-07-17 — Reuse window now 30 min + configurable (sw v631)
 
 - The "reuse downloaded observations" window is now **30 min** by default (was 12 h)
