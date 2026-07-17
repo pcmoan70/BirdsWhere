@@ -6,10 +6,12 @@
  *   - App shell (html/js/css/i18n/manifest/icon)  CACHE-FIRST
  *       → once cached, the code is served straight from the device and is NOT
  *         re-downloaded while online (no per-load ~1 MB refetch). Fresh code is
- *         pulled ONLY when VERSION changes: a new SW installs, precaches a new
- *         shell cache, and the old one is dropped. *** This makes bumping
- *         VERSION on every user-visible deploy mandatory — without it, returning
- *         users keep the cached app forever. ***
+ *         pulled ONLY when VERSION changes: a new SW installs and precaches a new
+ *         shell cache. It does NOT skipWaiting — the new version WAITS and only
+ *         takes over on a full reload / app restart, so the running app stays on
+ *         its local cached code until the user reloads from the server. *** This
+ *         still makes bumping VERSION on every user-visible deploy mandatory —
+ *         without it, returning users keep the cached app forever. ***
  *   - Big immutable data (model, labels, taxonomy) + vendored libs  cache-first
  *       → fetched once, then served instantly offline.
  *   - Map tiles  cache-first, capped (LRU-ish FIFO trim)
@@ -19,7 +21,7 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v628";
+var VERSION = "v629";
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs
 // version-INDEPENDENT shared pool: map tiles AND the app's computed range-data
@@ -117,9 +119,14 @@ self.addEventListener("install", function (event) {
           })
         );
       }),
-    ]).then(function () {
-      return self.skipWaiting();
-    })
+    ])
+    // NOTE: deliberately NO self.skipWaiting() here. A newly deployed version
+    // precaches its shell but then WAITS — the running (offline-capable) app keeps
+    // being served by the current worker's local cache. The new code only takes
+    // over on a FULL reload / app restart (all controlled tabs gone), never mid-
+    // session. This is what keeps the app "controlled by local code unless the user
+    // does a full reload from the server". (A hard reload also bypasses the SW and
+    // pulls fresh code straight from the server.)
   );
 });
 

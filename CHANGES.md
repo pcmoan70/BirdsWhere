@@ -1,5 +1,18 @@
 # Changes
 
+## 2026-07-17 — Offline: app stays on local code until a full reload (sw v629)
+
+- The service worker no longer calls `skipWaiting()`. A newly deployed version
+  precaches its shell but then WAITS — the running, offline-capable app keeps being
+  served entirely from its local cached code, and the new code only takes over on a
+  full reload / app restart (or a hard reload, which pulls straight from the server).
+  This is what makes the installed app "controlled by local code unless the user
+  does a full reload from the server". Live API data is still fetched network-first.
+- Audit (no change needed): all user-generated lists persist — observer/life/year
+  lists, starred species, map points + collections, stored locations, field
+  checklists, recent searches and legend state are in localStorage; saved detection
+  sets and checklist photos are in IndexedDB (too bulky for the localStorage cap).
+
 ## 2026-07-17 — Hide the species filter box on short detection lists (sw v628)
 
 - The detections list only shows the "Filter species…" search box when there are
