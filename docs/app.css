@@ -2260,6 +2260,15 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
 .det-obs-listchip:hover { border-color: var(--brand); color: var(--brand); }
 .det-obs-listchip.active { background: var(--brand); border-color: var(--brand); color: #fff; }
 .det-obs-editlists { margin-left: auto; border: none; background: transparent; color: var(--brand); font: inherit; font-size: 0.72rem; cursor: pointer; padding: 1px 2px; }
+/* Clickable observer name → "add to list" menu. */
+.det-obs-addable { cursor: pointer; }
+.det-obs-addable:hover { color: var(--brand); text-decoration: underline; }
+.obs-addmenu { position: fixed; z-index: 6000; background: var(--surface, #fff); border: 1px solid var(--border, #ccc); border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.18); padding: 4px; min-width: 150px; max-width: 240px; }
+.obs-addmenu-head { font-size: 0.72rem; font-weight: 700; color: var(--ink-muted, #888); padding: 3px 8px 5px; border-bottom: 1px solid var(--border, #eee); margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.obs-addmenu-item, .obs-addmenu-new { display: block; width: 100%; text-align: left; border: none; background: transparent; font: inherit; font-size: 0.85rem; padding: 5px 8px; border-radius: 5px; cursor: pointer; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.obs-addmenu-item:hover, .obs-addmenu-new:hover { background: var(--surface-2, #f0f0f0); }
+.obs-addmenu-item.on { color: var(--brand); font-weight: 600; }
+.obs-addmenu-new { color: var(--brand); margin-top: 2px; border-top: 1px solid var(--border, #eee); }
 /* Observer-lists editor modal. */
 .obs-editor { text-align: left; max-width: 460px; max-height: 82vh; overflow-y: auto; }
 .obs-ed-head { display: flex; align-items: center; justify-content: space-between; font-weight: 700; font-size: 1rem; margin-bottom: 10px; }

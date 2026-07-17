@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-17 — Quick "add to list" from the observer filter (sw v621)
+
+- Clicking an observer's **name** in the 👤 observer filter opens a small menu to
+  toggle that observer in/out of each saved list (✓ marks current membership) or
+  start a new list containing them. The checkbox still toggles filtering as before.
+
 ## 2026-07-17 — Observer lists + nicknames (sw v620)
 
 - Keep named **sets of observers**. In the 👤 observer filter (detection legend)

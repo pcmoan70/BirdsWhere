@@ -1490,7 +1490,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
-    { date: "2026-07-17", text: "Observer lists: in the 👤 observer filter, save named sets of observers and tap one to filter to just them. The “Lists ✎” button opens an editor to create/rename/delete lists, add or remove observers, and give observers nicknames." },
+    { date: "2026-07-17", text: "Observer lists: in the 👤 observer filter, save named sets of observers and tap one to filter to just them. Tap an observer's name for a quick menu to add/remove them from a list; the “Lists ✎” button opens the full editor (create/rename/delete lists, add/remove observers, nicknames)." },
     { date: "2026-07-17", text: "Resize the “Sightings radius” with Shift + mouse-wheel over the map (scroll up = larger), as well as the Settings slider — the search box resizes live." },
     { date: "2026-07-14", text: "Share the whole map in one go: the Points panel has a “Share map” button that packs every plotted detection AND your placed points into one link. The recipient (no API keys needed) sees names in their own language, plus each record’s source with a link to verify." },
     { date: "2026-07-10", text: "Share via link: the 🔗 button on a saved location-list or trip (in the Points panel), or on a map point's popup, makes a self-contained URL — the recipient sees the points/detections with no API keys needed (nothing is re-fetched). Opening such a link imports it." },
@@ -6447,6 +6447,48 @@
     }
     render();
   }
+  // Small popup (anchored to a clicked observer name) to toggle that observer's
+  // membership in each saved list, or start a new list containing them.
+  var addToListMenuEl = null;
+  function closeAddToListMenu() {
+    if (addToListMenuEl && addToListMenuEl.parentNode) addToListMenuEl.parentNode.removeChild(addToListMenuEl);
+    addToListMenuEl = null;
+    document.removeEventListener("click", closeAddToListMenu);
+  }
+  function showAddToListMenu(name, anchor) {
+    closeAddToListMenu();
+    var lists = getObserverLists();
+    var menu = document.createElement("div"); menu.className = "obs-addmenu";
+    menu.innerHTML =
+      '<div class="obs-addmenu-head">' + escapeHtml(observerLabel(name)) + "</div>" +
+      lists.map(function (L, i) {
+        var inIt = (L.observers || []).indexOf(name) >= 0;
+        return '<button type="button" class="obs-addmenu-item' + (inIt ? " on" : "") + '" data-li="' + i + '">' + (inIt ? "✓ " : "") + escapeHtml(L.name) + "</button>";
+      }).join("") +
+      '<button type="button" class="obs-addmenu-new">＋ ' + escapeHtml(t("obs.newList")) + "</button>";
+    document.body.appendChild(menu);
+    addToListMenuEl = menu;
+    var r = anchor.getBoundingClientRect();
+    menu.style.left = Math.max(6, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + "px";
+    menu.style.top = Math.min(r.bottom + 2, window.innerHeight - menu.offsetHeight - 8) + "px";
+    menu.querySelectorAll(".obs-addmenu-item").forEach(function (b) {
+      b.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var a = getObserverLists(), i = +this.getAttribute("data-li"); if (!a[i]) return;
+        var idx = a[i].observers.indexOf(name);
+        if (idx >= 0) a[i].observers.splice(idx, 1); else a[i].observers.push(name);
+        saveObserverLists(a); closeAddToListMenu(); updateDetLegend();
+      });
+    });
+    menu.querySelector(".obs-addmenu-new").addEventListener("click", function (e) {
+      e.stopPropagation(); closeAddToListMenu();
+      modalPrompt(t("obs.newListPrompt"), "").then(function (nm) {
+        nm = (nm || "").trim(); if (!nm) return;
+        var a = getObserverLists(); a.push({ name: nm, observers: [name] }); saveObserverLists(a); updateDetLegend();
+      });
+    });
+    setTimeout(function () { document.addEventListener("click", closeAddToListMenu); }, 0);
+  }
   function detAllObservers() {
     var set = Object.create(null), hasNone = false;
     Object.keys(detPlot).forEach(function (k) {
@@ -6465,7 +6507,12 @@
     if (!ob.names.length && !ob.hasNone) return "";
     function row(key, label) {
       var on = !detObsFilter || detObsFilter.has(key);
-      return '<label class="det-obs-row"><input type="checkbox" class="det-obs-cb" data-obs="' + escapeHtml(key) + '"' + (on ? " checked" : "") + "><span>" + escapeHtml(label) + "</span></label>";
+      // Real observers get a clickable name that opens the "add to list" menu;
+      // the "(no observer)" row keeps a plain (toggle-only) label.
+      var span = key
+        ? '<span class="det-obs-name det-obs-addable" data-obs="' + escapeHtml(key) + '" title="' + escapeHtml(t("obs.addToList")) + '">' + escapeHtml(label) + "</span>"
+        : "<span>" + escapeHtml(label) + "</span>";
+      return '<label class="det-obs-row"><input type="checkbox" class="det-obs-cb" data-obs="' + escapeHtml(key) + '"' + (on ? " checked" : "") + ">" + span + "</label>";
     }
     var rows = ob.names.map(function (o) { return row(o, observerLabel(o)); });
     if (ob.hasNone) rows.push(row("", t("det.noObserver")));
@@ -6681,6 +6728,14 @@
         setDetObsFilter(allOn ? null : new Set(checked));
         saveLegendState(); rebuildDetLayers(); updateDetLegend();
         var nl = el.querySelector(".det-obs-list"); if (nl) nl.scrollTop = st;       // restore after the re-render
+      });
+    });
+    // Click an observer's name → menu to add/remove them from a saved list.
+    // preventDefault stops the surrounding <label> from toggling the checkbox.
+    el.querySelectorAll(".det-obs-name.det-obs-addable").forEach(function (nm) {
+      nm.addEventListener("click", function (e) {
+        e.preventDefault(); e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
+        showAddToListMenu(this.getAttribute("data-obs"), this);
       });
     });
     var obsAll = el.querySelector(".det-obs-all");
