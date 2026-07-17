@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-17 — Hide the species filter box on short detection lists (sw v628)
+
+- The detections list only shows the "Filter species…" search box when there are
+  ≥10 detections (i.e. when the list actually scrolls); short lists are just scanned.
+  Kept visible if a query is already active so it can still be cleared.
+
 ## 2026-07-17 — Add observers to lists from the point-observation list (sw v627)
 
 - In the detections list (by-time view), the observer name in each date/observer

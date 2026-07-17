@@ -5675,6 +5675,7 @@
     if (sortBtn) { var sp = detListSort === "species"; sortBtn.textContent = sp ? t("detlist.bySpecies") : t("detlist.byTime"); sortBtn.title = sp ? t("detlist.byTime") : t("detlist.bySpecies"); }
     recolorDetections();   // swatches reflect the latest family colours
     var rows = collectVisibleDetections(detListNear);
+    var totalRows = rows.length;   // pre-filter count → drives whether the search box is worth showing
     // Title = the place name at this spot. Prefer an EXPLICITLY named location
     // (eBird hotspot / BirdWeather station); otherwise reverse-geocode to something
     // finer than commune level (a municipality/county name from GBIF/Artsobs is too
@@ -5716,6 +5717,11 @@
       rows = exact.length ? exact : rows.filter(function (d) { return detFuzzy(detListQuery, detSearchText(d)); });
     }
     detListLastRows = rows;   // what "Save as list" / "Navigate" will use
+    // Only offer the species filter when the list is long enough to scroll (≥10
+    // detections); a short list is easier to just scan. Kept visible if a query is
+    // already active so it can be cleared.
+    var searchEl = document.getElementById("detlist-search");
+    if (searchEl) searchEl.style.display = (totalRows >= 10 || detListQuery) ? "" : "none";
     var saveBtn = document.getElementById("detlist-save"); if (saveBtn) saveBtn.disabled = !rows.length;
     var navBtn = document.getElementById("detlist-nav"); if (navBtn) navBtn.disabled = !rows.length;
     if (!rows.length) { body.innerHTML = '<div class="dl-empty">' + escapeHtml(emptyMsg) + "</div>"; return; }
