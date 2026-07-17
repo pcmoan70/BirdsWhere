@@ -82,7 +82,12 @@ window.AppAggregate = (function () {
     var parts = String(sciName || "").toLowerCase().split(/\s+/);
     var cands = parts.length >= 2 && sciByEpithet[parts[1]];
     if (!cands || !cands.length) return null;
-    if (cands.length === 1) return cands[0];
+    if (cands.length === 1) {
+      // Even a unique epithet match must not cross classes (an insect epithet that
+      // happens to equal an exotic bird's) when the record's class is known.
+      if (cls) { var c1 = labelClassOf(cands[0]); if (c1 && c1.toLowerCase() !== String(cls).toLowerCase()) return null; }
+      return cands[0];
+    }
     if (cls) {
       var m = cands.filter(function (l) { return String(labelClassOf(l)).toLowerCase() === String(cls).toLowerCase(); });
       if (m.length === 1) return m[0];
@@ -112,7 +117,10 @@ window.AppAggregate = (function () {
     var ep = parts[1];
     var pool = cands.filter(function (c) { return c.ep === ep; });
     if (!pool.length) pool = cands.filter(function (c) { return within1(ep, c.ep); });
-    if (pool.length === 1) return pool[0].l;
+    if (pool.length === 1) {
+      if (cls) { var g1 = labelClassOf(pool[0].l); if (g1 && g1.toLowerCase() !== String(cls).toLowerCase()) return null; }
+      return pool[0].l;
+    }
     if (pool.length > 1 && cls) {
       var m = pool.filter(function (c) { return String(labelClassOf(c.l)).toLowerCase() === String(cls).toLowerCase(); });
       if (m.length === 1) return m[0].l;

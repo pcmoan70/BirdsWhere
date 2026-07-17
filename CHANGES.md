@@ -1,5 +1,18 @@
 # Changes
 
+## 2026-07-17 — Insect-as-bird fix, part 2: invalidate stale cache (sw v634)
+
+- The v633 cross-class fix only affects NEW aggregation; the persistent sightings
+  cache (30-min reuse) was replaying the PRE-fix result on re-fetch, so the wrong
+  matches persisted. Added a cache schema version (SIGHT_CACHE_VER) — old cached
+  results are now ignored and the next fetch re-aggregates with the fix.
+- Also hardened the fuzzy scientific-name matchers (epithet / same-genus): even a
+  unique candidate is now rejected when the record's known class differs from it,
+  not just when several candidates tie.
+- NOTE: already-plotted detections restored from a previous session were aggregated
+  by the old code — re-fetch the location to refresh them. And because the app now
+  only updates on a full reload, fully close/reopen (or hard-reload) to get this.
+
 ## 2026-07-17 — Fix: insects no longer shown as birds (cross-class match) (sw v633)
 
 - Aggregation no longer folds a record with a KNOWN class onto a model species of a

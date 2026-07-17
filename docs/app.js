@@ -2204,7 +2204,10 @@
   // User-set in Settings (minutes); default 30 min. 0 = always reuse (never expire).
   function sightTtlMin() { var v = +window.GeoState.get("sightTtlMin", 30); return isFinite(v) && v >= 0 ? v : 30; }
   function sightTtlMs() { return sightTtlMin() * 60000; }
-  var persistedSightings = {};           // ck -> { ts, sig, out }, loaded once at boot
+  // Bump when the aggregation/matching logic changes so results cached by the
+  // previous code are ignored and the next fetch re-aggregates.
+  var SIGHT_CACHE_VER = 2;
+  var persistedSightings = {};           // ck -> { ts, sig, ver, out }, loaded once at boot
   function sightCK(lat, lon, rkm, group) { return lat.toFixed(2) + "," + lon.toFixed(2) + ":" + rkm + ":" + group; }
   // Signature of the settings that change what a fetch returns; a mismatch means a
   // cached copy is stale for the current config and must not be reused.
@@ -2221,7 +2224,7 @@
   function persistSightings(ck, out) {
     if (!window.AppIDB) return;
     try {
-      persistedSightings[ck] = { ts: Date.now(), sig: sightConfigSig(), out: out };
+      persistedSightings[ck] = { ts: Date.now(), sig: sightConfigSig(), ver: SIGHT_CACHE_VER, out: out };
       var keys = Object.keys(persistedSightings);
       if (keys.length > 6) {   // keep the 6 most-recently fetched locations
         keys.sort(function (a, b) { return (persistedSightings[b].ts || 0) - (persistedSightings[a].ts || 0); });
@@ -2243,7 +2246,7 @@
     // Reuse a previously-downloaded result for this exact location (same radius,
     // group + source config) that is still fresh — no network, no refetch on reopen.
     var pf = persistedSightings[ck], ttl = sightTtlMs();
-    if (pf && pf.out && pf.sig === sightConfigSig() && (ttl === 0 || (Date.now() - (pf.ts || 0)) < ttl)) {
+    if (pf && pf.out && pf.ver === SIGHT_CACHE_VER && pf.sig === sightConfigSig() && (ttl === 0 || (Date.now() - (pf.ts || 0)) < ttl)) {
       var cachedPr = Promise.resolve(pf.out);
       allSightingsCache[ck] = cachedPr;
       return cachedPr;
