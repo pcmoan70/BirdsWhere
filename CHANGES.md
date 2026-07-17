@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-17 — Reuse window now 30 min + configurable (sw v631)
+
+- The "reuse downloaded observations" window is now **30 min** by default (was 12 h)
+  and settable in Settings → Fetching & detections → "Reuse downloads (min)". 0 =
+  reuse indefinitely (only refetch on a new place or a changed radius/group/source).
+
 ## 2026-07-17 — Reopening reuses downloaded observations (no refetch) (sw v630)
 
 - Location observation fetches are now cached to IndexedDB (the 6 most-recent

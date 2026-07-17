@@ -1490,7 +1490,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
-    { date: "2026-07-17", text: "Faster reopen: the app now remembers the last few locations' downloaded observations, so reopening (or revisiting a place) reuses them instead of re-fetching — and a cached location even opens offline. Fresh data is still fetched for new places or after ~12 h." },
+    { date: "2026-07-17", text: "Faster reopen: the app now remembers the last few locations' downloaded observations, so reopening (or revisiting a place) reuses them instead of re-fetching — and a cached location even opens offline. Fresh data is still fetched for new places or after the reuse window (Settings, default 30 min)." },
     { date: "2026-07-17", text: "Observer lists: the 👤 observer filter has a scope button that cycles All → None → each of your saved lists. Hover an observer's name to isolate their records on the map; tap the name (in the legend OR the detections list) to add them to a list — a multi-observer record first shows a picker of the individual names. The ✎ button opens an editor (pick a list, rename/delete, remove members, and add members by fuzzy-searching observers with observations)." },
     { date: "2026-07-17", text: "Resize the “Sightings radius” with Shift + mouse-wheel over the map (scroll up = larger), as well as the Settings slider — the search box resizes live." },
     { date: "2026-07-14", text: "Share the whole map in one go: the Points panel has a “Share map” button that packs every plotted detection AND your placed points into one link. The recipient (no API keys needed) sees names in their own language, plus each record’s source with a link to verify." },
@@ -2194,10 +2194,13 @@
   // clone of the aggregated result) so a reopen — or re-clicking a place visited
   // in an earlier session — REUSES the already-downloaded detections instead of
   // hitting the network, as long as the source config is unchanged and the copy
-  // is still fresh (< SIGHT_TTL_MS). A NEW location, a changed radius/group, or a
-  // changed source config still fetches. (Also helps offline: a cached location
-  // opens with no network.)
-  var SIGHT_TTL_MS = 12 * 3600 * 1000;   // reuse a downloaded location for 12 h
+  // is still fresh (within the Settings "reuse" window; default 30 min, 0 = never
+  // expire). A NEW location, a changed radius/group, or a changed source config
+  // still fetches. (Also helps offline: a cached location opens with no network.)
+  // How long a downloaded location stays reusable before a reopen refetches it.
+  // User-set in Settings (minutes); default 30 min. 0 = always reuse (never expire).
+  function sightTtlMin() { var v = +window.GeoState.get("sightTtlMin", 30); return isFinite(v) && v >= 0 ? v : 30; }
+  function sightTtlMs() { return sightTtlMin() * 60000; }
   var persistedSightings = {};           // ck -> { ts, sig, out }, loaded once at boot
   function sightCK(lat, lon, rkm, group) { return lat.toFixed(2) + "," + lon.toFixed(2) + ":" + rkm + ":" + group; }
   // Signature of the settings that change what a fetch returns; a mismatch means a
@@ -2236,8 +2239,8 @@
     if (allSightingsCache[ck]) return allSightingsCache[ck];
     // Reuse a previously-downloaded result for this exact location (same radius,
     // group + source config) that is still fresh — no network, no refetch on reopen.
-    var pf = persistedSightings[ck];
-    if (pf && pf.out && pf.sig === sightConfigSig() && (Date.now() - (pf.ts || 0)) < SIGHT_TTL_MS) {
+    var pf = persistedSightings[ck], ttl = sightTtlMs();
+    if (pf && pf.out && pf.sig === sightConfigSig() && (ttl === 0 || (Date.now() - (pf.ts || 0)) < ttl)) {
       var cachedPr = Promise.resolve(pf.out);
       allSightingsCache[ck] = cachedPr;
       return cachedPr;
@@ -3335,6 +3338,11 @@
                 '<label for="fetch-timeout" data-i18n="ctrl.fetchTimeout">Fetch timeout (s)</label>' +
                 '<input id="fetch-timeout" type="number" min="0" max="600" step="1" />' +
                 '<p class="cu-hint" data-i18n="ctrl.fetchTimeoutHint">A source still fetching after this many seconds is stopped; the observations it already loaded are kept and its label turns red. 0 = no timeout.</p>' +
+              '</div>' +
+              '<div class="ctrl-group">' +
+                '<label for="sight-ttl" data-i18n="ctrl.sightTtl">Reuse downloads (min)</label>' +
+                '<input id="sight-ttl" type="number" min="0" max="10080" step="5" />' +
+                '<p class="cu-hint" data-i18n="ctrl.sightTtlHint">Reopening the app reuses a location’s already-downloaded observations for this many minutes instead of re-fetching. 0 = reuse indefinitely (only refetch on a new place or a changed radius/group/source).</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label for="max-points" data-i18n="ctrl.maxpoints">Max points on map</label>' +
@@ -8437,6 +8445,15 @@
         var v = Math.max(0, Math.min(600, Math.round(+this.value || 0)));
         this.value = String(v);
         setFetchTimeoutSec(v);
+      });
+    }
+    var sttlEl = document.getElementById("sight-ttl");
+    if (sttlEl) {
+      sttlEl.value = String(sightTtlMin());
+      sttlEl.addEventListener("change", function () {
+        var v = Math.max(0, Math.min(10080, Math.round(+this.value || 0)));
+        this.value = String(v);
+        window.GeoState.save({ sightTtlMin: v });
       });
     }
 
