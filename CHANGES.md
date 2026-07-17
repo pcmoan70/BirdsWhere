@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-07-17 — Observer lists + nicknames (sw v620)
+
+- Keep named **sets of observers**. In the 👤 observer filter (detection legend)
+  saved lists show as chips above the observer checkboxes; tap one to restrict the
+  map + list to exactly that list's observers (tap again to clear).
+- A new **editor** (the "Lists ✎" button in the panel) lets you create, rename and
+  delete lists, add observers to a list (picker of everyone known) and remove them,
+  and give any observer a **nickname**. Nicknames are shown in the filter panel in
+  place of the raw observer name.
+- Stored in `GeoState` as `observerLists` (`[{name, observers[]}]`) and
+  `observerNicks` (`{name: nickname}`).
+
 ## 2026-07-17 — Detections popup: fold in the user's own place name (sw v619)
 
 - The detections-popup title now includes the name YOU gave the spot when one

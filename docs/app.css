@@ -2254,6 +2254,31 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
 .det-obs-row { display: flex; align-items: center; gap: 6px; padding: 2px 3px; font-size: 0.8rem; font-weight: 400; cursor: pointer; }
 .det-obs-row input { margin: 0; flex: 0 0 auto; }
 .det-obs-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Saved observer-list chips + editor launcher inside the filter panel. */
+.det-obs-lists { display: flex; flex-wrap: wrap; gap: 4px; padding: 5px 7px; border-bottom: 1px solid var(--border, #e3e3e3); }
+.det-obs-listchip { border: 1px solid var(--border, #d5d5d5); background: var(--surface-2, #f4f4f4); color: var(--ink); border-radius: 999px; font: inherit; font-size: 0.72rem; padding: 1px 9px; cursor: pointer; }
+.det-obs-listchip:hover { border-color: var(--brand); color: var(--brand); }
+.det-obs-listchip.active { background: var(--brand); border-color: var(--brand); color: #fff; }
+.det-obs-editlists { margin-left: auto; border: none; background: transparent; color: var(--brand); font: inherit; font-size: 0.72rem; cursor: pointer; padding: 1px 2px; }
+/* Observer-lists editor modal. */
+.obs-editor { text-align: left; max-width: 460px; max-height: 82vh; overflow-y: auto; }
+.obs-ed-head { display: flex; align-items: center; justify-content: space-between; font-weight: 700; font-size: 1rem; margin-bottom: 10px; }
+.obs-ed-close { border: none; background: transparent; font-size: 1.3rem; line-height: 1; cursor: pointer; color: var(--ink-muted, #888); padding: 0 2px; }
+.obs-ed-new { width: 100%; margin-bottom: 12px; }
+.obs-ed-list { border: 1px solid var(--border, #e3e3e3); border-radius: 8px; padding: 8px; margin-bottom: 10px; }
+.obs-ed-lhead { display: flex; gap: 6px; align-items: center; margin-bottom: 7px; }
+.obs-ed-lname { flex: 1 1 auto; font: inherit; font-weight: 600; padding: 3px 6px; border: 1px solid var(--border, #d5d5d5); border-radius: 5px; }
+.obs-ed-ldel { flex: 0 0 auto; border: none; background: transparent; color: var(--danger, #c0392b); font-size: 1.2rem; line-height: 1; cursor: pointer; padding: 0 4px; }
+.obs-ed-members { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 7px; }
+.obs-ed-empty { font-size: 0.8rem; color: var(--ink-muted, #999); }
+.obs-ed-chip { display: inline-flex; align-items: center; gap: 3px; background: var(--surface-2, #f0f0f0); border-radius: 999px; padding: 1px 4px 1px 10px; font-size: 0.8rem; }
+.obs-ed-chip .obs-ed-rm { border: none; background: transparent; color: var(--ink-muted, #888); font-size: 1rem; line-height: 1; cursor: pointer; padding: 0 2px; }
+.obs-ed-chip .obs-ed-rm:hover { color: var(--danger, #c0392b); }
+.obs-ed-add { width: 100%; font: inherit; font-size: 0.85rem; padding: 3px 6px; border: 1px solid var(--border, #d5d5d5); border-radius: 5px; background: var(--surface, #fff); }
+.obs-ed-nickhead { font-weight: 700; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted, #888); margin: 14px 0 6px; }
+.obs-ed-nickrow { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.obs-ed-nickname { flex: 1 1 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.82rem; }
+.obs-ed-nick { flex: 1 1 45%; font: inherit; font-size: 0.82rem; padding: 3px 6px; border: 1px solid var(--border, #d5d5d5); border-radius: 5px; }
 /* ⚠ shown only when the draw cap is truncating the map. */
 .det-cap-warn { color: var(--danger, #c0392b); font-size: 0.95rem; line-height: 1; cursor: help; }
 .det-legend-head .det-list-btn { border: none; background: transparent; cursor: pointer; font-size: 0.95rem; line-height: 1; color: var(--ink-muted, #666); padding: 4px 7px; }
