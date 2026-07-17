@@ -1,5 +1,10 @@
 # Changes
 
+## 2026-07-17 — Show version + last-change in the startup popup (sw v635)
+
+- The startup popup now shows the running app version (reported by the active
+  service worker) alongside the last-change date/time, e.g. "v635 · 17-07-2026 22:24".
+
 ## 2026-07-17 — Insect-as-bird fix, part 2: invalidate stale cache (sw v634)
 
 - The v633 cross-class fix only affects NEW aggregation; the persistent sightings

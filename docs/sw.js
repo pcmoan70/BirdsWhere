@@ -21,7 +21,7 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v634";
+var VERSION = "v635";
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs
 // version-INDEPENDENT shared pool: map tiles AND the app's computed range-data
@@ -46,6 +46,12 @@ function getTileCap() {
 }
 self.addEventListener("message", function (event) {
   var d = event.data || {};
+  if (d.type === "getVersion") {
+    // Report the version of the code actually running (this active worker), so the
+    // app can show it in the startup popup.
+    try { if (event.source && event.source.postMessage) event.source.postMessage({ type: "version", version: VERSION }); } catch (e) {}
+    return;
+  }
   if (d.type === "tileCacheMB") {
     var tiles = tilesForMB(d.mb);
     tileCap = tiles;

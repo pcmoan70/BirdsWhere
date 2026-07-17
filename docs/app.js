@@ -3623,6 +3623,7 @@
           '<p class="perf-note" data-i18n="popup.keysShort">Fetching data from some sources requires free keys — see Settings → Data sources.</p>' +
           '<p class="perf-feedback"><span data-i18n="popup.feedback"></span> <button type="button" class="feedback-open ico-btn">' + ico("mail") + '<span class="ico-label" data-i18n="feedback.send">Message</span></button></p>' +
           '<div class="install-row"><button type="button" id="install-info" class="demo-btn demo-btn-light" hidden data-i18n="install.app">⤓ Offline mode</button><div class="install-steps cu-hint" hidden></div></div>' +
+          '<div class="perf-version" id="perf-version" style="display:none"></div>' +
           '<button id="perf-modal-ok" class="demo-btn" data-i18n="popup.ok">OK</button>' +
         '</div></div>' +
         '<div id="feedback-modal" style="display:none"><div id="feedback-box">' +
@@ -3755,6 +3756,7 @@
       renderWhatsNew();
       setStatus(modeHint());
       fitMapHeight();
+      requestAppVersion();
       showLastChange();
       showPerfModal();
       initOfflineIndicator();
@@ -8132,13 +8134,37 @@
     }).then(function (txt) {
       lastChangeText = (txt || "").trim();
       if (lastChangeText) renderAboutBody();   // fold it into the About footer
+      updatePerfMeta();
     }).catch(function () { /* offline — leave blank */ });
+  }
+  // The running code version (from the active service worker) + last-change time,
+  // shown together in the startup popup.
+  var appVersion = "";
+  function requestAppVersion() {
+    try {
+      if (!navigator.serviceWorker) return;
+      navigator.serviceWorker.addEventListener("message", function (e) {
+        if (e.data && e.data.type === "version") { appVersion = e.data.version || ""; updatePerfMeta(); }
+      });
+      var ask = function (w) { if (w) try { w.postMessage({ type: "getVersion" }); } catch (e) {} };
+      if (navigator.serviceWorker.controller) ask(navigator.serviceWorker.controller);
+      else navigator.serviceWorker.ready.then(function (reg) { ask(reg.active); }).catch(function () {});
+    } catch (e) {}
+  }
+  function updatePerfMeta() {
+    var el = document.getElementById("perf-version"); if (!el) return;
+    var parts = [];
+    if (appVersion) parts.push(appVersion);
+    if (lastChangeText) parts.push(lastChangeText);
+    el.textContent = parts.join(" · ");
+    el.style.display = parts.length ? "" : "none";
   }
 
   // One-time performance note shown over the page on load.
   function showPerfModal() {
     var m = document.getElementById("perf-modal");
     if (m) m.style.display = "flex";
+    updatePerfMeta();
   }
   function hidePerfModal() {
     var m = document.getElementById("perf-modal");
