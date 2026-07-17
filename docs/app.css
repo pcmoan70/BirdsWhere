@@ -2228,13 +2228,13 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
 /* Plotted-detections legend (bottom-left map control). */
 .det-legend {
   background: var(--surface, #fff); color: var(--ink, #222); border: 1px solid var(--border, #ccc);
-  border-radius: 6px; padding: 6px 8px; font-size: 0.78rem; line-height: 1.3; max-width: 250px; max-height: 42vh;
+  border-radius: 6px; padding: 6px 8px; font-size: 0.78rem; line-height: 1.3; max-width: 340px; max-height: 42vh;
   overflow: auto; box-shadow: var(--shadow-sm, 0 1px 5px rgba(0,0,0,.25));
 }
 /* All legend controls on one line: − minimise · ☰ list · {N}d · filter · × · ⚠
    Spread across the legend width (space-between) with roomy tap targets so the
    controls are hard to mis-tap. */
-.det-legend-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px; font-weight: 700; margin-bottom: 4px; }
+.det-legend-head { display: flex; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: 4px; font-weight: 700; margin-bottom: 4px; }
 /* Compact filter toggles on the control line (recency window; species filter). */
 .det-tog { flex: 0 0 auto; border: 1px solid var(--border); background: var(--surface); color: var(--ink);
   font: inherit; font-size: 0.72rem; font-weight: 600; padding: 3px 9px; border-radius: 999px; cursor: pointer;

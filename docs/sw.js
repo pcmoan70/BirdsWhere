@@ -19,7 +19,7 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v625";
+var VERSION = "v626";
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs
 // version-INDEPENDENT shared pool: map tiles AND the app's computed range-data

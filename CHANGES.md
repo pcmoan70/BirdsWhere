@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-17 — Legend control row no longer wraps (sw v626)
+
+- The legend header (minimise · list · days · mode · 👤 · × filters · × clear · ⚠)
+  is kept on a single line (no wrap) and the legend max-width widened 250→340px so
+  the red "clear all" × no longer drops to a second line on wider screens.
+
 ## 2026-07-17 — Drop the "Filter by observer" title in the legend head (sw v625)
 
 - Removed the "Filter by observer" label from the 👤 panel head so the scope-cycle
