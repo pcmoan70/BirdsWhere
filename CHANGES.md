@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-17 — Shift+wheel resizes the Sightings radius (sw v618)
+
+- The "Sightings radius" (the search box drawn on the map) can now be resized with
+  Shift + mouse-wheel over the map — scroll up to enlarge, down to shrink — stepping
+  through the same stops as the Settings slider. It updates the setting, the slider,
+  and redraws the fixed + live area boxes; plain wheel still zooms the map. (Desktop
+  mice; touch has no wheel.)
+
 ## 2026-07-16 — Offline: stop re-downloading the app code (sw v617)
 
 - The app shell (HTML/JS/CSS/i18n — ~1 MB) is now served **cache-first** instead

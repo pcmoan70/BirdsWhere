@@ -1490,6 +1490,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { date: "2026-07-17", text: "Resize the “Sightings radius” with Shift + mouse-wheel over the map (scroll up = larger), as well as the Settings slider — the search box resizes live." },
     { date: "2026-07-14", text: "Share the whole map in one go: the Points panel has a “Share map” button that packs every plotted detection AND your placed points into one link. The recipient (no API keys needed) sees names in their own language, plus each record’s source with a link to verify." },
     { date: "2026-07-10", text: "Share via link: the 🔗 button on a saved location-list or trip (in the Points panel), or on a map point's popup, makes a self-contained URL — the recipient sees the points/detections with no API keys needed (nothing is re-fetched). Opening such a link imports it." },
     { date: "2026-07-06", text: "Close by: the ☰ button (top-left of the map) opens a big-text list of the plotted detections sorted by distance from your live/fixed cross or placed pin. Tap the 📍 to jump back to the map zoomed to fit them. Set how many rows in Settings." },
@@ -1501,8 +1502,7 @@
     { date: "2026-06-23", text: "Birdingplaces.eu link from the map popup." },
     { date: "2026-06-22", text: "Offline maps manager: each area colour-coded on the map with a matching legend, in a side panel you can minimize." },
     { date: "2026-06-22", text: "Fullscreen button in the header." },
-    { date: "2026-06-20", text: "Live GPS “follow”: the map recentres as you move." },
-    { date: "2026-06-19", text: "BirdWeather added — live BirdNET acoustic detections, shown as one “present” record per station per day (with min-detections + confidence settings)." }
+    { date: "2026-06-20", text: "Live GPS “follow”: the map recentres as you move." }
   ];
   function renderWhatsNew() {
     var el = document.getElementById("whatsnew-list"); if (!el) return;
@@ -4019,6 +4019,23 @@
     // Follow the pointer with the fetch-area box in Species List mode.
     map.on("mousemove", function (e) { updateFetchArea(e.latlng); });
     map.on("mouseout", hideFetchArea);
+
+    // Shift + mouse-wheel resizes the "Sightings radius" (steps through RADIUS_STEPS)
+    // — an alternative to the Settings slider. Capture phase + stopPropagation so it
+    // pre-empts Leaflet's scroll-zoom; scroll up = larger, down = smaller.
+    map.getContainer().addEventListener("wheel", function (e) {
+      if (!e.shiftKey) return;   // plain wheel still zooms the map
+      e.preventDefault(); e.stopPropagation();
+      var idx = Math.max(0, Math.min(RADIUS_STEPS.length - 1, radiusStepIndex(recentRadiusKm()) + (e.deltaY < 0 ? 1 : -1)));
+      var km = RADIUS_STEPS[idx];
+      if (km === recentRadiusKm()) return;
+      window.GeoState.save({ recentRadiusKm: km }); allSightingsCache = {};
+      var rrEl = document.getElementById("recent-radius"); if (rrEl) rrEl.value = String(idx);
+      var rrVal = document.getElementById("recent-radius-val"); if (rrVal) rrVal.textContent = radiusLabel(km);
+      if (setAreaRect) { var c = setAreaRect.getBounds().getCenter(); showSetArea(c.lat, c.lng); }   // keep + resize the fixed box
+      try { updateFetchArea(map.mouseEventToLatLng(e)); } catch (er) {}                                // resize the live preview
+      setStatus(t("ctrl.radiusSet", { r: radiusLabel(km) }));
+    }, { capture: true, passive: false });
 
     // "Locate me" crosshair control — zooms to the device's current location.
     var LocateControl = L.Control.extend({
