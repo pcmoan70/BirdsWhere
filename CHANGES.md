@@ -1,5 +1,10 @@
 # Changes
 
+## 2026-07-17 — Drop the "Filter by observer" title in the legend head (sw v625)
+
+- Removed the "Filter by observer" label from the 👤 panel head so the scope-cycle
+  button (All / None / list name) gets the full width for longer list names.
+
 ## 2026-07-17 — Observer lists: cycle scope, hover-isolate, search editor (sw v624)
 
 - The 👤 observer filter's head now has a **scope-cycle button** (where "All" was)

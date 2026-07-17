@@ -6580,9 +6580,9 @@
     // Head: an ✎ button opens the list editor; the cycle button (where "All" used
     // to be) shows the current scope and steps All → None → each saved list.
     return '<div class="det-obs-panel">' +
-      '<div class="det-obs-head"><span>' + escapeHtml(t("det.observers")) + "</span>" +
-        '<button type="button" class="det-obs-editlists" title="' + escapeHtml(t("obs.lists")) + '">✎</button>' +
-        '<button type="button" class="det-obs-cycle" title="' + escapeHtml(t("det.obsCycleHint")) + '">' + escapeHtml(obsFilterLabel()) + "</button></div>" +
+      '<div class="det-obs-head">' +
+        '<button type="button" class="det-obs-cycle" title="' + escapeHtml(t("det.obsCycleHint")) + '">' + escapeHtml(obsFilterLabel()) + "</button>" +
+        '<button type="button" class="det-obs-editlists" title="' + escapeHtml(t("obs.lists")) + '">✎</button></div>' +
       '<div class="det-obs-list">' + rows.join("") + "</div></div>";
   }
   // Label for the cycle button: All / None / a saved list's name / Custom.
