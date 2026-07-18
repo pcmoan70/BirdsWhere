@@ -1490,6 +1490,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { date: "2026-07-18", text: "The map legend now orders species by the habitat model's probability (lowest → highest); for a species with several observations it uses the highest probability among them." },
     { date: "2026-07-17", text: "Faster reopen: the app now remembers the last few locations' downloaded observations, so reopening (or revisiting a place) reuses them instead of re-fetching — and a cached location even opens offline. Fresh data is still fetched for new places or after the reuse window (Settings, default 30 min)." },
     { date: "2026-07-17", text: "Observer lists: the 👤 observer filter has a scope button that cycles All → None → each of your saved lists. Hover an observer's name to isolate their records on the map; tap the name (in the legend OR the detections list) to add them to a list — a multi-observer record first shows a picker of the individual names. The ✎ button opens an editor (pick a list, rename/delete, remove members, and add members by fuzzy-searching observers with observations)." },
     { date: "2026-07-17", text: "Resize the “Sightings radius” with Shift + mouse-wheel over the map (scroll up = larger), as well as the Settings slider — the search box resizes live." },
@@ -5030,6 +5031,9 @@
   var detPlot = {};     // speciesKey -> { key, name (fallback), color, rows, group }
   var detFocusKey = null;   // legend hover: this species keeps colour, the rest grey out
   var detFocusObs = null;   // legend hover on an observer name: show only that observer's records
+  var detProb = Object.create(null);   // species key -> max habitat-model probability over its observations (drives legend order)
+  var detProbSig = "";      // the plotted-set signature detProb was computed for
+  var detProbBusy = false;  // an inference pass is in flight
   var detLegend = null;
   // Legend-driven visibility: dots always draw in their species colour. Click a
   // legend row to "select" it — that isolates the selected species (the rest are
@@ -6730,12 +6734,63 @@
     for (var i = 0; i < e.rows.length; i++) { var r = e.rows[i]; if (recentEnough(r.date, maxDays) && detObsPasses(r)) n++; }
     return n;
   }
+  // Model week (1–48) for an observation date; falls back to the current week.
+  function weekOfDate(s) {
+    var d = s ? new Date(s) : null;
+    if (!d || isNaN(d.getTime())) return weekOfToday();
+    var doy = Math.floor((d - new Date(d.getFullYear(), 0, 1)) / 86400000) + 1;
+    return Math.max(1, Math.min(48, Math.floor((doy - 1) / 365 * 48) + 1));
+  }
+  // A signature that changes when the plotted set (species + observation counts)
+  // changes — so the habitat probabilities are recomputed only when needed.
+  function detPlotSig() {
+    var ks = Object.keys(detPlot).sort(), n = 0;
+    for (var i = 0; i < ks.length; i++) n += (detPlot[ks[i]].rows ? detPlot[ks[i]].rows.length : 0);
+    return ks.join("|") + "#" + n;
+  }
+  // For each plotted MODEL species, the HIGHEST habitat-model probability across
+  // its observations — evaluated at each observation's own location + week (input
+  // to the geomodel). Extras (non-model "x:" keys) get -1 so they sort lowest.
+  // Runs one column inference per species; on completion the legend re-renders.
+  function computeDetProbs(sig) {
+    var jobs = [];
+    Object.keys(detPlot).forEach(function (k) {
+      var e = detPlot[k], lbl = labelsByKey[e.key || k];
+      if (!lbl || lbl.index == null || !e.rows || !e.rows.length) { detProb[k] = -1; return; }
+      var seen = Object.create(null), pts = [];
+      e.rows.forEach(function (r) {
+        if (r.lat == null || r.lon == null || !isFinite(+r.lat) || !isFinite(+r.lon)) return;
+        var la = +(+r.lat).toFixed(2), lo = +(+r.lon).toFixed(2), wk = weekOfDate(r.date);
+        var pk = la + "," + lo + ":" + wk; if (seen[pk]) return; seen[pk] = 1;
+        pts.push(la, lo, wk);
+      });
+      if (!pts.length) { detProb[k] = -1; return; }
+      jobs.push({ k: k, idx: lbl.index, inputs: new Float32Array(pts), n: pts.length / 3 });
+    });
+    if (!jobs.length) { detProbSig = sig; detProbBusy = false; return; }   // only extras → nothing to infer
+    Promise.all(jobs.map(function (j) {
+      return runInference(j.inputs, j.n, { task: "column", speciesIdx: j.idx })
+        .then(function (out) { var m = 0; for (var i = 0; i < out.length; i++) if (out[i] > m) m = out[i]; detProb[j.k] = m; })
+        .catch(function () { detProb[j.k] = -1; });
+    })).then(function () {
+      detProbSig = sig; detProbBusy = false;      // mark done only on success, so a failed pass retries
+      if (detPlotSig() === sig) updateDetLegend();
+    }, function () { detProbBusy = false; });      // hard failure → leave detProbSig so it retries
+  }
+  function maybeComputeDetProbs() {
+    if (!worker || detProbBusy) return;
+    if (detPlotSig() === detProbSig) return;   // already computed for this exact plotted set
+    detProbBusy = true;
+    computeDetProbs(detPlotSig());
+  }
   function updateDetLegend() {
     var allKeys = Object.keys(detPlot);
     if (!allKeys.length) { if (detLegend) { map.removeControl(detLegend); detLegend = null; } return; }
+    maybeComputeDetProbs();   // (re)compute habitat probabilities when the plotted set changed
     // The dropdown's "Starred only" narrows which species the legend lists (and
     // the map shows). The legend itself stays up so the filter can be toggled.
-    // Always list the species alphabetically by their (localised) display name.
+    // Species are ordered by habitat-model probability (lowest → highest); see the
+    // sort below.
     recomputeRareMax();
     // The list reflects ALL the active filters: the per-species mode filter
     // (★/◉/🟡/group) AND the days + observer filters (a species with nothing left
@@ -6750,7 +6805,14 @@
     if (detFocusObs && detAllObservers().names.indexOf(detFocusObs) < 0) detFocusObs = null;
     var detNameByKey = Object.create(null);
     keys.forEach(function (k) { detNameByKey[k] = detName(detPlot[k]); });   // compute once, not per comparison
-    keys.sort(function (a, b) { return detNameByKey[a].localeCompare(detNameByKey[b]); });
+    // Order by habitat-model probability, LOWEST → HIGHEST (a species' value is the
+    // highest probability among its observations). Ties / not-yet-computed fall back
+    // to the localised name so the order is still stable.
+    keys.sort(function (a, b) {
+      var pa = (a in detProb) ? detProb[a] : -1, pb = (b in detProb) ? detProb[b] : -1;
+      if (pa !== pb) return pa - pb;
+      return detNameByKey[a].localeCompare(detNameByKey[b]);
+    });
     recolorDetections();   // keep swatches current with learned families / plotted set
     // Cap check: when more points are drawable than the Settings limit, only the
     // newest N are plotted — surface a ⚠ on the control line (no count summary).

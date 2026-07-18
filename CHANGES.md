@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-18 — Legend ordered by habitat-model probability (sw v636)
+
+- The map legend now orders species by the BirdNET habitat-model probability, from
+  LOWEST to HIGHEST. A species' value is the highest probability among its own
+  observations (the geomodel evaluated at each observation's location + week).
+  Computed once per plotted set (one column inference per species); ties and
+  non-model "extras" fall back to the localised name. Previously alphabetical.
+
 ## 2026-07-17 — Show version + last-change in the startup popup (sw v635)
 
 - The startup popup now shows the running app version (reported by the active
