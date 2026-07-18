@@ -3620,7 +3620,8 @@
           '<div id="about-body"></div>' +
         '</div></div>' +
         '<div id="perf-modal" style="display:none"><div id="perf-modal-box">' +
-          '<h2 class="perf-title" data-i18n="popup.title">Species - distributions &amp; observations</h2>' +
+          '<h2 class="perf-title" data-i18n="popup.title">Species — distributions &amp; observations</h2>' +
+          '<p class="perf-desc" data-i18n="popup.desc">Explore species’ ranges, migration timing and recent sightings — all in your browser: a neural habitat model (BirdNET) runs on your device, with live observations from eBird, GBIF, iNaturalist and more.</p>' +
           '<p class="perf-note" data-i18n="popup.keysShort">Fetching data from some sources requires free keys — see Settings → Data sources.</p>' +
           '<p class="perf-feedback"><span data-i18n="popup.feedback"></span> <button type="button" class="feedback-open ico-btn">' + ico("mail") + '<span class="ico-label" data-i18n="feedback.send">Message</span></button></p>' +
           '<div class="install-row"><button type="button" id="install-info" class="demo-btn demo-btn-light" hidden data-i18n="install.app">⤓ Offline mode</button><div class="install-steps cu-hint" hidden></div></div>' +

@@ -2069,8 +2069,9 @@ table.chk-table .chk-text { min-width: 100px; }
   margin: 0 0 14px; font-size: 1.2rem; font-weight: 700; line-height: 1.25;
   color: var(--brand-deep);
 }
-#perf-modal-box p { margin: 0 0 18px; font-size: 0.95rem; line-height: 1.5; }
-#perf-modal-box .perf-note { font-size: 0.85rem; color: var(--ink-muted); margin-top: -8px; }
+#perf-modal-box p { margin: 0 0 16px; font-size: 0.95rem; line-height: 1.5; }
+#perf-modal-box .perf-desc { color: var(--ink); }
+#perf-modal-box .perf-note { font-size: 0.82rem; color: var(--ink-muted); }
 #perf-modal-box .perf-version { font-size: 0.75rem; color: var(--ink-muted); margin: 0 0 10px; letter-spacing: 0.02em; }
 #perf-modal-box .perf-attrib {
   margin: 0 0 18px;

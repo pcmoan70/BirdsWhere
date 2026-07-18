@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-18 — Tidy the startup popup + add a description (sw v637)
+
+- The startup popup now opens with a one-line description of what the app does
+  (in-browser habitat model + live observations from eBird/GBIF/iNaturalist…),
+  translated into all 15 languages. Tightened the spacing and the em-dash title.
+
 ## 2026-07-18 — Legend ordered by habitat-model probability (sw v636)
 
 - The map legend now orders species by the BirdNET habitat-model probability, from
