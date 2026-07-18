@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-18 — Help/About: document the newer features in all 15 languages (sw v638)
+
+- Added ten new Help sections covering functions that had gone undocumented:
+  legend controls & probability ordering, observer filter & lists, the Detections
+  list, the 3-state crosshair/read cursor, place search, map points & share links,
+  stored locations, offline maps, checklist photos, and the extra Settings items.
+  Written in English and translated into all 14 other languages, inserted before
+  each language's "Key settings" section.
+
 ## 2026-07-18 — Tidy the startup popup + add a description (sw v637)
 
 - The startup popup now opens with a one-line description of what the app does
