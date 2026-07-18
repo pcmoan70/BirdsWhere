@@ -520,11 +520,7 @@
   function fmtStep(s) { return s >= 0.1 ? (Math.round(s * 100) / 100) : +s.toPrecision(2); }
 
   // Current BirdNET week (1–48) for today's date.
-  function weekOfToday() {
-    var now = new Date();
-    var dayOfYear = Math.floor((now - new Date(now.getFullYear(), 0, 1)) / 86400000) + 1;
-    return Math.max(1, Math.min(48, Math.floor((dayOfYear - 1) / 365 * 48) + 1));
-  }
+  function weekOfToday() { return weekOfDate(new Date()); }   // shares the model-week formula in weekOfDate()
 
   // ---- State ---------------------------------------------------------------
   var worker = null;
@@ -4359,9 +4355,17 @@
       closeModals();   // a map popup opened — close any open modal overlay
     });
 
+    // The map view is transient (only needed to restore on reload) but a save()
+    // re-serialises the whole state blob (incl. up to 15k plotted-detection rows).
+    // Coalesce it so a burst of pans/zooms writes once, and flush on hide/unload.
+    var _viewTimer = null, _pendingView = null;
+    function flushView() { if (_viewTimer) { clearTimeout(_viewTimer); _viewTimer = null; } if (_pendingView) { window.GeoState.save({ view: _pendingView }); _pendingView = null; } }
+    function saveViewSoon(v) { _pendingView = v; if (!_viewTimer) _viewTimer = setTimeout(flushView, 600); }
+    window.addEventListener("pagehide", flushView);
+    window.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") flushView(); });
     map.on("moveend", function () {
       var c = map.getCenter();
-      window.GeoState.save({ view: { lat: c.lat, lon: c.lng, zoom: map.getZoom() } });
+      saveViewSoon({ lat: c.lat, lon: c.lng, zoom: map.getZoom() });
       // Re-rank an open species search by likelihood at the new centre.
       var sRes = document.getElementById("species-results"), sInp = document.getElementById("species-search");
       if (sRes && sInp && sRes.style.display === "block") showSearch(sInp, sRes);
@@ -5252,6 +5256,10 @@
   function collectVisibleDetections(near) {
     var maxDays = detRecencyDays(), out = [];
     var center = near ? L.latLng(near.lat, near.lon) : null;
+    // Cheap bounding-box half-widths (deg) for the radius test — reject far rows
+    // with plain float compares before the per-row L.latLng alloc + haversine.
+    var dLat = 0, dLon = 0;
+    if (center) { dLat = near.meters / 111320; var cs = Math.cos(near.lat * Math.PI / 180); dLon = near.meters / (111320 * (Math.abs(cs) > 1e-6 ? Math.abs(cs) : 1e-6)); }
     var selActive = detSelectionActive();
     Object.keys(detPlot).forEach(function (k) {
       if (!detIsVisible(k, selActive)) return;
@@ -5259,7 +5267,10 @@
       (e.rows || []).forEach(function (r) {
         if (!recentEnough(r.date, maxDays)) return;
         if (!detObsPasses(r)) return;          // observer filter (legend 👤)
-        if (center && map.distance(center, L.latLng(r.lat, r.lon)) > near.meters) return;
+        if (center) {
+          if (Math.abs(r.lat - near.lat) > dLat || Math.abs(r.lon - near.lon) > dLon) return;   // bbox reject (cheap)
+          if (map.distance(center, L.latLng(r.lat, r.lon)) > near.meters) return;
+        }
         out.push({ key: k, name: nm, color: e.color, lat: r.lat, lon: r.lon, date: r.date || "", src: r.src || "", origin: r.origin || "", url: r.url || "", place: r.place || "", count: (r.count != null ? r.count : ""), act: r.act || "", note: r.note || "", observer: r.observer || "", listName: r._listName || "", mpId: r._mpId || "" });
       });
     });
@@ -6002,21 +6013,20 @@
     // observers — those get a dashed outer ring (independent corroboration), so a
     // rarity confirmed by several people stands out. Built over the same rows
     // that will actually be drawn (recency + draw-cap filtered).
-    var obsByLoc = Object.create(null);
-    rows.forEach(function (r) {
-      if (!recentEnough(r.date, maxDays)) return;
-      if (allowed && !allowed.has(r)) return;
-      if (!detObsPasses(r)) return;            // observer filter
-      var lk = (+r.lat).toFixed(4) + "," + (+r.lon).toFixed(4);
-      var s = obsByLoc[lk] || (obsByLoc[lk] = Object.create(null));
-      var o = (r.observer || "").trim(); if (o) s[o] = 1;
-    });
-    var ringed = Object.create(null);
-    var acousticRinged = Object.create(null);   // dedupe the acoustic (BirdWeather) sound-wave ring per location
+    var obsByLoc = Object.create(null), drawRows = [];
     rows.forEach(function (r) {
       if (!recentEnough(r.date, maxDays)) return;
       if (allowed && !allowed.has(r)) return;   // global cap: only the newest N are drawn
-      if (!detObsPasses(r)) return;             // only the selected observers' records
+      if (!detObsPasses(r)) return;             // observer filter (legend 👤)
+      var lk = (+r.lat).toFixed(4) + "," + (+r.lon).toFixed(4);
+      var s = obsByLoc[lk] || (obsByLoc[lk] = Object.create(null));
+      var o = (r.observer || "").trim(); if (o) s[o] = 1;
+      drawRows.push({ r: r, lk: lk });          // filtered ONCE — the draw pass reuses this row + key
+    });
+    var ringed = Object.create(null);
+    var acousticRinged = Object.create(null);   // dedupe the acoustic (BirdWeather) sound-wave ring per location
+    drawRows.forEach(function (it) {
+      var r = it.r, lk2 = it.lk;                // already filtered; key computed once above
       visible++;
       // Rows that came from a shown saved list carry that list's colour — draw it
       // as a slightly larger disc BEHIND the species symbol (added first → behind
@@ -6055,8 +6065,7 @@
       }
       // Several observers reported this species here → a dashed outer ring (once
       // per location). Hover lists every observer's name.
-      var lk2 = (+r.lat).toFixed(4) + "," + (+r.lon).toFixed(4);
-      if (!ringed[lk2] && Object.keys(obsByLoc[lk2] || {}).length >= 2) {
+      if (!ringed[lk2] && Object.keys(obsByLoc[lk2]).length >= 2) {
         ringed[lk2] = 1;
         var rr = (starred ? 9 : (rare ? 6 : 5)) + 3.5;
         g.addLayer(L.circleMarker([r.lat, r.lon], { radius: rr, fill: false, color: "#222", weight: 1, opacity: 0.85, dashArray: "2 2", interactive: false, bubblingMouseEvents: false, renderer: detRenderer() }));
@@ -10947,7 +10956,7 @@
   //   entry  = { ts, lat, lon, key, count, act, note }
   function getFieldChecklists() { return window.GeoState.get("fieldChecklists", {}) || {}; }
   function saveFieldChecklists(o) { window.GeoState.save({ fieldChecklists: o }); }
-  function todayStr() { var d = new Date(); return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
+  function todayStr() { return fmtDateFile(new Date()); }   // same local-date format as fmtDateFile
   function listIdFor(lat, lon, day) { return placeKey(lat, lon) + "@" + (day || todayStr()); }
   function dayOf(rec) { return rec.day || (rec.createdAt ? String(rec.createdAt).slice(0, 10) : todayStr()); }
 

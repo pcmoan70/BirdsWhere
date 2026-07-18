@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-07-19 — Speed pass (behaviour unchanged) (sw v639)
+
+- Map panning no longer re-serialises the whole saved-state blob (up to 15k plotted
+  rows) on every move — the view save is coalesced and flushed on hide/unload.
+- Hovering detection dots no longer runs a haversine + object alloc over every
+  plotted row: a cheap bounding-box test rejects far rows first.
+- The detection-marker renderer filters each species' rows once (was twice) and
+  computes each location key once.
+- Small dedup: weekOfToday now shares weekOfDate's formula; todayStr shares
+  fmtDateFile. (See tasks/optimization_20260718.md for the full analysis and the
+  staged, higher-risk items.)
+
 ## 2026-07-18 — Help/About: document the newer features in all 15 languages (sw v638)
 
 - Added ten new Help sections covering functions that had gone undocumented:
