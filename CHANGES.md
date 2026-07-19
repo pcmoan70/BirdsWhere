@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-19 — Homogenise the hand-built modal overlays (sw v641)
+
+- One shared `createModal` factory now backs the five centred overlays (offline
+  download, offline-cover prompt, observer-lists editor, save-location, country
+  menu) — overlay + box + backdrop/Escape dismissal + close in one place, each
+  caller just supplies its own content. No behaviour change.
+
 ## 2026-07-19 — Homogenise anchored popup menus (sw v640)
 
 - Unified the two DOM popup-menu systems (the species/record menu and the observer

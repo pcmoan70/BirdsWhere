@@ -350,6 +350,28 @@
   function modalPrompt(message, value) { return uiDialog({ message: message, input: true, value: value }); }
   function modalConfirm(message) { return uiDialog({ message: message, input: false }); }
   function modalAlert(message, items) { return uiDialog({ message: message, items: items, input: false, alert: true }); }
+  // Shared factory for the hand-built centred overlays (offline download, observer
+  // editor, save-location, country menu…) — one implementation of overlay + box +
+  // dismiss so each caller only builds its own content. Returns {overlay, box, close}.
+  // opts.boxClass appends to "ui-modal"; opts.onClose runs extra cleanup once;
+  // opts.backdropClose (default true) dismisses on a click outside the box;
+  // opts.escClose dismisses on Escape.
+  function createModal(opts) {
+    opts = opts || {};
+    var ov = document.createElement("div"); ov.className = "ui-modal-overlay";
+    var box = document.createElement("div"); box.className = "ui-modal" + (opts.boxClass ? " " + opts.boxClass : "");
+    ov.appendChild(box); document.body.appendChild(ov);
+    var closed = false, onKey = null;
+    function close() {
+      if (closed) return; closed = true;
+      if (ov.parentNode) ov.parentNode.removeChild(ov);
+      if (onKey) document.removeEventListener("keydown", onKey, true);
+      if (opts.onClose) opts.onClose();
+    }
+    if (opts.backdropClose !== false) ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+    if (opts.escClose) { onKey = function (e) { if (e.key === "Escape") { e.preventDefault(); close(); } }; document.addEventListener("keydown", onKey, true); }
+    return { overlay: ov, box: box, close: close };
+  }
 
   // Grid resolution per zoom level (degrees per cell). Finer cells at deeper
   // zoom keep the heatmap detailed without exploding the cell count.
@@ -4639,8 +4661,8 @@
     var zStart = Math.max(0, Math.min(baseMaxNative, Math.round(map.getZoom())));
     var zMax = Math.max(zStart, Math.min(baseMaxNative, offlineMaxZoom));
     var tiles = offlineTileCount(bounds, zStart, zMax) * layers.length;
-    var ov = document.createElement("div"); ov.className = "ui-modal-overlay";
-    var box = document.createElement("div"); box.className = "ui-modal area-dl";
+    var m = createModal({ boxClass: "area-dl", backdropClose: false });   // no backdrop close mid-download
+    var box = m.box, close = m.close;
     box.innerHTML =
       '<div class="ui-modal-msg">' + escapeHtml(t("offline.title")) + "</div>" +
       '<div class="area-dl-row">' + escapeHtml(t("offline.maxzoom")) + ": <b>" + zMax + "</b></div>" +
@@ -4649,7 +4671,6 @@
       '<div class="area-dl-prog" id="area-prog" style="display:none"></div>' +
       '<div class="ui-modal-btns"><button type="button" class="demo-btn demo-btn-light" id="area-cancel">' + escapeHtml(t("btn.cancel")) + '</button>' +
         '<button type="button" class="demo-btn" id="area-go">' + escapeHtml(t("offline.download")) + "</button></div>";
-    document.body.appendChild(ov); ov.appendChild(box);
     var est = box.querySelector("#area-est");
     est.textContent = t("offline.estimate", { n: tiles.toLocaleString(), mb: (tiles * OFFLINE_TILE_BYTES / 1048576).toFixed(tiles * OFFLINE_TILE_BYTES < 10485760 ? 1 : 0) });
     est.classList.toggle("area-dl-warn", tiles > OFFLINE_MAX_TILES);
@@ -4662,7 +4683,6 @@
       if (nm && !nameInput.dataset.user && !nameInput.value) nameInput.value = nm;
     });
     var downloading = false, aborted = false;
-    function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
     // Cancel must always work — before a download it just closes; during one it
     // aborts the in-flight transfer (the button is never disabled).
     box.querySelector("#area-cancel").addEventListener("click", function () {
@@ -4806,18 +4826,15 @@
   }
   function promptOfflineAreas(areas, curBase) {
     offlinePromptBusy = true;
-    var ov = document.createElement("div"); ov.className = "ui-modal-overlay";
-    var box = document.createElement("div"); box.className = "ui-modal";
+    var m = createModal({ onClose: function () { offlinePromptBusy = false; } });
+    var box = m.box, close = m.close;
     box.innerHTML = '<div class="ui-modal-msg">' + escapeHtml(t("offline.coverPrompt")) + "</div>" +
       '<div class="offline-pick">' + areas.map(function (a) {
         var bm = a.basemap && a.basemap !== curBase ? " (" + escapeHtml(t("basemap." + a.basemap) || a.basemap) + ")" : "";
         return '<button type="button" class="demo-btn offline-pick-btn" data-id="' + escapeHtml(a.id) + '">' + escapeHtml(a.name) + bm + "</button>";
       }).join("") + "</div>" +
       '<div class="ui-modal-btns"><button type="button" class="demo-btn demo-btn-light" id="offc-cancel">' + escapeHtml(t("btn.cancel")) + "</button></div>";
-    document.body.appendChild(ov); ov.appendChild(box);
-    function close() { offlinePromptBusy = false; if (ov.parentNode) ov.parentNode.removeChild(ov); }
     box.querySelector("#offc-cancel").addEventListener("click", close);
-    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
     box.querySelectorAll(".offline-pick-btn").forEach(function (b) {
       b.addEventListener("click", function () {
         var a = getOfflineAreas().filter(function (x) { return x.id === this.getAttribute("data-id"); }.bind(this))[0];
@@ -6517,12 +6534,9 @@
   // Popup to manage observer lists: pick a list to edit, rename/delete it, remove
   // members, and add members by fuzzy-searching observers that have observations.
   function openObserverEditor() {
-    var ov = document.createElement("div"); ov.className = "ui-modal-overlay";
-    var box = document.createElement("div"); box.className = "ui-modal obs-editor";
-    ov.appendChild(box); document.body.appendChild(ov);
+    var m = createModal({ boxClass: "obs-editor", onClose: function () { if (document.getElementById("det-legend")) updateDetLegend(); } });
+    var box = m.box, close = m.close;
     var selLi = 0;                         // which list is currently being edited
-    var close = function () { if (ov.parentNode) ov.parentNode.removeChild(ov); if (document.getElementById("det-legend")) updateDetLegend(); };
-    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
     function esc(s) { return escapeHtml(s); }
     // Members of the selected list, shown as a table (rebuilt on add/remove).
     function renderMembers() {
@@ -10237,17 +10251,14 @@
   // name + a fetch radius (defaulting to the "Sightings radius" setting).
   function registerLocationPrompt(lat, lon) {
     function promptSave(suggest) {
-      var ov = document.createElement("div"); ov.className = "ui-modal-overlay";
-      var box = document.createElement("div"); box.className = "ui-modal";
+      var m = createModal({});
+      var box = m.box, close = m.close;
       box.innerHTML = '<div class="ui-modal-msg">' + escapeHtml(t("loc.savePrompt")) + "</div>" +
         '<input type="text" class="ui-modal-input" id="loc-name" value="' + escapeHtml(suggest) + '" />' +
         '<label class="loc-radius-row">' + escapeHtml(t("loc.radius")) +
           ' <input type="number" id="loc-radius" min="1" max="200" step="1" value="' + recentRadiusKm() + '" /> km</label>' +
         '<div class="ui-modal-btns"><button type="button" class="demo-btn demo-btn-light" id="loc-cancel">' + escapeHtml(t("btn.cancel")) + "</button>" +
           '<button type="button" class="demo-btn" id="loc-ok">' + escapeHtml(t("popup.ok")) + "</button></div>";
-      document.body.appendChild(ov); ov.appendChild(box);
-      var close = function () { if (ov.parentNode) ov.parentNode.removeChild(ov); };
-      ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
       box.querySelector("#loc-cancel").addEventListener("click", close);
       box.querySelector("#loc-ok").addEventListener("click", function () {
         var name = (box.querySelector("#loc-name").value || "").trim();
@@ -10700,10 +10711,8 @@
       function () { showCountryMenu("", ""); });
   }
   function showCountryMenu(cc, name) {
-    var ov = document.createElement("div"); ov.className = "ui-modal-overlay";
-    var box = document.createElement("div"); box.className = "ui-modal map-choose country-menu";
-    function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); document.removeEventListener("keydown", onKey, true); }
-    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); close(); } }
+    var m = createModal({ boxClass: "map-choose country-menu", escClose: true });
+    var box = m.box, close = m.close;
     var head = document.createElement("div"); head.className = "cm-head";
     var title = document.createElement("span"); title.className = "cm-title";
     title.textContent = name || t("popup.country");
@@ -10717,9 +10726,6 @@
     natServicesFor(cc).forEach(function (s) {
       box.appendChild(makePopupBtn(s.label + " ↗", "demo-btn-light", function () { close(); openExternal(s.url); }));
     });
-    ov.appendChild(box); document.body.appendChild(ov);
-    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
-    document.addEventListener("keydown", onKey, true);
   }
   function bindPointPopup(mk, lat, lon) {
     var wrap = document.createElement("div");

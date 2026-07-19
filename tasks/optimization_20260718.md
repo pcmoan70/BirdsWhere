@@ -48,8 +48,13 @@ suite → only ship changes that provably cannot alter behavior; stage the risky
       `closeDetRowMenu` kept as a thin alias (30 call sites). Both now dismiss on an
       outside click (capture phase) — the obs menu previously closed on ANY click
       (incl. its own dead-space); that's the only micro-behaviour change.
-- [ ] Next increments: modals (ui-modal / perf-modal / obs-editor share overlay +
-      close-on-backdrop), control-row buttons, dropdown panels.
+- [x] **Modals (v641):** shared `createModal({boxClass, onClose, backdropClose,
+      escClose})` for the 5 hand-built `ui-modal-overlay` popups (offline download,
+      offline-cover prompt, observer editor, save-location, country menu). Each now
+      only builds its own content; overlay + box + backdrop/esc dismiss + close are
+      one implementation. (uiDialog stays self-contained; the kml-modal family is a
+      separate class, left alone.)
+- [ ] Next increments: control-row buttons, dropdown panels.
 
 ## Staged (need care / sign-off; higher risk, no tests)
 - [ ] Move `mapDetections` out of the localStorage blob (the real GeoState win).
