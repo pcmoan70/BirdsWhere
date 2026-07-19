@@ -8499,40 +8499,23 @@
       if (hotspotsLayer && hotspotsLayer._reload) hotspotsLayer._reload();   // re-filter if shown
     });
 
-    var rareEl = document.getElementById("rare-pct");
-    if (rareEl) {
-      rareEl.value = String(rarePct());
-      rareEl.addEventListener("change", function () {
-        var v = Math.max(1, Math.min(100, +this.value || 5));
+    // Numeric Settings inputs: seed from a getter, then on change clamp to an
+    // integer in [min,max], write it back into the field, persist via save(v),
+    // and run an optional after() (re-render). One implementation for all of them.
+    function wireNumSetting(id, get, min, max, dflt, save, after) {
+      var el = document.getElementById(id); if (!el) return;
+      el.value = String(get());
+      el.addEventListener("change", function () {
+        var v = Math.max(min, Math.min(max, Math.round(+this.value || dflt)));
         this.value = String(v);
-        window.GeoState.save({ rarePct: v });
-        rebuildDetLayers();   // re-evaluate rare markers + legend
-        updateDetLegend();
+        save(v);
+        if (after) after();
       });
     }
-
-    var maxPtsEl = document.getElementById("max-points");
-    if (maxPtsEl) {
-      maxPtsEl.value = String(detMaxPoints());
-      maxPtsEl.addEventListener("change", function () {
-        var v = Math.max(50, Math.min(100000, +this.value || 5000));
-        this.value = String(v);
-        window.GeoState.save({ maxMapPoints: v });
-        rebuildDetLayers();   // re-apply the newest-N draw cap
-        updateDetLegend();
-      });
-    }
-
-    var nearbyEl = document.getElementById("nearby-count");
-    if (nearbyEl) {
-      nearbyEl.value = String(nearbyCount());
-      nearbyEl.addEventListener("change", function () {
-        var v = Math.max(1, Math.min(500, +this.value || 25));
-        this.value = String(v);
-        window.GeoState.save({ nearbyCount: v });
-        if (nearbyIsOpen()) renderNearby();
-      });
-    }
+    function relayerDet() { rebuildDetLayers(); updateDetLegend(); }
+    wireNumSetting("rare-pct", rarePct, 1, 100, 5, function (v) { window.GeoState.save({ rarePct: v }); }, relayerDet);
+    wireNumSetting("max-points", detMaxPoints, 50, 100000, 5000, function (v) { window.GeoState.save({ maxMapPoints: v }); }, relayerDet);
+    wireNumSetting("nearby-count", nearbyCount, 1, 500, 25, function (v) { window.GeoState.save({ nearbyCount: v }); }, function () { if (nearbyIsOpen()) renderNearby(); });
     var nearbyPtsEl = document.getElementById("nearby-points-toggle");
     if (nearbyPtsEl) {
       nearbyPtsEl.checked = nearbyInclPoints();
@@ -8542,24 +8525,8 @@
       });
     }
 
-    var ftEl = document.getElementById("fetch-timeout");
-    if (ftEl) {
-      ftEl.value = String(fetchTimeoutSec());
-      ftEl.addEventListener("change", function () {
-        var v = Math.max(0, Math.min(600, Math.round(+this.value || 0)));
-        this.value = String(v);
-        setFetchTimeoutSec(v);
-      });
-    }
-    var sttlEl = document.getElementById("sight-ttl");
-    if (sttlEl) {
-      sttlEl.value = String(sightTtlMin());
-      sttlEl.addEventListener("change", function () {
-        var v = Math.max(0, Math.min(10080, Math.round(+this.value || 0)));
-        this.value = String(v);
-        window.GeoState.save({ sightTtlMin: v });
-      });
-    }
+    wireNumSetting("fetch-timeout", fetchTimeoutSec, 0, 600, 0, setFetchTimeoutSec, null);
+    wireNumSetting("sight-ttl", sightTtlMin, 0, 10080, 0, function (v) { window.GeoState.save({ sightTtlMin: v }); }, null);
 
     // Historic-observations date range (defaults: last 5 years), persisted.
     var hfEl = document.getElementById("hist-from"), htEl = document.getElementById("hist-to");

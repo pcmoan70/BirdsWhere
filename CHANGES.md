@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-19 — Homogenise numeric Settings inputs (sw v642)
+
+- One `wireNumSetting` helper now backs the rare-%, max-points, nearby-count,
+  fetch-timeout and reuse-window Settings fields (seed → clamp → save → refresh),
+  replacing the repeated per-field boilerplate. (Those integer fields now round a
+  typed decimal — the only micro-change.) Dropdown panels were already unified.
+
 ## 2026-07-19 — Homogenise the hand-built modal overlays (sw v641)
 
 - One shared `createModal` factory now backs the five centred overlays (offline

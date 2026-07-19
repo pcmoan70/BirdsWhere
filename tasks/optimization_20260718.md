@@ -54,7 +54,14 @@ suite → only ship changes that provably cannot alter behavior; stage the risky
       only builds its own content; overlay + box + backdrop/esc dismiss + close are
       one implementation. (uiDialog stays self-contained; the kml-modal family is a
       separate class, left alone.)
-- [ ] Next increments: control-row buttons, dropdown panels.
+- [x] **Dropdown panels:** already homogenised via `wireDropdown(btnId, panelId)` —
+      no work needed.
+- [x] **Numeric Settings inputs (v642):** shared `wireNumSetting(id, get, min, max,
+      dflt, save, after)` replaces the seed→clamp→save→refresh boilerplate for
+      rare %, max points, nearby count, fetch timeout, reuse window. (Integer
+      settings now round a typed decimal — the only micro-change.)
+- [ ] Optional next: static-modal open/close/backdrop wiring (blocked/lists/… —
+      varies per modal, lower value; `navOpen` already homogenises the core).
 
 ## Staged (need care / sign-off; higher risk, no tests)
 - [ ] Move `mapDetections` out of the localStorage blob (the real GeoState win).
