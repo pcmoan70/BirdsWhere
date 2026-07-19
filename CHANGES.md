@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-19 — Homogenise anchored popup menus (sw v640)
+
+- Unified the two DOM popup-menu systems (the species/record menu and the observer
+  add-to-list menus) onto one shared primitive (open / position / close + outside-
+  click dismissal), removing the duplicated element-tracking, positioning and
+  close plumbing. Both now dismiss on an outside click (the observer menu used to
+  also close on a click on its own empty area — the only behaviour change).
+
 ## 2026-07-19 — Speed pass (behaviour unchanged) (sw v639)
 
 - Map panning no longer re-serialises the whole saved-state blob (up to 15k plotted

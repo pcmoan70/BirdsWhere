@@ -5542,14 +5542,31 @@
     setStatus(t("detmenu.added", { name: listName }));
   }
   // ---- the small per-record menu in the Detections list ---------------------
-  var detRowMenuEl = null;
-  function closeDetRowMenu() {
-    if (!detRowMenuEl) return;
-    if (detRowMenuEl.parentNode) detRowMenuEl.parentNode.removeChild(detRowMenuEl);
-    detRowMenuEl = null;
-    document.removeEventListener("click", detRowMenuOutside, true);
+  // ---- Shared anchored popup menu -------------------------------------------
+  // One transient menu at a time: open (create + append), fill, then position it
+  // on-screen; an outside click (capture phase) dismisses it. Shared by the
+  // species/record menu (detrow-menu) and the observer add-to-list menus
+  // (obs-addmenu) so they don't each re-implement open/position/close plumbing.
+  var _anchMenuEl = null, _anchMenuOutside = null;
+  function closeAnchoredMenu() {
+    if (_anchMenuEl && _anchMenuEl.parentNode) _anchMenuEl.parentNode.removeChild(_anchMenuEl);
+    _anchMenuEl = null;
+    if (_anchMenuOutside) { document.removeEventListener("click", _anchMenuOutside, true); _anchMenuOutside = null; }
   }
-  function detRowMenuOutside(e) { if (detRowMenuEl && !detRowMenuEl.contains(e.target)) closeDetRowMenu(); }
+  function openAnchoredMenu(className) {
+    closeAnchoredMenu();
+    var el = document.createElement("div"); el.className = className;
+    document.body.appendChild(el);
+    _anchMenuEl = el;
+    _anchMenuOutside = function (e) { if (_anchMenuEl && !_anchMenuEl.contains(e.target)) closeAnchoredMenu(); };
+    setTimeout(function () { if (_anchMenuEl === el) document.addEventListener("click", _anchMenuOutside, true); }, 0);
+    return el;
+  }
+  function positionAnchoredMenu(el, left, top) {
+    el.style.left = Math.max(6, Math.min(left, window.innerWidth - el.offsetWidth - 8)) + "px";
+    el.style.top = Math.max(6, Math.min(top, window.innerHeight - el.offsetHeight - 8)) + "px";
+  }
+  function closeDetRowMenu() { closeAnchoredMenu(); }   // alias kept for its many call sites
   function drmBtn(label, onClick, iconName) {
     var b = document.createElement("button");
     b.type = "button"; b.className = "detrow-menu-item";
@@ -5559,20 +5576,11 @@
     return b;
   }
   function showDetRowMenu(d, x, y, refresh) {
-    closeDetRowMenu();
     try { var sm = document.getElementById("sp-menu"); if (sm) sm.style.display = "none"; } catch (e) {}
     closeDropdowns();
-    var el = document.createElement("div");
-    el.className = "detrow-menu";
+    var el = openAnchoredMenu("detrow-menu");
     drmRenderMain(el, d, refresh);
-    document.body.appendChild(el);
-    drmPosition(el, x, y);
-    detRowMenuEl = el;
-    setTimeout(function () { document.addEventListener("click", detRowMenuOutside, true); }, 0);
-  }
-  function drmPosition(el, x, y) {
-    el.style.left = Math.max(6, Math.min(x, window.innerWidth - el.offsetWidth - 8)) + "px";
-    el.style.top = Math.max(6, Math.min(y, window.innerHeight - el.offsetHeight - 8)) + "px";
+    positionAnchoredMenu(el, x, y);   // after content so the on-screen clamp uses the real size
   }
   // The ONE species menu, used everywhere a species name (or dot/pin) is clicked
   // — a single tap on PC and mobile alike. Sectioned: Information (learn) · This
@@ -5643,7 +5651,7 @@
       closeDetRowMenu();
       modalPrompt(t("detmenu.newListPrompt"), "").then(function (n) { if (n && n.trim()) addDetPoint(d, n.trim()); });
     }));
-    drmPosition(el, rect.left, rect.top);   // keep on-screen after the height change
+    positionAnchoredMenu(el, rect.left, rect.top);   // keep on-screen after the height change
   }
   // Save a set of detection rows as map points in a named point-list — the same
   // kind right-click creates. Existing list → append; a new name → create.
@@ -5676,10 +5684,9 @@
   // Chooser: existing point-lists to append to, plus "New list…". Saves the given
   // rows. Reuses the per-record menu styling/dismissal.
   function showDetSaveMenu(x, y, rows) {
-    closeDetRowMenu();
+    closeAnchoredMenu();
     if (!rows || !rows.length) { setStatus(t("detlist.empty")); return; }
-    var el = document.createElement("div");
-    el.className = "detrow-menu";
+    var el = openAnchoredMenu("detrow-menu");
     var hdr = document.createElement("div"); hdr.className = "detrow-menu-hdr"; hdr.textContent = t("detlist.saveTitle"); el.appendChild(hdr);
     mpCollections.forEach(function (c) {
       el.appendChild(drmBtn(c.name, function () { closeDetRowMenu(); commitDetSave(c.name, rows); }, "pin"));
@@ -5688,10 +5695,7 @@
       closeDetRowMenu();
       modalPrompt(t("detmenu.newListPrompt"), "").then(function (n) { if (n && n.trim()) commitDetSave(n.trim(), rows); });
     }));
-    document.body.appendChild(el);
-    drmPosition(el, x, y);
-    detRowMenuEl = el;
-    setTimeout(function () { document.addEventListener("click", detRowMenuOutside, true); }, 0);
+    positionAnchoredMenu(el, x, y);
   }
   // Shrink the popup's place-name heading so the full name fits on one line.
   function fitDetTitle() {
@@ -6598,30 +6602,19 @@
     }
     render();
   }
-  // Small popup (anchored to a clicked observer name) to toggle that observer's
-  // membership in each saved list, or start a new list containing them.
-  var addToListMenuEl = null;
-  function closeAddToListMenu() {
-    if (addToListMenuEl && addToListMenuEl.parentNode) addToListMenuEl.parentNode.removeChild(addToListMenuEl);
-    addToListMenuEl = null;
-    document.removeEventListener("click", closeAddToListMenu);
-  }
   // Rebuild the legend but keep the observer checklist scrolled where it was.
   function updateDetLegendKeepObsScroll() {
     var lst = document.querySelector("#det-legend .det-obs-list"), st = lst ? lst.scrollTop : 0;
     updateDetLegend();
     var nl = document.querySelector("#det-legend .det-obs-list"); if (nl) nl.scrollTop = st;
   }
-  // Position an .obs-addmenu next to an anchor rect, kept on-screen.
-  function placeAddMenu(menu, r) {
-    menu.style.left = Math.max(6, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8)) + "px";
-    menu.style.top = Math.min(r.bottom + 2, window.innerHeight - menu.offsetHeight - 8) + "px";
-  }
+  // Small popup (anchored to a clicked observer name) to toggle that observer's
+  // membership in each saved list, or start a new list containing them. Uses the
+  // shared anchored-menu primitive (openAnchoredMenu / positionAnchoredMenu).
   function showAddToListMenu(name, anchor) {
-    var r = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;   // capture before close (anchor may be inside a menu we remove)
-    closeAddToListMenu();
+    var r = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;   // capture before the menu (anchor may live inside a menu we replace)
+    var menu = openAnchoredMenu("obs-addmenu");
     var lists = getObserverLists();
-    var menu = document.createElement("div"); menu.className = "obs-addmenu";
     menu.innerHTML =
       '<div class="obs-addmenu-head">' + escapeHtml(name) + "</div>" +
       lists.map(function (L, i) {
@@ -6629,42 +6622,35 @@
         return '<button type="button" class="obs-addmenu-item' + (inIt ? " on" : "") + '" data-li="' + i + '">' + (inIt ? "✓ " : "") + escapeHtml(L.name) + "</button>";
       }).join("") +
       '<button type="button" class="obs-addmenu-new">＋ ' + escapeHtml(t("obs.newList")) + "</button>";
-    document.body.appendChild(menu);
-    addToListMenuEl = menu;
-    placeAddMenu(menu, r);
+    positionAnchoredMenu(menu, r.left, r.bottom + 2);
     menu.querySelectorAll(".obs-addmenu-item").forEach(function (b) {
       b.addEventListener("click", function (e) {
         e.stopPropagation();
         var a = getObserverLists(), i = +this.getAttribute("data-li"); if (!a[i]) return;
         var idx = a[i].observers.indexOf(name);
         if (idx >= 0) a[i].observers.splice(idx, 1); else a[i].observers.push(name);
-        saveObserverLists(a); closeAddToListMenu(); updateDetLegendKeepObsScroll();
+        saveObserverLists(a); closeAnchoredMenu(); updateDetLegendKeepObsScroll();
       });
     });
     menu.querySelector(".obs-addmenu-new").addEventListener("click", function (e) {
-      e.stopPropagation(); closeAddToListMenu();
+      e.stopPropagation(); closeAnchoredMenu();
       modalPrompt(t("obs.newListPrompt"), "").then(function (nm) {
         nm = (nm || "").trim(); if (!nm) return;
         var a = getObserverLists(); a.push({ name: nm, observers: [name] }); saveObserverLists(a); updateDetLegendKeepObsScroll();
       });
     });
-    setTimeout(function () { document.addEventListener("click", closeAddToListMenu); }, 0);
   }
   // When an observation carries several observers, first show the individual
   // names; picking one drills into that observer's add-to-list menu.
   function showObserverPeopleMenu(names, anchor) {
     var r = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;
-    closeAddToListMenu();
-    var menu = document.createElement("div"); menu.className = "obs-addmenu";
+    var menu = openAnchoredMenu("obs-addmenu");
     menu.innerHTML = '<div class="obs-addmenu-head">' + escapeHtml(t("obs.people")) + "</div>" +
       names.map(function (n) { return '<button type="button" class="obs-people-item" data-obs="' + escapeHtml(n) + '">' + escapeHtml(n) + "</button>"; }).join("");
-    document.body.appendChild(menu);
-    addToListMenuEl = menu;
-    placeAddMenu(menu, r);
+    positionAnchoredMenu(menu, r.left, r.bottom + 2);
     menu.querySelectorAll(".obs-people-item").forEach(function (b) {
       b.addEventListener("click", function (e) { e.stopPropagation(); showAddToListMenu(this.getAttribute("data-obs"), this); });
     });
-    setTimeout(function () { document.addEventListener("click", closeAddToListMenu); }, 0);
   }
   // Entry point from any displayed observer string (legend or detlist): one
   // observer opens the add-to-list menu directly; several open a picker first.

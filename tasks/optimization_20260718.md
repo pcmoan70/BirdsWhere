@@ -39,8 +39,18 @@ suite → only ship changes that provably cannot alter behavior; stage the risky
 - [x] renderDetGroup: one filter pass feeds the draw pass; location key computed once.
 - [x] weekOfToday → weekOfDate; todayStr → fmtDateFile (dedup + size).
 
+## Homogenisation increments (interface → less duplication)
+- [x] **Anchored menus (v640):** unified the two DOM popup-menu systems
+      (`detrow-menu` = species/record menu; `obs-addmenu` = observer add-to-list)
+      onto ONE primitive — `openAnchoredMenu(className)` / `positionAnchoredMenu(el,
+      left, top)` / `closeAnchoredMenu()`. Dropped `detRowMenuEl` + `detRowMenuOutside`
+      + `drmPosition` and `addToListMenuEl` + `closeAddToListMenu` + `placeAddMenu`;
+      `closeDetRowMenu` kept as a thin alias (30 call sites). Both now dismiss on an
+      outside click (capture phase) — the obs menu previously closed on ANY click
+      (incl. its own dead-space); that's the only micro-behaviour change.
+- [ ] Next increments: modals (ui-modal / perf-modal / obs-editor share overlay +
+      close-on-backdrop), control-row buttons, dropdown panels.
+
 ## Staged (need care / sign-off; higher risk, no tests)
 - [ ] Move `mapDetections` out of the localStorage blob (the real GeoState win).
-- [ ] Homogenise UI builders (anchored menus, modals, control-rows) into shared
-      factories — the main code-SIZE lever, but broad interactive-code refactor.
 - [ ] recolorDetections dirty-flag dedup.
