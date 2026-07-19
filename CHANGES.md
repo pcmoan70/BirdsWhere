@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-19 — Two more national GBIF datasets: Estonia + Bulgaria (sw v643)
+
+- Added country-gated GBIF defaults for Estonia (eElurikkus/EELIS — all species,
+  incl. ~156k birds) and Bulgaria (BSPB common-bird monitoring, ~246k birds), both
+  verified on the GBIF API. Belgium (Waarnemingen.be) and the Netherlands
+  (Waarneming.nl) are already covered by the existing Observation.org dataset.
+  Most other listed portals (ornitho network, BirdTrack, DabasDati, birds.cz, …)
+  do not openly publish an occurrence feed to GBIF, so couldn't be added.
+
 ## 2026-07-19 — Homogenise numeric Settings inputs (sw v642)
 
 - One `wireNumSetting` helper now backs the rare-%, max-points, nearby-count,

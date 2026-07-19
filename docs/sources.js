@@ -25,6 +25,13 @@ window.AppSources = (function () {
     { key: "b124e1e0-4755-430f-9eab-894f25a9b59c", name: "Artsobservasjoner (NO)", url: "https://artsobservasjoner.no/", country: "NO" },
     { key: "df12ca07-f133-4550-ab3b-fde13f0e76ba", name: "Notebook / Laji.fi (FI)", url: "https://laji.fi/", country: "FI" },
     { key: "95db4db8-f762-11e1-a439-00145eb45e9a", name: "DOFbasen (DK)", url: "https://www.dofbasen.dk/", country: "DK" },
+    // Estonia's state citizen-observation database (loodusvaatlused / EELIS): all
+    // species incl. ~156k bird records — verified on GBIF as an ongoing occurrence
+    // dataset. Country-gated so it's only queried near Estonia.
+    { key: "c6bbb6ef-ad16-4f3c-99e2-f693760173e0", name: "eElurikkus / EELIS (EE)", url: "https://loodusvaatlused.eelis.ee/", country: "EE" },
+    // BSPB's common-bird monitoring scheme (Bulgaria) — the largest general-bird
+    // BSPB occurrence dataset openly on GBIF (~246k, all birds); gated to BG.
+    { key: "0c5f7cb7-1973-4f0e-994f-dfc69fcabc0e", name: "SmartBirds / BSPB (BG)", url: "https://smartbirds.org/", country: "BG" },
     { key: "6ff8b3b0-ef0f-4f79-a310-5a5615c6aa0b", name: "Birda", url: "https://birda.org/" }
   ];
   var GBIF_DS_COUNTRY = {}; DEFAULT_GBIF_DATASETS.forEach(function (d) { if (d.country) GBIF_DS_COUNTRY[d.key] = d.country; });
