@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-07-20 — GBIF: query only the configured datasets, not all of GBIF (sw v644)
+
+- Removed the blanket unfiltered GBIF occurrence query (which pulled from ALL of
+  GBIF). Now only the configured datasets are queried: global ones (Observation.org,
+  Birda) always, and each nation-specific dataset only when the point/radius reaches
+  its country. The historic count/range-split logic was rescoped to the same
+  datasets so it stays consistent. Result: cleaner, less-duplicated, faster GBIF
+  results focused on the curated national portals — at the cost of narrower GBIF
+  coverage where no curated dataset exists (iNaturalist and eBird are still fetched
+  directly as their own sources).
+
 ## 2026-07-19 — Two more national GBIF datasets: Estonia + Bulgaria (sw v643)
 
 - Added country-gated GBIF defaults for Estonia (eElurikkus/EELIS — all species,

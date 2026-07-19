@@ -132,7 +132,7 @@ window.AppFetch = (function () {
     function report() { if (onProgress) { try { onProgress(prog.done, prog.total); } catch (e) {} } }
     // Each pull is self-contained: a (now retried) page that still fails just
     // stops that one query with whatever it has, so a flaky per-dataset query
-    // can't reject the shared run and wipe out the unfiltered general results.
+    // can't reject the shared run and wipe out the other datasets' results.
     // It pages until the source says it has NO MORE pages (endOfRecords / a short
     // page), so a dense spot isn't truncated — bounded only by GBIF's hard limit
     // of offset+limit ≤ 100 000 (≈ 333 pages of 300).
@@ -166,7 +166,12 @@ window.AppFetch = (function () {
       if (est > got) { prog.total -= (est - got); report(); }
       return out;
     }
-    var tasks = [function () { return pull(base); }];   // unfiltered query across ALL datasets (always included)
+    // Query ONLY the configured GBIF datasets — never a blanket unfiltered pull
+    // across all of GBIF. Global datasets (no country tag, e.g. Observation.org)
+    // are always queried; nation-specific ones only when the point/radius reaches
+    // their country. So near a country we fetch that country's datasets, not the
+    // whole GBIF corpus.
+    var tasks = [];
     gbifDatasets().forEach(function (d) {
       if (!d || !d.key) return;
       if (isGbifOff(d.key)) return;   // user-disabled in Settings
@@ -194,12 +199,25 @@ window.AppFetch = (function () {
   // Auto-discovery removed: it over-collected datasets. The GBIF dataset list is
   // now the curated defaults plus the ones the user adds by hand (key + country
   // + URL) in Settings → GBIF datasets.
-  // Count-only GBIF query (limit=0) for a geometry + eventDate range.
-  async function gbifCount(lat, lon, range, rkm, signal, extra) {
-    var url = "https://api.gbif.org/v1/occurrence/search?hasCoordinate=true&limit=0&geometry=" +
+  // Count-only GBIF query (limit=0) for a geometry + eventDate range, summed over
+  // the SAME datasets fetchGbifAll queries (configured, enabled, country-matched) —
+  // NOT an unfiltered all-of-GBIF count. Keeps the historic range-split and
+  // completeness check consistent with what is actually fetched.
+  async function gbifCount(lat, lon, range, rkm, cc, signal, extra) {
+    var base = "https://api.gbif.org/v1/occurrence/search?hasCoordinate=true&limit=0&geometry=" +
       encodeURIComponent(gbifGeometry(lat, lon, rkm)) + "&eventDate=" + encodeURIComponent(range) + GBIF_FILTER + gbifTaxonParam() + (extra || "");
-    var j = await gbifPage(url, signal);
-    return j ? (+j.count || 0) : 0;
+    var dsets = gbifDatasets(), total = 0;
+    for (var i = 0; i < dsets.length; i++) {
+      var d = dsets[i];
+      if (!d || !d.key || isGbifOff(d.key)) continue;
+      if (d.key === LAJI_GBIF_KEY && lajiDirectActive()) continue;
+      var dcc = d.country || GBIF_DS_COUNTRY[d.key];
+      if (dcc && !countryMatch(lat, lon, dcc, rkm, cc)) continue;
+      if (signal && signal.aborted) break;
+      var j = await gbifPage(base + "&datasetKey=" + encodeURIComponent(d.key), signal);
+      total += j ? (+j.count || 0) : 0;
+    }
+    return total;
   }
   function gbifMidDate(from, to) {
     var a = Date.parse(from), b = Date.parse(to);
@@ -219,7 +237,7 @@ window.AppFetch = (function () {
   // eases GBIF's rate limiter.
   async function fetchGbifHistoric(lat, lon, from, to, rkm, cc, signal, onProgress, extra) {
     if (signal && signal.aborted) return [];
-    var count = await gbifCount(lat, lon, from + "," + to, rkm, signal, extra);
+    var count = await gbifCount(lat, lon, from + "," + to, rkm, cc, signal, extra);
     var mid = gbifMidDate(from, to);
     var canSplit = from < to && mid > from && mid < to;
     if (count <= 95000 || !canSplit) {
