@@ -1,5 +1,18 @@
 # Changes
 
+## 2026-07-20 — Render HTML notes on points (imported KML descriptions) (sw v658)
+
+- Point notes can now be flagged as <b>HTML</b> so they render as formatted markup
+  (links, lists, tables) in the pin popup instead of showing raw tags. The KML import
+  dialog gains a <b>Note contains HTML</b> checkbox — auto-ticked when the imported
+  descriptions look like markup (as Google Earth exports do) — and the flag is also
+  editable per point (list-point editor) and for a whole list (Edit list).
+- The rendered HTML is sanitised via a strict allow-list (script/style/iframe and all
+  event handlers/inline styles are stripped, links forced to open safely) — the note
+  comes from a user file, so it's never injected raw.
+- KML export writes HTML notes in a CDATA block so they round-trip; the flag also
+  travels through share links and Drive sync.
+
 ## 2026-07-20 — Edit whole point lists + aligned list-row icons (sw v657)
 
 - In the map-points panel, point lists now have an <b>✎ Edit list</b> button that opens

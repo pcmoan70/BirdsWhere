@@ -1613,6 +1613,15 @@ button.dd-name:hover { text-decoration: underline; }
 .kml-row input[type="text"] { flex: 0 1 58%; padding: 5px 7px; border-radius: 7px; border: 1px solid var(--border, #ccc); background: var(--surface, #fff); color: inherit; }
 .kml-row-col { flex-direction: column; align-items: stretch; }
 .kml-row-col textarea { width: 100%; margin-top: 4px; padding: 6px 7px; border-radius: 7px; border: 1px solid var(--border, #ccc); background: var(--surface, #fff); color: inherit; font: inherit; resize: vertical; }
+/* "Note is HTML" toggle row: checkbox first, label after, snug and left-aligned. */
+.kml-check { justify-content: flex-start; gap: 8px; font-size: 0.85rem; cursor: pointer; }
+.kml-check input[type="checkbox"] { flex: 0 0 auto; margin: 0; }
+/* Rendered-HTML note inside a map popup: keep tables/images within the popup box. */
+.area-tip-html { white-space: normal; }
+.area-tip-html img { max-width: 100%; height: auto; }
+.area-tip-html table { border-collapse: collapse; max-width: 100%; }
+.area-tip-html td, .area-tip-html th { padding: 1px 4px; }
+.area-tip-html a { color: var(--accent, #2f6f4f); }
 .lists-sp-nm { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.86rem; }
 .lists-sp-del, .lists-pt-del { flex: 0 0 auto; border: none; background: transparent; color: var(--ink-muted); cursor: pointer;
   font-size: 0.95rem; line-height: 1; padding: 0 4px; }

@@ -478,6 +478,45 @@
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
     });
   }
+  // Render an imported note that the user flagged as HTML (KML descriptions are
+  // often HTML tables/links). Since the source is a user-supplied file we can't
+  // trust it — sanitise via an allow-list: parse into a detached document, drop
+  // script-like elements outright, unwrap any tag not on the allow-list (keeping
+  // its text), and strip every attribute except a vetted few. Never inject the
+  // raw string. Returns escaped plain text if parsing is unavailable.
+  var HTML_OK_TAGS = { A:1,B:1,I:1,EM:1,STRONG:1,U:1,S:1,BR:1,P:1,DIV:1,SPAN:1,UL:1,OL:1,LI:1,DL:1,DT:1,DD:1,TABLE:1,THEAD:1,TBODY:1,TR:1,TD:1,TH:1,CAPTION:1,FONT:1,IMG:1,H3:1,H4:1,H5:1,H6:1,SMALL:1,HR:1,CODE:1,PRE:1,BLOCKQUOTE:1 };
+  var HTML_DROP_TAGS = { SCRIPT:1,STYLE:1,IFRAME:1,OBJECT:1,EMBED:1,LINK:1,META:1,TITLE:1,NOSCRIPT:1,FORM:1,INPUT:1,BUTTON:1,SELECT:1,TEXTAREA:1,SVG:1 };
+  function sanitizeHtml(html) {
+    var doc;
+    try { doc = new DOMParser().parseFromString("<div>" + String(html == null ? "" : html) + "</div>", "text/html"); }
+    catch (e) { return escapeHtml(String(html == null ? "" : html)); }
+    var root = doc.body && doc.body.firstChild;
+    if (!root) return "";
+    (function walk(node) {
+      [].slice.call(node.childNodes).forEach(function (ch) {
+        if (ch.nodeType === 8) { node.removeChild(ch); return; }   // comments
+        if (ch.nodeType !== 1) return;                             // text: keep as-is
+        if (HTML_DROP_TAGS[ch.tagName]) { node.removeChild(ch); return; }
+        walk(ch);                                                  // sanitise descendants first
+        if (!HTML_OK_TAGS[ch.tagName]) {                           // unknown tag → keep its contents only
+          while (ch.firstChild) node.insertBefore(ch.firstChild, ch);
+          node.removeChild(ch); return;
+        }
+        [].slice.call(ch.attributes).forEach(function (a) {
+          var n = a.name.toLowerCase(), v = String(a.value || "").trim(), keep = false;
+          if (ch.tagName === "A" && n === "href" && /^(https?:|mailto:)/i.test(v)) keep = true;
+          else if (ch.tagName === "IMG" && n === "src" && /^(https?:|data:image\/)/i.test(v)) keep = true;
+          else if (n === "alt" || n === "title") keep = true;
+          if (!keep) ch.removeAttribute(a.name);
+        });
+        if (ch.tagName === "A") { ch.setAttribute("target", "_blank"); ch.setAttribute("rel", "noopener noreferrer"); }
+      });
+    })(root);
+    return root.innerHTML;
+  }
+  // Does a string look like it carries HTML markup (used to pre-tick the import
+  // "note is HTML" box)? A lone "a < b" shouldn't trip it — require a real tag.
+  function looksLikeHtml(s) { return /<([a-z][a-z0-9]*)\b[^>]*>|<br\s*\/?>|&[a-z]+;|&#\d+;/i.test(String(s || "")); }
   // URL-scheme safety: escapeHtml does NOT neutralise a `javascript:`/`data:` scheme
   // inside an href (it would execute on click). linkUrl() normalises a user- or
   // sync-supplied external URL to a safe form: http(s) as-is, a bare host gets an
@@ -1937,6 +1976,7 @@
       '<div class="kml-row lp-coord-row"><label>Lat<input type="number" step="any" id="lp-lat" value="' + esc(isFinite(+p.lat) ? +p.lat : "") + '" /></label>' +
         '<label>Lon<input type="number" step="any" id="lp-lon" value="' + esc(isFinite(+p.lon) ? +p.lon : "") + '" /></label></div>' +
       '<label class="kml-row kml-row-col">' + esc(t("points.note")) + '<textarea id="lp-note" rows="3">' + esc(p.note || "") + "</textarea></label>" +
+      '<label class="kml-row kml-check"><input type="checkbox" id="lp-note-html"' + (p.noteHtml ? " checked" : "") + " />" + esc(t("points.noteHtml")) + "</label>" +
       '<div class="kml-actions"><button type="button" id="lp-save" class="demo-btn">' + esc(t("points.save")) + "</button></div>" +
       "</div>";
     document.body.appendChild(ov);
@@ -1948,6 +1988,7 @@
       p.name = (document.getElementById("lp-name").value || "").trim();
       p.tags = mpParseTags(document.getElementById("lp-tags").value);
       p.note = (document.getElementById("lp-note").value || "").trim();
+      if (document.getElementById("lp-note-html").checked) p.noteHtml = true; else delete p.noteHtml;
       p.color = mpReadColor();
       // Coordinates are editable too — only adopt valid, in-range numbers.
       var la = parseFloat(document.getElementById("lp-lat").value), lo = parseFloat(document.getElementById("lp-lon").value);
@@ -7148,6 +7189,9 @@
       else Object.keys(common).forEach(function (x) { if (!set[x]) delete common[x]; });
     });
     var tagStr = common ? Object.keys(common).join(", ") : "";
+    // "Notes are HTML" starts ticked only if every point that has a note is flagged.
+    var noted = (c.points || []).filter(function (p) { return p.note; });
+    var allHtml = noted.length > 0 && noted.every(function (p) { return p.noteHtml; });
     var ov = document.createElement("div"); ov.id = "coll-edit-modal"; ov.className = "kml-modal";
     ov.innerHTML = '<div class="kml-modal-box">' +
       '<button type="button" id="ce-close" class="kml-close" aria-label="' + esc(t("btn.close")) + '">×</button>' +
@@ -7157,6 +7201,7 @@
       '<span class="mp-color-row"><span class="mp-color-lbl">' + esc(t("points.color")) + "</span>" +
         '<input type="color" id="ce-color" data-auto="' + esc(auto) + '" value="' + esc(cur) + '" />' +
         '<button type="button" id="ce-color-auto" class="mp-color-reset" title="' + esc(t("points.colorAuto")) + '" aria-label="' + esc(t("points.colorAuto")) + '">↺</button></span>' +
+      '<label class="kml-row kml-check"><input type="checkbox" id="ce-note-html"' + (allHtml ? " checked" : "") + " />" + esc(t("points.noteHtml")) + "</label>" +
       '<p class="cu-hint">' + esc(t("points.editListHint")) + "</p>" +
       '<div class="kml-actions"><button type="button" id="ce-save" class="demo-btn">' + esc(t("points.save")) + "</button></div>" +
       "</div>";
@@ -7170,15 +7215,18 @@
       var newName = (document.getElementById("ce-name").value || "").trim();
       var tags = mpParseTags(document.getElementById("ce-tags").value);
       var colVal = (ci.value || "").toLowerCase(), col = (colVal && colVal !== auto.toLowerCase()) ? ci.value : "";   // auto → no explicit colour
+      var noteHtml = document.getElementById("ce-note-html").checked;
       var isActive = mpActiveName === c.name;   // capture before any rename
       c.color = col || undefined;
-      // Apply the colour + tags to every point. The colour is written per-point too
-      // (not just on the list) so it shows through both draw paths — the active
-      // working set colours per-point via mpColorFor, shown lists via collColor.
-      (c.points || []).forEach(function (p) { p.color = col; p.tags = tags.slice(); });
+      // Apply the colour + tags + note-is-HTML flag to every point. The colour is
+      // written per-point too (not just on the list) so it shows through both draw
+      // paths — the active working set colours per-point via mpColorFor, shown lists
+      // via collColor.
+      var applyFlags = function (p) { p.color = col; p.tags = tags.slice(); if (noteHtml) p.noteHtml = true; else delete p.noteHtml; };
+      (c.points || []).forEach(applyFlags);
       // If this list is the one currently loaded onto the map, mirror the edit onto
       // the working set — else saveMapPoints() would copy mapPoints back over c.points.
-      if (isActive) mapPoints.forEach(function (p) { p.color = col; p.tags = tags.slice(); });
+      if (isActive) mapPoints.forEach(applyFlags);
       // Rename (migrate the shown + protected flags, which are keyed by name).
       if (newName && newName !== c.name && !mpCollections.some(function (x) { return x.name === newName; })) {
         var old = c.name, wasShown = !!shownColls[old], wasProt = isCollProtected(old);
@@ -7303,12 +7351,15 @@
     var parts = ['<?xml version="1.0" encoding="UTF-8"?>',
       '<kml xmlns="http://www.opengis.net/kml/2.2">', "<Document>", "<name>Map points</name>"];
     var placemark = function (p) {
+      var isHtml = !!p.noteHtml;
       var desc = String(p.note || "");
       var tags = (p.tags || []).join(", ");
-      if (tags) desc += (desc ? "\n" : "") + "Tags: " + tags;
+      if (tags) desc += (desc ? (isHtml ? "<br>" : "\n") : "") + "Tags: " + tags;
       parts.push("<Placemark>");
       parts.push("<name>" + xml(p.name || "Point") + "</name>");
-      if (desc) parts.push("<description>" + xml(desc) + "</description>");
+      // HTML notes are emitted in a CDATA block (KML's convention for rich text) so
+      // they survive the round-trip; plain notes are XML-escaped as before.
+      if (desc) parts.push("<description>" + (isHtml ? "<![CDATA[" + desc.replace(/]]>/g, "]]&gt;") + "]]>" : xml(desc)) + "</description>");
       parts.push("<Point><coordinates>" + Number(p.lon).toFixed(6) + "," + Number(p.lat).toFixed(6) + ",0</coordinates></Point>");
       parts.push("</Placemark>");
     };
@@ -7468,6 +7519,10 @@
       mpCollections.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (c) { return { v: c.name, l: c.name }; }));
     // Sensible defaults: name←Name, tag←folder (if any) else none, note←description.
     var defName = "name", defTag = p.folders.length ? "folder" : "", defNote = "desc";
+    // Pre-tick "note is HTML" when the descriptions look like markup (common for
+    // KML exported by Google Earth, which wraps rich text / tables in the note).
+    var htmlish = p.marks.filter(function (m) { return looksLikeHtml(m.desc); }).length;
+    var defHtml = htmlish * 2 >= p.marks.length && htmlish > 0;
     var html = '<div class="kml-modal-box">' +
       '<button type="button" id="kml-close" class="kml-close" aria-label="Close">×</button>' +
       "<h3>" + escapeHtml(t("kml.title")) + "</h3>" +
@@ -7476,6 +7531,7 @@
       '<label class="kml-row">' + escapeHtml(t("kml.nameFrom")) + sel("kml-name", opts([]), defName) + "</label>" +
       '<label class="kml-row">' + escapeHtml(t("kml.tagFrom")) + sel("kml-tag", opts([{ v: "", l: t("kml.fNone") }]), defTag) + "</label>" +
       '<label class="kml-row">' + escapeHtml(t("kml.noteFrom")) + sel("kml-note", opts([{ v: "", l: t("kml.fNone") }]), defNote) + "</label>" +
+      '<label class="kml-row kml-check"><input type="checkbox" id="kml-note-html"' + (defHtml ? " checked" : "") + " />" + escapeHtml(t("points.noteHtml")) + "</label>" +
       '<div class="kml-actions"><button type="button" id="kml-do" class="demo-btn">' + escapeHtml(t("kml.import")) + "</button></div>" +
       "</div>";
     var ov = document.createElement("div");
@@ -7493,12 +7549,17 @@
     var nameTok = document.getElementById("kml-name").value;
     var tagTok = document.getElementById("kml-tag").value;
     var noteTok = document.getElementById("kml-note").value;
+    var noteHtmlBox = document.getElementById("kml-note-html");
+    var noteIsHtml = !!(noteHtmlBox && noteHtmlBox.checked);
     function finish(listName) {
       var pts = p.marks.map(function (pm) {
         var tag = kmlFieldValue(pm, tagTok).trim();
-        return { id: mpUid(), lat: pm.lat, lon: pm.lon,
+        var note = kmlFieldValue(pm, noteTok).trim();
+        var pt = { id: mpUid(), lat: pm.lat, lon: pm.lon,
           name: kmlFieldValue(pm, nameTok).trim() || pm.name || "",
-          tags: tag ? [tag] : [], note: kmlFieldValue(pm, noteTok).trim(), source: "kml", createdAt: new Date().toISOString() };
+          tags: tag ? [tag] : [], note: note, source: "kml", createdAt: new Date().toISOString() };
+        if (noteIsHtml && note) pt.noteHtml = true;
+        return pt;
       });
       var c = mpCollections.filter(function (x) { return x.name === listName; })[0];
       if (!c) { c = { name: listName, points: [] }; mpCollections.push(c); }
@@ -7908,12 +7969,18 @@
     // species, which is also the name) — otherwise the species shows twice.
     var tagList = (p.tags || []).filter(function (tg) { return tg && tg !== p.name; });
     var tags = tagList.length ? '<span class="area-tip-sub">' + escapeHtml(tagList.join(" · ")) + "</span>" : "";
-    // Show the note's text lines (date / activity / remark), dropping any source
-    // URL line — so a saved detection reveals when & what behaviour was recorded
-    // even on read-only collection pins (which don't open the editor).
-    var noteLines = String(p.note || "").split("\n").map(function (s) { return s.trim(); })
-      .filter(function (s) { return s && !/^https?:\/\//i.test(s); });
-    var note = noteLines.length ? '<span class="area-tip-note">' + noteLines.map(escapeHtml).join("<br>") + "</span>" : "";
+    // Notes flagged as HTML (imported KML descriptions) render as sanitised markup;
+    // plain notes show their text lines (date / activity / remark), dropping any
+    // source URL line — so a saved detection reveals when & what behaviour was
+    // recorded even on read-only collection pins (which don't open the editor).
+    var note = "";
+    if (p.noteHtml && p.note) {
+      note = '<span class="area-tip-note area-tip-html">' + sanitizeHtml(p.note) + "</span>";
+    } else {
+      var noteLines = String(p.note || "").split("\n").map(function (s) { return s.trim(); })
+        .filter(function (s) { return s && !/^https?:\/\//i.test(s); });
+      note = noteLines.length ? '<span class="area-tip-note">' + noteLines.map(escapeHtml).join("<br>") + "</span>" : "";
+    }
     return "<b>" + name + "</b>" + tags + note;
   }
   function updateMpBadge() {
@@ -10685,6 +10752,7 @@
       if (p.name) o.name = p.name;
       if (p.tags && p.tags.length) o.tags = p.tags;
       if (p.note) o.note = p.note;
+      if (p.noteHtml) o.noteHtml = true;
       if (p.spKey) o.spKey = p.spKey;
       if (p.spColor) o.spColor = p.spColor;
       if (p.date) o.date = p.date;
