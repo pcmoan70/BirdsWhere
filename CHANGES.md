@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-20 — KMZ import + export for map points (sw v654)
+
+- Map points can now be exported as KMZ (a zipped KML) via a new "Export KMZ"
+  button, and the import accepts both KML and KMZ (detected by the ZIP signature).
+  Uses a tiny built-in single-entry ZIP writer/reader with the browser's
+  deflate-raw — no new dependency.
+
 ## 2026-07-20 — Data-sources hint + About: routes/navigation docs (sw v653)
 
 - The Data-sources overview hint now also explains that registering a free account

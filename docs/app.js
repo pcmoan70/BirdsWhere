@@ -3433,9 +3433,10 @@
                 '<label data-i18n="ctrl.exportPoints">Map points</label>' +
                 '<div class="kml-btn-row">' +
                   icoBtn("points-kml-export", "download", "btn.exportPointsKml", "Export KML") +
-                  icoBtn("points-kml-import", "upload", "btn.importPointsKml", "Import KML") +
+                  icoBtn("points-kmz-export", "download", "btn.exportPointsKmz", "Export KMZ") +
+                  icoBtn("points-kml-import", "upload", "btn.importPointsKml", "Import KML/KMZ") +
                 "</div>" +
-                '<input type="file" id="points-kml-file" accept=".kml,application/vnd.google-earth.kml+xml,application/xml,text/xml" style="display:none" />' +
+                '<input type="file" id="points-kml-file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz,application/xml,text/xml" style="display:none" />' +
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label data-i18n="lists.title">Year &amp; life lists</label>' +
@@ -7259,10 +7260,79 @@
     parts.push("</Document>", "</kml>");
     return parts.join("\n");
   }
+  function pointsHasAny() {
+    return (mpActiveName ? 0 : mapPoints.length) + mpCollections.reduce(function (n, c) { return n + ((c.points && c.points.length) || 0); }, 0);
+  }
   function exportPointsKml() {
-    var hasAny = (mpActiveName ? 0 : mapPoints.length) + mpCollections.reduce(function (n, c) { return n + ((c.points && c.points.length) || 0); }, 0);
-    if (!hasAny) { setStatus(t("points.exportEmpty")); return; }
+    if (!pointsHasAny()) { setStatus(t("points.exportEmpty")); return; }
     downloadCsv("map_points_" + new Date().toISOString().slice(0, 10) + ".kml", buildPointsKml());
+  }
+  // ---- KMZ (a ZIP holding doc.kml) — a tiny single-entry ZIP writer/reader,
+  // using the browser's deflate-raw (same as share-link payloads). ----
+  var _crcTable = null;
+  function crc32(bytes) {
+    if (!_crcTable) { _crcTable = new Uint32Array(256); for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); _crcTable[n] = c >>> 0; } }
+    var crc = 0xFFFFFFFF;
+    for (var i = 0; i < bytes.length; i++) crc = (crc >>> 8) ^ _crcTable[(crc ^ bytes[i]) & 0xFF];
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+  async function buildKmz(kmlText) {
+    var enc = new TextEncoder(), kml = enc.encode(kmlText), name = enc.encode("doc.kml");
+    var crc = crc32(kml), uSize = kml.length, method = 0, data = kml;
+    if (typeof CompressionStream !== "undefined") {
+      try { data = new Uint8Array(await new Response(new Blob([kml]).stream().pipeThrough(new CompressionStream("deflate-raw"))).arrayBuffer()); method = 8; }
+      catch (e) { data = kml; method = 0; }   // fall back to STORE
+    }
+    var cSize = data.length;
+    var out = new Uint8Array(30 + name.length + cSize + 46 + name.length + 22), dv = new DataView(out.buffer), o = 0;
+    dv.setUint32(o, 0x04034b50, true); o += 4; dv.setUint16(o, 20, true); o += 2; dv.setUint16(o, 0, true); o += 2;
+    dv.setUint16(o, method, true); o += 2; dv.setUint16(o, 0, true); o += 2; dv.setUint16(o, 0x21, true); o += 2;   // mod time/date (1980)
+    dv.setUint32(o, crc, true); o += 4; dv.setUint32(o, cSize, true); o += 4; dv.setUint32(o, uSize, true); o += 4;
+    dv.setUint16(o, name.length, true); o += 2; dv.setUint16(o, 0, true); o += 2; out.set(name, o); o += name.length;
+    out.set(data, o); o += cSize;
+    var cdStart = o;
+    dv.setUint32(o, 0x02014b50, true); o += 4; dv.setUint16(o, 20, true); o += 2; dv.setUint16(o, 20, true); o += 2; dv.setUint16(o, 0, true); o += 2;
+    dv.setUint16(o, method, true); o += 2; dv.setUint16(o, 0, true); o += 2; dv.setUint16(o, 0x21, true); o += 2;
+    dv.setUint32(o, crc, true); o += 4; dv.setUint32(o, cSize, true); o += 4; dv.setUint32(o, uSize, true); o += 4;
+    dv.setUint16(o, name.length, true); o += 2; dv.setUint16(o, 0, true); o += 2; dv.setUint16(o, 0, true); o += 2;
+    dv.setUint16(o, 0, true); o += 2; dv.setUint16(o, 0, true); o += 2; dv.setUint32(o, 0, true); o += 4; dv.setUint32(o, 0, true); o += 4;
+    out.set(name, o); o += name.length;
+    var cdSize = o - cdStart;
+    dv.setUint32(o, 0x06054b50, true); o += 4; dv.setUint16(o, 0, true); o += 2; dv.setUint16(o, 0, true); o += 2;
+    dv.setUint16(o, 1, true); o += 2; dv.setUint16(o, 1, true); o += 2; dv.setUint32(o, cdSize, true); o += 4; dv.setUint32(o, cdStart, true); o += 4; dv.setUint16(o, 0, true);
+    return out;
+  }
+  // Pull the (first) .kml entry's text out of a KMZ ArrayBuffer via its central directory.
+  async function extractKmlFromKmz(buf) {
+    var bytes = new Uint8Array(buf), dv = new DataView(buf), td = new TextDecoder();
+    var eocd = -1, lim = Math.max(0, bytes.length - 22 - 65536);
+    for (var i = bytes.length - 22; i >= lim; i--) { if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; } }
+    if (eocd < 0) throw new Error("not a zip");
+    var count = dv.getUint16(eocd + 10, true), p = dv.getUint32(eocd + 16, true), target = null;
+    for (var e = 0; e < count && dv.getUint32(p, true) === 0x02014b50; e++) {
+      var method = dv.getUint16(p + 10, true), cSize = dv.getUint32(p + 20, true);
+      var fnLen = dv.getUint16(p + 28, true), exLen = dv.getUint16(p + 30, true), cmLen = dv.getUint16(p + 32, true), lho = dv.getUint32(p + 42, true);
+      var fn = td.decode(bytes.subarray(p + 46, p + 46 + fnLen));
+      if (/\.kml$/i.test(fn)) { target = { method: method, cSize: cSize, lho: lho }; if (/(^|\/)doc\.kml$/i.test(fn)) break; }
+      p += 46 + fnLen + exLen + cmLen;
+    }
+    if (!target) throw new Error("no kml in kmz");
+    var lFnLen = dv.getUint16(target.lho + 26, true), lExLen = dv.getUint16(target.lho + 28, true);
+    var start = target.lho + 30 + lFnLen + lExLen, comp = bytes.subarray(start, start + target.cSize);
+    if (target.method === 0) return td.decode(comp);
+    if (target.method !== 8 || typeof DecompressionStream === "undefined") throw new Error("kmz compression");
+    var raw = new Uint8Array(await new Response(new Blob([comp]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
+    return td.decode(raw);
+  }
+  function downloadBlob(filename, blob) {
+    var url = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = url; a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  }
+  function exportPointsKmz() {
+    if (!pointsHasAny()) { setStatus(t("points.exportEmpty")); return; }
+    buildKmz(buildPointsKml()).then(function (bytes) {
+      downloadBlob("map_points_" + new Date().toISOString().slice(0, 10) + ".kmz", new Blob([bytes], { type: "application/vnd.google-earth.kmz" }));
+    }).catch(function () { setStatus(t("kml.parseErr")); });
   }
   // ---- KML import ----
   // Parse a KML document into plain placemark records. Each carries its name,
@@ -8712,13 +8782,22 @@
 
     document.getElementById("sync-export").addEventListener("click", exportAppData);
     document.getElementById("points-kml-export").addEventListener("click", exportPointsKml);
+    document.getElementById("points-kmz-export").addEventListener("click", exportPointsKmz);
     var kmlFile = document.getElementById("points-kml-file");
     document.getElementById("points-kml-import").addEventListener("click", function () { kmlFile.click(); });
     kmlFile.addEventListener("change", function (e) {
       var f = e.target.files && e.target.files[0]; if (!f) { return; }
       var rd = new FileReader();
-      rd.onload = function () { try { startKmlImport(String(rd.result || "")); } catch (err) { setStatus(t("kml.parseErr")); } e.target.value = ""; };
-      rd.readAsText(f);
+      rd.onload = function () {
+        var buf = rd.result;
+        var h = new Uint8Array(buf, 0, Math.min(4, buf.byteLength || 0));
+        var isZip = h.length >= 4 && h[0] === 0x50 && h[1] === 0x4B && h[2] === 0x03 && h[3] === 0x04;   // "PK\x03\x04" → KMZ
+        var done = function (kml) { try { startKmlImport(kml); } catch (err) { setStatus(t("kml.parseErr")); } };
+        if (isZip) extractKmlFromKmz(buf).then(done).catch(function () { setStatus(t("kml.parseErr")); });
+        else done(new TextDecoder().decode(new Uint8Array(buf)));
+        e.target.value = "";
+      };
+      rd.readAsArrayBuffer(f);   // read binary; branch on the ZIP magic for KMZ vs KML text
     });
     document.getElementById("offline-zoom").addEventListener("change", function () {
       offlineMaxZoom = +this.value || 17;
