@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-20 — Drop the solid fetch box; remember fetched areas as thin dashed outlines (sw v651)
+
+- Removed the solid "fixed search box" drawn at a clicked point in list/historic
+  mode — only the movable dashed cursor preview remains (now a bit more visible).
+- Every fetch (a clicked point, or each stored location) now leaves a THIN dashed
+  green outline (no fill) of the area it covered. These accumulate and stay on the
+  map until the detections are cleared. The stored-locations selection preview no
+  longer lingers after the panel closes.
+
 ## 2026-07-20 — Fetched multi-area outline: thin dashed green, kept until cleared (sw v650)
 
 - Fetching from several stored locations now outlines each fetched area with a thin

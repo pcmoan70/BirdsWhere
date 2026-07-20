@@ -1659,28 +1659,27 @@
     if ((currentMode !== "list" && currentMode !== "historic") || !map) { hideFetchArea(); return; }
     var b = fetchAreaBounds(latlng);
     if (!fetchAreaRect) {
-      fetchAreaRect = L.rectangle(b, { color: "#2e8b74", weight: 1, opacity: 0.45, dashArray: "4 4", fillColor: "#2e8b74", fillOpacity: 0.03, interactive: false });
+      fetchAreaRect = L.rectangle(b, { color: "#2e8b74", weight: 1, opacity: 0.7, dashArray: "4 4", fillColor: "#2e8b74", fillOpacity: 0.04, interactive: false });
       fetchAreaRect.addTo(map);
     } else {
       fetchAreaRect.setBounds(b);
     }
   }
-  // The FIXED search box, drawn at the clicked/placed point — thicker solid
-  // lines than the live following preview. Shown on a click in list/historic
-  // mode, moved on the next click, cleared when the radius changes or the mode
-  // is left.
-  var setAreaRect = null;
-  function hideSetArea() { if (setAreaRect && map) map.removeLayer(setAreaRect); setAreaRect = null; }
-  function showSetArea(lat, lon) {
-    if (!map) return;
+  // Remembered fetched areas: each fetch leaves a THIN dashed green outline of the
+  // area it covered (no fill), accumulating on the map and cleared only when the
+  // detections are cleared. Deduped so the same spot+radius isn't outlined twice.
+  var fetchedAreasLayer = null, fetchedAreaKeys = null;
+  function rememberFetchedArea(lat, lon, rkm) {
+    if (!map || !L.rectangle || !isFinite(lat) || !isFinite(lon)) return;
+    rkm = rkm || recentRadiusKm();
+    var key = lat.toFixed(3) + "," + lon.toFixed(3) + ":" + rkm;
+    if (!fetchedAreasLayer) { fetchedAreasLayer = L.layerGroup().addTo(map); fetchedAreaKeys = Object.create(null); }
+    if (fetchedAreaKeys[key]) return;   // already outlined
+    fetchedAreaKeys[key] = 1;
     var b = fetchAreaBounds(L.latLng(lat, lon));
-    if (!setAreaRect) {
-      setAreaRect = L.rectangle(b, { color: "#2e8b74", weight: 3, fillColor: "#2e8b74", fillOpacity: 0.08, interactive: false });
-      setAreaRect.addTo(map);
-    } else {
-      setAreaRect.setBounds(b);
-    }
+    fetchedAreasLayer.addLayer(L.rectangle(b, { color: "#2e8b74", weight: 1, opacity: 0.5, dashArray: "2 4", fill: false, interactive: false }));
   }
+  function clearFetchedAreas() { if (fetchedAreasLayer) fetchedAreasLayer.clearLayers(); fetchedAreaKeys = fetchedAreasLayer ? Object.create(null) : null; }
 
   // ---- All-species sightings (for per-point species-list augmentation) ------
   // Fetch GBIF + iNaturalist + (with key) eBird detections at the clicked
@@ -4124,8 +4123,7 @@
       window.GeoState.save({ recentRadiusKm: km }); allSightingsCache = {};
       var rrEl = document.getElementById("recent-radius"); if (rrEl) rrEl.value = String(idx);
       var rrVal = document.getElementById("recent-radius-val"); if (rrVal) rrVal.textContent = radiusLabel(km);
-      if (setAreaRect) { var c = setAreaRect.getBounds().getCenter(); showSetArea(c.lat, c.lng); }   // keep + resize the fixed box
-      try { updateFetchArea(map.mouseEventToLatLng(e)); } catch (er) {}                                // resize the live preview
+      try { updateFetchArea(map.mouseEventToLatLng(e)); } catch (er) {}                                // resize the live movable preview
       setStatus(t("ctrl.radiusSet", { r: radiusLabel(km) }));
     }, { capture: true, passive: false });
 
@@ -6383,7 +6381,8 @@
   // pins and the saved lists survive.
   function clearDetections() {
     clearSpider();
-    if (storedLocFramesLayer) storedLocFramesLayer.clearLayers();   // the fetched-area squares go with the detections
+    if (storedLocFramesLayer) storedLocFramesLayer.clearLayers();   // selection preview
+    clearFetchedAreas();   // remembered fetched-area outlines go with the detections
     Object.keys(detPlot).forEach(function (k) { if (detPlot[k].group) map.removeLayer(detPlot[k].group); });
     detPlot = {}; detSelected = {};
     detStarFilter = false; detRareFilter = false; detYearFilter = false;
@@ -8421,7 +8420,6 @@
       navClose("page");   // drop the page's Back-history entry (it was just closed)
       hideCsvBtn();
       hideFetchArea();   // drop the live pointer box unless we're (still) in list/historic
-      hideSetArea();     // drop the fixed search frame from the previous mode
       hideHistArea();    // drop the historic placed point + Fetch state
       if (cachedRender) clearOverlay();
       if (marker) { map.removeLayer(marker); marker = null; }
@@ -8632,8 +8630,8 @@
     var rrVal = document.getElementById("recent-radius-val");
     rrEl.value = String(radiusStepIndex(+window.GeoState.get("recentRadiusKm", 25) || 25));
     if (rrVal) rrVal.textContent = radiusLabel(RADIUS_STEPS[+rrEl.value]);
-    rrEl.addEventListener("input", function () { if (rrVal) rrVal.textContent = radiusLabel(RADIUS_STEPS[+this.value]); hideSetArea(); });
-    rrEl.addEventListener("change", function () { window.GeoState.save({ recentRadiusKm: RADIUS_STEPS[+this.value] || 25 }); allSightingsCache = {}; hideSetArea(); });
+    rrEl.addEventListener("input", function () { if (rrVal) rrVal.textContent = radiusLabel(RADIUS_STEPS[+this.value]); });
+    rrEl.addEventListener("change", function () { window.GeoState.save({ recentRadiusKm: RADIUS_STEPS[+this.value] || 25 }); allSightingsCache = {}; });
 
     var histFetchBtn = document.getElementById("hist-fetch");
     if (histFetchBtn) histFetchBtn.addEventListener("click", function () {
@@ -10231,7 +10229,7 @@
     setMpDistOrigin(lat, lon);   // point lists now measure/sort from here
     // "Species at location" and Historic both fetch a ± radius box: draw the
     // fixed (thick) search frame at the clicked point; a later click moves it.
-    if (currentMode === "list" || currentMode === "historic") showSetArea(lat, lon);
+    if (currentMode === "list" || currentMode === "historic") rememberFetchedArea(lat, lon);   // outline the fetched area (persists until detections cleared)
     if (currentMode === "barchart") renderAnalysis(lat, lon);
     else if (currentMode === "range") renderSpeciesList(lat, lon);
     else if (currentMode === "historic") placeHistoricPoint(lat, lon);   // place/preview; fetch is an explicit button
@@ -10310,7 +10308,7 @@
     for (var k in patch) a[i][k] = patch[k];
     saveStoredLocations(a);
   }
-  function hideStoredLocations() { var p = document.getElementById("stored-loc-panel"); if (p) p.style.display = "none"; }
+  function hideStoredLocations() { var p = document.getElementById("stored-loc-panel"); if (p) p.style.display = "none"; if (storedLocFramesLayer) storedLocFramesLayer.clearLayers(); }   // drop the selection preview; fetched areas are remembered separately
   // Draw a square (the ± radius box that gets fetched) on the map for every
   // SELECTED stored location, so the user sees which areas are active. Cleared
   // and redrawn as selection / radius changes; empty when nothing is selected.
@@ -10388,7 +10386,7 @@
     if (storedFetchBusy) return;
     var locs = getStoredLocations().filter(function (l) { return l.on !== false; });
     if (!locs.length) { setStatus(t("loc.noneSelected")); return; }
-    renderStoredLocFrames();   // outline the areas being fetched — persists until detections are cleared
+    locs.forEach(function (l) { rememberFetchedArea(l.lat, l.lon, l.radius || recentRadiusKm()); });   // remember each fetched area's outline (persists until detections cleared)
     storedFetchBusy = true;
     var i = 0;
     (function next() {
