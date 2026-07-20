@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-20 — Fetched multi-area outline: thin dashed green, kept until cleared (sw v650)
+
+- Fetching from several stored locations now outlines each fetched area with a thin
+  dashed green line (no fill), drawn at fetch time and kept on the map until the
+  detections are cleared.
+
 ## 2026-07-20 — Fetched-area squares persist until detections cleared; subtler dashes (sw v649)
 
 - The area squares drawn for a stored-locations fetch now stay on the map until you

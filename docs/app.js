@@ -10324,7 +10324,7 @@
       var r = l.radius || recentRadiusKm();
       var dLat = r / 111, dLon = r / ((111 * Math.cos(l.lat * Math.PI / 180)) || 1);
       var rect = L.rectangle([[l.lat - dLat, l.lon - dLon], [l.lat + dLat, l.lon + dLon]],
-        { className: "storedloc-frame", color: "#0b7a5a", weight: 1, opacity: 0.45, dashArray: "4 4", fillColor: "#0b7a5a", fillOpacity: 0.035, interactive: false });
+        { className: "storedloc-frame", color: "#2e8b74", weight: 1, opacity: 0.6, dashArray: "4 4", fill: false, interactive: false });   // thin dashed green outline, no fill
       rect.bindTooltip(escapeHtml(l.name), { direction: "top", className: "area-tip", sticky: true });
       storedLocFramesLayer.addLayer(rect);
     });
@@ -10388,6 +10388,7 @@
     if (storedFetchBusy) return;
     var locs = getStoredLocations().filter(function (l) { return l.on !== false; });
     if (!locs.length) { setStatus(t("loc.noneSelected")); return; }
+    renderStoredLocFrames();   // outline the areas being fetched — persists until detections are cleared
     storedFetchBusy = true;
     var i = 0;
     (function next() {
