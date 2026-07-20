@@ -1464,6 +1464,8 @@ button.dd-name:hover { text-decoration: underline; }
 /* Export/Import KML sit side by side, each half width. */
 .kml-btn-row { display: flex; gap: 8px; }
 .kml-btn-row > .demo-btn { flex: 1 1 0; min-width: 0; }
+/* Format toggle (KML/KMZ) — compact, fixed width so the two labels don't shift it. */
+.kml-btn-row > .kml-fmt-toggle { flex: 0 0 auto; min-width: 3.6em; text-align: center; font-weight: 600; }
 .settings-panel label {
   font-size: 0.7rem;
   font-weight: 700;

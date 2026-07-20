@@ -21,7 +21,7 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v655";
+var VERSION = "v656";
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs
 // version-INDEPENDENT shared pool: map tiles AND the app's computed range-data
@@ -50,6 +50,12 @@ self.addEventListener("message", function (event) {
     // Report the version of the code actually running (this active worker), so the
     // app can show it in the startup popup.
     try { if (event.source && event.source.postMessage) event.source.postMessage({ type: "version", version: VERSION }); } catch (e) {}
+    return;
+  }
+  if (d.type === "skipWaiting") {
+    // User tapped "Reload" on the update banner — activate this waiting worker now.
+    // (We never skipWaiting on install; only on this explicit user action.)
+    self.skipWaiting();
     return;
   }
   if (d.type === "tileCacheMB") {

@@ -3432,9 +3432,9 @@
               '<div class="ctrl-group" id="points-kml-wrap">' +
                 '<label data-i18n="ctrl.exportPoints">Map points</label>' +
                 '<div class="kml-btn-row">' +
-                  icoBtn("points-kml-export", "download", "btn.exportPointsKml", "Export KML") +
-                  icoBtn("points-kmz-export", "download", "btn.exportPointsKmz", "Export KMZ") +
-                  icoBtn("points-kml-import", "upload", "btn.importPointsKml", "Import KML/KMZ") +
+                  icoBtn("points-export", "download", "btn.export", "Export") +
+                  icoBtn("points-kml-import", "upload", "btn.import", "Import") +
+                  '<button type="button" id="points-fmt-toggle" class="demo-btn demo-btn-light kml-fmt-toggle" data-i18n-title="btn.fmtToggle" title="Export format">KML</button>' +
                 "</div>" +
                 '<input type="file" id="points-kml-file" style="display:none" />' +
               '</div>' +
@@ -8781,8 +8781,20 @@
     });
 
     document.getElementById("sync-export").addEventListener("click", exportAppData);
-    document.getElementById("points-kml-export").addEventListener("click", exportPointsKml);
-    document.getElementById("points-kmz-export").addEventListener("click", exportPointsKmz);
+    // One Export button + a KML/KMZ format toggle (the label is the current format).
+    var fmtTog = document.getElementById("points-fmt-toggle");
+    function pointsFmt() { return window.GeoState.get("pointsExportFmt", "kml") === "kmz" ? "kmz" : "kml"; }
+    if (fmtTog) {
+      fmtTog.textContent = pointsFmt().toUpperCase();
+      fmtTog.addEventListener("click", function () {
+        var next = pointsFmt() === "kml" ? "kmz" : "kml";
+        window.GeoState.save({ pointsExportFmt: next });
+        fmtTog.textContent = next.toUpperCase();
+      });
+    }
+    document.getElementById("points-export").addEventListener("click", function () {
+      if (pointsFmt() === "kmz") exportPointsKmz(); else exportPointsKml();
+    });
     var kmlFile = document.getElementById("points-kml-file");
     document.getElementById("points-kml-import").addEventListener("click", function () { kmlFile.click(); });
     kmlFile.addEventListener("change", function (e) {

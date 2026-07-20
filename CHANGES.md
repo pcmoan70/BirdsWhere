@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-07-20 — Update banner + simplified points Export/Import buttons (sw v656)
+
+- Added an "Update available — Reload" banner. Since the app stays on local cached
+  code until a full reload, a newly deployed version waited invisibly; the banner now
+  appears when an update is ready and one tap activates it (messages the waiting
+  worker to skipWaiting, then reloads). Nothing auto-updates without the tap.
+- Map-points export/import is now just two buttons — <b>Export</b> and <b>Import</b> —
+  plus a compact <b>KML / KMZ</b> toggle that sets the export format (fixes the
+  button text overrunning). Import still auto-detects KML vs KMZ by content.
+
 ## 2026-07-20 — Fix: KMZ files greyed out in the import picker (sw v655)
 
 - Removed the file-input `accept` filter (mobile pickers greyed out `.kmz`, which
