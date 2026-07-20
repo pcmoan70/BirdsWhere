@@ -1659,7 +1659,7 @@
     if ((currentMode !== "list" && currentMode !== "historic") || !map) { hideFetchArea(); return; }
     var b = fetchAreaBounds(latlng);
     if (!fetchAreaRect) {
-      fetchAreaRect = L.rectangle(b, { color: "#2e8b74", weight: 1, dashArray: "4 4", fillColor: "#2e8b74", fillOpacity: 0.05, interactive: false });
+      fetchAreaRect = L.rectangle(b, { color: "#2e8b74", weight: 1, opacity: 0.45, dashArray: "4 4", fillColor: "#2e8b74", fillOpacity: 0.03, interactive: false });
       fetchAreaRect.addTo(map);
     } else {
       fetchAreaRect.setBounds(b);
@@ -6383,6 +6383,7 @@
   // pins and the saved lists survive.
   function clearDetections() {
     clearSpider();
+    if (storedLocFramesLayer) storedLocFramesLayer.clearLayers();   // the fetched-area squares go with the detections
     Object.keys(detPlot).forEach(function (k) { if (detPlot[k].group) map.removeLayer(detPlot[k].group); });
     detPlot = {}; detSelected = {};
     detStarFilter = false; detRareFilter = false; detYearFilter = false;
@@ -10323,7 +10324,7 @@
       var r = l.radius || recentRadiusKm();
       var dLat = r / 111, dLon = r / ((111 * Math.cos(l.lat * Math.PI / 180)) || 1);
       var rect = L.rectangle([[l.lat - dLat, l.lon - dLon], [l.lat + dLat, l.lon + dLon]],
-        { className: "storedloc-frame", color: "#0b7a5a", weight: 1.5, opacity: 0.9, fillColor: "#0b7a5a", fillOpacity: 0.08, interactive: false });
+        { className: "storedloc-frame", color: "#0b7a5a", weight: 1, opacity: 0.45, dashArray: "4 4", fillColor: "#0b7a5a", fillOpacity: 0.035, interactive: false });
       rect.bindTooltip(escapeHtml(l.name), { direction: "top", className: "area-tip", sticky: true });
       storedLocFramesLayer.addLayer(rect);
     });

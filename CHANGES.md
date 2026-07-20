@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-20 — Fetched-area squares persist until detections cleared; subtler dashes (sw v649)
+
+- The area squares drawn for a stored-locations fetch now stay on the map until you
+  clear the detections (they're removed by "clear all"), instead of lingering
+  indefinitely. Their outline is now dashed and much fainter, and the dashed
+  cursor-preview box is toned down too.
+
 ## 2026-07-20 — Cross-database detection de-duplication toggle (sw v648)
 
 - New Settings toggle (Fetching & detections → "Deduplicate detections"). When on,
