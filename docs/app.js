@@ -1508,6 +1508,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { date: "2026-07-20", text: "Deduplicate detections (Settings → Fetching & detections): when the same sighting is registered in two databases — same observer, approximate location, date, count and species — show it once instead of twice. Off by default (shows every source's copy)." },
     { date: "2026-07-18", text: "The map legend now orders species by the habitat model's probability (lowest → highest); for a species with several observations it uses the highest probability among them." },
     { date: "2026-07-17", text: "Faster reopen: the app now remembers the last few locations' downloaded observations, so reopening (or revisiting a place) reuses them instead of re-fetching — and a cached location even opens offline. Fresh data is still fetched for new places or after the reuse window (Settings, default 30 min)." },
     { date: "2026-07-17", text: "Observer lists: the 👤 observer filter has a scope button that cycles All → None → each of your saved lists. Hover an observer's name to isolate their records on the map; tap the name (in the legend OR the detections list) to add them to a list — a multi-observer record first shows a picker of the individual names. The ✎ button opens an editor (pick a list, rename/delete, remove members, and add members by fuzzy-searching observers with observations)." },
@@ -3378,6 +3379,10 @@
                 '<p class="cu-hint" data-i18n="ctrl.maxpointshint">Caps how many detection dots are drawn at once for speed. When more are plotted, only the newest this-many are shown on the map (the rest stay in the Detections list).</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
+                '<label class="ctrl-check"><input type="checkbox" id="dedup-toggle"> <span data-i18n="ctrl.dedup">Deduplicate detections</span></label>' +
+                '<p class="cu-hint" data-i18n="ctrl.deduphint">When the same sighting is registered in two databases (e.g. eBird and Artsobservasjoner) — same observer, approximate location, date, count and species — show it once instead of twice. Off = show every source\'s copy.</p>' +
+              '</div>' +
+              '<div class="ctrl-group">' +
                 '<label for="nearby-count" data-i18n="ctrl.nearbycount">Close by — rows shown</label>' +
                 '<input id="nearby-count" type="number" min="1" max="500" step="1" />' +
                 '<p class="cu-hint" data-i18n="ctrl.nearbycounthint">How many of the nearest detections the Close by list shows, sorted by distance from the live/fixed cross or placed pin.</p>' +
@@ -5059,6 +5064,9 @@
   var detProb = Object.create(null);   // species key -> max habitat-model probability over its observations (drives legend order)
   var detProbSig = "";      // the plotted-set signature detProb was computed for
   var detProbBusy = false;  // an inference pass is in flight
+  var detDupHidden = new Set();   // rows hidden as cross-database duplicates (dedup setting)
+  var detDupSig = "";             // plotted-set + setting signature detDupHidden was computed for
+  function dedupDetections() { return window.GeoState.get("dedupDetections", false) === true; }
   var detLegend = null;
   // Legend-driven visibility: dots always draw in their species colour. Click a
   // legend row to "select" it — that isolates the selected species (the rest are
@@ -5091,6 +5099,7 @@
     if (detObsFilter) detObsFilter.forEach(function (n) { if (n) detObsNames.push(n); else detObsAllowNone = true; });
   }
   function detObsPasses(r) {
+    if (detDupHidden.has(r)) return false;   // hidden cross-database duplicate (dedup setting)
     if (detFocusObs) return (r.observer || "").indexOf(detFocusObs) >= 0;   // legend hover isolates one observer
     if (!detObsFilter) return true;
     var obs = (r.observer || "").trim();
@@ -5285,6 +5294,7 @@
   // `near` (optional) = { lat, lon, meters }: restrict to rows within that radius
   // of a clicked dot. Without it, every visible detection on the map is returned.
   function collectVisibleDetections(near) {
+    ensureDedup();
     var maxDays = detRecencyDays(), out = [];
     var center = near ? L.latLng(near.lat, near.lon) : null;
     // Cheap bounding-box half-widths (deg) for the radius test — reject far rows
@@ -6169,6 +6179,7 @@
   // ones are drawn in their species colour.
   function rebuildDetLayers() {
     clearSpider();
+    ensureDedup();
     if (detFocusKey && !detPlot[detFocusKey]) detFocusKey = null;   // focused species gone → don't mute everything
     recolorDetections();
     recomputeRareMax();
@@ -6772,6 +6783,37 @@
     for (var i = 0; i < ks.length; i++) n += (detPlot[ks[i]].rows ? detPlot[ks[i]].rows.length : 0);
     return ks.join("|") + "#" + n;
   }
+  // Duplicate key WITHIN a species: same username + approximate location (~1 km) +
+  // date + count. No username → not a same-user cross-database duplicate.
+  function detDupKey(r) {
+    var obs = (r.observer || "").toLowerCase().replace(/\s+/g, " ").trim();
+    if (!obs) return null;
+    var la = (r.lat != null && isFinite(+r.lat)) ? (+r.lat).toFixed(2) : "";
+    var lo = (r.lon != null && isFinite(+r.lon)) ? (+r.lon).toFixed(2) : "";
+    return obs + "|" + la + "," + lo + "|" + String(r.date || "").slice(0, 10) + "|" + String(r.count != null ? r.count : "");
+  }
+  // "Deduplicate detections": hide records that duplicate one another across a
+  // DIFFERENT source — same species + username + approx location + date + count
+  // (e.g. one sighting registered in both eBird and Artsobservasjoner). Keep one
+  // copy (preferring one with a source link). Recomputed only when the plotted set
+  // or the setting changes; a no-op (empty set) when the setting is off.
+  function ensureDedup() {
+    var on = dedupDetections(), sig = on ? detPlotSig() : "off";
+    if (sig === detDupSig) return;
+    detDupSig = sig; detDupHidden = new Set();
+    if (!on) return;
+    Object.keys(detPlot).forEach(function (k) {
+      var rows = detPlot[k].rows || [], groups = Object.create(null);
+      rows.forEach(function (r) { var dk = detDupKey(r); if (dk) (groups[dk] || (groups[dk] = [])).push(r); });
+      Object.keys(groups).forEach(function (gk) {
+        var g = groups[gk]; if (g.length < 2) return;
+        var srcs = Object.create(null); g.forEach(function (r) { srcs[r.src || ""] = 1; });
+        if (Object.keys(srcs).length < 2) return;   // all one source → not a cross-database dup, keep all
+        var keeper = g[0]; for (var i = 0; i < g.length; i++) { if (g[i].url) { keeper = g[i]; break; } }
+        g.forEach(function (r) { if (r !== keeper) detDupHidden.add(r); });
+      });
+    });
+  }
   // For each plotted MODEL species, the HIGHEST habitat-model probability across
   // its observations — evaluated at each observation's own location + week (input
   // to the geomodel). Extras (non-model "x:" keys) get -1 so they sort lowest.
@@ -6810,6 +6852,7 @@
   function updateDetLegend() {
     var allKeys = Object.keys(detPlot);
     if (!allKeys.length) { if (detLegend) { map.removeControl(detLegend); detLegend = null; } return; }
+    ensureDedup();
     maybeComputeDetProbs();   // (re)compute habitat probabilities when the plotted set changed
     // The dropdown's "Starred only" narrows which species the legend lists (and
     // the map shows). The legend itself stays up so the filter can be toggled.
@@ -8536,6 +8579,15 @@
       nearbyPtsEl.addEventListener("change", function () {
         window.GeoState.save({ nearbyInclPoints: this.checked });
         if (nearbyIsOpen()) renderNearby();
+      });
+    }
+    var dedupEl = document.getElementById("dedup-toggle");
+    if (dedupEl) {
+      dedupEl.checked = dedupDetections();
+      dedupEl.addEventListener("change", function () {
+        window.GeoState.save({ dedupDetections: this.checked });
+        rebuildDetLayers(); updateDetLegend();   // ensureDedup() re-runs (setting is in its signature)
+        if (document.getElementById("detlist-modal") && document.getElementById("detlist-modal").style.display === "flex" && typeof renderDetListModal === "function") renderDetListModal();
       });
     }
 

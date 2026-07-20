@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-07-20 — Cross-database detection de-duplication toggle (sw v648)
+
+- New Settings toggle (Fetching & detections → "Deduplicate detections"). When on,
+  a sighting registered in TWO databases (e.g. eBird + Artsobservasjoner) with the
+  same observer, approximate location (~1 km), date, count and species is shown
+  once instead of twice — across the map dots, legend counts, detections list and
+  the dot popup. Off by default (shows every source's copy). Applied at display
+  time (a hidden-set keyed on the plotted rows), so toggling is instant and no
+  re-fetch is needed. Only collapses copies from DIFFERENT sources.
+
 ## 2026-07-20 — 2nd-language name in the dot hover/reticle popup too (sw v647)
 
 - The species names in the on-map detection popup (hover, or the red reticle over a
