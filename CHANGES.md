@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-20 — Fix: KMZ files greyed out in the import picker (sw v655)
+
+- Removed the file-input `accept` filter (mobile pickers greyed out `.kmz`, which
+  often reports as application/octet-stream). The import already validates the file
+  by its content (ZIP magic → KMZ, otherwise KML text), so any file is now
+  selectable and the right ones are parsed.
+
 ## 2026-07-20 — KMZ import + export for map points (sw v654)
 
 - Map points can now be exported as KMZ (a zipped KML) via a new "Export KMZ"

@@ -3436,7 +3436,7 @@
                   icoBtn("points-kmz-export", "download", "btn.exportPointsKmz", "Export KMZ") +
                   icoBtn("points-kml-import", "upload", "btn.importPointsKml", "Import KML/KMZ") +
                 "</div>" +
-                '<input type="file" id="points-kml-file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz,application/xml,text/xml" style="display:none" />' +
+                '<input type="file" id="points-kml-file" style="display:none" />' +
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label data-i18n="lists.title">Year &amp; life lists</label>' +
