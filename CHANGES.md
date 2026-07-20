@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-20 — Data-sources hint + About: routes/navigation docs (sw v653)
+
+- The Data-sources overview hint now also explains that registering a free account
+  often unlocks more data, and that many databases offer no public download API —
+  with links to Observation.org and the ornitho.de network. (Added a data-i18n-html
+  mechanism so translated strings can carry links.)
+- Added a "Routes & navigation" section to the About/Help doc (the Navigate action
+  + the hand-picked route basket), translated across all 15 languages.
+
 ## 2026-07-20 — Clear "API key missing" status instead of "didn't respond" (sw v652)
 
 - When a source that needs a key is missing it, the status strip above the map now

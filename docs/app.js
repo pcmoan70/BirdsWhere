@@ -3743,7 +3743,7 @@
         '<div id="sources-modal" style="display:none"><div id="sources-box">' +
           '<button type="button" id="sources-close" aria-label="Close">×</button>' +
           '<h3 id="sources-title" data-i18n="sources.title">Data sources</h3>' +
-          '<p class="cu-hint" id="sources-hint" data-i18n="sources.hint2">Tap a source to enable it and edit its details.</p>' +
+          '<p class="cu-hint" id="sources-hint" data-i18n-html="sources.hint2">Tap a source to enable it and edit its details.</p>' +
           '<div id="sources-table"></div>' +
           '<div class="cu-actions" id="sources-actions">' +
             '<button type="button" id="sources-reset" class="demo-btn demo-btn-light" data-i18n="sources.reset">Reset to defaults</button>' +
@@ -3996,6 +3996,10 @@
       if (els[i].classList.contains("ico-label")) s = s.replace(/^[^\p{L}\p{N}]+/u, "");
       els[i].textContent = s;
     }
+    // data-i18n-html: strings that contain markup (e.g. links) — set as innerHTML.
+    // The values are our own trusted translations, not user input.
+    var htmlEls = document.querySelectorAll("[data-i18n-html]");
+    for (var h = 0; h < htmlEls.length; h++) htmlEls[h].innerHTML = t(htmlEls[h].getAttribute("data-i18n-html"));
     var phs = document.querySelectorAll("[data-i18n-ph]");
     for (var j = 0; j < phs.length; j++) phs[j].setAttribute("placeholder", t(phs[j].getAttribute("data-i18n-ph")));
     var tts = document.querySelectorAll("[data-i18n-title]");
