@@ -2193,7 +2193,7 @@
   }
   function obsSources() {
     var list = [
-      { name: "GBIF", country: null, enabled: function () { return !isSourceOff("gbif"); }, run: function (c) { return AppFetch.fetchGbifAll(c.lat, c.lon, c.dateBack(gbifDays()) + "," + c.d2, c.rkm, c.cc, c.signal).then(AppNormalize.normGbif); } }
+      { name: "GBIF", country: null, enabled: function () { return !isSourceOff("gbif"); }, run: function (c) { return AppFetch.fetchGbifAll(c.lat, c.lon, c.dateBack(gbifDays()) + "," + c.d2, c.rkm, c.cc, c.signal, null, null, function (done, total) { obsSub["GBIF"] = { done: done, total: total }; obsRender(); }).then(AppNormalize.normGbif); } }
     ];
     directSources().forEach(function (s) {
       // eBird and BirdWeather are bird-only feeds (eBird is birds-only; BirdWeather
@@ -2387,18 +2387,19 @@
   // finished (another click, a radius/source change, or a slow source) can't make
   // the line list a source twice with two different counts.
   var obsBatch = [];             // {name, done, count, bid} across any in-flight fetches
+  var obsSub = Object.create(null);   // source name -> {done, total} sub-progress (GBIF datasets)
   var obsBid = 0;                // current batch id
   var obsTick = 0;               // cycles the highlight through the pending sources
   var obsTimer = null;           // interval advancing the highlight while anything loads
   var obsStatusActive = false;   // a map-plot is mirroring the line into the status bar
-  function obsNewBatch() { obsBatch = obsBatch.filter(function (it) { return !it.done; }); obsBid++; }
+  function obsNewBatch() { obsBatch = obsBatch.filter(function (it) { return !it.done; }); obsSub = Object.create(null); obsBid++; }
   function obsCurrent() { var b = obsBid; return obsBatch.filter(function (it) { return it.bid === b; }); }
   function obsPendingCount() { var b = obsBid; var n = 0; obsBatch.forEach(function (it) { if (it.bid === b && !it.done) n++; }); return n; }
   function obsTrack(name, p) {
     var item = { name: name, done: false, count: 0, bid: obsBid };
     obsBatch.push(item);
     obsProgress();
-    function settle(v) { item.done = true; item.count = (v && v.length) || 0; obsProgress(); }
+    function settle(v) { item.done = true; item.count = (v && v.length) || 0; delete obsSub[name]; obsProgress(); }
     return Promise.resolve(p).then(function (v) { settle(v); return v; },
                                    function (e) { settle(null); throw e; });
   }
@@ -2424,6 +2425,8 @@
     var parts = cur.map(function (it) {
       var nm = escapeHtml(it.name);
       if (it.done) return '<span class="obs-done">' + nm + " ✓ (" + it.count + ")</span>";
+      var sub = obsSub[it.name];   // e.g. GBIF[2/3] — datasets completed / total
+      if (sub && sub.total) nm += "[" + sub.done + "/" + sub.total + "]";
       return it.name === hiName ? '<span class="obs-knk">' + nm + "</span>" : '<span class="obs-pend">' + nm + "</span>";
     });
     obsLine(t("sp.plottingFrac", { n: parts.join('<span class="obs-sep"> · </span>') }));

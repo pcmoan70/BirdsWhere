@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-20 — GBIF concurrency 6 + per-dataset progress in the loading line (sw v645)
+
+- GBIF per-dataset query concurrency raised from 4 to 6.
+- The "Loading observations…" line now shows GBIF's dataset progress as
+  <b>GBIF[done/total]</b> (e.g. GBIF[2/3]) as each dataset query finishes, then the
+  usual GBIF ✓ (count) when complete.
+
 ## 2026-07-20 — GBIF: query only the configured datasets, not all of GBIF (sw v644)
 
 - Removed the blanket unfiltered GBIF occurrence query (which pulled from ALL of

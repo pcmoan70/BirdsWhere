@@ -122,7 +122,9 @@ window.AppFetch = (function () {
     await Promise.all(pool);
     return results;
   }
-  async function fetchGbifAll(lat, lon, range, rkm, cc, signal, onProgress, extra) {
+  // onDataset(done, total) (optional) reports how many of the per-dataset queries
+  // have finished — surfaced in the app's "Loading observations…" line as GBIF[d/t].
+  async function fetchGbifAll(lat, lon, range, rkm, cc, signal, onProgress, extra, onDataset) {
     var base = "https://api.gbif.org/v1/occurrence/search?hasCoordinate=true&limit=300&geometry=" +
       encodeURIComponent(gbifGeometry(lat, lon, rkm)) + "&eventDate=" + encodeURIComponent(range) + GBIF_FILTER + gbifTaxonParam() + (extra || "");   // `extra` e.g. "&month=5&month=6" (historic month filter)
     // Page progress (estimate): each query learns its page count from `count` on
@@ -185,9 +187,20 @@ window.AppFetch = (function () {
       var url = base + "&datasetKey=" + encodeURIComponent(d.key);
       tasks.push(function () { return pull(url); });
     });
+    // Report per-dataset completion (GBIF[done/total]) as each query settles.
+    var totalDs = tasks.length, doneDs = 0;
+    if (onDataset) {
+      onDataset(0, totalDs);
+      tasks = tasks.map(function (task) {
+        return function () {
+          var fin = function () { doneDs++; onDataset(doneDs, totalDs); };
+          return Promise.resolve(task()).then(function (r) { fin(); return r; }, function (e) { fin(); throw e; });
+        };
+      });
+    }
     // Cap concurrency (not all-at-once) so the burst doesn't trip GBIF's rate
     // limiter — combined with gbifPage's retries this makes the result stable.
-    var parts = await gbifRunLimited(tasks, 4);
+    var parts = await gbifRunLimited(tasks, 6);
     prog.done = prog.total; report();   // settle the bar to 100% once every query has finished
     var seen = Object.create(null), all = [];
     parts.forEach(function (arr) { (arr || []).forEach(function (o) {
