@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-20 — 2nd-language name in the dot hover/reticle popup too (sw v647)
+
+- The species names in the on-map detection popup (hover, or the red reticle over a
+  dot) now also show the second language in parentheses, e.g. "bokfink (Chaffinch)",
+  matching the detections list.
+
 ## 2026-07-20 — Detections list shows the 2nd-language name in parentheses (sw v646)
 
 - When a second species-name language is selected, the detections list now shows

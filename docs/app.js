@@ -5971,7 +5971,7 @@
         // Full swatch (colour disc + star + rare centre-dot + need-ring) matching
         // the plotted dots / legend, for quick visual matching.
         var sw = detSwatch(g.color, isInteresting(k), detIsRare(k), k);
-        return sw + escapeHtml(g.name) + (meta.length ? ' <span class="dh-meta">' + escapeHtml(meta.join(" ")) + "</span>" : "");
+        return sw + escapeHtml(detListName(k, g.name)) + (meta.length ? ' <span class="dh-meta">' + escapeHtml(meta.join(" ")) + "</span>" : "");
       });
       return '<div class="dh-date">' + escapeHtml(fmtDate(dt) || t("detlist.noDate")) + "</div>" + spLines.join("<br>");
     });
