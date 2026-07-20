@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-20 — Edit whole point lists + aligned list-row icons (sw v657)
+
+- In the map-points panel, point lists now have an <b>✎ Edit list</b> button that opens
+  an editor for the <i>whole</i> list: set one colour and one set of tags applied to
+  every point, and optionally rename the list. Renaming migrates the shown/protected
+  flags; editing the currently-loaded list updates the on-map pins immediately.
+- Fixed the trailing icons in list rows lining up unevenly — the lock/× (and the
+  nav/share/edit buttons) now share one fixed 28×26px box so every row aligns.
+
 ## 2026-07-20 — Update banner + simplified points Export/Import buttons (sw v656)
 
 - Added an "Update available — Reload" banner. Since the app stays on local cached

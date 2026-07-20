@@ -7132,6 +7132,67 @@
     return MP_COLORS[Math.abs(h) % MP_COLORS.length];
   }
   function mpColorFor(p) { return mpHashColor((p.tags && p.tags[0]) || ""); }
+  // A saved list's colour: an explicit list colour if set (via the list editor),
+  // else the automatic name-hashed colour.
+  function collColor(c) { return (c && c.color) || mpHashColor(c ? c.name : ""); }
+  // Whole-list editor: set a colour + tags applied to every point in the list
+  // (and rename it). Opened from the ✎ on a list row in the Points overview.
+  function openCollEditModal(name) {
+    var c = mpCollections.filter(function (x) { return x.name === name; })[0]; if (!c) return;
+    var esc = escapeHtml, auto = mpHex6(mpHashColor(c.name)), cur = mpHex6(c.color || auto);
+    // Seed the tag box with tags shared by ALL points (so saving doesn't wipe them).
+    var common = null;
+    (c.points || []).forEach(function (p) {
+      var set = {}; (p.tags || []).forEach(function (x) { set[x] = 1; });
+      if (common === null) common = set;
+      else Object.keys(common).forEach(function (x) { if (!set[x]) delete common[x]; });
+    });
+    var tagStr = common ? Object.keys(common).join(", ") : "";
+    var ov = document.createElement("div"); ov.id = "coll-edit-modal"; ov.className = "kml-modal";
+    ov.innerHTML = '<div class="kml-modal-box">' +
+      '<button type="button" id="ce-close" class="kml-close" aria-label="' + esc(t("btn.close")) + '">×</button>' +
+      "<h3>" + esc(t("points.editList")) + "</h3>" +
+      '<label class="kml-row">' + esc(t("points.name")) + '<input type="text" id="ce-name" value="' + esc(c.name) + '" /></label>' +
+      '<label class="kml-row">' + esc(t("points.tags")) + '<input type="text" id="ce-tags" value="' + esc(tagStr) + '" placeholder="' + esc(t("points.tagsPh")) + '" /></label>' +
+      '<span class="mp-color-row"><span class="mp-color-lbl">' + esc(t("points.color")) + "</span>" +
+        '<input type="color" id="ce-color" data-auto="' + esc(auto) + '" value="' + esc(cur) + '" />' +
+        '<button type="button" id="ce-color-auto" class="mp-color-reset" title="' + esc(t("points.colorAuto")) + '" aria-label="' + esc(t("points.colorAuto")) + '">↺</button></span>' +
+      '<p class="cu-hint">' + esc(t("points.editListHint")) + "</p>" +
+      '<div class="kml-actions"><button type="button" id="ce-save" class="demo-btn">' + esc(t("points.save")) + "</button></div>" +
+      "</div>";
+    document.body.appendChild(ov);
+    function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
+    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+    document.getElementById("ce-close").addEventListener("click", close);
+    var ci = document.getElementById("ce-color"), reset = document.getElementById("ce-color-auto");
+    reset.addEventListener("click", function () { ci.value = ci.getAttribute("data-auto") || "#888888"; });
+    document.getElementById("ce-save").addEventListener("click", function () {
+      var newName = (document.getElementById("ce-name").value || "").trim();
+      var tags = mpParseTags(document.getElementById("ce-tags").value);
+      var colVal = (ci.value || "").toLowerCase(), col = (colVal && colVal !== auto.toLowerCase()) ? ci.value : "";   // auto → no explicit colour
+      var isActive = mpActiveName === c.name;   // capture before any rename
+      c.color = col || undefined;
+      // Apply the colour + tags to every point. The colour is written per-point too
+      // (not just on the list) so it shows through both draw paths — the active
+      // working set colours per-point via mpColorFor, shown lists via collColor.
+      (c.points || []).forEach(function (p) { p.color = col; p.tags = tags.slice(); });
+      // If this list is the one currently loaded onto the map, mirror the edit onto
+      // the working set — else saveMapPoints() would copy mapPoints back over c.points.
+      if (isActive) mapPoints.forEach(function (p) { p.color = col; p.tags = tags.slice(); });
+      // Rename (migrate the shown + protected flags, which are keyed by name).
+      if (newName && newName !== c.name && !mpCollections.some(function (x) { return x.name === newName; })) {
+        var old = c.name, wasShown = !!shownColls[old], wasProt = isCollProtected(old);
+        c.name = newName;
+        if (isActive) mpActiveName = newName;
+        if (wasShown) { delete shownColls[old]; shownColls[newName] = true; }
+        if (wasProt) { setCollProtected(old, false); setCollProtected(newName, true); }
+        saveShownState();
+      }
+      saveMapPoints(); renderMapPoints(); if (typeof refreshMpPanel === "function") refreshMpPanel();
+      if (typeof renderListsModal === "function") renderListsModal();
+      close();
+    });
+  }
   // <input type=color> needs a 6-digit hex; expand "#888" → "#888888".
   function mpHex6(c) {
     c = String(c || "");
@@ -7735,7 +7796,7 @@
     // data. Manually-tagged points (no species key) keep their own pin + editor.
     mpCollections.forEach(function (c) {
       if (!shownColls[c.name]) return;
-      var col = mpHashColor(c.name);
+      var col = collColor(c);
       (c.points || []).forEach(function (p) {
         if (!p || !isFinite(p.lat) || !isFinite(p.lon)) return;
         if (p.spKey) return;   // detection point → detPlot pipeline (handled below)
@@ -7766,7 +7827,7 @@
     // 2. Inject the current shown lists' detection points, grouped by species key.
     mpCollections.forEach(function (c) {
       if (!shownColls[c.name]) return;
-      var col = mpHashColor(c.name);
+      var col = collColor(c);
       (c.points || []).forEach(function (p) {
         if (!p || !p.spKey || !isFinite(p.lat) || !isFinite(p.lon)) return;
         var row = { lat: +p.lat, lon: +p.lon, date: p.date || "", url: p.url || "", count: p.count, act: p.act || "", src: p.src || "list", _list: true, listColor: col, _listName: c.name, _mpId: p.id };
@@ -8001,7 +8062,7 @@
     var unionPts = [];
     mpCollections.forEach(function (c) {
       if (!shownColls[c.name]) return;
-      var col = mpHashColor(c.name);
+      var col = collColor(c);
       (c.points || []).forEach(function (p) { if (p && isFinite(p.lat) && isFinite(p.lon)) unionPts.push({ p: p, color: col, list: c.name, editable: false }); });
     });
     unionPts.sort(mpSort === "name"
@@ -8039,14 +8100,18 @@
         : '<button type="button" class="mp-coll-del" data-type="' + type + '" data-name="' + escapeHtml(name) + '" aria-label="' + escapeHtml(delTip) + '" title="' + escapeHtml(delTip) + '">×</button>';
       var navBtn = '<button type="button" class="mp-coll-nav ico-btn" data-type="' + type + '" data-name="' + escapeHtml(name) + '" title="' + escapeHtml(t("nav.send")) + '" aria-label="' + escapeHtml(t("nav.send")) + '">' + ico("nav") + "</button>";
       var shareBtn = '<button type="button" class="mp-coll-share ico-btn" data-type="' + type + '" data-name="' + escapeHtml(name) + '" title="' + escapeHtml(t("share.link")) + '" aria-label="' + escapeHtml(t("share.link")) + '">' + ico("share") + "</button>";
+      // Edit (colour + tags for the whole list) — point-lists only.
+      var editBtn = type === "p"
+        ? '<button type="button" class="mp-coll-edit ico-btn" data-name="' + escapeHtml(name) + '" title="' + escapeHtml(t("points.editList")) + '" aria-label="' + escapeHtml(t("points.editList")) + '">' + ico("edit") + "</button>"
+        : "";
       return '<div class="mp-coll-row">' +
         '<label class="mp-coll-lbl"><input type="checkbox" class="mp-coll-cb" data-type="' + type + '" data-name="' + escapeHtml(name) + '"' + (checked ? " checked" : "") + ">" +
           swatch + '<span class="mp-coll-name">' + escapeHtml(name) + ' <span class="mp-coll-n">(' + count + ")</span></span></label>" +
-        navBtn + shareBtn + del +
+        navBtn + shareBtn + editBtn + del +
         "</div>";
     }
     var collItems = mpCollections.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (c) {
-      return mpCollRowHtml("p", c.name, (c.points && c.points.length) || 0, '<span class="mp-sw" style="background:' + mpHashColor(c.name) + '"></span>', !!shownColls[c.name], t("points.deleteColl"), isCollProtected(c.name));
+      return mpCollRowHtml("p", c.name, (c.points && c.points.length) || 0, '<span class="mp-sw" style="background:' + collColor(c) + '"></span>', !!shownColls[c.name], t("points.deleteColl"), isCollProtected(c.name));
     });
     var dsItems = detSets().slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (s) {
       var n = 0; Object.keys(s.detections || {}).forEach(function (k) { n += ((s.detections[k] || {}).rows || []).length; });
@@ -8170,6 +8235,10 @@
         var type = this.getAttribute("data-type"), name = this.getAttribute("data-name");
         if (type === "d") shareDetSet(name); else sharePointList(name);
       });
+    });
+    // Per-row ✎ opens the whole-list editor (colour + tags + rename).
+    panel.querySelectorAll(".mp-coll-edit").forEach(function (b) {
+      b.addEventListener("click", function (e) { e.preventDefault(); openCollEditModal(this.getAttribute("data-name")); });
     });
     // Per-row × deletes that saved list / detection set (after confirming).
     panel.querySelectorAll(".mp-coll-del").forEach(function (b) {
