@@ -2125,6 +2125,19 @@
   // Reasons collected during a fetch are objects {name, error}; the status line
   // and recent-warn want a plain "name, name" list.
   function failedNames(failed) { return (failed || []).map(function (f) { return f && f.name ? f.name : f; }).join(", "); }
+  // Split failed sources into those that failed because their (required) API key is
+  // MISSING vs genuine other failures — so a missing key gets its own clear status
+  // ("needs a free API key") instead of the generic "didn't respond".
+  function splitFailed(failed) {
+    var byName = Object.create(null);
+    directSources().forEach(function (s) { byName[s.name] = { id: s.id, keyed: !!(DIRECT_BY_ID[s.id] || {}).keyed }; });
+    var needKey = [], other = [];
+    (failed || []).filter(Boolean).forEach(function (f) {
+      var nm = f.name || f, info = byName[nm];
+      if (info && info.keyed && !directKey(info.id)) needKey.push(nm); else other.push(f);
+    });
+    return { needKey: needKey, other: other };
+  }
   // After a fetch, pop a single dialog listing each source that failed and why.
   // De-duped against the immediately-previous set so the same error (e.g. a
   // missing eBird key) doesn't nag on every location click.
@@ -2201,8 +2214,8 @@
       // mammals/amphibians/insects they'd return only birds we'd discard.
       if ((s.id === "ebird" || s.id === "birdweather") && !groupIsBirds()) return;
       // Enabled = just the on/off toggle. A keyed source with no key still runs
-      // (and shows in the loading line), then fails with a clear "no API key"
-      // error surfaced in the end-of-fetch popup — rather than vanishing silently.
+      // (and shows in the loading line), then fails — surfaced as a clear "API key
+      // missing" line in the status strip (see splitFailed), not the failure popup.
       list.push({ name: s.name, country: s.country, enabled: function () { return !isSourceOff(s.id); }, run: function (c) { return runDirectSource(s, c); } });
     });
     return list;
@@ -2498,8 +2511,12 @@
     return fetchP.then(function (result) {
       applySightings(tbody, token, result, true);
       if (!tbody || tbody.dataset.sightingsToken !== token) return;
-      if (result.failed && result.failed.length) setStatus(t("fetch.failed", { sources: failedNames(result.failed) }));
-      reportFetchErrors(result.failed);
+      var sp = splitFailed(result.failed);
+      // Missing-key sources get the actionable "needs a free API key" line; only
+      // otherwise fall back to the generic "didn't respond".
+      if (sp.needKey.length) setStatus(t("fetch.needKey", { sources: sp.needKey.join(", ") }));
+      else if (sp.other.length) setStatus(t("fetch.failed", { sources: failedNames(sp.other) }));
+      reportFetchErrors(sp.other);   // missing keys are shown in the status strip, not a popup
     }).catch(function () {
       // Hard failure — clear the hourglasses so they don't spin forever.
       if (tbody && tbody.dataset.sightingsToken === token) {

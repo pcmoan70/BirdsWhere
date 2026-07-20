@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-20 — Clear "API key missing" status instead of "didn't respond" (sw v652)
+
+- When a source that needs a key is missing it, the status strip above the map now
+  says e.g. "⚠ eBird: API key missing — add a free key in Settings → Data sources."
+  instead of the generic "⚠ eBird didn't respond…", and it no longer pops the
+  failure dialog for that case. Genuine failures still show the old message/dialog.
+
 ## 2026-07-20 — Drop the solid fetch box; remember fetched areas as thin dashed outlines (sw v651)
 
 - Removed the solid "fixed search box" drawn at a clicked point in list/historic
