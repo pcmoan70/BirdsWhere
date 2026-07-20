@@ -5155,6 +5155,17 @@
     }
     return speciesCase(lang, e.name || (e.key && e.key.indexOf("x:") === 0 ? e.key.slice(2) : e.key));
   }
+  // Detection-list display name with the optional 2nd language in parentheses,
+  // e.g. "bokfink (Chaffinch)". Falls back to the plain primary name when there's
+  // no 2nd language, no model label (extras), or the two names coincide.
+  function detListName(key, primary) {
+    var nm = primary || "";
+    if (secondLang && key) {
+      var lbl = labelsByKey[key];
+      if (lbl) { var s2 = secondName(lbl); if (s2 && s2.toLowerCase() !== nm.toLowerCase()) nm += " (" + s2 + ")"; }
+    }
+    return nm;
+  }
   // Legend / list swatch: a coloured ★ for starred species, a coloured dot with a
   // black centre for locally-rare species, a star-with-centre-dot when both, else
   // a plain coloured dot.
@@ -5483,7 +5494,7 @@
         (al ? '<span class="dl-sub" title="' + escapeHtml(al) + '">' + escapeHtml(al) + "</span>" : "") +
         (note ? '<span class="dl-sub dl-note" title="' + escapeHtml(note) + '">' + escapeHtml(note) + "</span>" : "");
     }
-    var nameBlock = '<span class="dl-name-wrap"><span class="dl-sp">' + escapeHtml(d.name) + "</span>" + subLines + "</span>";
+    var nameBlock = '<span class="dl-name-wrap"><span class="dl-sp">' + escapeHtml(detListName(d.key, d.name)) + "</span>" + subLines + "</span>";
     var inner = detSwatch(d.color || "#888", isInteresting(d.key), detIsRare(d.key), d.key) +
       nameBlock +
       '<span class="dl-meta">' + escapeHtml(meta) + "</span>";
@@ -5841,7 +5852,7 @@
         var open = !!detListOpenSp[k];
         var head = '<button type="button" class="dl-sp-head' + (open ? " open" : "") + '" data-key="' + escapeHtml(k) + '">' +
           detSwatch(g.color || "#888", isInteresting(k), detIsRare(k), k) +
-          '<span class="dl-sp">' + escapeHtml(g.name) + "</span>" +
+          '<span class="dl-sp">' + escapeHtml(detListName(k, g.name)) + "</span>" +
           '<span class="dl-meta">' + escapeHtml(fmtDate(last)) + "</span>" +
           '<span class="dl-ct">' + g.items.length + "</span>" +
           '<span class="dl-caret">' + (open ? "▾" : "▸") + "</span></button>";

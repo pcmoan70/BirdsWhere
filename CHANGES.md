@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-20 — Detections list shows the 2nd-language name in parentheses (sw v646)
+
+- When a second species-name language is selected, the detections list now shows
+  it after the primary name, e.g. "bokfink (Chaffinch)" — both in the by-time rows
+  and the by-species group headers. Skipped when the two names coincide or the
+  species isn't in the model.
+
 ## 2026-07-20 — GBIF concurrency 6 + per-dataset progress in the loading line (sw v645)
 
 - GBIF per-dataset query concurrency raised from 4 to 6.
