@@ -6462,6 +6462,9 @@
       });
       var failNote = (result.failed && result.failed.length) ? " · " + t("fetch.failed", { sources: failedNames(result.failed) }) : "";
       if (!entries.length) { setStatus(failNote ? failNote.replace(/^ · /, "") : t("det.none")); return; }
+      // A fetch actually put observations on the map → outline the search area (thin
+      // dashed green), which is what the red ×'s per-area delete acts on.
+      if (currentSpView && isFinite(+currentSpView.lat) && isFinite(+currentSpView.lon)) rememberFetchedArea(+currentSpView.lat, +currentSpView.lon);
       entries.sort(function (a, b) { return b.count - a.count; });
       // Accumulate: plotDetections merges (deduped) into whatever is already on
       // the map, so plotting at several locations builds up the full picture.
@@ -10666,9 +10669,9 @@
     if (marker) map.removeLayer(marker);
     marker = L.marker([lat, lon]).addTo(map);
     setMpDistOrigin(lat, lon);   // point lists now measure/sort from here
-    // "Species at location" and Historic both fetch a ± radius box: draw the
-    // fixed (thick) search frame at the clicked point; a later click moves it.
-    if (currentMode === "list" || currentMode === "historic") rememberFetchedArea(lat, lon);   // outline the fetched area (persists until detections cleared)
+    // The deletable dashed outline is remembered only when observations are actually
+    // fetched onto the map (in plotSightingsResult) — NOT on a plain click — so a
+    // stray tap doesn't leave a persisted, deletable rectangle behind.
     if (currentMode === "barchart") renderAnalysis(lat, lon);
     else if (currentMode === "range") renderSpeciesList(lat, lon);
     else if (currentMode === "historic") placeHistoricPoint(lat, lon);   // place/preview; fetch is an explicit button

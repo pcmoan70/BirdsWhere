@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-21 — Fix: only fetched areas are deletable (not every map tap) (sw v662)
+
+- The deletable dashed outline was being remembered on every list/historic map
+  click, so a plain tap left a persisted, deletable rectangle behind. It's now
+  remembered only when a fetch actually plots observations onto the map — matching
+  "when a fetch is done, remember the area".
+
 ## 2026-07-21 — Fix: map click showed no point menu (regression from v660) (sw v661)
 
 - v660's area-persistence stored the fetched-area bounds as a plain array, but the
