@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-22 — Simplify detection location naming to the source's own place (sw v676)
+
+- The detections popup/list header now shows simply the place name the data source
+  supplies (an eBird hotspot / BirdWeather station name where present, else the
+  record's own place text). Dropped the reverse-geocoding upgrade and the nearby-
+  user-point name folding — back to the initial, simpler behaviour.
+
 ## 2026-07-21 — Fix: detection popup header shows the location, not a species (sw v675)
 
 - Clicking a detection point opens the co-located detections list, whose header is
