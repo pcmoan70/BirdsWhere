@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-21 — Revert to base map labels for display (sw v672)
+
+- Reverted the label-free basemaps (v668/v670): the light/dark bases and Streets
+  (OSM) again show their <b>own</b> place names for display. The separate "Place
+  labels" overlay is now off by default (it mainly helps Satellite, which has no
+  names of its own). Finding lesser places is left to the 🔍 place search.
+
 ## 2026-07-21 — eBird hotspots are cached and accumulate across panning (sw v671)
 
 - Fetched eBird hotspots are now saved (dedup by location, capped LRU) and every
