@@ -4622,12 +4622,19 @@
     else if (currentMode === "range") renderRangeMap();
   }
 
+  // Carto Voyager without labels — a no-labels street base used in place of OSM
+  // while the labels overlay is on (OSM's baked-in names would double the overlay).
+  var STREETS_NOLABELS = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png";
   function setBasemap(which) {
     var cfg = BASEMAPS[which] || BASEMAPS.dark;
     if (baseLayer) map.removeLayer(baseLayer);
+    var url = cfg.url, subs = cfg.subdomains || "abc", attr = cfg.attribution;
+    // Streets (OSM) carries its own labels — swap to a no-labels street base while
+    // the labels overlay is active so place names come only from the overlay.
+    if (which === "streets" && labelsMode() !== "off") { url = STREETS_NOLABELS; subs = "abcd"; attr = CARTO_ATTR; }
     // subdomains must not be undefined — Leaflet reads .length even when the
     // URL has no {s} placeholder (e.g. the Esri satellite layer).
-    baseLayer = L.tileLayer(cfg.url, { attribution: cfg.attribution, maxZoom: MAX_ZOOM, maxNativeZoom: cfg.maxNativeZoom || MAX_ZOOM, subdomains: cfg.subdomains || "abc", noWrap: true });
+    baseLayer = L.tileLayer(url, { attribution: attr, maxZoom: MAX_ZOOM, maxNativeZoom: cfg.maxNativeZoom || MAX_ZOOM, subdomains: subs, noWrap: true });
     baseLayer._origMaxNative = cfg.maxNativeZoom || MAX_ZOOM;   // restore target when online / leaving an area
     // Tile fetches failing (even when navigator reports "online" — captive portal /
     // dead connection) → treat like offline so the zoom cap upscales cached tiles
@@ -9313,7 +9320,13 @@
     var mapLabelsSel = document.getElementById("maplabels-select");
     if (mapLabelsSel) {
       mapLabelsSel.value = labelsMode();
-      mapLabelsSel.addEventListener("change", function () { window.GeoState.save({ mapLabels: this.value }); applyLabelsOverlay(); });
+      mapLabelsSel.addEventListener("change", function () {
+        window.GeoState.save({ mapLabels: this.value });
+        // On the streets base, toggling labels swaps OSM ↔ the no-labels street base
+        // (setBasemap re-applies the overlay); other bases just re-apply the overlay.
+        if (window.GeoState.get("basemap", "light") === "streets") setBasemap("streets");
+        else applyLabelsOverlay();
+      });
     }
 
     document.getElementById("perf-modal-ok").addEventListener("click", hidePerfModal);

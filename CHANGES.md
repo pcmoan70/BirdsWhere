@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-21 — Streets base drops OSM labels when the labels overlay is on (sw v670)
+
+- On the Streets (OpenStreetMap) basemap, turning on <b>Place labels</b> now swaps
+  the base to a no-labels street map (Carto Voyager) so the overlay's names don't
+  double up with OSM's baked-in labels. With labels Off, plain OSM (with its own
+  labels) is shown as before.
+
 ## 2026-07-21 — Group icons for Plants 🌿 and Fungi 🍄 (sw v669)
 
 - The Plants and Fungi species groups now have their own monochrome group icons (a
