@@ -6066,8 +6066,10 @@
       var d = haversineKm(lat, lon, +la, +lo);
       if (d <= bestD) { bestD = d; bestName = name; }
     }
-    try { (mapPoints || []).forEach(function (p) { consider(p.name, p.lat, p.lon); }); } catch (e) {}
-    try { (mpCollections || []).forEach(function (c) { (c.points || []).forEach(function (p) { consider(p.name, p.lat, p.lon); }); }); } catch (e) {}
+    // Skip detection-saved points: they're named after the SPECIES (not a place),
+    // so folding one in would put a species name in the location header.
+    try { (mapPoints || []).forEach(function (p) { if (!p.spKey) consider(p.name, p.lat, p.lon); }); } catch (e) {}
+    try { (mpCollections || []).forEach(function (c) { (c.points || []).forEach(function (p) { if (!p.spKey) consider(p.name, p.lat, p.lon); }); }); } catch (e) {}
     try { getStoredLocations().forEach(function (l) { consider(l.name, l.lat, l.lon); }); } catch (e) {}
     return bestName;
   }

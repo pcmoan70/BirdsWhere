@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-21 — Fix: detection popup header shows the location, not a species (sw v675)
+
+- Clicking a detection point opens the co-located detections list, whose header is
+  the place name. It was folding in the name of a nearby saved point — and detection-
+  saved points are named after the species, so the header could read as a species.
+  Those species-marker points (they carry a species key) are now excluded, so the
+  header is the location again.
+
 ## 2026-07-21 — Tighter offline-maps manager + smaller minimised bar (sw v674)
 
 - The offline-maps manager window is now narrower and less padded (a tighter dock),
