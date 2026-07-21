@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-21 — Offline-maps manager moved out of Settings onto the ⤓ button (sw v664)
+
+- Removed the "Manage offline maps…" entry from Settings. The manager now opens by
+  <b>press-and-hold</b> (touch OR mouse) or right-click on the map's ⤓ download
+  button — a plain tap still downloads the current view. Help text updated (15 langs).
+
 ## 2026-07-21 — Per-area delete disarms when you use the rest of the legend (sw v663)
 
 - Arming the red × for per-area delete now turns off as soon as you do anything

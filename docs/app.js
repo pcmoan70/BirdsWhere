@@ -3591,10 +3591,6 @@
                 '<p class="cu-hint" data-i18n="gdrive.hint">Syncs settings, checklists and points to your private Google Drive app folder. Deletions don’t sync between devices.</p>' +
               '</div>' +
               '<div class="settings-section" data-i18n="settings.secStorage">Storage &amp; offline</div>' +
-              '<div class="ctrl-group" id="offline-wrap">' +
-                '<label data-i18n="offline.maps">Offline maps</label>' +
-                icoBtn("offline-open", "download", "offline.manage", "Manage offline maps…") +
-              '</div>' +
               '<div class="ctrl-group">' +
                 '<label for="map-cache" data-i18n="ctrl.mapcache">Map cache</label>' +
                 '<select id="map-cache">' +
@@ -4449,8 +4445,8 @@
         a.href = "#"; a.title = t("ctrl.downloadHold"); a.setAttribute("aria-label", t("ctrl.downloadHold"));
         a.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
           '<path d="M12 3v10"/><path d="M8 11l4 4 4-4"/><path d="M4 19h16"/></svg>';
-        // Tap = download the current view; press-and-hold (touch) or right-click
-        // (mouse) = open the saved offline-maps list.
+        // Tap = download the current view; press-and-hold (touch OR mouse) or
+        // right-click = open the offline-maps manager.
         var lpT = null, lpFired = false, lpX = 0, lpY = 0;
         L.DomEvent.on(a, "touchstart", function (e) {
           lpFired = false; clearTimeout(lpT);
@@ -4459,6 +4455,14 @@
         });
         L.DomEvent.on(a, "touchmove", function (e) { var tt = e.touches && e.touches[0]; if (tt && (Math.abs(tt.clientX - lpX) > 12 || Math.abs(tt.clientY - lpY) > 12)) clearTimeout(lpT); });
         L.DomEvent.on(a, "touchend", function () { clearTimeout(lpT); });
+        // Mouse press-and-hold (left button): same 500 ms hold opens the manager.
+        L.DomEvent.on(a, "mousedown", function (e) {
+          if (e.button !== 0) return;
+          lpFired = false; clearTimeout(lpT);
+          lpT = setTimeout(function () { lpFired = true; openOfflineManager(); }, 500);
+        });
+        L.DomEvent.on(a, "mouseup", function () { clearTimeout(lpT); });
+        L.DomEvent.on(a, "mouseleave", function () { clearTimeout(lpT); });
         L.DomEvent.on(a, "contextmenu", function (e) { L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e); openOfflineManager(); });
         L.DomEvent.on(a, "click", function (e) {
           L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e);
@@ -8912,10 +8916,12 @@
       document.getElementById("natdb-modal").addEventListener("click", function (e) { if (e.target === this) navClose("natdb"); });
     }
 
-    var offlineOpenBtn = document.getElementById("offline-open");
-    if (offlineOpenBtn) {
-      offlineOpenBtn.addEventListener("click", openOfflineManager);
-      document.getElementById("offline-close").addEventListener("click", function () { navClose("offline"); });
+    // The offline-maps manager is opened by press-and-hold / right-click on the map's
+    // download button (openOfflineManager) — not from Settings. Its close/minimise
+    // controls are wired here unconditionally (the modal is always in the DOM).
+    var offlineCloseBtn = document.getElementById("offline-close");
+    if (offlineCloseBtn) {
+      offlineCloseBtn.addEventListener("click", function () { navClose("offline"); });
       document.getElementById("offline-modal").addEventListener("click", function (e) { if (e.target === this) navClose("offline"); });
       // Minimize: collapse the panel to a small bar at the bottom; the map keeps
       // showing the coloured areas + their "×" delete handles (editing stays on).
