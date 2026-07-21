@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-07-21 — "Place labels" now actually controls label density (sw v668)
+
+- The light/dark basemaps already carried their own place names, so the labels
+  overlay was invisible at "On" (it just redrew them). The light/dark bases are now
+  <b>label-free</b> and all place names come from the overlay, so the setting has a
+  real effect: <b>Off</b> = none, <b>On</b> = clean native labels, <b>More</b> = a
+  denser set (next zoom's names). Offline downloads now cache the labels too, so
+  saved areas keep their place names. Existing "Off" users are migrated to "On" once
+  so they don't suddenly lose labels.
+
 ## 2026-07-21 — Legend time filter: days/weeks 1–6, aligned on a grid (sw v667)
 
 - The time subwindow's <b>days</b> and <b>weeks</b> presets now run <b>1–6</b> (were

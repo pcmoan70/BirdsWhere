@@ -3334,8 +3334,11 @@
   var baseLayer = null;
   var CARTO_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>';
   var BASEMAPS = {
-    dark:  { url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",  attribution: CARTO_ATTR, subdomains: "abcd", maxNativeZoom: 20 },
-    light: { url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", attribution: CARTO_ATTR, subdomains: "abcd", maxNativeZoom: 20 },
+    // Label-free bases: place names come ONLY from the separate labels overlay, so
+    // the "Place labels" density setting fully controls them (an overlay on a
+    // label-carrying base was invisible / doubled the names).
+    dark:  { url: "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",  attribution: CARTO_ATTR, subdomains: "abcd", maxNativeZoom: 20 },
+    light: { url: "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", attribution: CARTO_ATTR, subdomains: "abcd", maxNativeZoom: 20 },
     // Street/political (standard OpenStreetMap)
     streets: { url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', subdomains: "abc", maxNativeZoom: 19 },
@@ -4254,6 +4257,13 @@
       zoomDelta: window.h3 ? H3_ZOOM_STEP : 1,
     });
 
+    // One-time migration: the light/dark bases became label-free, so labels now come
+    // only from the overlay. Previously "off" still showed the base's own names — bump
+    // a stored "off" to "on" once so upgrading users don't suddenly lose all labels.
+    if (!window.GeoState.get("labelsBaseMigrated", false)) {
+      if (window.GeoState.get("mapLabels", "off") === "off") window.GeoState.save({ mapLabels: "on" });
+      window.GeoState.save({ labelsBaseMigrated: true });
+    }
     setBasemap(window.GeoState.get("basemap", "light"));
 
     // Whenever the map is resized (invalidateSize from any source), make sure
@@ -4620,13 +4630,16 @@
     window.GeoState.save({ basemap: which });
     applyLabelsOverlay();   // re-pick label style (dark/light) for the new basemap
   }
-  // ---- Extra place-name labels overlay --------------------------------------
-  // Carto labels-only tiles laid over the basemap. "on" = names at native zoom
-  // (big win on satellite/topo, which carry few/no names). "more" = the labels of
-  // the NEXT zoom level rendered into this view (tileSize 128 + zoomOffset 1), so
-  // more place names show than the basemap alone.
+  // ---- Place-name labels overlay --------------------------------------------
+  // The light/dark bases are label-free, so ALL place names come from this Carto
+  // labels-only overlay and the "Place labels" setting fully controls their density:
+  //   off  → no names
+  //   on   → the view's own labels (native zoom) — clean and readable
+  //   more → the NEXT zoom's labels pulled into this view (tileSize 128 + zoomOffset
+  //          1), i.e. more (smaller) place names than the map would normally show.
+  var LABEL_LEVEL_OFFSET = { on: 0, more: 1 };   // zoom levels deeper than the view
   var labelsOverlay = null;
-  function labelsMode() { return window.GeoState.get("mapLabels", "off"); }
+  function labelsMode() { return window.GeoState.get("mapLabels", "on"); }
   function applyLabelsOverlay() {
     if (labelsOverlay) { try { map.removeLayer(labelsOverlay); } catch (e) {} labelsOverlay = null; }
     var mode = labelsMode();
@@ -4634,7 +4647,8 @@
     var bm = window.GeoState.get("basemap", "light");
     var style = (bm === "dark" || bm === "satellite") ? "dark_only_labels" : "light_only_labels";
     var opts = { attribution: "", subdomains: "abcd", maxZoom: MAX_ZOOM, maxNativeZoom: 20, noWrap: true, zIndex: 350 };
-    if (mode === "more") { opts.tileSize = 128; opts.zoomOffset = 1; }   // pull in the next zoom's (denser) labels
+    var off = LABEL_LEVEL_OFFSET[mode] || 0;
+    if (off > 0) { opts.zoomOffset = off; opts.tileSize = 256 / Math.pow(2, off); }   // deeper zoom's (denser) labels, geo-aligned
     labelsOverlay = L.tileLayer("https://{s}.basemaps.cartocdn.com/" + style + "/{z}/{x}/{y}{r}.png", opts).addTo(map);
     try { labelsOverlay.bringToFront(); } catch (e) {}   // above basemap tiles, below data markers
   }
@@ -4687,7 +4701,24 @@
       return o.layer && o.layer._base && map.hasLayer(o.layer);
     }).map(function (o) { return o.layer; });
   }
-  function offlineLayers() { return [baseLayer].concat(activeOverlayLayers()).filter(Boolean); }
+  // A native-zoom labels tile layer used ONLY to cache place names for offline use
+  // (the light/dark bases are now label-free). The live overlay may pull a denser
+  // zoom in "more" mode; offline always caches clean native labels.
+  var _offlineLabelsLayer = null;
+  function offlineLabelsLayer() {
+    var bm = window.GeoState.get("basemap", "light");
+    var style = (bm === "dark" || bm === "satellite") ? "dark_only_labels" : "light_only_labels";
+    var url = "https://{s}.basemaps.cartocdn.com/" + style + "/{z}/{x}/{y}{r}.png";
+    if (!_offlineLabelsLayer || _offlineLabelsLayer._url !== url) {
+      _offlineLabelsLayer = L.tileLayer(url, { subdomains: "abcd", maxZoom: MAX_ZOOM, maxNativeZoom: 20, noWrap: true });
+    }
+    return _offlineLabelsLayer;
+  }
+  function offlineLayers() {
+    var layers = [baseLayer].concat(activeOverlayLayers()).filter(Boolean);
+    if (labelsMode() !== "off") layers.push(offlineLabelsLayer());   // cache labels so offline maps keep place names
+    return layers;
+  }
   // Generate the exact tile URL Leaflet would request for (x,y,z) — set the
   // layer's tileZoom so the base layer's getTileUrl uses z, not its live zoom.
   function layerTileUrl(layer, x, y, z) {
