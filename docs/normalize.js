@@ -39,6 +39,16 @@ window.AppNormalize = (function () {
     // Unknown but non-empty — pass through so it still shows somewhere.
     return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
   }
+  // Plants and fungi carry obscure class names (Magnoliopsida, Agaricomycetes, …)
+  // that normClass can't all enumerate — but the KINGDOM is a clean signal. When
+  // the record's kingdom is Plantae/Fungi, classify by that so the group filter
+  // (which compares against "plantae"/"fungi") keeps them; else fall back to class.
+  function classOrKingdom(className, kingdom) {
+    var kk = String(kingdom || "").toLowerCase();
+    if (/^plant/.test(kk)) return "Plantae";
+    if (/^fung/.test(kk)) return "Fungi";
+    return normClass(className);
+  }
 
   // ---- Uniform observation sources ------------------------------------------
   // Every source is normalised to one record shape so a single aggregator maps
@@ -84,7 +94,7 @@ window.AppNormalize = (function () {
       // grade observations"), which would otherwise show as the species name.
       var vn = o.vernacularName || "";
       if (vn && (/research-grade observation|observation dataset/i.test(vn) || (o.datasetName && vn.toLowerCase() === String(o.datasetName).toLowerCase()))) vn = "";
-      out.push({ src: "GBIF", speciesCode: "", sciName: sn, comName: vn, family: o.family || "", cls: normClass(o.class), kingdom: o.kingdom || "",
+      out.push({ src: "GBIF", speciesCode: "", sciName: sn, comName: vn, family: o.family || "", cls: classOrKingdom(o.class, o.kingdom), kingdom: o.kingdom || "",
         lat: o.decimalLatitude != null ? +o.decimalLatitude : null, lon: o.decimalLongitude != null ? +o.decimalLongitude : null,
         date: (o.eventDate || "").slice(0, 10), dt: o.eventDate || "", url: o.key ? "https://www.gbif.org/occurrence/" + o.key : "", origin: o.datasetName || "", place: o.locality || "",
         observer: (Array.isArray(o.recordedBy) ? o.recordedBy.join(", ") : (o.recordedBy || "")), count: o.individualCount != null ? o.individualCount : "",
@@ -113,7 +123,7 @@ window.AppNormalize = (function () {
       // Coordinates are WGS84 but decimal-comma strings; dates are dd.mm.yyyy.
       var la = parseFloat(String(o.Latitude || "").replace(",", ".")), lo = parseFloat(String(o.Longitude || "").replace(",", "."));
       var dm = String(o.CollectedDate || "").match(/(\d{2})\.(\d{2})\.(\d{4})/), date = dm ? (dm[3] + "-" + dm[2] + "-" + dm[1]) : "";
-      out.push({ src: "Artsobs", speciesCode: "", sciName: sn, comName: o.Name || "", family: o.family || "", cls: normClass(o.klass || o.Klass || o["class"]), kingdom: o.kingdom || o.Kingdom || "",
+      out.push({ src: "Artsobs", speciesCode: "", sciName: sn, comName: o.Name || "", family: o.family || "", cls: classOrKingdom(o.klass || o.Klass || o["class"], o.kingdom || o.Kingdom), kingdom: o.kingdom || o.Kingdom || "",
         lat: isFinite(la) ? la : null, lon: isFinite(lo) ? lo : null, date: date, dt: date,
         url: artsobsUrl(o), origin: "", place: o.Municipality || o.County || "", observer: o.Collector || "", count: o.Count != null ? o.Count : "",
         act: o.Activity || o.ActivityName || o.activity || "", note: o.Comment || o.Note || o.comment || "" });
@@ -126,7 +136,7 @@ window.AppNormalize = (function () {
       var tax = o.taxon || {}, loc = o.location || {}, ev = o.event || {};
       var sn = tax.scientificName; if (!sn || !/\s/.test(sn)) return;
       var oid = String((o.occurrence && o.occurrence.occurrenceId) || ""), m = oid.match(/[Ss]ighting[:\/](\d+)/);
-      out.push({ src: "Artportalen", speciesCode: "", sciName: sn, comName: tax.vernacularName || "", family: tax.family || "", cls: normClass(tax["class"]), kingdom: tax.kingdom || "",
+      out.push({ src: "Artportalen", speciesCode: "", sciName: sn, comName: tax.vernacularName || "", family: tax.family || "", cls: classOrKingdom(tax["class"], tax.kingdom), kingdom: tax.kingdom || "",
         lat: loc.decimalLatitude != null ? +loc.decimalLatitude : null, lon: loc.decimalLongitude != null ? +loc.decimalLongitude : null,
         date: (ev.startDate || "").slice(0, 10), dt: ev.startDate || "", url: m ? "https://www.artportalen.se/sighting/" + m[1] : "", origin: "", place: loc.locality || loc.municipality || "",
         observer: (o.occurrence && o.occurrence.recordedBy) || "", count: (o.occurrence && o.occurrence.individualCount != null) ? o.occurrence.individualCount : "",
@@ -159,8 +169,9 @@ window.AppNormalize = (function () {
       var groups = p["unit.linkings.taxon.informalTaxonGroups"];
       var gtext = Array.isArray(groups) ? groups.join(",") : String(groups || "");
       var isBird = (gtext.match(/MVL\.\d+/g) || []).some(function (id) { return LAJI_BIRD_GROUPS[id]; });
+      var lajiKingdom = p["unit.linkings.taxon.kingdomScientificName"] || "";
       out.push({ src: "Laji.fi", speciesCode: "", sciName: sn, comName: com, family: "",
-        cls: isBird ? "Aves" : "", kingdom: p["unit.linkings.taxon.kingdomScientificName"] || "", noFuzzy: true,
+        cls: isBird ? "Aves" : classOrKingdom("", lajiKingdom), kingdom: lajiKingdom, noFuzzy: true,
         lat: la != null ? +la : null, lon: lon != null ? +lon : null,
         date: dm ? dm[0] : "", dt: dm ? dm[0] : "",
         url: doc ? "https://laji.fi/view?uri=" + encodeURIComponent(doc) : "",

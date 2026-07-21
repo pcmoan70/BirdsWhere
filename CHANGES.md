@@ -1,5 +1,18 @@
 # Changes
 
+## 2026-07-21 — Plants 🌿 and Fungi 🍄 species groups (observation-only) (sw v666)
+
+- Added <b>Plants</b> and <b>Fungi</b> to Settings → Species group. GBIF + iNaturalist
+  now fetch these kingdoms (GBIF kingdom keys 6/5, iNat iconic taxa), and the Nordic
+  DBs already returned them — so their observations now fetch, map, list, filter (star/
+  rare/date/observer) and save like any other group. Records are classified by kingdom
+  when their class name is obscure (e.g. Magnoliopsida → Plantae).
+- There is <b>no habitat model</b> for plants/fungi, so these groups are observation-
+  only: the <b>Migration / Species Range / Species Richness</b> modes are hidden, the
+  species list's Probability column is hidden, and a one-line hint explains why.
+- Scope: dedicated groups only — "All groups" stays the four animal taxa. eBird /
+  BirdWeather remain bird-only (skipped for these groups).
+
 ## 2026-07-21 — Legend species filter gains a life-list option (sw v665)
 
 - The legend's species subwindow (★/◉/🟡) now has a 🔴 <b>life-list</b> filter —

@@ -116,8 +116,34 @@
     aves:     { gbif: 212, inat: "Aves" },
     mammalia: { gbif: 359, inat: "Mammalia" },
     amphibia: { gbif: 131, inat: "Amphibia" },
-    insecta:  { gbif: 216, inat: "Insecta" }
+    insecta:  { gbif: 216, inat: "Insecta" },
+    // Observation-only kingdoms (no habitat model): Plantae/Fungi GBIF kingdom keys.
+    plantae:  { gbif: 6, inat: "Plantae" },
+    fungi:    { gbif: 5, inat: "Fungi" }
   };
+  // Groups the BirdNET geomodel does NOT cover — observation search only (no range,
+  // richness, migration or predicted probability).
+  var NO_MODEL_GROUPS = { plantae: 1, fungi: 1 };
+  function groupHasModel() { return !NO_MODEL_GROUPS[speciesGroup]; }
+  // Show/hide the model-only modes (Migration / Range / Richness) for the active
+  // group, and the "observation-only" hint. If a now-hidden mode is active, fall
+  // back to the observation list. Called on group change and at startup.
+  function refreshGroupModeOptions() {
+    var hasModel = groupHasModel();
+    var modeEl = document.getElementById("mode-select");
+    if (modeEl) {
+      ["barchart", "range", "richness"].forEach(function (v) {
+        var opt = modeEl.querySelector('option[value="' + v + '"]');
+        if (opt) { opt.hidden = !hasModel; opt.disabled = !hasModel; }
+      });
+      if (!hasModel && ["barchart", "range", "richness"].indexOf(modeEl.value) >= 0) {
+        modeEl.value = "list";
+        modeEl.dispatchEvent(new Event("change"));   // run the full mode switch
+      }
+    }
+    var hint = document.getElementById("group-nomodel-hint");
+    if (hint) hint.style.display = hasModel ? "none" : "";
+  }
   function groupTaxaList() {
     if (speciesGroup === "all") return [GROUP_TAXA.aves, GROUP_TAXA.mammalia, GROUP_TAXA.amphibia, GROUP_TAXA.insecta];
     return [GROUP_TAXA[speciesGroup] || GROUP_TAXA.aves];
@@ -1547,6 +1573,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { date: "2026-07-21", text: "Plants 🌿 and Fungi 🍄 species groups (Settings → Species group). The Nordic databases (Artsobservasjoner, Artportalen, Laji.fi), GBIF and iNaturalist also carry flora and fungi — pick the group to fetch, map, list, filter and save their observations. There's no habitat model for them, so it's observation-search only: Range, Richness and Migration are hidden for these groups." },
     { date: "2026-07-21", text: "The map legend's filters are now dropdown subwindows. Time opens presets (1/2/3 days, weeks, months) plus a from–to date range; the ★/◉/🟡 species filter shows each option with its symbol and meaning. And the red × now deletes fetched areas one at a time — the first click puts a red × on each fetched rectangle (tap it to remove just that area's detections), a second click on the legend × clears everything." },
     { date: "2026-07-20", text: "Deduplicate detections (Settings → Fetching & detections): when the same sighting is registered in two databases — same observer, approximate location, date, count and species — show it once instead of twice. Off by default (shows every source's copy)." },
     { date: "2026-07-18", text: "The map legend now orders species by the habitat model's probability (lowest → highest); for a species with several observations it uses the highest probability among them." },
@@ -3458,7 +3485,10 @@
                   '<option value="mammalia" data-i18n="group.mammalia">Mammals</option>' +
                   '<option value="amphibia" data-i18n="group.amphibia">Amphibians</option>' +
                   '<option value="insecta" data-i18n="group.insecta">Insects</option>' +
+                  '<option value="plantae" data-i18n="group.plantae">Plants</option>' +
+                  '<option value="fungi" data-i18n="group.fungi">Fungi</option>' +
                 '</select>' +
+                '<p class="cu-hint" id="group-nomodel-hint" style="display:none" data-i18n="group.noModelHint">No habitat model for this group — observation search only (no range, richness or migration).</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label for="recent-radius" data-i18n="ctrl.recentradius">Sightings radius</label>' +
@@ -9283,6 +9313,9 @@
       speciesGroup = this.value;
       window.GeoState.save({ group: speciesGroup });
       updateSettingsIcon();
+      // Plants/Fungi have no model → hide the model-only modes (may switch the
+      // active mode to the observation list, which re-renders on its own).
+      refreshGroupModeOptions();
       // Re-render whatever depends on the species set.
       if (currentMode === "richness") triggerRender();
       else if (currentMode === "barchart" && analysisData) renderActiveTab();
@@ -13038,6 +13071,9 @@
     if (currentMode === "list") saveSession({ mode: "list", page: "species", lat: lat, lon: lon });
     var spTitle = document.getElementById("sp-title"); if (spTitle) spTitle.textContent = hist ? t("mode.historic") : t("panel.spTitle");
     setPointMarker(lat, lon);   // show the pin for the point this list is about
+    // No-model groups (Plants/Fungi): only observed species appear (as extras) and
+    // there's no predicted probability — hide the Probability column for them.
+    var slt = document.getElementById("species-list-table"); if (slt) slt.classList.toggle("no-model", !groupHasModel());
     // Reset the agg toggle on the prob column header (country-only feature).
     var ph0 = document.getElementById("sp-prob-head");
     if (ph0) { ph0.textContent = t("th.prob"); ph0.title = ""; ph0.classList.remove("clickable-head"); }
@@ -13773,6 +13809,7 @@
     speciesGroup = window.GeoState.get("group", "aves");
     document.getElementById("group-select").value = speciesGroup;
     updateSettingsIcon();
+    refreshGroupModeOptions();   // hide model-only modes + show the hint for Plants/Fungi
 
     // H3 detail offset (-2..+2, 0 = auto), set via the on-map hexagon control.
     hiResFactor = Math.max(-2, Math.min(2, +window.GeoState.get("hiResOffset", 0) || 0));

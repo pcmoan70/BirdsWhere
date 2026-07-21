@@ -606,6 +606,9 @@ input:focus-visible {
 #species-list-table .sci { font-style: italic; }
 #species-list-table.hide-sci .sci,
 #species-list-table.hide-sci #sp-sci-head { display: none; }
+/* No-model groups (Plants/Fungi): no predicted probability → hide that column. */
+#species-list-table.no-model .prob-cell,
+#species-list-table.no-model #sp-prob-head { display: none; }
 .ctrl-check { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem; }
 .ctrl-check input { width: 16px; height: 16px; margin: 0; cursor: pointer; flex: 0 0 auto; }
 /* Custom country links editor in Settings */
