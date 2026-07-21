@@ -5164,51 +5164,87 @@
 
   // Minimum all-time species for a hotspot to be shown ("real hotspots" filter).
   function hotspotMin() { return +window.GeoState.get("hotspotMin", 200) || 0; }
-  // eBird birding hotspots near the view, as clickable markers (name + all-time
-  // species count + last-seen). Uses the user's eBird key; refreshes on pan.
-  // Filtered by all-time species count; richer hotspots get larger markers.
+  // Persistent hotspot store (dedup by locId) so hotspots ACCUMULATE as you pan and
+  // survive reloads — the layer shows every cached hotspot, not just the current
+  // view's query. Capped (LRU by last-seen) so it can't grow without bound.
+  var HOTSPOT_STORE_CAP = 3000;
+  function loadHotspotStore() { return window.GeoState.get("ebirdHotspots", {}) || {}; }
+  function saveHotspotStore(store) {
+    var ids = Object.keys(store);
+    if (ids.length > HOTSPOT_STORE_CAP) {
+      ids.sort(function (a, b) { return (store[b].ts || 0) - (store[a].ts || 0); });   // newest first
+      var trimmed = Object.create(null);
+      ids.slice(0, HOTSPOT_STORE_CAP).forEach(function (id) { trimmed[id] = store[id]; });
+      store = trimmed;
+    }
+    window.GeoState.save({ ebirdHotspots: store });
+    return store;
+  }
+  // eBird birding hotspots as clickable markers (name + all-time species count +
+  // last-seen). Uses the user's eBird key; panning fetches new areas and MERGES them
+  // into the persistent store, then all cached hotspots are (re)drawn.
   function ebirdHotspotLayer() {
     var grp = L.layerGroup(), active = false, tok = 0;
-    // Cache fetched hotspots by a ~0.25° grid cell + distance bucket, so panning
-    // around (and re-showing the layer) reuses results instead of re-querying eBird.
-    var hsCache = {}, hsOrder = [];
+    var store = loadHotspotStore();          // locId → { locId, locName, lat, lng, numSpeciesAllTime, latestObsDt, ts }
+    var lastCtx = { capped: false, c: null, dist: 0 };
+    // Which ~0.25° grid cells were fetched this session (1 h TTL) so panning back
+    // over an area doesn't re-query eBird — the hotspots are already in the store.
+    var fetched = {}, fetchedOrder = [];
     function hsKey(lat, lng, dist) { return (Math.round(lat * 4) / 4) + "," + (Math.round(lng * 4) / 4) + ":" + dist; }
-    function hsCachePut(k, rows) {
-      hsCache[k] = { rows: rows, ts: Date.now() }; hsOrder.push(k);
-      while (hsOrder.length > 80) { var old = hsOrder.shift(); if (hsOrder.indexOf(old) < 0) delete hsCache[old]; }
+    function markFetched(k) {
+      fetched[k] = Date.now(); fetchedOrder.push(k);
+      while (fetchedOrder.length > 200) { var old = fetchedOrder.shift(); if (fetchedOrder.indexOf(old) < 0) delete fetched[old]; }
     }
-    function drawHotspots(rows, capped, c, dist) {
-      grp.clearLayers();
-      var minSp = hotspotMin(), shown = 0;
+    function mergeRows(rows) {
+      var now = Date.now(), changed = false;
       (rows || []).forEach(function (h) {
-        if (h.lat == null || h.lng == null) return;
-        var n = h.numSpeciesAllTime || 0;
-        if (minSp && n < minSp) return;   // skip trivial hotspots
-        var m = L.circleMarker([h.lat, h.lng], { radius: 4 + Math.min(7, Math.round(n / 40)), color: "#8a4b12", weight: 1.5, fillColor: "#f0992e", fillOpacity: 0.85 });
-        var sp = h.numSpeciesAllTime != null ? " · " + n + " " + t("layer.species") : "";
-        var last = h.latestObsDt ? " · " + String(h.latestObsDt).slice(0, 10) : "";
-        m.bindTooltip("<b>" + escapeHtml(h.locName || "") + "</b><span class='area-tip-sub'>" + escapeHtml(sp + last) + "</span>", { direction: "top", className: "area-tip" });
-        // Click → a popup with the eBird hotspot page + a Navigate (Google Maps
-        // driving directions) option. (h and m are per-iteration here.)
+        if (!h || h.locId == null || h.lat == null || h.lng == null) return;
+        store[h.locId] = { locId: h.locId, locName: h.locName || "", lat: h.lat, lng: h.lng,
+          numSpeciesAllTime: h.numSpeciesAllTime || 0, latestObsDt: h.latestObsDt || "", ts: now };
+        changed = true;
+      });
+      if (changed) store = saveHotspotStore(store);
+    }
+    function hotspotMeta(h) {
+      var n = h.numSpeciesAllTime || 0;
+      var sp = h.numSpeciesAllTime != null ? " · " + n + " " + t("layer.species") : "";
+      var last = h.latestObsDt ? " · " + String(h.latestObsDt).slice(0, 10) : "";
+      return sp + last;
+    }
+    function makeHotspotMarker(h) {
+      var n = h.numSpeciesAllTime || 0;
+      var m = L.circleMarker([h.lat, h.lng], { radius: 4 + Math.min(7, Math.round(n / 40)), color: "#8a4b12", weight: 1.5, fillColor: "#f0992e", fillOpacity: 0.85 });
+      m.bindTooltip("<b>" + escapeHtml(h.locName || "") + "</b><span class='area-tip-sub'>" + escapeHtml(hotspotMeta(h)) + "</span>", { direction: "top", className: "area-tip" });
+      // Build the popup lazily (only when clicked) — with up to a few thousand cached
+      // hotspots drawn, eagerly creating a popup DOM per marker would be wasteful.
+      m.bindPopup(function () {
+        var meta = hotspotMeta(h);
         var pop = document.createElement("div"); pop.className = "map-choose hs-popup";
         var hd = document.createElement("div"); hd.className = "hs-pop-head";
         hd.innerHTML = "<b>" + escapeHtml(h.locName || "") + "</b>" +
-          ((sp || last) ? "<span class='hs-pop-sub'>" + escapeHtml((sp + last).replace(/^ · /, "")) + "</span>" : "");
+          (meta ? "<span class='hs-pop-sub'>" + escapeHtml(meta.replace(/^ · /, "")) + "</span>" : "");
         pop.appendChild(hd);
         pop.appendChild(makePopupBtn("eBird ↗", "demo-btn-light", function () { m.closePopup(); openExternal("https://ebird.org/hotspot/" + h.locId); }));
         pop.appendChild(makePopupBtn(t("nav.title") + " ↗", "demo-btn-light", function () { m.closePopup(); navigatePoints([{ lat: h.lat, lon: h.lng }]); }));
-        m.bindPopup(pop, { closeButton: true, className: "choose-popup", offset: [0, -4] });
-        grp.addLayer(m); shown++;
+        return pop;
+      }, { closeButton: true, className: "choose-popup", offset: [0, -4] });
+      return m;
+    }
+    // Redraw EVERY cached hotspot passing the min-species filter (not just the last
+    // query's) — so hotspots stay on the map as you pan and come back on reload.
+    function drawAllHotspots(capped, c, dist) {
+      grp.clearLayers();
+      var minSp = hotspotMin(), shown = 0;
+      Object.keys(store).forEach(function (id) {
+        var h = store[id]; if (!h || h.lat == null || h.lng == null) return;
+        if (minSp && (h.numSpeciesAllTime || 0) < minSp) return;
+        grp.addLayer(makeHotspotMarker(h)); shown++;
       });
-      // eBird caps a query at 500 km, so when the view is bigger the hotspots only
-      // cover a 500 km radius round the centre — draw that boundary + say so, so the
-      // partial coverage is clear rather than confusing.
-      if (capped) {
-        grp.addLayer(L.circle([c.lat, c.lng], { radius: dist * 1000, color: "#8a4b12", weight: 1.5, dashArray: "6 5", fill: false, interactive: false }));
-        setStatus(t("layer.hotspotsCapped"));
-      } else if (!shown) {
-        setStatus(t("layer.hotspotsNone"));
-      }
+      // eBird caps a query at 500 km, so a bigger view only covered a 500 km radius
+      // round the centre — draw that boundary so the partial fetch is clear.
+      if (capped && c) grp.addLayer(L.circle([c.lat, c.lng], { radius: dist * 1000, color: "#8a4b12", weight: 1.5, dashArray: "6 5", fill: false, interactive: false }));
+      if (capped) setStatus(t("layer.hotspotsCapped"));
+      else if (!shown) setStatus(t("layer.hotspotsNone"));
     }
     function load() {
       var key = ebirdKey();
@@ -5217,28 +5253,36 @@
       var radius = Math.round(haversineKm(c.lat, c.lng, b.getNorth(), b.getEast()));
       var capped = radius > 500;
       var dist = Math.min(500, Math.max(10, Math.ceil(radius / 25) * 25));   // 25 km buckets → cache-friendly
+      lastCtx = { capped: capped, c: c, dist: dist };
       var ck = hsKey(c.lat, c.lng, dist);
-      var cached = hsCache[ck];
-      if (cached && (Date.now() - cached.ts) < 3600000) { drawHotspots(cached.rows, capped, c, dist); return; }   // 1 h TTL
+      // This cell was already fetched recently → its hotspots are in the store; just
+      // redraw the full accumulated set (no re-query).
+      if (fetched[ck] && (Date.now() - fetched[ck]) < 3600000) { drawAllHotspots(capped, c, dist); return; }
       var mine = ++tok;
       var url = "https://api.ebird.org/v2/ref/hotspot/geo?lat=" + c.lat.toFixed(4) + "&lng=" + c.lng.toFixed(4) + "&dist=" + dist + "&fmt=json";
       fetch(url, { headers: { "X-eBirdApiToken": key } })
         .then(function (r) { if (!r.ok) { var er = new Error("HTTP " + r.status); er.status = r.status; throw er; } return r.json(); })
         .then(function (rows) {
           if (mine !== tok || !active) return;
-          hsCachePut(ck, rows || []);
-          drawHotspots(rows, capped, c, dist);
+          markFetched(ck);
+          mergeRows(rows);
+          drawAllHotspots(capped, c, dist);
         }).catch(function (e) {
           if (!active) return;
-          grp.clearLayers();
+          drawAllHotspots(capped, c, dist);   // keep showing the cached hotspots even if this fetch failed
           // 401/403 = eBird rejected the key (invalid/expired). Point the user at it
           // rather than showing a raw "HTTP 403".
           if (e.status === 401 || e.status === 403) setStatus(t("layer.hotspotsKeyBad"));
           else setStatus(t("status.error", { msg: "eBird hotspots " + e.message }));
         });
     }
-    grp._reload = function () { if (active) load(); };
-    grp.on("add", function () { active = true; map.attributionControl.addAttribution(EBIRD_HS_ATTR); load(); });
+    grp._reload = function () { if (active) drawAllHotspots(lastCtx.capped, lastCtx.c, lastCtx.dist); };   // min-species change → re-filter, no refetch
+    grp.on("add", function () {
+      active = true; map.attributionControl.addAttribution(EBIRD_HS_ATTR);
+      store = loadHotspotStore();
+      drawAllHotspots(false, null, 0);   // show cached hotspots instantly…
+      load();                            // …then fetch the current view and accumulate
+    });
     grp.on("remove", function () { active = false; map.attributionControl.removeAttribution(EBIRD_HS_ATTR); });
     map.on("moveend", function () { if (active) load(); });
     return grp;

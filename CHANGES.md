@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-21 — eBird hotspots are cached and accumulate across panning (sw v671)
+
+- Fetched eBird hotspots are now saved (dedup by location, capped LRU) and every
+  cached hotspot is shown — not just the ones in the current view's query. Panning
+  around adds new hotspots to the map instead of replacing them, and they persist
+  across reloads. Popups are built on click so drawing many stays light.
+
 ## 2026-07-21 — Streets base drops OSM labels when the labels overlay is on (sw v670)
 
 - On the Streets (OpenStreetMap) basemap, turning on <b>Place labels</b> now swaps
