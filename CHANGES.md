@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-21 — Tighter offline-maps manager + smaller minimised bar (sw v674)
+
+- The offline-maps manager window is now narrower and less padded (a tighter dock),
+  and when minimised it shrinks to a small pill at the bottom-right instead of a
+  full-width title bar.
+
 ## 2026-07-21 — Map-point list admin moved to its own popup (sw v673)
 
 - Editing, protecting (🔒) and deleting saved map-point lists moved out of Settings →

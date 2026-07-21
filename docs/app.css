@@ -1531,11 +1531,11 @@ button.dd-name:hover { text-decoration: underline; }
    doesn't block map panning / the on-map "×" delete handles. */
 #offline-modal {
   inset: auto; top: var(--header-h, 56px); right: 0; bottom: 0; left: auto;
-  width: 340px; max-width: 90vw; padding: 8px;
+  width: 272px; max-width: 86vw; padding: 6px;
   background: transparent; pointer-events: none;
   align-items: stretch; justify-content: flex-end;
 }
-#offline-box { pointer-events: auto; width: 100%; max-width: none; max-height: 100%; margin: 0; }
+#offline-box { pointer-events: auto; width: 100%; max-width: none; max-height: 100%; margin: 0; padding: 12px 14px; }
 /* Colour key in the list matching each area's outline on the map. */
 .offline-sw { flex: 0 0 auto; width: 12px; height: 12px; border-radius: 3px; box-shadow: 0 0 0 1px rgba(0,0,0,.25) inset; }
 /* Tappable "×" delete handle at a downloaded area's top-right corner. */
@@ -1552,11 +1552,15 @@ button.dd-name:hover { text-decoration: underline; }
   font-size: 22px; line-height: 1; color: var(--ink-muted); cursor: pointer; padding: 0 4px; z-index: 1;
 }
 #offline-min:hover { color: var(--ink); }
-/* Minimized: collapse to the title bar at the bottom of the dock; the map's
-   coloured areas + "×" delete handles stay visible for editing. */
-#offline-box.min { max-height: none; align-self: flex-end; }
+/* Minimized: collapse to a small title bar at the bottom-right of the dock (shrunk
+   to its content, not full width); the map's coloured areas + "×" delete handles
+   stay visible for editing. */
+#offline-box.min { max-height: none; width: auto; align-self: flex-end; margin-top: auto; padding: 5px 8px; }
 #offline-box.min .offline-body { display: none; }
-#offline-box.min h3 { margin-bottom: 0; }
+#offline-box.min h3 { margin: 1px 22px 1px 20px; font-size: 0.85rem; white-space: nowrap; }
+#offline-box.min #offline-min, #offline-box.min #offline-close { top: 4px; font-size: 1.1rem; }
+#offline-box.min #offline-min { left: 6px; }
+#offline-box.min #offline-close { right: 7px; }
 #gbif-box h3, #natdb-box h3, #sources-box h3, #det-sets-box h3, #blocked-box h3, #lists-box h3, #blogs-box h3 { margin: 0 28px 8px 0; font-size: 1.1rem; color: var(--brand-deep); }
 #offline-box h3 { margin: 0 28px 8px 28px; font-size: 1.1rem; color: var(--brand-deep); text-align: center; }
 #gbif-close, #natdb-close, #offline-close, #sources-close, #det-sets-close, #blocked-close, #lists-close, #blogs-close {
