@@ -1,5 +1,21 @@
 # Changes
 
+## 2026-07-21 — Legend filters as subwindows + per-area delete (sw v659)
+
+- The detection legend's filter buttons now open dropdown subwindows (like the 👤
+  observer one):
+  - <b>Time</b>: preset chips for 1/2/3 <b>days</b>, <b>weeks</b> and <b>months</b>,
+    an <b>All</b> chip, plus a <b>from–to date range</b> (an absolute range takes
+    precedence over the rolling window). The button shows a compact label (1d/2w/3m/∞/⇆).
+  - <b>Species</b> (★/◉/🟡): each option is now a row showing its symbol and meaning
+    — All, ★ Starred, ◉ Rare, 🟡 Needs this year — instead of a blind cycle button.
+- The legend's <b>red ×</b> is now two-stage: with fetched-area outlines present, the
+  first click arms per-area delete (a red × appears on each fetched rectangle — tap it
+  to remove just that area's detections and its outline); a second click on the legend
+  × clears everything (unchanged when there are no areas).
+- Internals: a single `detDatePasses()` time predicate now backs the map, legend, list
+  and hover; per-area delete is computed geometrically from each rectangle's bounds.
+
 ## 2026-07-20 — Render HTML notes on points (imported KML descriptions) (sw v658)
 
 - Point notes can now be flagged as <b>HTML</b> so they render as formatted markup

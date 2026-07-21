@@ -1547,6 +1547,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { date: "2026-07-21", text: "The map legend's filters are now dropdown subwindows. Time opens presets (1/2/3 days, weeks, months) plus a from–to date range; the ★/◉/🟡 species filter shows each option with its symbol and meaning. And the red × now deletes fetched areas one at a time — the first click puts a red × on each fetched rectangle (tap it to remove just that area's detections), a second click on the legend × clears everything." },
     { date: "2026-07-20", text: "Deduplicate detections (Settings → Fetching & detections): when the same sighting is registered in two databases — same observer, approximate location, date, count and species — show it once instead of twice. Off by default (shows every source's copy)." },
     { date: "2026-07-18", text: "The map legend now orders species by the habitat model's probability (lowest → highest); for a species with several observations it uses the highest probability among them." },
     { date: "2026-07-17", text: "Faster reopen: the app now remembers the last few locations' downloaded observations, so reopening (or revisiting a place) reuses them instead of re-fetching — and a cached location even opens offline. Fresh data is still fetched for new places or after the reuse window (Settings, default 30 min)." },
@@ -1707,7 +1708,11 @@
   // Remembered fetched areas: each fetch leaves a THIN dashed green outline of the
   // area it covered (no fill), accumulating on the map and cleared only when the
   // detections are cleared. Deduped so the same spot+radius isn't outlined twice.
-  var fetchedAreasLayer = null, fetchedAreaKeys = null;
+  // Remembered fetched-area outlines. Each area keeps its bounds + rectangle so the
+  // red × "delete one area" flow can remove just that area's detections (any dot
+  // whose point falls inside the rectangle) and its outline.
+  var fetchedAreasLayer = null, fetchedAreaKeys = null, fetchedAreas = [];
+  var areaDelLayer = null, detAreaDeleteMode = false;
   function rememberFetchedArea(lat, lon, rkm) {
     if (!map || !L.rectangle || !isFinite(lat) || !isFinite(lon)) return;
     rkm = rkm || recentRadiusKm();
@@ -1716,9 +1721,66 @@
     if (fetchedAreaKeys[key]) return;   // already outlined
     fetchedAreaKeys[key] = 1;
     var b = fetchAreaBounds(L.latLng(lat, lon));
-    fetchedAreasLayer.addLayer(L.rectangle(b, { color: "#2e8b74", weight: 1, opacity: 0.5, dashArray: "2 4", fill: false, interactive: false }));
+    var rect = L.rectangle(b, { color: "#2e8b74", weight: 1, opacity: 0.5, dashArray: "2 4", fill: false, interactive: false });
+    fetchedAreasLayer.addLayer(rect);
+    var area = { id: key, bounds: b, rect: rect, delMarker: null };
+    fetchedAreas.push(area);
+    if (detAreaDeleteMode) addAreaDelMarker(area);   // a fetch while armed → show its × too
   }
-  function clearFetchedAreas() { if (fetchedAreasLayer) fetchedAreasLayer.clearLayers(); fetchedAreaKeys = fetchedAreasLayer ? Object.create(null) : null; }
+  function clearFetchedAreas() {
+    if (fetchedAreasLayer) fetchedAreasLayer.clearLayers();
+    fetchedAreaKeys = fetchedAreasLayer ? Object.create(null) : null;
+    fetchedAreas = [];
+    exitAreaDeleteMode();
+  }
+  // ---- Per-area delete (the red ×'s two-stage behaviour) --------------------
+  // A small red × pinned to each fetched rectangle's NE corner. Tap one → delete
+  // that area (its detections + outline). The legend's red × arms this mode on the
+  // first click and deletes everything on the second.
+  function addAreaDelMarker(area) {
+    if (!map || !L.marker) return;
+    if (!areaDelLayer) areaDelLayer = L.layerGroup().addTo(map);
+    var icon = L.divIcon({ className: "area-del-icon", html: "×", iconSize: [24, 24], iconAnchor: [12, 12] });
+    var mk = L.marker(area.bounds.getNorthEast(), { icon: icon, keyboard: false, zIndexOffset: 2000, title: t("det.delArea") });
+    mk.on("click", function (e) { if (L.DomEvent) L.DomEvent.stop(e); mapClickGuardUntil = Date.now() + 250; deleteFetchedArea(area.id); });
+    area.delMarker = mk;
+    areaDelLayer.addLayer(mk);
+  }
+  function enterAreaDeleteMode() {
+    if (!fetchedAreas.length) return;
+    detAreaDeleteMode = true;
+    if (!areaDelLayer) areaDelLayer = L.layerGroup().addTo(map);
+    areaDelLayer.clearLayers();
+    fetchedAreas.forEach(addAreaDelMarker);
+  }
+  function exitAreaDeleteMode() {
+    detAreaDeleteMode = false;
+    if (areaDelLayer) areaDelLayer.clearLayers();
+  }
+  // Delete one fetched area: drop every FETCHED detection row whose point falls
+  // inside the rectangle (list-injected rows, r._list, are left to their list),
+  // remove any species left empty, then remove the outline + ×.
+  function deleteFetchedArea(id) {
+    var idx = -1; for (var i = 0; i < fetchedAreas.length; i++) if (fetchedAreas[i].id === id) { idx = i; break; }
+    if (idx < 0) return;
+    var area = fetchedAreas[idx], b = area.bounds;
+    Object.keys(detPlot).forEach(function (k) {
+      var e = detPlot[k], rows = e.rows || [];
+      var kept = rows.filter(function (r) {
+        if (r._list) return true;   // belongs to a shown list, not this fetch
+        return !(isFinite(+r.lat) && isFinite(+r.lon) && b.contains([+r.lat, +r.lon]));
+      });
+      if (kept.length === rows.length) return;                 // untouched
+      if (!kept.length) { if (e.group) map.removeLayer(e.group); delete detPlot[k]; delete detSelected[k]; }
+      else e.rows = kept;
+    });
+    if (area.rect && fetchedAreasLayer) fetchedAreasLayer.removeLayer(area.rect);
+    if (area.delMarker && areaDelLayer) areaDelLayer.removeLayer(area.delMarker);
+    if (fetchedAreaKeys) delete fetchedAreaKeys[id];
+    fetchedAreas.splice(idx, 1);
+    if (!fetchedAreas.length) exitAreaDeleteMode();
+    rebuildDetLayers(); updateDetLegend(); saveDetections();
+  }
 
   // ---- All-species sightings (for per-point species-list augmentation) ------
   // Fetch GBIF + iNaturalist + (with key) eBird detections at the clicked
@@ -5148,6 +5210,15 @@
   var detObsNames = [];                 // selected non-empty names = substring needles
   var detObsAllowNone = false;          // is "(no observer)" selected
   var detObsPanelOpen = false;          // is the observer checklist showing (transient)
+  var detDaysPanelOpen = false;         // is the time-window (days/range) subwindow showing
+  var detModePanelOpen = false;         // is the species (★/◉/🟡) subwindow showing
+  // The three legend subwindows are mutually exclusive — opening one closes the
+  // others so they don't stack on top of the small legend.
+  function openDetPanel(which) {
+    detDaysPanelOpen = which === "days" ? !detDaysPanelOpen : false;
+    detModePanelOpen = which === "mode" ? !detModePanelOpen : false;
+    detObsPanelOpen = which === "obs" ? !detObsPanelOpen : false;
+  }
   // Some "observer" values are organisation/source tags, not people. They're
   // dropped from the checklist; a record left with only tags counts as "no
   // observer". (Matched case-insensitively, trimmed.)
@@ -5262,6 +5333,26 @@
     var t = Date.parse(dateStr); if (isNaN(t)) return false;
     return (Date.now() - t) / 86400000 <= maxDays;
   }
+  // Absolute from–to date range (YYYY-MM-DD), an alternative to the rolling "last
+  // N days" window. Null when neither end is set. When a range is active it takes
+  // precedence over the days preset.
+  function detDateRange() {
+    var r = window.GeoState.get("detDateRange", null);
+    return (r && (r.from || r.to)) ? { from: r.from || "", to: r.to || "" } : null;
+  }
+  // The single time predicate every plotted detection passes through: a set date
+  // range if one is active, else the rolling recency window.
+  function detDatePasses(dateStr) {
+    var rg = detDateRange();
+    if (rg) {
+      var d = String(dateStr || "").slice(0, 10);
+      if (!d) return false;
+      if (rg.from && d < rg.from) return false;
+      if (rg.to && d > rg.to) return false;
+      return true;
+    }
+    return recentEnough(dateStr, detRecencyDays());
+  }
   // Cap on how many detection dots are DRAWN at once (markers are the draw-speed
   // bottleneck). Data is never dropped — the rest still show in the Detections
   // list and sync normally; only the map render is limited to the newest N.
@@ -5318,7 +5409,7 @@
   }
   // All rows that WOULD be drawn (visible species, passing the recency filter).
   function eachDrawableRow(fn) {
-    var maxDays = detRecencyDays(), selActive = detSelectionActive();
+    var selActive = detSelectionActive();
     Object.keys(detPlot).forEach(function (k) {
       // Mirror rebuildDetLayers' visibility: a legend hover (detFocusKey) isolates
       // one species and overrides the selection, so the draw-cap set matches what's
@@ -5327,7 +5418,7 @@
       if (detFocusKey) { if (k !== detFocusKey) return; }
       else if (!detIsVisible(k, selActive)) return;
       var spKey = (detPlot[k] && detPlot[k].key) || k;
-      (detPlot[k].rows || []).forEach(function (r) { if (recentEnough(r.date, maxDays)) fn(r, spKey); });
+      (detPlot[k].rows || []).forEach(function (r) { if (detDatePasses(r.date)) fn(r, spKey); });
     });
   }
   function detDrawableCount() { var n = 0; eachDrawableRow(function () { n++; }); return n; }
@@ -5356,7 +5447,7 @@
   // of a clicked dot. Without it, every visible detection on the map is returned.
   function collectVisibleDetections(near) {
     ensureDedup();
-    var maxDays = detRecencyDays(), out = [];
+    var out = [];
     var center = near ? L.latLng(near.lat, near.lon) : null;
     // Cheap bounding-box half-widths (deg) for the radius test — reject far rows
     // with plain float compares before the per-row L.latLng alloc + haversine.
@@ -5367,7 +5458,7 @@
       if (!detIsVisible(k, selActive)) return;
       var e = detPlot[k], nm = detName(e);
       (e.rows || []).forEach(function (r) {
-        if (!recentEnough(r.date, maxDays)) return;
+        if (!detDatePasses(r.date)) return;
         if (!detObsPasses(r)) return;          // observer filter (legend 👤)
         if (center) {
           if (Math.abs(r.lat - near.lat) > dLat || Math.abs(r.lon - near.lon) > dLon) return;   // bbox reject (cheap)
@@ -6111,7 +6202,7 @@
   // rare and (starred/rare), else a plain coloured circle — all SVG so they keep
   // aligned with each other at the map's fractional zoom levels.
   function renderDetGroup(name, rows, color, starred, rare, allowed, key) {
-    var g = L.layerGroup(), maxDays = detRecencyDays(), visible = 0;
+    var g = L.layerGroup(), visible = 0;
     var fill = color;
     var fillOp = 0.9, strokeOp = 0.9;
     var edge = detEdgeStyle(key);   // year/life-list "needs" → yellow edge (thin year, thick life)
@@ -6121,7 +6212,7 @@
     // that will actually be drawn (recency + draw-cap filtered).
     var obsByLoc = Object.create(null), drawRows = [];
     rows.forEach(function (r) {
-      if (!recentEnough(r.date, maxDays)) return;
+      if (!detDatePasses(r.date)) return;
       if (allowed && !allowed.has(r)) return;   // global cap: only the newest N are drawn
       if (!detObsPasses(r)) return;             // observer filter (legend 👤)
       var lk = (+r.lat).toFixed(4) + "," + (+r.lon).toFixed(4);
@@ -6433,9 +6524,9 @@
   function clearAllFilters() {
     detSelected = {};
     detStarFilter = false; detRareFilter = false; detYearFilter = false;
-    detObsPanelOpen = false;
+    detObsPanelOpen = false; detDaysPanelOpen = false; detModePanelOpen = false;
     setDetObsFilter(null);                                                   // observer → all
-    if (detRecencyDays() !== 0) window.GeoState.save({ detRecencyDays: 0 }); // days → All
+    window.GeoState.save({ detRecencyDays: 0, detDateRange: null });        // days + range → All
     saveLegendState(); rebuildDetLayers(); updateDetLegend();
   }
   // The red × clears the WHOLE map of plotted points: fetched dots, plus every
@@ -6449,7 +6540,7 @@
     Object.keys(detPlot).forEach(function (k) { if (detPlot[k].group) map.removeLayer(detPlot[k].group); });
     detPlot = {}; detSelected = {};
     detStarFilter = false; detRareFilter = false; detYearFilter = false;
-    setDetObsFilter(null); detObsPanelOpen = false; detLegendMini = false;
+    setDetObsFilter(null); detObsPanelOpen = false; detDaysPanelOpen = false; detModePanelOpen = false; detLegendMini = false;
     var hadShown = Object.keys(shownColls).length || Object.keys(shownDetSets).length;
     shownColls = {}; shownDetSets = {};
     updateDetSetOverlays();     // remove detection-set overlays
@@ -6598,10 +6689,10 @@
   // pulls in another device's dots so they actually land on screen.
   function fitToDetections() {
     if (!map) return;
-    var maxDays = detRecencyDays(), b = L.latLngBounds([]), selActive = detSelectionActive();
+    var b = L.latLngBounds([]), selActive = detSelectionActive();
     Object.keys(detPlot).forEach(function (k) {
       if (!detIsVisible(k, selActive)) return;
-      (detPlot[k].rows || []).forEach(function (r) { if (r && isFinite(+r.lat) && isFinite(+r.lon) && recentEnough(r.date, maxDays)) b.extend([+r.lat, +r.lon]); });
+      (detPlot[k].rows || []).forEach(function (r) { if (r && isFinite(+r.lat) && isFinite(+r.lon) && detDatePasses(r.date)) b.extend([+r.lat, +r.lon]); });
     });
     if (b.isValid()) { try { map.fitBounds(b.pad(0.2)); } catch (e) {} }
   }
@@ -6796,6 +6887,58 @@
         '<button type="button" class="det-obs-editlists" title="' + escapeHtml(t("obs.lists")) + '">✎</button></div>' +
       '<div class="det-obs-list">' + rows.join("") + "</div></div>";
   }
+  // Time-window subwindow: preset chips (1/2/3 days, weeks, months + All) and a
+  // from–to date range. A preset and a range are mutually exclusive — picking one
+  // clears the other.
+  var DET_DAYS_PRESETS = [
+    { unit: "days", vals: [[1, 1], [2, 2], [3, 3]] },
+    { unit: "weeks", vals: [[1, 7], [2, 14], [3, 21]] },
+    { unit: "months", vals: [[1, 30], [2, 60], [3, 90]] }
+  ];
+  function detDaysPanelHtml() {
+    var rg = detDateRange(), days = detRecencyDays();
+    function chip(lbl, active, act, val) {
+      return '<button type="button" class="det-days-chip' + (active ? " on" : "") + '" data-act="' + act + '"' +
+        (val != null ? ' data-days="' + val + '"' : "") + ">" + escapeHtml(lbl) + "</button>";
+    }
+    var rows = DET_DAYS_PRESETS.map(function (grp) {
+      var chips = grp.vals.map(function (v) { return chip(String(v[0]), !rg && days === v[1], "preset", v[1]); }).join("");
+      return '<div class="det-days-line"><span class="det-days-unit">' + escapeHtml(t("det." + grp.unit)) + "</span>" + chips + "</div>";
+    }).join("");
+    var allChip = '<div class="det-days-line"><span class="det-days-unit"></span>' + chip(t("det.allTime"), !rg && days === 0, "preset", 0) + "</div>";
+    var rangeRow = '<div class="det-days-range">' +
+      '<label>' + escapeHtml(t("det.dateFrom")) + '<input type="date" class="det-date-from" value="' + escapeHtml(rg ? rg.from : "") + '" /></label>' +
+      '<label>' + escapeHtml(t("det.dateTo")) + '<input type="date" class="det-date-to" value="' + escapeHtml(rg ? rg.to : "") + '" /></label>' +
+      "</div>";
+    return '<div class="det-days-panel">' +
+      '<div class="det-panel-head">' + escapeHtml(t("det.recency")) + "</div>" +
+      rows + allChip + rangeRow + "</div>";
+  }
+  // Species subwindow: one row per mode (all / starred / rare / needs-this-year),
+  // each a symbol + explanatory text. Radio-style — the active mode is highlighted.
+  function detModePanelHtml() {
+    var opts = [
+      { m: "", sym: "–", txt: t("det.allSpecies") },
+      { m: "star", sym: "★", txt: t("det.starred") },
+      { m: "rare", sym: "◉", txt: t("det.rare") },
+      { m: "year", sym: "🟡", txt: t("det.needsYear", { year: curYear() }) }
+    ];
+    var cur = detStarFilter ? "star" : detRareFilter ? "rare" : detYearFilter ? "year" : "";
+    var rows = opts.map(function (o) {
+      return '<button type="button" class="det-mode-row' + (cur === o.m ? " on" : "") + '" data-mode="' + o.m + '">' +
+        '<span class="det-mode-sym">' + escapeHtml(o.sym) + "</span><span class=\"det-mode-txt\">" + escapeHtml(o.txt) + "</span></button>";
+    }).join("");
+    return '<div class="det-mode-panel">' + rows + "</div>";
+  }
+  // Compact label for the days button: 1d / 2w / 3m for the known presets, ∞ for
+  // All, ⇆ when an absolute date range is active, else the raw day count.
+  function detDaysLabel() {
+    if (detDateRange()) return "⇆";
+    var d = detRecencyDays();
+    if (!d) return "∞";
+    var map = { 1: "1d", 2: "2d", 3: "3d", 7: "1w", 14: "2w", 21: "3w", 30: "1m", 60: "2m", 90: "3m" };
+    return map[d] || String(d);
+  }
   // Label for the cycle button: All / None / a saved list's name / Custom.
   function obsFilterLabel() {
     if (!detObsFilter) return t("det.allObs");
@@ -6828,8 +6971,8 @@
   // (NOT the per-species selection). Drives which species the legend lists.
   function detVisibleCount(k) {
     var e = detPlot[k]; if (!e || !e.rows) return 0;
-    var maxDays = detRecencyDays(), n = 0;
-    for (var i = 0; i < e.rows.length; i++) { var r = e.rows[i]; if (recentEnough(r.date, maxDays) && detObsPasses(r)) n++; }
+    var n = 0;
+    for (var i = 0; i < e.rows.length; i++) { var r = e.rows[i]; if (detDatePasses(r.date) && detObsPasses(r)) n++; }
     return n;
   }
   // Model week (1–48) for an observation date; falls back to the current week.
@@ -6967,33 +7110,32 @@
       el.querySelector(".det-restore").addEventListener("click", function () { mapClickGuardUntil = Date.now() + 250; detLegendMini = false; saveLegendState(); updateDetLegend(); });
       return;
     }
-    // Two independent toggles (each cycles on click): one for the recency window,
-    // one for which species (all / starred / rare). They no longer clear each
-    // other, so e.g. "★ Starred · last 7 d" is now possible.
-    var dDays = detRecencyDays();
-    var daysLbl = dDays > 0 ? String(dDays) : "∞";   // number only (no "d")
+    // Three subwindow toggles, each opening a dropdown (mutually exclusive): the
+    // time window (days / date range), which species (★/◉/🟡), and the observers.
+    var daysLbl = detDaysLabel();
+    var daysOn = detRecencyDays() !== 0 || !!detDateRange();
     var modeOn = detStarFilter || detRareFilter || detYearFilter;
-    // Icon-only (full wording is the tooltip): ★ starred, ◉ rare, 🟡 not on this
-    // year's list (a "needs" filter, matching the yellow needs edge), – all.
     var modeLbl = detStarFilter ? "★" : detRareFilter ? "◉" : detYearFilter ? "🟡" : "–";
     var modeTip = detStarFilter ? t("det.starred") : detRareFilter ? t("det.rare") : detYearFilter ? t("det.needsYear", { year: curYear() }) : t("det.allSpecies");
-    // One control line: − minimise · ☰ list · {N}d days · ★/◉/🟡/– filter ·
-    // (black ×) clear selection only · (red ×) remove all detections, plus a ⚠
-    // (right-aligned) only when the draw cap is truncating the map.
+    // One control line: − minimise · ☰ list · time · ★/◉/🟡 species · 👤 observers ·
+    // (black ×) clear filters · (red ×) delete areas / all, plus a ⚠ (right-aligned)
+    // only when the draw cap is truncating the map.
     var hasSel = detSelectionActive();
     // The black × clears ALL filters (selection, ★/◉/🟡 mode, observer, recency
-    // days). Shown whenever any of them is active.
-    var hasFilter = hasSel || detStarFilter || detRareFilter || detYearFilter || !!detObsFilter || (detRecencyDays() !== 0);
+    // days + date range). Shown whenever any of them is active.
+    var hasFilter = hasSel || detStarFilter || detRareFilter || detYearFilter || !!detObsFilter || (detRecencyDays() !== 0) || !!detDateRange();
     el.innerHTML = '<div class="det-legend-head">' +
         '<button type="button" class="det-min" title="' + escapeHtml(t("det.minimise")) + '" aria-label="' + escapeHtml(t("det.minimise")) + '">−</button>' +
         '<button type="button" class="det-list-btn ico-btn" title="' + escapeHtml(t("detlist.open")) + '" aria-label="' + escapeHtml(t("detlist.open")) + '">' + ico("menu") + "</button>" +
-        '<button type="button" class="det-tog det-days-tog" title="' + escapeHtml(t("det.recency")) + '">' + escapeHtml(daysLbl) + "</button>" +
-        '<button type="button" class="det-tog det-mode-tog' + (modeOn ? " on" : "") + '" title="' + escapeHtml(modeTip) + '">' + escapeHtml(modeLbl) + "</button>" +
+        '<button type="button" class="det-tog det-days-tog' + (daysOn ? " on" : "") + (detDaysPanelOpen ? " open" : "") + '" title="' + escapeHtml(t("det.recency")) + '">' + escapeHtml(daysLbl) + "</button>" +
+        '<button type="button" class="det-tog det-mode-tog' + (modeOn ? " on" : "") + (detModePanelOpen ? " open" : "") + '" title="' + escapeHtml(modeTip) + '">' + escapeHtml(modeLbl) + "</button>" +
         '<button type="button" class="det-tog det-obs-tog ico-btn' + (detObsFilter ? " on" : "") + (detObsPanelOpen ? " open" : "") + '" title="' + escapeHtml(t("det.observers")) + '" aria-label="' + escapeHtml(t("det.observers")) + '">' + ico("user") + "</button>" +
         (hasFilter ? '<button type="button" class="det-clear-sel" title="' + escapeHtml(t("det.clearFilters")) + '" aria-label="' + escapeHtml(t("det.clearFilters")) + '">×</button>' : "") +
-        '<button type="button" class="det-clear" title="' + escapeHtml(t("det.clearAll")) + '" aria-label="' + escapeHtml(t("det.clearAll")) + '">×</button>' +
+        '<button type="button" class="det-clear' + (detAreaDeleteMode ? " armed" : "") + '" title="' + escapeHtml(detAreaDeleteMode ? t("det.delAreaHint") : (fetchedAreas.length ? t("det.delAreaArm") : t("det.clearAll"))) + '" aria-label="' + escapeHtml(t("det.clearAll")) + '">×</button>' +
         (capped ? '<span class="det-cap-warn" role="img" title="' + escapeHtml(capTip) + '" aria-label="' + escapeHtml(capTip) + '">⚠</span>' : "") +
       "</div>" +
+      (detDaysPanelOpen ? detDaysPanelHtml() : "") +
+      (detModePanelOpen ? detModePanelHtml() : "") +
       (detObsPanelOpen ? detObsPanelHtml() : "") +
       (keys.length ? "" : '<div class="det-empty">' + escapeHtml(t("det.noMatch")) + "</div>") +
       keys.map(function (k) {
@@ -7007,7 +7149,14 @@
         var sw = (selActive && !sel) ? DET_MUTE_COLOR : e.color;
         return '<div class="' + rowCls + '" data-key="' + escapeHtml(k) + '">' + detSwatch(sw, isInteresting(e.key), detIsRare(k), e.key) + '<span class="det-nm" title="' + nm + '">' + nm + '</span><span class="det-ct">' + ct + '</span><button type="button" class="det-del" data-key="' + escapeHtml(k) + '" aria-label="remove">×</button></div>';
       }).join("");
-    el.querySelector(".det-clear").addEventListener("click", clearDetections);
+    // Red ×, two-stage: with remembered fetched areas and not yet armed, the first
+    // click arms per-area delete (a red × appears on each area). Otherwise it wipes
+    // everything (a 2nd click while armed, or when there are no areas to pick from).
+    el.querySelector(".det-clear").addEventListener("click", function (e) {
+      e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
+      if (!detAreaDeleteMode && fetchedAreas.length) { enterAreaDeleteMode(); updateDetLegend(); }
+      else clearDetections();
+    });
     var clrSel = el.querySelector(".det-clear-sel");
     if (clrSel) clrSel.addEventListener("click", function (e) {
       e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
@@ -7066,34 +7215,50 @@
         updateDetLegend();
       });
     });
-    // Days toggle: cycle the recency window (independent of the species mode).
-    // These handlers re-render the legend (replacing their own button), so a tap
-    // can fall through to the map; stop propagation and arm the map-click guard
-    // so it can't drop a map point / open the point popup behind the legend.
+    // Days toggle: open the time-window subwindow. These handlers re-render the
+    // legend (replacing their own button), so a tap can fall through to the map;
+    // stop propagation and arm the map-click guard so it can't drop a map point /
+    // open the point popup behind the legend.
     el.querySelector(".det-days-tog").addEventListener("click", function (e) {
       e.stopPropagation(); mapClickGuardUntil = Date.now() + 400;
-      var steps = [1, 7, 14, 30, 90, 0], i = steps.indexOf(detRecencyDays());
-      if (i < 0) i = steps.indexOf(30);
-      window.GeoState.save({ detRecencyDays: steps[(i + 1) % steps.length] });
-      rebuildDetLayers();   // re-render under the new window (no refetch)
-      updateDetLegend();
+      openDetPanel("days"); updateDetLegend();
     });
-    // Mode toggle: cycle all → starred → rare → not on this year's list → all.
+    // A preset chip → set that rolling window (and clear any date range).
+    el.querySelectorAll(".det-days-chip").forEach(function (chip) {
+      chip.addEventListener("click", function (e) {
+        e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
+        window.GeoState.save({ detRecencyDays: +this.getAttribute("data-days"), detDateRange: null });
+        saveLegendState(); rebuildDetLayers(); updateDetLegend();
+      });
+    });
+    // A date input → set the from–to range (takes precedence over the presets).
+    el.querySelectorAll(".det-date-from, .det-date-to").forEach(function (inp) {
+      inp.addEventListener("change", function (e) {
+        e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
+        var from = (el.querySelector(".det-date-from") || {}).value || "";
+        var to = (el.querySelector(".det-date-to") || {}).value || "";
+        window.GeoState.save({ detDateRange: (from || to) ? { from: from, to: to } : null });
+        saveLegendState(); rebuildDetLayers(); updateDetLegend();
+      });
+    });
+    // Mode toggle: open the species subwindow.
     el.querySelector(".det-mode-tog").addEventListener("click", function (e) {
       e.stopPropagation(); mapClickGuardUntil = Date.now() + 400;
-      if (!detStarFilter && !detRareFilter && !detYearFilter) detStarFilter = true;
-      else if (detStarFilter) { detStarFilter = false; detRareFilter = true; }
-      else if (detRareFilter) { detRareFilter = false; detYearFilter = true; }
-      else detYearFilter = false;
-      saveLegendState();
-      rebuildDetLayers();
-      updateDetLegend();
+      openDetPanel("mode"); updateDetLegend();
     });
-    // 👤 observer filter: toggle the checklist panel open/closed.
+    // A mode row → set that species filter exclusively (all / starred / rare / needs).
+    el.querySelectorAll(".det-mode-row").forEach(function (row) {
+      row.addEventListener("click", function (e) {
+        e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
+        var m = this.getAttribute("data-mode");
+        detStarFilter = m === "star"; detRareFilter = m === "rare"; detYearFilter = m === "year";
+        saveLegendState(); rebuildDetLayers(); updateDetLegend();
+      });
+    });
+    // 👤 observer filter: open the checklist subwindow.
     el.querySelector(".det-obs-tog").addEventListener("click", function (e) {
       e.stopPropagation(); mapClickGuardUntil = Date.now() + 400;
-      detObsPanelOpen = !detObsPanelOpen;
-      updateDetLegend();
+      openDetPanel("obs"); updateDetLegend();
     });
     // Tick/untick observers → restrict the map + list to the selected ones. All
     // ticked collapses back to "no filter" (null) so the 👤 icon goes inactive.
