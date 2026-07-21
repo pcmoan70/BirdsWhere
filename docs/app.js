@@ -1717,21 +1717,41 @@
     if (!map || !L.rectangle || !isFinite(lat) || !isFinite(lon)) return;
     rkm = rkm || recentRadiusKm();
     var key = lat.toFixed(3) + "," + lon.toFixed(3) + ":" + rkm;
+    addFetchedAreaRect(key, fetchAreaBounds(L.latLng(lat, lon)));
+    saveFetchedAreas();
+  }
+  // Draw one remembered area (outline + bookkeeping). Shared by a live fetch and
+  // the boot-time restore; deduped by key.
+  function addFetchedAreaRect(key, b) {
     if (!fetchedAreasLayer) { fetchedAreasLayer = L.layerGroup().addTo(map); fetchedAreaKeys = Object.create(null); }
     if (fetchedAreaKeys[key]) return;   // already outlined
     fetchedAreaKeys[key] = 1;
-    var b = fetchAreaBounds(L.latLng(lat, lon));
     var rect = L.rectangle(b, { color: "#2e8b74", weight: 1, opacity: 0.5, dashArray: "2 4", fill: false, interactive: false });
     fetchedAreasLayer.addLayer(rect);
     var area = { id: key, bounds: b, rect: rect, delMarker: null };
     fetchedAreas.push(area);
     if (detAreaDeleteMode) addAreaDelMarker(area);   // a fetch while armed → show its × too
   }
+  // The remembered areas persist with the detections (bounds only), so the
+  // outlines — and the red ×'s per-area delete — survive a reload.
+  function saveFetchedAreas() {
+    window.GeoState.save({ fetchedAreas: fetchedAreas.map(function (a) {
+      return { id: a.id, s: a.bounds.getSouth(), w: a.bounds.getWest(), n: a.bounds.getNorth(), e: a.bounds.getEast() };
+    }) });
+  }
+  function restoreFetchedAreas() {
+    if (!map) return;
+    (window.GeoState.get("fetchedAreas", []) || []).forEach(function (a) {
+      if (!a || !isFinite(+a.s) || !isFinite(+a.w) || !isFinite(+a.n) || !isFinite(+a.e)) return;
+      addFetchedAreaRect(a.id || (+a.s).toFixed(3) + "," + (+a.w).toFixed(3), L.latLngBounds([[+a.s, +a.w], [+a.n, +a.e]]));
+    });
+  }
   function clearFetchedAreas() {
     if (fetchedAreasLayer) fetchedAreasLayer.clearLayers();
     fetchedAreaKeys = fetchedAreasLayer ? Object.create(null) : null;
     fetchedAreas = [];
     exitAreaDeleteMode();
+    window.GeoState.save({ fetchedAreas: [] });
   }
   // ---- Per-area delete (the red ×'s two-stage behaviour) --------------------
   // A small red × pinned to each fetched rectangle's NE corner. Tap one → delete
@@ -1778,6 +1798,7 @@
     if (area.delMarker && areaDelLayer) areaDelLayer.removeLayer(area.delMarker);
     if (fetchedAreaKeys) delete fetchedAreaKeys[id];
     fetchedAreas.splice(idx, 1);
+    saveFetchedAreas();
     if (!fetchedAreas.length) exitAreaDeleteMode();
     rebuildDetLayers(); updateDetLegend(); saveDetections();
   }
@@ -4496,6 +4517,7 @@
 
     setupAreaOverlays();   // protected/priority-area overlay toggles (off by default)
     loadDetections();      // restore any "Show in map" detection points
+    restoreFetchedAreas(); // ...and their fetched-area outlines (per-area red × needs them)
     loadMapPoints();       // user-added pins + saved named lists (from localStorage)
     loadRoute(); updateRouteChip();   // restore the route basket + its pill
     ensureMpLayer();

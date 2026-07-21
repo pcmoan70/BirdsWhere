@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-21 — Fix: per-area red × missing after a reload (sw v660)
+
+- The fetched-area outlines (and the area list behind the red ×'s per-area delete)
+  were session-only — after any reload the areas were gone, so the legend's red ×
+  skipped straight to "clear all" and no per-area crosses ever appeared. The areas'
+  bounds now persist with the detections and are restored at boot, so the dashed
+  outlines and the two-stage red × survive a reload.
+
 ## 2026-07-21 — Legend filters as subwindows + per-area delete (sw v659)
 
 - The detection legend's filter buttons now open dropdown subwindows (like the 👤
