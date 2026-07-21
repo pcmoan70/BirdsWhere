@@ -1726,6 +1726,10 @@
     if (!fetchedAreasLayer) { fetchedAreasLayer = L.layerGroup().addTo(map); fetchedAreaKeys = Object.create(null); }
     if (fetchedAreaKeys[key]) return;   // already outlined
     fetchedAreaKeys[key] = 1;
+    // Normalise to a real LatLngBounds — fetchAreaBounds() hands us a plain
+    // [[s,w],[n,e]] array, but the persistence + per-area delete call .getSouth() /
+    // .contains() on it. (L.latLngBounds is idempotent for an existing bounds.)
+    b = L.latLngBounds(b);
     var rect = L.rectangle(b, { color: "#2e8b74", weight: 1, opacity: 0.5, dashArray: "2 4", fill: false, interactive: false });
     fetchedAreasLayer.addLayer(rect);
     var area = { id: key, bounds: b, rect: rect, delMarker: null };

@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-21 — Fix: map click showed no point menu (regression from v660) (sw v661)
+
+- v660's area-persistence stored the fetched-area bounds as a plain array, but the
+  save path called LatLngBounds methods (`.getSouth()` etc.) on it — so every
+  list-mode map click threw before the point-options popup could open (no "Species
+  list / Recent" menu). Bounds are now normalised to a real `L.latLngBounds`.
+
 ## 2026-07-21 — Fix: per-area red × missing after a reload (sw v660)
 
 - The fetched-area outlines (and the area list behind the red ×'s per-area delete)
