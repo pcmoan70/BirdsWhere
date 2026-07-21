@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-21 — Legend time filter: days/weeks 1–6, aligned on a grid (sw v667)
+
+- The time subwindow's <b>days</b> and <b>weeks</b> presets now run <b>1–6</b> (were
+  1–3). The preset numbers are laid out on a CSS grid so they line up in columns
+  across the days / weeks / months rows.
+
 ## 2026-07-21 — Plants 🌿 and Fungi 🍄 species groups (observation-only) (sw v666)
 
 - Added <b>Plants</b> and <b>Fungi</b> to Settings → Species group. GBIF + iNaturalist

@@ -2284,13 +2284,16 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
 .det-days-tog.open, .det-mode-tog.open { background: var(--brand-soft); border-color: var(--brand); }
 .det-days-panel, .det-mode-panel { margin: 2px 0 6px; border: 1px solid var(--border, #e3e3e3); border-radius: 6px; background: var(--surface, #fff); padding: 4px 6px; }
 .det-panel-head { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted, #888); margin: 1px 1px 5px; }
-/* Time window: unit-labelled rows of 1/2/3 chips + an All chip, then a date range. */
-.det-days-line { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; }
-.det-days-unit { flex: 0 0 3.6em; font-size: 0.72rem; font-weight: 600; color: var(--ink-muted, #777); text-align: right; }
-.det-days-chip { flex: 0 0 auto; min-width: 2em; border: 1px solid var(--border); background: var(--surface); color: var(--ink);
-  font: inherit; font-size: 0.72rem; font-weight: 600; padding: 3px 8px; border-radius: 999px; cursor: pointer; }
+/* Time window: a grid so the 1..6 numbers align in columns across the days/weeks/
+   months rows. Each unit label forces a new row (grid-column:1); chips fill the six
+   equal columns after it. "All" spans the chip columns on its own row. */
+.det-days-grid { display: grid; grid-template-columns: 3.4em repeat(6, 1fr); gap: 4px; align-items: center; margin-bottom: 4px; }
+.det-days-unit { grid-column: 1; font-size: 0.72rem; font-weight: 600; color: var(--ink-muted, #777); text-align: right; }
+.det-days-chip { min-width: 0; border: 1px solid var(--border); background: var(--surface); color: var(--ink);
+  font: inherit; font-size: 0.72rem; font-weight: 600; padding: 3px 0; text-align: center; border-radius: 999px; cursor: pointer; }
 .det-days-chip:hover { border-color: var(--brand); }
 .det-days-chip.on { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-strong); }
+.det-days-all { grid-column: 2 / -1; justify-self: start; padding: 3px 14px; }
 .det-days-range { display: flex; gap: 8px; margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--border, #eee); }
 .det-days-range label { display: flex; flex-direction: column; gap: 2px; font-size: 0.68rem; font-weight: 600; color: var(--ink-muted, #777); }
 .det-days-range input[type="date"] { font: inherit; font-size: 0.72rem; padding: 2px 4px; border: 1px solid var(--border, #ccc); border-radius: 5px; background: var(--surface, #fff); color: inherit; }

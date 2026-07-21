@@ -6957,28 +6957,32 @@
   // from–to date range. A preset and a range are mutually exclusive — picking one
   // clears the other.
   var DET_DAYS_PRESETS = [
-    { unit: "days", vals: [[1, 1], [2, 2], [3, 3]] },
-    { unit: "weeks", vals: [[1, 7], [2, 14], [3, 21]] },
+    { unit: "days", vals: [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6]] },
+    { unit: "weeks", vals: [[1, 7], [2, 14], [3, 21], [4, 28], [5, 35], [6, 42]] },
     { unit: "months", vals: [[1, 30], [2, 60], [3, 90]] }
   ];
   function detDaysPanelHtml() {
     var rg = detDateRange(), days = detRecencyDays();
-    function chip(lbl, active, act, val) {
-      return '<button type="button" class="det-days-chip' + (active ? " on" : "") + '" data-act="' + act + '"' +
-        (val != null ? ' data-days="' + val + '"' : "") + ">" + escapeHtml(lbl) + "</button>";
+    function chip(lbl, active, val, extraCls) {
+      return '<button type="button" class="det-days-chip' + (active ? " on" : "") + (extraCls ? " " + extraCls : "") +
+        '" data-days="' + val + '">' + escapeHtml(lbl) + "</button>";
     }
-    var rows = DET_DAYS_PRESETS.map(function (grp) {
-      var chips = grp.vals.map(function (v) { return chip(String(v[0]), !rg && days === v[1], "preset", v[1]); }).join("");
-      return '<div class="det-days-line"><span class="det-days-unit">' + escapeHtml(t("det." + grp.unit)) + "</span>" + chips + "</div>";
-    }).join("");
-    var allChip = '<div class="det-days-line"><span class="det-days-unit"></span>' + chip(t("det.allTime"), !rg && days === 0, "preset", 0) + "</div>";
+    // One CSS grid so the numbers line up in columns across the days/weeks/months
+    // rows: each unit label forces a new grid row (grid-column:1), chips fill the
+    // six 1fr columns after it. "All" spans the chip columns on its own row.
+    var cells = "";
+    DET_DAYS_PRESETS.forEach(function (grp) {
+      cells += '<span class="det-days-unit">' + escapeHtml(t("det." + grp.unit)) + "</span>";
+      cells += grp.vals.map(function (v) { return chip(String(v[0]), !rg && days === v[1], v[1]); }).join("");
+    });
+    cells += '<span class="det-days-unit"></span>' + chip(t("det.allTime"), !rg && days === 0, 0, "det-days-all");
     var rangeRow = '<div class="det-days-range">' +
       '<label>' + escapeHtml(t("det.dateFrom")) + '<input type="date" class="det-date-from" value="' + escapeHtml(rg ? rg.from : "") + '" /></label>' +
       '<label>' + escapeHtml(t("det.dateTo")) + '<input type="date" class="det-date-to" value="' + escapeHtml(rg ? rg.to : "") + '" /></label>' +
       "</div>";
     return '<div class="det-days-panel">' +
       '<div class="det-panel-head">' + escapeHtml(t("det.recency")) + "</div>" +
-      rows + allChip + rangeRow + "</div>";
+      '<div class="det-days-grid">' + cells + "</div>" + rangeRow + "</div>";
   }
   // Species subwindow: one row per mode (all / starred / rare / needs-this-year),
   // each a symbol + explanatory text. Radio-style — the active mode is highlighted.
@@ -7003,7 +7007,8 @@
     if (detDateRange()) return "⇆";
     var d = detRecencyDays();
     if (!d) return "∞";
-    var map = { 1: "1d", 2: "2d", 3: "3d", 7: "1w", 14: "2w", 21: "3w", 30: "1m", 60: "2m", 90: "3m" };
+    var map = { 1: "1d", 2: "2d", 3: "3d", 4: "4d", 5: "5d", 6: "6d",
+      7: "1w", 14: "2w", 21: "3w", 28: "4w", 35: "5w", 42: "6w", 30: "1m", 60: "2m", 90: "3m" };
     return map[d] || String(d);
   }
   // Label for the cycle button: All / None / a saved list's name / Custom.
