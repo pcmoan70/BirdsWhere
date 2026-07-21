@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-21 — Per-area delete disarms when you use the rest of the legend (sw v663)
+
+- Arming the red × for per-area delete now turns off as soon as you do anything
+  else on the legend — minimise/close it, open another filter, or pick a species —
+  so the red area ×'s don't linger. A second click on the red × still deletes all.
+
 ## 2026-07-21 — Fix: only fetched areas are deletable (not every map tap) (sw v662)
 
 - The deletable dashed outline was being remembered on every list/historic map

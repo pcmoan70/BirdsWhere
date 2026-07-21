@@ -7124,7 +7124,22 @@
     var capTip = capped ? t("det.cappedTip", { shown: nDet, total: fetched }) : "";
     if (!detLegend) {
       detLegend = L.control({ position: "bottomleft" });
-      detLegend.onAdd = function () { var d = L.DomUtil.create("div", "det-legend"); d.id = "det-legend"; L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d); return d; };
+      detLegend.onAdd = function () {
+        var d = L.DomUtil.create("div", "det-legend"); d.id = "det-legend";
+        L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d);
+        // Any legend interaction other than the red × itself cancels the armed
+        // per-area delete mode (closing/minimising the legend, or using another
+        // control). Capture-phase + attached ONCE (d persists across re-renders),
+        // so it disarms before the clicked control's own handler runs — without a
+        // re-render here that would detach that control mid-click.
+        d.addEventListener("click", function (e) {
+          if (!detAreaDeleteMode) return;
+          if (e.target.closest && e.target.closest(".det-clear")) return;   // the red × runs its own two-stage logic
+          exitAreaDeleteMode();
+          var x = d.querySelector(".det-clear"); if (x) x.classList.remove("armed");
+        }, true);
+        return d;
+      };
       detLegend.addTo(map);
     }
     var el = document.getElementById("det-legend");
