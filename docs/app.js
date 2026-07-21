@@ -5230,6 +5230,7 @@
   var detStarFilter = false;
   var detRareFilter = false;            // legend "Rare" filter: show only locally-rare species
   var detYearFilter = false;            // legend "needs" filter: only species NOT on this year's list
+  var detLifeFilter = false;            // legend "life needs" filter: only species NOT on the life list
   // Observer filter (legend 👤): null = all observers; else a Set of selected
   // SINGLE observer names ("" = the "no observer" bucket). A per-RECORD filter
   // (unlike the per-species ones), applied where rows are drawn / listed.
@@ -5271,6 +5272,7 @@
   }
   function detPassesStar(k) { return !detStarFilter || isInteresting((detPlot[k] && detPlot[k].key) || k); }
   function detPassesYear(k) { return !detYearFilter || !inYearList((detPlot[k] && detPlot[k].key) || k); }
+  function detPassesLife(k) { return !detLifeFilter || !inLifeList((detPlot[k] && detPlot[k].key) || k); }
   // "Rare locally": a plotted species whose detection count is at most rarePct%
   // of the commonest plotted species' count (default 10%). detRareMax is cached
   // and refreshed before each render (recomputeRareMax) so detIsRare is O(1).
@@ -5294,12 +5296,12 @@
   var mapPtrDownTs = 0, mapPtrIsTouch = false;   // last map pointer-down time + whether it was touch (press-duration gating)
   function touchHeldMs() { return Date.now() - mapPtrDownTs; }   // how long the current touch has been held
   var mapClickDelayTimer = null;   // pending touch-tap → point-popup open (cancelled by a pan/zoom in the delay window)
-  function detSelectionActive() { return Object.keys(detSelected).some(function (k) { return detPlot[k] && detPassesStar(k) && detPassesGroup(k) && detPassesRare(k) && detPassesYear(k); }); }
+  function detSelectionActive() { return Object.keys(detSelected).some(function (k) { return detPlot[k] && detPassesStar(k) && detPassesGroup(k) && detPassesRare(k) && detPassesYear(k) && detPassesLife(k); }); }
   // `selActive` lets a render loop compute detSelectionActive() ONCE and pass it
   // in, instead of this re-scanning all selected keys for every species.
   function detIsVisible(key, selActive) {
     if (selActive === undefined) selActive = detSelectionActive();
-    return !isHidden((detPlot[key] && detPlot[key].key) || key) && detPassesStar(key) && detPassesGroup(key) && detPassesRare(key) && detPassesYear(key) && (!selActive || !!detSelected[key]);
+    return !isHidden((detPlot[key] && detPlot[key].key) || key) && detPassesStar(key) && detPassesGroup(key) && detPassesRare(key) && detPassesYear(key) && detPassesLife(key) && (!selActive || !!detSelected[key]);
   }
   // Dots are always shown in their species colour (no grey overview mode) — so
   // "all"/"1 day"/etc. all render coloured. Visibility (above) does the filtering.
@@ -6556,7 +6558,7 @@
   // Dots stay plotted; only the filtering is cleared.
   function clearAllFilters() {
     detSelected = {};
-    detStarFilter = false; detRareFilter = false; detYearFilter = false;
+    detStarFilter = false; detRareFilter = false; detYearFilter = false; detLifeFilter = false;
     detObsPanelOpen = false; detDaysPanelOpen = false; detModePanelOpen = false;
     setDetObsFilter(null);                                                   // observer → all
     window.GeoState.save({ detRecencyDays: 0, detDateRange: null });        // days + range → All
@@ -6572,7 +6574,7 @@
     clearFetchedAreas();   // remembered fetched-area outlines go with the detections
     Object.keys(detPlot).forEach(function (k) { if (detPlot[k].group) map.removeLayer(detPlot[k].group); });
     detPlot = {}; detSelected = {};
-    detStarFilter = false; detRareFilter = false; detYearFilter = false;
+    detStarFilter = false; detRareFilter = false; detYearFilter = false; detLifeFilter = false;
     setDetObsFilter(null); detObsPanelOpen = false; detDaysPanelOpen = false; detModePanelOpen = false; detLegendMini = false;
     var hadShown = Object.keys(shownColls).length || Object.keys(shownDetSets).length;
     shownColls = {}; shownDetSets = {};
@@ -6675,7 +6677,7 @@
   // Persist the legend's UI state — collapsed, the starred-only filter, and the
   // row selection — so the map legend comes back the way the user left it.
   function saveLegendState() {
-    window.GeoState.save({ mapLegend: { mini: detLegendMini, starFilter: detStarFilter, rareFilter: detRareFilter, yearFilter: detYearFilter, selected: Object.keys(detSelected), obsFilter: detObsFilter ? Array.from(detObsFilter) : null } });
+    window.GeoState.save({ mapLegend: { mini: detLegendMini, starFilter: detStarFilter, rareFilter: detRareFilter, yearFilter: detYearFilter, lifeFilter: detLifeFilter, selected: Object.keys(detSelected), obsFilter: detObsFilter ? Array.from(detObsFilter) : null } });
   }
   function loadDetections() {
     // Self-heal a store left over-quota by an older build: cap the stored
@@ -6700,6 +6702,7 @@
     detStarFilter = !!ls.starFilter;
     detRareFilter = !!ls.rareFilter;
     detYearFilter = !!ls.yearFilter;
+    detLifeFilter = !!ls.lifeFilter;
     setDetObsFilter(Array.isArray(ls.obsFilter) ? new Set(ls.obsFilter) : null);
     detSelected = {};
     (Array.isArray(ls.selected) ? ls.selected : []).forEach(function (k) { if (detPlot[k]) detSelected[k] = true; });
@@ -6954,9 +6957,10 @@
       { m: "", sym: "–", txt: t("det.allSpecies") },
       { m: "star", sym: "★", txt: t("det.starred") },
       { m: "rare", sym: "◉", txt: t("det.rare") },
-      { m: "year", sym: "🟡", txt: t("det.needsYear", { year: curYear() }) }
+      { m: "year", sym: "🟡", txt: t("det.needsYear", { year: curYear() }) },
+      { m: "life", sym: "🔴", txt: t("det.needsLife") }
     ];
-    var cur = detStarFilter ? "star" : detRareFilter ? "rare" : detYearFilter ? "year" : "";
+    var cur = detStarFilter ? "star" : detRareFilter ? "rare" : detYearFilter ? "year" : detLifeFilter ? "life" : "";
     var rows = opts.map(function (o) {
       return '<button type="button" class="det-mode-row' + (cur === o.m ? " on" : "") + '" data-mode="' + o.m + '">' +
         '<span class="det-mode-sym">' + escapeHtml(o.sym) + "</span><span class=\"det-mode-txt\">" + escapeHtml(o.txt) + "</span></button>";
@@ -7103,7 +7107,7 @@
     // after those drops out, like its dots do on the map).
     var visCount = Object.create(null);
     allKeys.forEach(function (k) { visCount[k] = detVisibleCount(k); });
-    var keys = allKeys.filter(function (k) { return detPassesStar(k) && detPassesGroup(k) && detPassesRare(k) && detPassesYear(k) && visCount[k] > 0; });
+    var keys = allKeys.filter(function (k) { return detPassesStar(k) && detPassesGroup(k) && detPassesRare(k) && detPassesYear(k) && detPassesLife(k) && visCount[k] > 0; });
     // Legend hover/hold-isolate: if the focused row is no longer in the legend (a
     // filter/refresh removed it), clear the focus so the map doesn't stay stuck
     // isolated to one species after its row's mouseleave never fired.
@@ -7162,16 +7166,16 @@
     // time window (days / date range), which species (★/◉/🟡), and the observers.
     var daysLbl = detDaysLabel();
     var daysOn = detRecencyDays() !== 0 || !!detDateRange();
-    var modeOn = detStarFilter || detRareFilter || detYearFilter;
-    var modeLbl = detStarFilter ? "★" : detRareFilter ? "◉" : detYearFilter ? "🟡" : "–";
-    var modeTip = detStarFilter ? t("det.starred") : detRareFilter ? t("det.rare") : detYearFilter ? t("det.needsYear", { year: curYear() }) : t("det.allSpecies");
+    var modeOn = detStarFilter || detRareFilter || detYearFilter || detLifeFilter;
+    var modeLbl = detStarFilter ? "★" : detRareFilter ? "◉" : detYearFilter ? "🟡" : detLifeFilter ? "🔴" : "–";
+    var modeTip = detStarFilter ? t("det.starred") : detRareFilter ? t("det.rare") : detYearFilter ? t("det.needsYear", { year: curYear() }) : detLifeFilter ? t("det.needsLife") : t("det.allSpecies");
     // One control line: − minimise · ☰ list · time · ★/◉/🟡 species · 👤 observers ·
     // (black ×) clear filters · (red ×) delete areas / all, plus a ⚠ (right-aligned)
     // only when the draw cap is truncating the map.
     var hasSel = detSelectionActive();
     // The black × clears ALL filters (selection, ★/◉/🟡 mode, observer, recency
     // days + date range). Shown whenever any of them is active.
-    var hasFilter = hasSel || detStarFilter || detRareFilter || detYearFilter || !!detObsFilter || (detRecencyDays() !== 0) || !!detDateRange();
+    var hasFilter = hasSel || detStarFilter || detRareFilter || detYearFilter || detLifeFilter || !!detObsFilter || (detRecencyDays() !== 0) || !!detDateRange();
     el.innerHTML = '<div class="det-legend-head">' +
         '<button type="button" class="det-min" title="' + escapeHtml(t("det.minimise")) + '" aria-label="' + escapeHtml(t("det.minimise")) + '">−</button>' +
         '<button type="button" class="det-list-btn ico-btn" title="' + escapeHtml(t("detlist.open")) + '" aria-label="' + escapeHtml(t("detlist.open")) + '">' + ico("menu") + "</button>" +
@@ -7299,7 +7303,7 @@
       row.addEventListener("click", function (e) {
         e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
         var m = this.getAttribute("data-mode");
-        detStarFilter = m === "star"; detRareFilter = m === "rare"; detYearFilter = m === "year";
+        detStarFilter = m === "star"; detRareFilter = m === "rare"; detYearFilter = m === "year"; detLifeFilter = m === "life";
         saveLegendState(); rebuildDetLayers(); updateDetLegend();
       });
     });

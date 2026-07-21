@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-21 — Legend species filter gains a life-list option (sw v665)
+
+- The legend's species subwindow (★/◉/🟡) now has a 🔴 <b>life-list</b> filter —
+  show only species <b>not on your life list</b> (lifers still to see), alongside the
+  existing 🟡 "not on this year's list". Radio-style like the others; persisted.
+
 ## 2026-07-21 — Offline-maps manager moved out of Settings onto the ⤓ button (sw v664)
 
 - Removed the "Manage offline maps…" entry from Settings. The manager now opens by
