@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-21 — Group icons for Plants 🌿 and Fungi 🍄 (sw v669)
+
+- The Plants and Fungi species groups now have their own monochrome group icons (a
+  sprout and a mushroom, in the same style as the bird/mammal/etc. icons) instead of
+  falling back to the binoculars.
+
 ## 2026-07-21 — "Place labels" now actually controls label density (sw v668)
 
 - The light/dark basemaps already carried their own place names, so the labels

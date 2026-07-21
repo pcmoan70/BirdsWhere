@@ -207,6 +207,19 @@
       '<path d="M3 15.5 a9 7 0 0 1 18 0 q0 3 -3 3 H6 q-3 0 -3 -3 Z"/>' +
       '<path d="M6.5 18 l-2 3 M17.5 18 l2 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/></g>' +
       '<circle cx="8.4" cy="7" r="1.15" fill="' + EYE + '"/><circle cx="15.6" cy="7" r="1.15" fill="' + EYE + '"/>',
+    // Sprout (Plants) — a stem with two leaves; teal midribs as the detail.
+    plantae: '<path d="M12 21 V 11.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" fill="none"/>' +
+      '<g fill="currentColor">' +
+      '<path d="M12 12.5 C 12 8.4 9.2 5.2 4.6 5 C 4.4 9.4 7.2 12.5 12 12.5 Z"/>' +
+      '<path d="M12 12.5 C 12 8.4 14.8 5.2 19.4 5 C 19.6 9.4 16.8 12.5 12 12.5 Z"/></g>' +
+      '<path d="M12 12.2 Q 8.6 9.4 5.6 6.1 M12 12.2 Q 15.4 9.4 18.4 6.1" stroke="' + EYE + '" stroke-width="0.9" stroke-linecap="round" fill="none"/>',
+    // Mushroom (Fungi) — domed cap + stem, with teal spots on the cap.
+    fungi: '<g fill="currentColor">' +
+      '<path d="M3.4 11 A 8.6 6.6 0 0 1 20.6 11 Z"/>' +
+      '<rect x="9.6" y="11" width="4.8" height="7.4" rx="1.8"/></g>' +
+      '<circle cx="8.3" cy="8.2" r="1.1" fill="' + EYE + '"/>' +
+      '<circle cx="13.4" cy="6.7" r="1.35" fill="' + EYE + '"/>' +
+      '<circle cx="16.7" cy="8.8" r="0.95" fill="' + EYE + '"/>',
   };
   function settingsIconHtml(group) {
     return '<svg class="bird-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
