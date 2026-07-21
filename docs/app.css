@@ -1572,7 +1572,13 @@ button.dd-name:hover { text-decoration: underline; }
 #det-sets-list .dset-load { padding: 4px 12px; font-size: 0.8rem; }
 #det-sets-list .dset-del { vertical-align: middle; }
 /* Year & life lists modal — expandable rows revealing the species. */
-#lists-list .dset-actions { width: 1%; white-space: nowrap; text-align: right; }
+#lists-list .dset-actions, #mp-admin-list .dset-actions { width: 1%; white-space: nowrap; text-align: right; }
+/* Map-point lists admin popup (press-and-hold the Points button): reuse the lists
+   table styling; the ✎ edit button matches the per-point edit look. */
+.mp-admin-box { max-width: 440px; width: 92vw; max-height: 82vh; overflow-y: auto; }
+#mp-admin-list .lists-coll-edit { background: transparent; border: none; cursor: pointer; padding: 2px; color: var(--ink-muted, #888); display: inline-flex; vertical-align: middle; margin-right: 4px; }
+#mp-admin-list .lists-coll-edit:hover { color: var(--brand, #2e8b74); }
+#mp-admin-list .lists-coll-edit .btn-ico { width: 15px; height: 15px; }
 .lists-toggle { display: flex; align-items: center; gap: 6px; width: 100%; border: none; background: transparent;
   cursor: pointer; font: inherit; text-align: left; color: var(--ink); padding: 4px 0; }
 .lists-toggle[disabled] { cursor: default; }
@@ -1591,10 +1597,10 @@ button.dd-name:hover { text-decoration: underline; }
 /* Protect toggle: open (grey) padlock when unlocked, closed (red) when locked. */
 .lists-protect .btn-ico { color: var(--ink-muted, #888); }
 .lists-protect.on .btn-ico { color: var(--danger, #c0392b); }
-#lists-list .dset-count { margin-left: auto; font-weight: 400; font-size: 0.78rem; color: var(--ink-muted); }
+#lists-list .dset-count, #mp-admin-list .dset-count { margin-left: auto; font-weight: 400; font-size: 0.78rem; color: var(--ink-muted); }
 /* Map-point lists: count sits right after the name with a small gap (not pushed
    to the far right), and reads "{n} points". */
-#lists-list .dset-count.lists-count-points { margin-left: 8px; }
+#lists-list .dset-count.lists-count-points, #mp-admin-list .dset-count.lists-count-points { margin-left: 8px; }
 .lists-species { display: flex; flex-direction: column; gap: 1px; padding: 2px 0 8px 1.5em; }
 .lists-sp-row { display: flex; align-items: center; gap: 8px; }
 .lists-sp-row .lists-sp-nm { flex: 1 1 auto; }

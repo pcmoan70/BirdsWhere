@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-21 — Map-point list admin moved to its own popup (sw v673)
+
+- Editing, protecting (🔒) and deleting saved map-point lists moved out of Settings →
+  Administer lists into a dedicated popup: <b>press-and-hold (or right-click) the
+  Points button</b>. It lists each saved list with a protect toggle, a delete ×, a
+  whole-list ✎ (colour + tags), and expands to a per-point table (edit / remove).
+- Settings → Administer lists now holds the <b>year & life species lists</b> only.
+
 ## 2026-07-21 — Revert to base map labels for display (sw v672)
 
 - Reverted the label-free basemaps (v668/v670): the light/dark bases and Streets

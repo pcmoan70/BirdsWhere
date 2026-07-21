@@ -1586,6 +1586,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { date: "2026-07-21", text: "Manage your saved map-point lists from their own popup: press-and-hold (or right-click) the Points button to open it. Protect a list from deletion (🔒), delete a list, edit its colour + tags, or expand one to edit/remove individual points. (This moved out of Settings → Administer lists, which now holds the year/life species lists only.)" },
     { date: "2026-07-21", text: "Plants 🌿 and Fungi 🍄 species groups (Settings → Species group). The Nordic databases (Artsobservasjoner, Artportalen, Laji.fi), GBIF and iNaturalist also carry flora and fungi — pick the group to fetch, map, list, filter and save their observations. There's no habitat model for them, so it's observation-search only: Range, Richness and Migration are hidden for these groups." },
     { date: "2026-07-21", text: "The map legend's filters are now dropdown subwindows. Time opens presets (1/2/3 days, weeks, months) plus a from–to date range; the ★/◉/🟡 species filter shows each option with its symbol and meaning. And the red × now deletes fetched areas one at a time — the first click puts a red × on each fetched rectangle (tap it to remove just that area's detections), a second click on the legend × clears everything." },
     { date: "2026-07-20", text: "Deduplicate detections (Settings → Fetching & detections): when the same sighting is registered in two databases — same observer, approximate location, date, count and species — show it once instead of twice. Off by default (shows every source's copy)." },
@@ -2121,7 +2122,9 @@
       var la = parseFloat(document.getElementById("lp-lat").value), lo = parseFloat(document.getElementById("lp-lon").value);
       if (isFinite(la) && la >= -90 && la <= 90) p.lat = la;
       if (isFinite(lo) && lo >= -180 && lo <= 180) p.lon = lo;
-      saveMapPoints(); renderMapPoints(); close(); renderListsModal();
+      saveMapPoints(); renderMapPoints(); close();
+      if (typeof renderMpAdmin === "function") renderMpAdmin();
+      if (typeof refreshMpPanel === "function") refreshMpPanel();
     });
   }
   // Move a species from one list to another (edit, not delete): drop it from the
@@ -2155,52 +2158,14 @@
       section(y, t("lists.year", { year: y }), Object.keys(yearLists[y]),
         '<button type="button" class="src-del lists-del-year" data-year="' + escapeHtml(y) + '" aria-label="' + escapeHtml(t("offline.delete")) + '">×</button>');
     });
-    // Map-point lists (general right-click lists AND detection-saved observation
-    // lists). Each expands to a per-point table where individual points can be
-    // edited (name / tag / note) or removed; plus a "protect" toggle that, when
-    // on, disables the whole-list delete ×.
-    if (mpCollections.length) {
-      rows.push('<tr class="lists-subhead"><td colspan="2">' + escapeHtml(t("lists.mapPoints")) + "</td></tr>");
-      mpCollections.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (c) {
-        var prot = isCollProtected(c.name), n = (c.points && c.points.length) || 0;
-        var cid = "coll:" + c.name, open = !!listsExpanded[cid] && n > 0;
-        rows.push('<tr class="lists-row"><td class="dset-name">' +
-          '<button type="button" class="lists-toggle" data-id="' + escapeHtml(cid) + '"' + (n ? "" : " disabled") + ">" +
-            '<span class="lists-caret">' + (n ? (open ? "▾" : "▸") : "·") + "</span>" +
-            '<span class="lists-lbl lists-lbl-plain">' + escapeHtml(c.name) + "</span>" +
-            '<span class="dset-count lists-count-points">' + escapeHtml(t("lists.countPoints", { n: n })) + "</span></button></td>" +
-          '<td class="dset-actions">' +
-            '<label class="lists-protect' + (prot ? " on" : "") + '" title="' + escapeHtml(t("lists.protect")) + '"><input type="checkbox" class="lists-protect-cb" data-name="' + escapeHtml(c.name) + '"' + (prot ? " checked" : "") + " />" + ico(prot ? "lock" : "lockopen") + "</label>" +
-            '<button type="button" class="src-del lists-del-coll" data-name="' + escapeHtml(c.name) + '"' + (prot ? " disabled" : "") + ' aria-label="' + escapeHtml(t("offline.delete")) + '">×</button>' +
-          "</td></tr>");
-        if (open) rows.push('<tr class="lists-body-row"><td colspan="2">' + listPointRows(c.name) + "</td></tr>");
-      });
-    }
+    // (Map-point lists are managed in their own popup — press-and-hold the Points
+    // button; see renderMpAdmin. This window is species year/life lists only.)
     el.innerHTML = '<table class="src-tbl"><tbody>' + rows.join("") + "</tbody></table>";
-    el.querySelectorAll(".lists-protect-cb").forEach(function (cb) {
-      cb.addEventListener("change", function () { setCollProtected(this.getAttribute("data-name"), this.checked); renderListsModal(); });
-    });
-    el.querySelectorAll(".lists-del-coll").forEach(function (b) {
-      b.addEventListener("click", function () {
-        var name = this.getAttribute("data-name");
-        if (isCollProtected(name)) return;
-        modalConfirm(t("points.deleteCollPrompt", { name: name })).then(function (ok) {
-          if (!ok) return;
-          delete shownColls[name]; deleteCollection(name); saveShownState(); renderListsModal();
-        });
-      });
-    });
     el.querySelectorAll(".lists-toggle").forEach(function (b) {
       b.addEventListener("click", function () { var id = this.getAttribute("data-id"); listsExpanded[id] = !listsExpanded[id]; renderListsModal(); });
     });
     el.querySelectorAll(".lists-sp-del").forEach(function (b) {
       b.addEventListener("click", function () { listsRemoveSpecies(this.getAttribute("data-id"), this.getAttribute("data-key")); });
-    });
-    el.querySelectorAll(".lists-pt-edit").forEach(function (b) {
-      b.addEventListener("click", function () { openListPointEditor(this.getAttribute("data-coll"), this.getAttribute("data-id")); });
-    });
-    el.querySelectorAll(".lists-pt-del").forEach(function (b) {
-      b.addEventListener("click", function () { removeListPoint(this.getAttribute("data-coll"), this.getAttribute("data-id")); renderListsModal(); });
     });
     el.querySelectorAll(".lists-sp-move").forEach(function (s) {
       s.addEventListener("change", function () { listsMoveSpecies(this.getAttribute("data-id"), this.getAttribute("data-key"), this.value); });
@@ -2215,6 +2180,73 @@
         modalConfirm(t("lists.deleteYearPrompt", { year: y })).then(function (ok) { if (ok) { delete yearLists[y]; delete listsExpanded[y]; persistLists(); rebuildDetLayers(); updateDetLegend(); renderListsModal(); } });
       });
     });
+  }
+  // ---- Map-point lists admin (edit / protect / delete) ----------------------
+  // Its own popup — opened by press-and-hold (or right-click) on the Points button.
+  // Each saved list can be protected from deletion (🔒), deleted, or expanded to a
+  // per-point table to edit (name/tag/note) or remove individual points; the ✎ edits
+  // the whole list's colour + tags. (Was previously in Settings → Administer lists.)
+  function renderMpAdmin() {
+    var el = document.getElementById("mp-admin-list"); if (!el) return;
+    if (!mpCollections.length) { el.innerHTML = '<p class="dd-empty">' + escapeHtml(t("points.empty")) + "</p>"; return; }
+    var rows = [];
+    mpCollections.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (c) {
+      var prot = isCollProtected(c.name), n = (c.points && c.points.length) || 0;
+      var cid = "coll:" + c.name, open = !!listsExpanded[cid] && n > 0;
+      rows.push('<tr class="lists-row"><td class="dset-name">' +
+        '<button type="button" class="lists-toggle" data-id="' + escapeHtml(cid) + '"' + (n ? "" : " disabled") + ">" +
+          '<span class="lists-caret">' + (n ? (open ? "▾" : "▸") : "·") + "</span>" +
+          '<span class="lists-lbl lists-lbl-plain">' + escapeHtml(c.name) + "</span>" +
+          '<span class="dset-count lists-count-points">' + escapeHtml(t("lists.countPoints", { n: n })) + "</span></button></td>" +
+        '<td class="dset-actions">' +
+          '<button type="button" class="mp-coll-edit ico-btn lists-coll-edit" data-name="' + escapeHtml(c.name) + '" title="' + escapeHtml(t("points.editList")) + '" aria-label="' + escapeHtml(t("points.editList")) + '">' + ico("edit") + "</button>" +
+          '<label class="lists-protect' + (prot ? " on" : "") + '" title="' + escapeHtml(t("lists.protect")) + '"><input type="checkbox" class="lists-protect-cb" data-name="' + escapeHtml(c.name) + '"' + (prot ? " checked" : "") + " />" + ico(prot ? "lock" : "lockopen") + "</label>" +
+          '<button type="button" class="src-del lists-del-coll" data-name="' + escapeHtml(c.name) + '"' + (prot ? " disabled" : "") + ' aria-label="' + escapeHtml(t("offline.delete")) + '">×</button>' +
+        "</td></tr>");
+      if (open) rows.push('<tr class="lists-body-row"><td colspan="2">' + listPointRows(c.name) + "</td></tr>");
+    });
+    el.innerHTML = '<table class="src-tbl"><tbody>' + rows.join("") + "</tbody></table>";
+    el.querySelectorAll(".lists-protect-cb").forEach(function (cb) {
+      cb.addEventListener("change", function () { setCollProtected(this.getAttribute("data-name"), this.checked); renderMpAdmin(); });
+    });
+    el.querySelectorAll(".lists-del-coll").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var name = this.getAttribute("data-name");
+        if (isCollProtected(name)) return;
+        modalConfirm(t("points.deleteCollPrompt", { name: name })).then(function (ok) {
+          if (!ok) return;
+          delete shownColls[name]; deleteCollection(name); saveShownState(); renderMpAdmin();
+          if (typeof refreshMpPanel === "function") refreshMpPanel();
+        });
+      });
+    });
+    el.querySelectorAll(".lists-coll-edit").forEach(function (b) {
+      b.addEventListener("click", function () { openCollEditModal(this.getAttribute("data-name")); });
+    });
+    el.querySelectorAll(".lists-toggle").forEach(function (b) {
+      b.addEventListener("click", function () { var id = this.getAttribute("data-id"); listsExpanded[id] = !listsExpanded[id]; renderMpAdmin(); });
+    });
+    el.querySelectorAll(".lists-pt-edit").forEach(function (b) {
+      b.addEventListener("click", function () { openListPointEditor(this.getAttribute("data-coll"), this.getAttribute("data-id")); });
+    });
+    el.querySelectorAll(".lists-pt-del").forEach(function (b) {
+      b.addEventListener("click", function () { removeListPoint(this.getAttribute("data-coll"), this.getAttribute("data-id")); renderMpAdmin(); });
+    });
+  }
+  function openMpAdmin() {
+    if (document.getElementById("mp-admin-modal")) return;   // already open
+    closeDropdowns();
+    var ov = document.createElement("div"); ov.id = "mp-admin-modal"; ov.className = "kml-modal";
+    ov.innerHTML = '<div class="kml-modal-box mp-admin-box">' +
+      '<button type="button" id="mp-admin-close" class="kml-close" aria-label="' + escapeHtml(t("btn.close")) + '">×</button>' +
+      "<h3>" + escapeHtml(t("points.adminTitle")) + "</h3>" +
+      '<p class="cu-hint">' + escapeHtml(t("points.adminHint")) + "</p>" +
+      '<div id="mp-admin-list"></div></div>';
+    document.body.appendChild(ov);
+    function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
+    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+    document.getElementById("mp-admin-close").addEventListener("click", close);
+    renderMpAdmin();
   }
   function renderGbifTable() {
     var el = document.getElementById("gbif-table"); if (!el) return;
@@ -7548,7 +7580,7 @@
         saveShownState();
       }
       saveMapPoints(); renderMapPoints(); if (typeof refreshMpPanel === "function") refreshMpPanel();
-      if (typeof renderListsModal === "function") renderListsModal();
+      if (typeof renderMpAdmin === "function") renderMpAdmin();
       close();
     });
   }
@@ -8472,7 +8504,7 @@
     // their own per-species colours on the map).
     function mpCollRowHtml(type, name, count, swatch, checked, delTip, isProt) {
       // Protected point-lists show a 🔒 instead of the delete × (manage protection
-      // in Settings → Administer lists).
+      // in the lists-admin popup — press-and-hold the Points button).
       var del = isProt
         ? '<span class="mp-coll-lock" title="' + escapeHtml(t("lists.protect")) + '">' + ico("lock") + "</span>"
         : '<button type="button" class="mp-coll-del" data-type="' + type + '" data-name="' + escapeHtml(name) + '" aria-label="' + escapeHtml(delTip) + '" title="' + escapeHtml(delTip) + '">×</button>';
@@ -9782,6 +9814,23 @@
     document.getElementById("mp-toggle").addEventListener("click", function () {
       setTimeout(refreshMpPanel, 0);
     });
+    // Press-and-hold (touch OR mouse) or right-click the Points button → the map-point
+    // lists admin popup (edit / protect / delete). A capture-phase click guard stops
+    // the hold's trailing click from also toggling the dropdown behind the popup.
+    (function () {
+      var btn = document.getElementById("mp-toggle");
+      if (!btn) return;
+      var lpT = null, lpFired = false, lpX = 0, lpY = 0;
+      btn.addEventListener("click", function (e) { if (lpFired) { lpFired = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+      function start(x, y) { lpFired = false; clearTimeout(lpT); lpX = x; lpY = y; lpT = setTimeout(function () { lpFired = true; openMpAdmin(); }, 500); }
+      btn.addEventListener("touchstart", function (e) { var tt = e.touches && e.touches[0]; start(tt ? tt.clientX : 0, tt ? tt.clientY : 0); }, { passive: true });
+      btn.addEventListener("touchmove", function (e) { var tt = e.touches && e.touches[0]; if (tt && (Math.abs(tt.clientX - lpX) > 12 || Math.abs(tt.clientY - lpY) > 12)) clearTimeout(lpT); }, { passive: true });
+      btn.addEventListener("touchend", function () { clearTimeout(lpT); });
+      btn.addEventListener("mousedown", function (e) { if (e.button === 0) start(e.clientX, e.clientY); });
+      btn.addEventListener("mouseup", function () { clearTimeout(lpT); });
+      btn.addEventListener("mouseleave", function () { clearTimeout(lpT); });
+      btn.addEventListener("contextmenu", function (e) { e.preventDefault(); openMpAdmin(); });
+    })();
     wireDropdown("settings-toggle", "settings-panel");
     // Refresh the storage readout each time Settings opens (figures change as you cache).
     document.getElementById("settings-toggle").addEventListener("click", function () {
