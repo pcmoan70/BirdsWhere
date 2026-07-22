@@ -11514,7 +11514,7 @@
     AppGeo.countryCode(lat, lon).then(function (cc) {
       if (!hasFagelkartan(cc)) return;
       return AppGeo.regionInfo(lat, lon).then(function (reg) {
-        wrap.appendChild(makePopupBtn("🐦 " + t("link.fagelkartan") + " ↗", "demo-btn-light", function () {
+        wrap.appendChild(makePopupBtn(t("link.fagelkartan") + " ↗", "demo-btn-light", function () {
           mk.closePopup(); openExternal(fagelkartanUrl(cc, reg.county, lat, lon));
         }));
         var pop = mk.getPopup(); if (pop && pop.isOpen()) pop.update();   // re-layout for the added button

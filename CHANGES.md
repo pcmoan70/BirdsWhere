@@ -1,5 +1,10 @@
 # Changes
 
+## 2026-07-22 — Drop the bird icon from the Fågelkartan link (sw v683)
+
+- The map popup’s Fågelkartan entry now reads plainly as “Fågelkartan ↗”,
+  matching Birdingplaces directly above it (neither carries a glyph).
+
 ## 2026-07-22 — Fix: the 🟠 year-list cue never appeared (sw v682)
 
 - The year tier was gated on **this year’s list being non-empty**, so in the most
