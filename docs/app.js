@@ -1024,8 +1024,18 @@
   // (it needs the fetched observations), so that one carries the data-key.
   var SP_FLAG_GLYPH = { star: "★", rare: "◉", year: "🟠", life: "🟡", hidden: "🚫" };
   function spFlagCells(key, rare) {
-    var tier = detNeedTier(key);
-    var life = tier === "life", year = tier === "year";
+    // The two list cues are INDEPENDENT here, unlike on the map. A map marker can
+    // carry only one ring, so detNeedTier picks the stronger and a lifer never
+    // shows the year colour. A table has a column each, so both light up: a lifer
+    // is missing from this year's list too, and gets 🟡 and 🟠.
+    //
+    // This also makes each column agree with its own filter header —
+    // passSpeciesFilter already treats them independently, so previously the 🟠
+    // filter matched lifers while the 🟠 column left them blank, which made the
+    // column look empty (most rows in a 200-species list ARE lifers).
+    var tracking = lifeListActive() || yearListActive();
+    var life = !!key && tracking && !inLifeList(key);
+    var year = !!key && tracking && !inYearList(key);
     var on = { star: !!key && isInteresting(key), rare: !!rare, year: year, life: life, hidden: !!key && isHidden(key) };
     return SP_FILTER_KEYS.map(function (f) {
       return '<td class="spf-c spf-c-' + f + '"' + (f === "rare" && key ? ' data-key="' + escapeHtml(key) + '"' : "") + ">" +

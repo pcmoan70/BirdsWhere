@@ -402,3 +402,28 @@ superset of every year list, so with only a year list everything else is a lifer
       level, directly below Birdingplaces; test now asserts the ORDER, not just
       presence.
 - [x] Suites: main 44/44, menu 15/15, Fågelkartan 18/18.
+
+## Follow-up 6: the 🟠 column was near-empty (v684)
+
+User, twice: the bronze year dot doesn't show. v682 fixed the *gate*; this fixes
+the *rule*.
+
+`spFlagCells` used `detNeedTier()`, which returns ONE tier ("life" beats "year").
+That is right for the map — a marker has one ring — but wrong for a table with a
+column each. Most rows in a 200-species list are lifers, so 🟠 was left marking
+only species on the life list but not this year's.
+
+Worse, the column disagreed with its own filter: `passSpeciesFilter` already
+treated year/life independently, so the 🟠 header kept ~all rows while the 🟠
+column marked ~none.
+
+- [x] `spFlagCells` computes life/year independently; a lifer gets both.
+- [x] Map untouched (detNeedTier still picks the stronger for the single ring).
+- [x] Same data: bronze 38 → 197 of 209.
+- [x] New assertions: each column marks exactly what its filter keeps (★/🟠/🟡),
+      and a lifer carries both glyphs. 48/48; menu 15/15.
+
+Lesson (again): I reused a map-shaped rule in a list-shaped context without
+checking the constraint still applied — and then wrote a test ("never both 🟡 and
+🟠 on one row") that encoded the bug as expected behaviour, which is why two
+green runs hid it.

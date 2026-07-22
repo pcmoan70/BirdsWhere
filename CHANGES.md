@@ -1,5 +1,24 @@
 # Changes
 
+## 2026-07-22 — Fix: the 🟠 column stayed near-empty in the species list (sw v684)
+
+- The two list columns were treated as mutually exclusive: a species missing
+  from the life list showed 🟡 only, and its 🟠 was suppressed. That rule comes
+  from the **map**, where a marker can carry just one ring so the stronger cue
+  has to win — but a table has a column each, and the constraint does not apply.
+  Since most rows in a 200-species list ARE lifers, 🟠 was left marking only the
+  handful of species on the life list but not this year’s: 38 of 209 in a
+  realistic setup, and none at all if you have no life list older than this year.
+- The columns are now independent, as the columns’ own filters always were. A
+  lifer is missing from this year’s list too, so it carries **both** 🟡 and 🟠.
+  Same data as above: **38 → 197** bronze markers.
+- This also removes a real inconsistency: the 🟠 filter header already kept every
+  species off the year list (lifers included), while the 🟠 column left those
+  rows blank — so the filter and the column disagreed about the same question.
+  Each column now marks exactly the set its own header filters to, asserted in
+  the suite for ★, 🟠 and 🟡.
+- The map is unchanged: one ring per marker, strongest cue wins.
+
 ## 2026-07-22 — Drop the bird icon from the Fågelkartan link (sw v683)
 
 - The map popup’s Fågelkartan entry now reads plainly as “Fågelkartan ↗”,
