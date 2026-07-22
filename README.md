@@ -1,5 +1,8 @@
 # Species & Checklists
 
+For exploring the app: [link](https://pcmoan70.github.io/migration_calendar/)
+
+
 An interactive, **100% in-browser** explorer of species distribution, migration, and
 **live observations**, powered by the [BirdNET Geomodel](https://github.com/birdnet-team/geomodel)
 running client-side via [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/).
