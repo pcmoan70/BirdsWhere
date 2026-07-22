@@ -603,18 +603,41 @@ input:focus-visible {
   background: var(--brand-soft);
 }
 
-/* Status column — the per-species cues (★ starred, ◉ rare here, 🟡/🟠 year- or
-   life-list miss, 🚫 blocked) that used to be crammed into the name cell. Kept
-   as narrow as its content; the header doubles as the filter control. */
-#species-list-table #sp-flags-head,
-#species-list-table .sp-flags {
+/* Status columns — one narrow column per per-species cue (★ starred, ◉ rare
+   here, 🟡 year-list miss, 🟠 life-list miss, 🚫 blocked). Each header icon is
+   its own filter toggle: greyed out when off, full colour when on. */
+#species-list-table th.spf-head,
+#species-list-table td.spf-c {
   width: 1%;
   white-space: nowrap;
-  padding-left: 6px;
-  padding-right: 4px;
+  text-align: center;
+  padding-left: 2px;
+  padding-right: 2px;
 }
+/* The first status column keeps the table's normal left inset. */
+#species-list-table th.spf-head:first-child,
+#species-list-table td.spf-c:first-child { padding-left: 6px; }
+/* No lane markers between the status columns — they read as one group. */
+#species-list-table th.spf-head,
+#species-list-table td.spf-c { border-right: 0; }
+#species-list-table th#sp-f-hidden,
+#species-list-table td.spf-c-hidden { border-right: 1px solid var(--md-default-fg-color--lightest, rgba(0,0,0,.06)); }
+
+#species-list-table th.spf-head { cursor: pointer; user-select: none; font-size: 0.8rem; }
+#species-list-table th.spf-head > span {
+  display: inline-block;
+  filter: grayscale(1);
+  opacity: 0.4;
+  transition: opacity 0.12s, filter 0.12s;
+}
+#species-list-table th.spf-head:hover > span { opacity: 0.7; }
+#species-list-table th.spf-head.on > span { filter: none; opacity: 1; }
+/* ★ has no intrinsic colour, so give it one to grayscale away when inactive. */
+#species-list-table th.spf-head#sp-f-star > span { color: #f0a020; }
+#species-list-table th.spf-head#sp-f-rare > span { color: var(--ink, #16302b); }
+#species-list-table th.spf-head.on { background: var(--brand-soft); }
+
 .spf { font-style: normal; font-size: 0.72rem; line-height: 1; }
-.spf + .spf { margin-left: 1px; }
 .spf-star { color: #f0a020; font-weight: 700; font-size: 0.82rem; }
 .spf-rare { color: var(--ink, #16302b); font-size: 0.82rem; }
 

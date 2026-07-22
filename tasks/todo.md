@@ -322,3 +322,21 @@ model probability (Lesser Whitethroat 50%, Cuckoo 49%, Hobby 46%, Dunlin 38%).
 
 Lesson: I reused an existing rule (`detIsRare`) without checking that what it
 measured matched what the new column claimed to mean. Twice.
+
+## Follow-up 3: split into five per-cue filter columns (v680)
+
+- [x] `spFilters` = 5 independent booleans replacing the `speciesListFilter`
+      string; AND-combined; `hidden` inverts (off = exclude, on = only).
+- [x] `spFlagCells()` emits one `<td>` per cue; only the ◉ cell carries data-key
+      (it is the only one that changes after render).
+- [x] Five `<th class="spf-head">` toggles; greyed via `filter: grayscale(1)` +
+      opacity, coloured + tinted when `.on`. Keyboard-accessible.
+- [x] ◉ toggle applies without a re-render; the others keep list scroll.
+- [x] sortSpeciesList sci index 3 → 7; row cells 7 → 11.
+- [x] `th.speciesCycle` retired in all 15 locales; `filter.*` added (en + sv).
+- [x] Suite extended to 41/41: column order/identity, one-glyph-per-column,
+      computed greyscale on inactive headers, per-toggle isolation, and an
+      AND-combination test (★ + 🟠).
+
+Note: the list uses 🟠 for a life-list miss while the map legend uses 🔴 for the
+same thing — a pre-existing inconsistency, not touched here.

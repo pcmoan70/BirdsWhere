@@ -1,5 +1,23 @@
 # Changes
 
+## 2026-07-22 — Status column split into five filter columns (sw v680)
+
+- The single ⚑ status column becomes **five narrow columns**, one per cue:
+  **★** starred · **◉** rare here · **🟡** not on this year’s list · **🟠** not on
+  the life list · **🚫** blocked. Each glyph now has a fixed column, so the cues
+  line up down the list instead of shifting position from row to row.
+- Each column header is its own **filter toggle** — greyed out when inactive,
+  full colour (and tinted) when filtering. Replaces the single cycling header.
+- The filters are **independent and AND-combined**, mirroring the map legend:
+  ★ + 🟠 now lists starred species still missing from the life list, which the
+  old one-at-a-time cycle could not express.
+- 🚫 inverts rather than narrows: off hides blocked species (the normal case),
+  on shows only them for review — the behaviour the old “hidden” cycle step had.
+- Toggling ◉ no longer re-renders (it is a row-hiding pass over rows already on
+  screen); the others keep the list scroll position instead of jumping to the top.
+- Retires the now-unused `th.speciesCycle` string in all 15 locales; adds
+  `filter.*` tooltips (en + sv).
+
 ## 2026-07-22 — “Rare here” now means the MODEL says it’s unlikely (sw v679)
 
 - Rarity was still derived from **observation counts**, so it measured observer
