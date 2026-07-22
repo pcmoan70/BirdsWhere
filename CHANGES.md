@@ -1,5 +1,31 @@
 # Changes
 
+## 2026-07-22 — Fix: “rare here” flagged a third of the list (sw v678)
+
+- The rare rule was “detection count ≤ rarePct% of the COMMONEST species’
+  count”. Observation counts are steeply long-tailed (at Stockholm the median
+  species had 20 records and the top one 174), so the default 5% landed at ≤8
+  records and flagged **53 of 165 species** — Great Black-backed Gull, Common
+  Swift, Garden Warbler, Eurasian Curlew and other thoroughly common birds.
+  Anchoring to one dominant species measures “isn’t among the few most-reported”,
+  not “is rare”.
+- `rarePct` is now a **rank percentile**: a species is rare when it is among the
+  least-reported that % of the species recorded at the spot. Measured on the
+  same live data: Stockholm **53 → 23** of ~165, Oslo **59 → 12** of ~170, and
+  every remaining flag had a single record (Great Reed Warbler, Savi’s Warbler,
+  Red-breasted Flycatcher, Ortolan Bunting, Corncrake, Temminck’s Stint, Smew…).
+- Applies to **both** consumers of the rule — the map legend’s ◉ dots and ◉ Rare
+  filter, and the species list’s ◉ column — via one shared `rareThreshold()`.
+  `detRareMax` is renamed `detRareThr` (it holds a threshold, not a maximum).
+- A percentile also can’t be dragged by one mega-reported species, and still
+  discriminates where the commonest species has only a handful of records (the
+  old rule degenerated there — 1% of a max of 8 can never flag anything).
+- Known behaviour: species TIED at the threshold all qualify, so the flagged set
+  can exceed rarePct%. At Stockholm 23 species share a single record and all 23
+  are flagged — correct, but it is why the figure is 14% rather than 5%.
+- Settings → “Rare species threshold (%)” hint reworded (en + sv) to describe the
+  new meaning.
+
 ## 2026-07-22 — Species-list status column + Fågelkartan link (sw v677)
 
 - **Species-at-location: a status column.** The ★ that used to be glued to the

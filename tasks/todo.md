@@ -273,3 +273,29 @@ This was first built against a **165-commit-stale** local `main` (v519 vs the
 remote's v676) and had to be redone. The stale base also hid the fact that the
 "Location ▸" submenu (v590) already existed — the first attempt put the link in
 the wrong place. **Check `git fetch && git status` before starting work.**
+
+## Follow-up: "rare here" over-flagged (v678)
+
+User reported the ◉ showing for many clearly non-rare species. Measured against
+live fetches rather than assumed:
+
+| | Stockholm | Oslo |
+|---|---|---|
+| species with observations | 165 | 172 |
+| flagged by `≤5% of max` | 53 (32%) | 59 (34%) |
+| flagged by rank percentile | 23 (14%) | 12 (7%) |
+
+Root cause was the *shared* `detIsRare` rule (map legend + list), not the list
+wiring: counts are steeply long-tailed, so "≤5% of the commonest species" lands
+at ≤8 records and catches a third of the list. Not a bug I introduced — I
+inherited it when reusing the rule.
+
+- [x] `rareThreshold(counts)` — one shared rank-percentile definition.
+- [x] `detIsRare` + `spRareSet` both use it; `detRareMax` → `detRareThr`.
+- [x] Settings hint reworded (en + sv).
+- [x] Unit tests for the threshold (7/7: outlier-magnitude robustness, quiet
+      locations where the old rule could never flag, monotonicity, tie
+      behaviour) + status-column suite still 31/31.
+
+Known/accepted: species tied at the threshold all qualify, so the set can exceed
+rarePct% (Stockholm 23 species share one record → all flagged).

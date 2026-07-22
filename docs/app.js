@@ -990,15 +990,15 @@
     if (isHidden(key)) h += '<i class="spf" title="' + escapeHtml(t("flag.hidden")) + '">🚫</i>';
     return h;
   }
-  // "Rare here" for the species list: same rule as the map legend (at most
-  // rarePct% of the commonest species' count) but read off THIS list's fetched
-  // counts, so the ◉ appears as soon as the observation data lands instead of
-  // only after the user has plotted the dots.
+  // "Rare here" for the species list: the same rank-percentile rule the map
+  // legend uses (see rareThreshold), but read off THIS list's fetched counts, so
+  // the ◉ appears as soon as the observation data lands instead of only after
+  // the user has plotted the dots.
   function spRareSet(agg) {
-    var set = Object.create(null), max = 0, k;
-    for (k in agg) { var n = (agg[k] && agg[k].count) || 0; if (n > max) max = n; }
-    if (!max) return set;
-    var thr = rarePct() / 100 * max;
+    var set = Object.create(null), counts = [], k;
+    for (k in agg) { var n = (agg[k] && agg[k].count) || 0; if (n > 0) counts.push(n); }
+    var thr = rareThreshold(counts);
+    if (thr < 0) return set;
     for (k in agg) { var c = (agg[k] && agg[k].count) || 0; if (c > 0 && c <= thr) set[k] = 1; }
     return set;
   }
@@ -5475,16 +5475,46 @@
   function detPassesStar(k) { return !detStarFilter || isInteresting((detPlot[k] && detPlot[k].key) || k); }
   function detPassesYear(k) { return !detYearFilter || !inYearList((detPlot[k] && detPlot[k].key) || k); }
   function detPassesLife(k) { return !detLifeFilter || !inLifeList((detPlot[k] && detPlot[k].key) || k); }
-  // "Rare locally": a plotted species whose detection count is at most rarePct%
-  // of the commonest plotted species' count (default 10%). detRareMax is cached
-  // and refreshed before each render (recomputeRareMax) so detIsRare is O(1).
+  // "Rare locally": a species among the LEAST-REPORTED rarePct% of the species
+  // recorded at this spot — a rank percentile, not a fraction of the commonest
+  // species' count.
+  //
+  // It used to be the latter ("at most rarePct% of the max"), which measured the
+  // wrong thing: observation counts are steeply long-tailed (at Stockholm the
+  // median species had 20 records and the top one 174), so "≤5% of the max" came
+  // out at ≤8 records and flagged a THIRD of the list — Great Black-backed Gull,
+  // Common Swift, Garden Warbler and friends. Anchoring to one dominant species
+  // says "isn't among the few most-reported", not "is rare". Measured on the
+  // switch: Stockholm 53→23 of ~165 flagged, Oslo 59→12 of ~170, and every
+  // remaining one had a single record.
+  //
+  // A rank percentile also can't be dragged by one mega-reported species (a
+  // twitch generating 500 reports moves the max, not the ranking), and still
+  // discriminates where the commonest species has only a handful of records.
+  // Caveat: species TIED at the threshold count all qualify, so the flagged set
+  // can exceed rarePct% — at Stockholm 23 species share a single record, and all
+  // 23 are (correctly) the tail.
   function rarePct() { var p = +window.GeoState.get("rarePct", 5); return (p > 0 && p <= 100) ? p : 5; }
-  var detRareMax = 0;
-  function recomputeRareMax() {
-    detRareMax = 0;
-    Object.keys(detPlot).forEach(function (k) { var n = (detPlot[k].rows || []).length; if (n > detRareMax) detRareMax = n; });
+  // Count at or below which a species counts as rare, given every recorded
+  // species' count. -1 when there is nothing to rank (→ nothing is rare).
+  function rareThreshold(counts) {
+    if (!counts || !counts.length) return -1;
+    var s = counts.slice().sort(function (a, b) { return a - b; });
+    return s[Math.floor((rarePct() / 100) * (s.length - 1))];
   }
-  function detIsRare(k) { var e = detPlot[k]; return !!e && detRareMax > 0 && (e.rows || []).length <= rarePct() / 100 * detRareMax; }
+  // Cached for the plotted set and refreshed before each render
+  // (recomputeRareThreshold) so detIsRare stays O(1).
+  var detRareThr = -1;
+  function recomputeRareThreshold() {
+    var counts = Object.keys(detPlot).map(function (k) { return (detPlot[k].rows || []).length; })
+      .filter(function (n) { return n > 0; });
+    detRareThr = rareThreshold(counts);
+  }
+  function detIsRare(k) {
+    var e = detPlot[k]; if (!e || detRareThr < 0) return false;
+    var n = (e.rows || []).length;
+    return n > 0 && n <= detRareThr;
+  }
   function detPassesRare(k) { return !detRareFilter || detIsRare(k); }
   // Taxonomic class of a plotted species: model species via the taxonomy table,
   // "extra" species (x:…) carry their own class on the detPlot entry (stored at
@@ -6487,7 +6517,7 @@
     var e = { key: key, name: (name || (prev && prev.name)), color: (prev && prev.color) || "#888", rows: merged, group: null, cls: eCls };
     detPlot[key] = e;
     recolorDetections();   // assign family-based colours now that this species is in the set
-    recomputeRareMax();
+    recomputeRareThreshold();
     // Over the draw cap (single add) → re-render everything under the newest-N
     // limit. Under the cap, or mid-bulk (defer), render just this species; a bulk
     // run's trailing rebuildDetLayers() applies the cap once at the end.
@@ -6508,7 +6538,7 @@
     ensureDedup();
     if (detFocusKey && !detPlot[detFocusKey]) detFocusKey = null;   // focused species gone → don't mute everything
     recolorDetections();
-    recomputeRareMax();
+    recomputeRareThreshold();
     var allowed = detDrawAllowed();   // newest-N cap across all species (null = under cap)
     // Draw order = z-order (shared SVG renderer). Where several species pile on the
     // same pixel, the HIGHEST-PRIORITY species shows on top. Priority per species:
@@ -7248,7 +7278,7 @@
     // the map shows). The legend itself stays up so the filter can be toggled.
     // Species are ordered by habitat-model probability (lowest → highest); see the
     // sort below.
-    recomputeRareMax();
+    recomputeRareThreshold();
     // The list reflects ALL the active filters: the per-species mode filter
     // (★/◉/🟡/group) AND the days + observer filters (a species with nothing left
     // after those drops out, like its dots do on the map).
@@ -8237,7 +8267,7 @@
   // open the same popups as fetched data. Injected rows are flagged `_list` (with
   // the list's colour for the halo) so they can be re-derived each render and are
   // never persisted as fetched dots (see serializeDetPlot). Reuses mergeDetRows,
-  // recolourDetections, recomputeRareMax, rebuildDetLayers and updateDetLegend.
+  // recolourDetections, recomputeRareThreshold, rebuildDetLayers and updateDetLegend.
   function syncListDetections() {
     if (!map || typeof detPlot === "undefined") return;
     var changed = false;
@@ -8264,7 +8294,7 @@
     });
     if (!changed) return;   // no list rows added/removed → fetched layers already current
     recolorDetections();
-    recomputeRareMax();
+    recomputeRareThreshold();
     rebuildDetLayers();
     updateDetLegend();
   }
