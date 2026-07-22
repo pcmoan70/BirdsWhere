@@ -38,6 +38,23 @@ window.AppGeo = (function () {
       .catch(function () { var info = { cc: "", name: "" }; countryCache[k] = info; return info; });
   }
   function countryCode(lat, lon) { return countryInfo(lat, lon).then(function (i) { return i.cc; }); }
+  // One level below the country: the county / län / fylke the point falls in.
+  // Separate from countryInfo (which asks at zoom=3 — country granularity only,
+  // and is on the hot path for every source gate) so this finer query is made
+  // only where a caller actually needs a region, and cached on its own.
+  var regionCache = {};   // key -> { cc, county }
+  function regionInfo(lat, lon) {
+    var k = lat.toFixed(2) + "," + lon.toFixed(2);
+    if (regionCache[k] !== undefined) return Promise.resolve(regionCache[k]);
+    return fetch("https://nominatim.openstreetmap.org/reverse?format=json&zoom=8&addressdetails=1&accept-language=en&lat=" + lat + "&lon=" + lon, { headers: { Accept: "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        var addr = (j && j.address) || {};
+        var info = { cc: (addr.country_code || "").toUpperCase(), county: addr.county || addr.state || "" };
+        regionCache[k] = info; return info;
+      })
+      .catch(function () { var info = { cc: "", county: "" }; regionCache[k] = info; return info; });
+  }
   // A precise place name for a point (finer than commune/municipality): the primary
   // named feature, else the finest locality — never the municipality/county/state.
   // Cached by ~10 m so repeated popups don't re-hit Nominatim. "" if none resolves.
@@ -221,6 +238,7 @@ window.AppGeo = (function () {
     init: init,
     countryInfo: countryInfo,
     countryCode: countryCode,
+    regionInfo: regionInfo,
     placeName: placeName,
     nearbyFeature: nearbyFeature,
     countryMatch: countryMatch,

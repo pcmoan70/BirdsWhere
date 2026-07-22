@@ -921,9 +921,11 @@
     if (yearListActive() && !inYearList(key)) return 2;
     return 0;
   }
-  // Species-list filter mode, cycled by clicking the "Species" column header:
-  // "" (default — exclude hidden) → "interesting" (only ★ tagged) → "hidden"
-  // (only species the user has hidden — lets the list show them for review).
+  // Species-list filter mode, cycled by clicking the status (⚑) column header —
+  // the column whose mini-icons it filters on: "" (default — exclude hidden) →
+  // "interesting" (only ★ tagged) → "rare" (only ◉ locally rare) → "yearmiss" →
+  // "lifemiss" → "hidden" (only species the user has hidden, so they can be
+  // reviewed).
   var speciesListFilter = "";
   // Age threshold (days since most recent detection) for the species list, cycled
   // by clicking the "Age" column header: 0 (off) → 1 → 3 → 7 → 14 → 21 → 28 → 0.
@@ -973,13 +975,48 @@
   // "★ " prefix for species the user has tagged as interesting (lists/cards).
   // Wrapped in a styled span so the star is visually distinct from the name.
   function interestingStar(key) { return isInteresting(key) ? '<span class="int-star" aria-label="interesting">★</span> ' : ""; }
-  // Header label for the "Species" column reflecting the active filter mode.
-  function speciesHeadLabel() {
-    if (speciesListFilter === "interesting") return "★ " + t("th.species");
-    if (speciesListFilter === "yearmiss") return "🟡 " + t("th.species");
-    if (speciesListFilter === "lifemiss") return "🟠 " + t("th.species");
-    if (speciesListFilter === "hidden") return "🚫 " + t("th.species");
-    return t("th.species");
+  // Status (⚑) column of the species list: the per-species cues that used to be
+  // squeezed into the name cell — ★ tagged interesting, ◉ locally rare, and the
+  // year/life "needs" marker — plus 🚫 for a blocked species (visible only in
+  // the "hidden" filter mode). 🟠 (life-list miss) implies 🟡 (year-list miss),
+  // so only the stronger of the two is drawn, matching detNeedClass on the map.
+  function spFlagsHtml(key, rare) {
+    if (!key) return "";
+    var h = "";
+    if (isInteresting(key)) h += '<i class="spf spf-star" title="' + escapeHtml(t("flag.star")) + '">★</i>';
+    if (rare) h += '<i class="spf spf-rare" title="' + escapeHtml(t("flag.rare")) + '">◉</i>';
+    if (lifeListActive() && !inLifeList(key)) h += '<i class="spf" title="' + escapeHtml(t("flag.life")) + '">🟠</i>';
+    else if (yearListActive() && !inYearList(key)) h += '<i class="spf" title="' + escapeHtml(t("flag.year")) + '">🟡</i>';
+    if (isHidden(key)) h += '<i class="spf" title="' + escapeHtml(t("flag.hidden")) + '">🚫</i>';
+    return h;
+  }
+  // "Rare here" for the species list: same rule as the map legend (at most
+  // rarePct% of the commonest species' count) but read off THIS list's fetched
+  // counts, so the ◉ appears as soon as the observation data lands instead of
+  // only after the user has plotted the dots.
+  function spRareSet(agg) {
+    var set = Object.create(null), max = 0, k;
+    for (k in agg) { var n = (agg[k] && agg[k].count) || 0; if (n > max) max = n; }
+    if (!max) return set;
+    var thr = rarePct() / 100 * max;
+    for (k in agg) { var c = (agg[k] && agg[k].count) || 0; if (c > 0 && c <= thr) set[k] = 1; }
+    return set;
+  }
+  // Label for the status (⚑) column header — the glyph of the active filter,
+  // or a neutral flag when no filter is on. Also (re)applies both header
+  // tooltips, so a language change picks them up on the next render.
+  function syncFlagsHead() {
+    var fh = document.getElementById("sp-flags-head");
+    if (fh) {
+      fh.textContent = speciesListFilter === "interesting" ? "★" :
+                       speciesListFilter === "rare" ? "◉" :
+                       speciesListFilter === "yearmiss" ? "🟡" :
+                       speciesListFilter === "lifemiss" ? "🟠" :
+                       speciesListFilter === "hidden" ? "🚫" : "⚑";
+      fh.title = t("th.speciesCycle");
+    }
+    var sh = document.getElementById("sp-species-head");
+    if (sh) sh.title = t("th.speciesSort");
   }
   // Should a row be kept under the current filter mode? Encapsulates the rule
   // so renderSpeciesList and renderSpeciesInCountry stay consistent. The
@@ -987,6 +1024,9 @@
   // year's list, lifemiss = not on the life list (hidden species are excluded).
   function passSpeciesFilter(key) {
     if (speciesListFilter === "interesting") return isInteresting(key);
+    // "rare" needs the fetched counts, which arrive after this render — it is
+    // applied as a row-hiding pass in applyAgeFilter instead.
+    if (speciesListFilter === "rare") return !isHidden(key);
     if (speciesListFilter === "yearmiss") return !isHidden(key) && !inYearList(key);
     if (speciesListFilter === "lifemiss") return !isHidden(key) && !inLifeList(key);
     if (speciesListFilter === "hidden") return isHidden(key);
@@ -1022,8 +1062,8 @@
     rows.sort(function (a, b) {
       var ka, kb;
       if (col === "sci") {
-        ka = (a.children[2].textContent || "").toLowerCase();
-        kb = (b.children[2].textContent || "").toLowerCase();
+        ka = (a.children[3].textContent || "").toLowerCase();   // ⚑ · name · name2 · sci
+        kb = (b.children[3].textContent || "").toLowerCase();
       } else if (col === "name") {
         ka = a.getAttribute("data-name") || ""; kb = b.getAttribute("data-name") || "";
       } else if (col === "prob") {
@@ -1062,43 +1102,42 @@
     if (speciesListSort.col) sortSpeciesList();
     else refreshCurrentView();   // off → re-render gives the natural prob desc ranking
   }
-  // Apply the age filter to the per-point species list. Operates on the cached
-  // sightings aggregation stored on the tbody so toggling the filter is instant
-  // (no re-fetch). Rows with no detection or older than the threshold get
-  // display:none; everything else is shown.
+  // Apply the count-driven filters to the per-point species list: the n(d) age
+  // threshold and the status column's ◉ "rare here" mode. Both hide rows via the
+  // same `display` property, so they are decided together. Operates on the
+  // cached sightings aggregation stored on the tbody, so toggling either filter
+  // is instant (no re-fetch); before that data lands neither filter bites.
   function applyAgeFilter() {
     var tbody = document.getElementById("sp-tbody");
     if (!tbody) return;
     var agg = tbody._sightingsAgg, days = speciesAgeFilterDays;
+    var rareSet = (speciesListFilter === "rare") ? tbody._rareSet : null;
     var now = Date.now();
     Array.prototype.forEach.call(tbody.querySelectorAll("tr"), function (tr) {
-      if (!days || !agg) { tr.style.display = ""; return; }
-      // ">0": keep only species that have at least one observation (any age).
-      if (days === -1) {
-        if (tr.classList.contains("sp-extra")) { tr.style.display = ""; return; }   // extras are observed by definition
-        var slX = tr.querySelector(".sp-link"), kX = slX && slX.getAttribute("data-key");
-        var eX = kX && agg[kX];
-        tr.style.display = (eX && eX.count > 0) ? "" : "none";
-        return;
-      }
-      // sp-extra rows carry their age directly (no sp-link / agg entry).
-      if (tr.classList.contains("sp-extra")) {
-        var d = parseInt(tr.getAttribute("data-age-days"), 10);
-        tr.style.display = (!isNaN(d) && d <= days) ? "" : "none";
-        return;
-      }
+      var extra = tr.classList.contains("sp-extra");
       var sl = tr.querySelector(".sp-link"), key = sl && sl.getAttribute("data-key");
-      var entry = key && agg[key];
-      if (!entry || !entry.latestTs) { tr.style.display = "none"; return; }
-      tr.style.display = (Math.round((now - entry.latestTs) / 86400000) <= days) ? "" : "none";
+      var entry = (!extra && key && agg) ? agg[key] : null;
+      var ageOk = true;
+      if (days && agg) {
+        // ">0": keep only species that have at least one observation (any age).
+        if (days === -1) ageOk = extra || !!(entry && entry.count > 0);   // extras are observed by definition
+        // sp-extra rows carry their age directly (no sp-link / agg entry).
+        else if (extra) { var d = parseInt(tr.getAttribute("data-age-days"), 10); ageOk = !isNaN(d) && d <= days; }
+        else ageOk = !!(entry && entry.latestTs) && Math.round((now - entry.latestTs) / 86400000) <= days;
+      }
+      // ◉ rare: species outside the model ("extras") never carry the marker.
+      var rareOk = !rareSet || (!extra && !!(key && rareSet[key]));
+      tr.style.display = (ageOk && rareOk) ? "" : "none";
     });
   }
   // Clickable species-name span (opens the species menu). Prepends ★ when the
   // species is tagged interesting; data-name keeps the bare name (no star).
-  function nameLinkHtml(label) {
+  // `noStar` suppresses the prefix for the species-list table, which shows the
+  // star (and the other cues) in its own status column instead.
+  function nameLinkHtml(label, noStar) {
     var n = escapeHtml(speciesName(label));
     return '<span class="sp-link" data-key="' + escapeHtml(label.key) + '" data-name="' + n +
-           '" data-sci="' + escapeHtml(label.sci || "") + '">' + interestingStar(label.key) + n + "</span>";
+           '" data-sci="' + escapeHtml(label.sci || "") + '">' + (noStar ? "" : interestingStar(label.key)) + n + "</span>";
   }
 
   function openExternal(url) { window.open(url, "_blank", "noopener"); }
@@ -1586,6 +1625,8 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { date: "2026-07-22", text: "Species-at-location: a status column (★ starred · ◉ rare here · 🟡/🟠 year- or life-list miss · 🚫 blocked) left of the species name. Click its header to filter by those; click “Species” to sort A–Z / Z–A." },
+    { date: "2026-07-22", text: "Fågelkartan link under the map popup’s 📍 Location menu for points in Sweden and Norway — opens that point’s county (län / fylke) page." },
     { date: "2026-07-21", text: "Manage your saved map-point lists from their own popup: press-and-hold (or right-click) the Points button to open it. Protect a list from deletion (🔒), delete a list, edit its colour + tags, or expand one to edit/remove individual points. (This moved out of Settings → Administer lists, which now holds the year/life species lists only.)" },
     { date: "2026-07-21", text: "Plants 🌿 and Fungi 🍄 species groups (Settings → Species group). The Nordic databases (Artsobservasjoner, Artportalen, Laji.fi), GBIF and iNaturalist also carry flora and fungi — pick the group to fetch, map, list, filter and save their observations. There's no habitat model for them, so it's observation-search only: Range, Richness and Migration are hidden for these groups." },
     { date: "2026-07-21", text: "The map legend's filters are now dropdown subwindows. Time opens presets (1/2/3 days, weeks, months) plus a from–to date range; the ★/◉/🟡 species filter shows each option with its symbol and meaning. And the red × now deletes fetched areas one at a time — the first click puts a red × on each fetched rectangle (tap it to remove just that area's detections), a second click on the legend × clears everything." },
@@ -1619,6 +1660,39 @@
     var z = map ? map.getZoom() : 12;
     return "https://www.birdingplaces.eu/en/find-a-birdingplace#" + z.toFixed(2) + "/" + lat.toFixed(4) + "/" + lon.toFixed(4);
   }
+  // Fågelkartan (fagelkartan.se) — a Swedish/Norwegian bird map & guide, with a
+  // page per county: Sweden at /lan/<slug>/, Norway at /no/fylke/<slug>/. We stop
+  // at county level because the municipality pages (/kommun/, /no/kommune/) are
+  // ~650 slugs we'd have to guess at — a wrong guess is a 404, whereas the 36
+  // county slugs are a closed set we can verify against.
+  // The ?lat/&lng/&zoom query is the form fagelkartan.se's own links use; it is
+  // carried through so the site can centre on the point if it reads them
+  // (harmless if not — the county page is the destination either way).
+  var FK_LAN = ["blekinge", "dalarna", "gavleborg", "gotland", "halland", "jamtland", "jonkoping", "kalmar",
+    "kronoberg", "norrbotten", "orebro", "ostergotland", "skane", "sodermanland", "stockholm", "uppsala",
+    "varmland", "vasterbotten", "vasternorrland", "vastmanland", "vastra-gotaland"];
+  var FK_FYLKE = ["agder", "akershus", "buskerud", "finnmark", "innlandet", "more-og-romsdal", "nordland",
+    "oslo", "ostfold", "rogaland", "telemark", "troms", "trondelag", "vestfold", "vestland"];
+  // Nominatim's English county name → the site's slug. Verified against live
+  // reverse-geocodes for every Norwegian fylke and the awkward Swedish names
+  // (Örebro/Östergötland/Gävleborg/Jämtland/Jönköping/Värmland/Västra Götaland…):
+  // dropping the " County" suffix and folding the Nordic vowels is enough.
+  function fkSlug(name) {
+    return String(name || "").toLowerCase()
+      .replace(/\s+county$/, "")
+      .replace(/[åäæ]/g, "a").replace(/[öø]/g, "o").replace(/é/g, "e")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  }
+  function fagelkartanUrl(cc, county, lat, lon) {
+    var no = cc === "NO";
+    var base = "https://fagelkartan.se/" + (no ? "no/fylke/" : "lan/");
+    var slug = fkSlug(county);
+    if ((no ? FK_FYLKE : FK_LAN).indexOf(slug) < 0) return base;   // unmappable → the county index
+    var z = map ? Math.round(map.getZoom()) : 10;
+    return base + slug + "/?lat=" + lat.toFixed(4) + "&lng=" + lon.toFixed(4) + "&zoom=" + z;
+  }
+  function hasFagelkartan(cc) { return cc === "SE" || cc === "NO"; }
+
   // BirdLife DataZone factsheet for a country. Their canonical URL uses the
   // English country name lowercased and hyphen-separated (verified: monaco,
   // norway, united-kingdom, united-states-of-america all resolve).
@@ -2696,8 +2770,14 @@
       td.innerHTML = '<button type="button" class="det-count-btn" data-key="' + escapeHtml(key) + '">' + entry.count + "</button>" +
         (days != null ? '<span class="det-d">(' + days + ")</span>" : "");
     });
+    // Counts are in — the status column can now show ◉ for the locally-rare ones.
+    var rareSet = tbody._rareSet = spRareSet(agg);
+    tbody.querySelectorAll("td.sp-flags[data-key]").forEach(function (td) {
+      var k = td.getAttribute("data-key");
+      td.innerHTML = spFlagsHtml(k, !!rareSet[k]);
+    });
     prependExtraSightings(tbody, extras);
-    // Re-apply the active age filter and sort as data arrives.
+    // Re-apply the active age/rare filters and sort as data arrives.
     applyAgeFilter();
     if (speciesListSort.col) sortSpeciesList();
   }
@@ -2757,7 +2837,8 @@
       tr.className = "sp-extra";
       tr.setAttribute("data-age-days", days != null ? days : "");
       var clsBadge = e.cls ? '<span class="sp-extra-cls" title="' + escapeHtml(e.cls) + '">' + classGlyph(e.cls) + "</span> " : "";
-      tr.innerHTML = '<td>' + clsBadge + '<span class="sp-extra-name" title="' + escapeHtml(t("sp.extraHint")) + '">' + escapeHtml(name) + '</span></td>' +
+      tr.innerHTML = '<td class="sp-flags"></td>' +   // not a model species → no list/star status to show
+        '<td>' + clsBadge + '<span class="sp-extra-name" title="' + escapeHtml(t("sp.extraHint")) + '">' + escapeHtml(name) + '</span></td>' +
         '<td class="name2"></td>' +
         '<td class="sci">' + escapeHtml(e.sci) + '</td>' +
         '<td class="prob-cell prob-na">—</td>' +
@@ -3739,7 +3820,7 @@
             '<button id="sp-map-btn" class="demo-btn demo-btn-light ico-btn" title="Plot all observations on the map">' + ico("pin") + '<span class="ico-label" data-i18n="btn.showInMap">Map</span></button>' +
           '</div>' +
           '<table id="species-list-table">' +
-            '<thead><tr><th id="sp-species-head" class="clickable-head" data-i18n="th.species">Species</th><th class="name2" id="sp-name2-head"></th><th id="sp-sci-head" class="clickable-head" data-i18n="th.sci">Scientific name</th><th id="sp-prob-head" class="clickable-head" data-i18n="th.prob">Probability</th><th id="sp-nd-head" class="num clickable-head" data-i18n="th.nd">n(d)</th><th id="sp-delta-head"></th></tr></thead>' +
+            '<thead><tr><th id="sp-flags-head" class="clickable-head">⚑</th><th id="sp-species-head" class="clickable-head" data-i18n="th.species">Species</th><th class="name2" id="sp-name2-head"></th><th id="sp-sci-head" class="clickable-head" data-i18n="th.sci">Scientific name</th><th id="sp-prob-head" class="clickable-head" data-i18n="th.prob">Probability</th><th id="sp-nd-head" class="num clickable-head" data-i18n="th.nd">n(d)</th><th id="sp-delta-head"></th></tr></thead>' +
             '<tbody id="sp-tbody"></tbody>' +
           '</table>' +
           '<div class="sp-actions sp-actions-dl">' +
@@ -9853,32 +9934,20 @@
     // Click the "Species" column header to cycle the list through five states:
     // default (natural prob order) → only ★ starred → only 🚫 blocked →
     // alphabetic A→Z → alphabetic Z→A → default. Combines the species filter
-    // (starred/blocked) and the alphabetic sort in one control.
-    // Clicking the "Species" header cycles filter/sort modes:
-    //  0 all · 1 ★ starred · 2 🟡 not on this year's list · 3 🟠 not on life list
-    //  · 4 🚫 blocked · 5 A→Z · 6 Z→A.
-    document.getElementById("sp-species-head").addEventListener("click", function () {
-      var nameAsc = speciesListSort.col === "name" && speciesListSort.dir === "asc";
-      var nameDesc = speciesListSort.col === "name" && speciesListSort.dir === "desc";
-      var state = speciesListFilter === "interesting" ? 1 :
-                  speciesListFilter === "yearmiss" ? 2 :
-                  speciesListFilter === "lifemiss" ? 3 :
-                  speciesListFilter === "hidden" ? 4 :
-                  nameAsc ? 5 : nameDesc ? 6 : 0;
-      state = (state + 1) % 7;
-      speciesListFilter = ""; speciesListSort = { col: "", dir: "" };
-      if (state === 1) speciesListFilter = "interesting";
-      else if (state === 2) speciesListFilter = "yearmiss";
-      else if (state === 3) speciesListFilter = "lifemiss";
-      else if (state === 4) speciesListFilter = "hidden";
-      else if (state === 5) speciesListSort = { col: "name", dir: "asc" };
-      else if (state === 6) speciesListSort = { col: "name", dir: "desc" };
-      this.textContent = speciesHeadLabel();
-      this.title = t("th.speciesCycle");
-      updateSortIndicators();
+    // Click the status (⚑) column header to cycle the filter over exactly the
+    // mini-icons that column draws: all → ★ starred → ◉ rare here → 🟡 not on
+    // this year's list → 🟠 not on life list → 🚫 blocked → all.
+    document.getElementById("sp-flags-head").addEventListener("click", function () {
+      var seq = ["", "interesting", "rare", "yearmiss", "lifemiss", "hidden"];
+      speciesListFilter = seq[(seq.indexOf(speciesListFilter) + 1) % seq.length];
+      syncFlagsHead();
       refreshCurrentView();
     });
-    document.getElementById("sp-species-head").title = t("th.speciesCycle");
+
+    // The "Species" header is now a plain name sort: A→Z → Z→A → off (off
+    // returns the natural Probability-descending ranking).
+    document.getElementById("sp-species-head").addEventListener("click", function () { cycleSpeciesListSort("name"); });
+    syncFlagsHead();
 
     // Click the "Probability" column header in country view to cycle the
     // aggregation: max → 90th percentile → median → max. Cached, so it just
@@ -11325,6 +11394,17 @@
     locSub.appendChild(makePopupBtn("📍 " + t("loc.save"), "demo-btn-light", function () { mk.closePopup(); registerLocationPrompt(lat, lon); }));
     locSub.appendChild(makePopupBtn("🔗 " + t("share.link"), "demo-btn-light", function () { mk.closePopup(); doShare({ v: 1, type: "point", lat: lat, lon: lon }, t("share.link")); }));
     locSub.appendChild(makePopupBtn("📋 " + coordsText(lat, lon), "demo-btn-light", function () { mk.closePopup(); copyCoords(lat, lon); }));
+    // Fågelkartan's county page — Sweden and Norway only, and only once the
+    // county-level reverse-geocode resolves, so the submenu opens instantly.
+    AppGeo.countryCode(lat, lon).then(function (cc) {
+      if (!hasFagelkartan(cc)) return;
+      return AppGeo.regionInfo(lat, lon).then(function (reg) {
+        locSub.appendChild(makePopupBtn("🐦 " + t("link.fagelkartan") + " ↗", "demo-btn-light", function () {
+          mk.closePopup(); openExternal(fagelkartanUrl(cc, reg.county, lat, lon));
+        }));
+        var pop = mk.getPopup(); if (pop && pop.isOpen() && locSub.style.display !== "none") pop.update();
+      });
+    }).catch(function () { /* leave the submenu as-is */ });
     var locBtn = makePopupBtn("📍 " + t("popup.location") + " ▸", "demo-btn-light", function () {
       var show = locSub.style.display === "none";
       locSub.style.display = show ? "" : "none";
@@ -12963,8 +13043,7 @@
         if (ka === 2) return speciesName(a.label).localeCompare(speciesName(b.label));
         return b.prob - a.prob;
       });
-      var sh1 = document.getElementById("sp-species-head");
-      if (sh1) sh1.textContent = speciesHeadLabel();
+      syncFlagsHead();
       var nList = spp ? results.filter(function (r) { return !r.inModel && r.inList; }).length : 0;
       currentSpView = { mode: "country", cc: info.cc, name: info.name, lat: lat, lon: lon, results: results };
       var ph = document.getElementById("sp-prob-head");
@@ -13008,7 +13087,8 @@
         else if (r.inModel && r.inList) chip = '<span class="src-chip src-both" title="' + escapeHtml(t("src.both")) + '">✓</span>';
         else if (r.inModel) chip = '<span class="src-chip src-model" title="' + escapeHtml(t("src.modelOnly")) + '">?</span>';
         else chip = '<span class="src-chip src-list" title="' + escapeHtml(t("src.listOnly")) + '">●</span>';
-        return "<tr" + (!r.inModel ? ' class="row-list-only"' : "") + "><td>" + nameLinkHtml(r.label) + "</td>" + name2Cell + '<td class="sci">' + escapeHtml(r.label.sci) + "</td>" + probCell + '<td class="num det-nd"></td><td>' + chip + "</td></tr>";
+        return "<tr" + (!r.inModel ? ' class="row-list-only"' : "") + '><td class="sp-flags" data-key="' + escapeHtml(r.label.key) + '">' +
+          spFlagsHtml(r.label.key, false) + "</td><td>" + nameLinkHtml(r.label, true) + "</td>" + name2Cell + '<td class="sci">' + escapeHtml(r.label.sci) + "</td>" + probCell + '<td class="num det-nd"></td><td>' + chip + "</td></tr>";
       }).join("");
       var sp = document.getElementById("species-panel");
       sp.classList.toggle("as-page", currentMode === "list");
@@ -13130,8 +13210,7 @@
     // Reset the agg toggle on the prob column header (country-only feature).
     var ph0 = document.getElementById("sp-prob-head");
     if (ph0) { ph0.textContent = t("th.prob"); ph0.title = ""; ph0.classList.remove("clickable-head"); }
-    var sh0 = document.getElementById("sp-species-head");
-    if (sh0) sh0.textContent = speciesHeadLabel();
+    syncFlagsHead();
     var ah0 = document.getElementById("sp-nd-head");
     if (ah0) ah0.textContent = ageHeadLabel();
     updateSortIndicators();
@@ -13166,8 +13245,7 @@
       if (results.length === 0 && speciesListFilter !== "") {
         speciesListFilter = "";
         results = buildResults();
-        var shFix = document.getElementById("sp-species-head");
-        if (shFix) shFix.textContent = speciesHeadLabel();
+        syncFlagsHead();
         updateSortIndicators();
       }
       // When every comparison value is positive, show it as a probability-style
@@ -13200,7 +13278,8 @@
         var dKey = escapeHtml(r.label.key);
         var pct = Math.round(r.prob * 100);
         var sortAttrs = ' data-name="' + escapeHtml(speciesName(r.label).toLowerCase()) + '" data-prob="' + r.prob + '"' + (hasCompare ? ' data-cmp="' + r.cmpVal + '"' : "");
-        return '<tr' + sortAttrs + '><td>' + nameLinkHtml(r.label) + '</td>' + name2Cell + '<td class="sci">' +
+        return '<tr' + sortAttrs + '><td class="sp-flags" data-key="' + dKey + '">' + spFlagsHtml(r.label.key, false) +
+               '</td><td>' + nameLinkHtml(r.label, true) + '</td>' + name2Cell + '<td class="sci">' +
                escapeHtml(r.label.sci) + '</td><td class="prob-cell"><span class="prob-num">' + pct +
                '%</span><div class="prob-bar" style="width:' + pct + '%;background:' + probHueColor(pRange > 0 ? (r.prob - pLo) / pRange : 1) + '"></div></td>' +
                '<td class="num det-nd" data-key="' + dKey + '"><span class="det-wait" title="' + escapeHtml(t("status.loadingDet")) + '"></span></td>' + cmpCell + '</tr>';

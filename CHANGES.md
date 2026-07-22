@@ -1,5 +1,26 @@
 # Changes
 
+## 2026-07-22 — Species-list status column + Fågelkartan link (sw v677)
+
+- **Species-at-location: a status column.** The ★ that used to be glued to the
+  front of a starred species' name has moved into its own narrow column left of
+  Species, alongside the other per-species cues: ◉ rare here, 🟡 not on this
+  year's list, 🟠 not on the life list, 🚫 blocked. (🟠 implies 🟡, so only the
+  stronger of the two is drawn — same rule the map dots use.)
+- **Each header now acts on its own column.** The status header cycles the
+  filter (all → ★ → ◉ → 🟡 → 🟠 → 🚫), and "Species" is a plain A–Z / Z–A / off
+  sort — previously one 7-state cycle on the Species header did both.
+- ◉ "rare here" is the same rule as the map legend (at most rarePct% of the
+  commonest species' count) but read off the list's own fetched counts, so it
+  appears as soon as the observations land rather than only after plotting. It
+  combines with the n(d) age filter (both hide rows, so they are ANDed).
+- **Fågelkartan (SE/NO).** The map popup's 📍 Location submenu now offers a
+  fagelkartan.se link for points in Sweden and Norway, resolving to that point's
+  county page (/lan/<slug>/ or /no/fylke/<slug>/) via a new county-level
+  reverse-geocode (AppGeo.regionInfo, zoom=8, separately cached). All 21 län +
+  15 fylke slugs are bundled and the derived slug is validated against them, so
+  an unmappable name falls back to the county index instead of a 404.
+
 ## 2026-07-22 — Simplify detection location naming to the source's own place (sw v676)
 
 - The detections popup/list header now shows simply the place name the data source

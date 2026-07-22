@@ -233,3 +233,43 @@ Verified: headless DOM render of the new modal; standalone tests of the
 set-merge, tombstone-survival, and (separately) the GBIF dedup + colour
 determinism + Artsobs URL helpers — all PASS.
 
+
+---
+
+# Species-list status column (★ / ◉ / 🟡🟠 / 🚫) + Fågelkartan link
+
+## Decisions (user-confirmed)
+- New status column header cycles the FILTER: all → ★ starred → ◉ rare →
+  🟡 not on year list → 🟠 not on life list → 🚫 blocked.
+- "Species" header becomes a pure A–Z / Z–A / off sort (its 7-state combined
+  cycle is retired).
+- Rarity = same rule as the map legend (count ≤ rarePct% of the commonest
+  species), but computed from the list's own fetched counts so it lands as soon
+  as the observation data arrives.
+- Fågelkartan link goes under the map popup's 📍 Location submenu, county level
+  (SE /lan/<slug>/, NO /no/fylke/<slug>/).
+
+## Tasks
+- [x] `spFlagsHtml(key, rare)` + `spRareSet(agg)` + `syncFlagsHead()`.
+- [x] New `<th id="sp-flags-head">` + `<td class="sp-flags">` in both renderers
+      and in `prependExtraSightings`.
+- [x] `nameLinkHtml(label, noStar)` — suppress the ★ prefix in this table only.
+- [x] `applySightings` computes the rare set, refreshes the flag cells.
+- [x] `applyAgeFilter` also applies the ◉ rare filter (same `display` property).
+- [x] `sortSpeciesList` sci-column index 2 → 3.
+- [x] Header handlers: flags → filter cycle; species → `cycleSpeciesListSort("name")`.
+- [x] `AppGeo.regionInfo` (zoom=8, own cache) + `fagelkartanUrl` / `fkSlug` /
+      bundled 21 län + 15 fylke slug sets; button in `locSub`.
+- [x] CSS, i18n (en + sv), What's new, CHANGES, README, sw v677.
+
+## Verification
+- [x] `node --check` on app.js / geo.js / i18n/strings.js
+- [x] Headless (Chrome via puppeteer-core), counts stubbed for determinism:
+      status column 31/31, Fågelkartan 14/14.
+- [x] All 36 generated fagelkartan.se county URLs return 200 live.
+
+## Lesson
+This was first built against a **165-commit-stale** local `main` (v519 vs the
+remote's v676) and had to be redone. The stale base also hid the fact that the
+"Location ▸" submenu (v590) already existed — the first attempt put the link in
+the wrong place. **Check `git fetch && git status` before starting work.**

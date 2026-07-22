@@ -603,6 +603,21 @@ input:focus-visible {
   background: var(--brand-soft);
 }
 
+/* Status column — the per-species cues (★ starred, ◉ rare here, 🟡/🟠 year- or
+   life-list miss, 🚫 blocked) that used to be crammed into the name cell. Kept
+   as narrow as its content; the header doubles as the filter control. */
+#species-list-table #sp-flags-head,
+#species-list-table .sp-flags {
+  width: 1%;
+  white-space: nowrap;
+  padding-left: 6px;
+  padding-right: 4px;
+}
+.spf { font-style: normal; font-size: 0.72rem; line-height: 1; }
+.spf + .spf { margin-left: 1px; }
+.spf-star { color: #f0a020; font-weight: 700; font-size: 0.82rem; }
+.spf-rare { color: var(--ink, #16302b); font-size: 0.82rem; }
+
 #species-list-table .sci { font-style: italic; }
 #species-list-table.hide-sci .sci,
 #species-list-table.hide-sci #sp-sci-head { display: none; }

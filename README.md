@@ -38,6 +38,10 @@ Ranked predicted species at a clicked location, with an optional comparison colu
 Δ probability vs previous/next week or the annual mean, **% of annual max**, or **Annual Top**.
 When live sources are enabled, each row also fills in **recent observation counts** and a
 "days since most recent" age (the list updates progressively as each source returns).
+A **status column** left of the species name carries the per-species cues — **★** starred,
+**◉** rare here, **🟡** not on this year's list, **🟠** not on the life list, **🚫** blocked.
+Clicking its header cycles those as a *filter*; clicking **Species** sorts A–Z / Z–A, and
+clicking **n(d)** cycles the "days since" age filter.
 
 ### Live observations
 Recent real-world sightings are fetched directly from third-party APIs and matched to the
