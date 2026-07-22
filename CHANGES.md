@@ -1,5 +1,30 @@
 # Changes
 
+## 2026-07-22 — “Rare here” now means the MODEL says it’s unlikely (sw v679)
+
+- Rarity was still derived from **observation counts**, so it measured observer
+  effort, not rarity. At rarePct=3 every flagged species was simply one with a
+  single report — Hooded Crow at 74% model probability, Lesser Whitethroat (50%),
+  Common Cuckoo (49%), Eurasian Hobby (46%), Dunlin (38%) — all marked ◉ purely
+  because few people had logged them there.
+- **A species is now “rare here” when it was seen at the spot AND the habitat
+  model gives it at most rarePct% probability.** How often it was reported is
+  irrelevant. One shared `isRareProb()` serves both the map legend’s ◉ dots /
+  ◉ Rare filter and the species list’s ◉ column.
+- Live result at the new default (10%): Stockholm 7 flagged, rural Värmland 8,
+  rural Innlandet 16 — and **no species with model probability ≥25% is flagged
+  anywhere**, versus 8 of 17 at Stockholm before.
+- This also fixes the opposite error: a twitched scarcity with many reports is
+  now correctly rare (Brambling n=27 p=7%, Corn Crake n=25 p=9%, Wood Warbler
+  n=37 p=6%). The count-based rule could never flag those.
+- Default `rarePct` raised 5 → 10, since it is now read as a probability cutoff
+  rather than a share of a count. A saved value is untouched.
+- The plotted dots re-render when the per-species probabilities finish computing,
+  since those now decide the ◉ styling and not just the legend order.
+- Removes the count-percentile plumbing (`rareThreshold`, `detRareThr`,
+  `recomputeRareThreshold` and its four call sites). Settings hint reworded
+  (en + sv).
+
 ## 2026-07-22 — Fix: “rare here” flagged a third of the list (sw v678)
 
 - The rare rule was “detection count ≤ rarePct% of the COMMONEST species’

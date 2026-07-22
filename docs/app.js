@@ -990,16 +990,21 @@
     if (isHidden(key)) h += '<i class="spf" title="' + escapeHtml(t("flag.hidden")) + '">🚫</i>';
     return h;
   }
-  // "Rare here" for the species list: the same rank-percentile rule the map
-  // legend uses (see rareThreshold), but read off THIS list's fetched counts, so
-  // the ◉ appears as soon as the observation data lands instead of only after
-  // the user has plotted the dots.
-  function spRareSet(agg) {
-    var set = Object.create(null), counts = [], k;
-    for (k in agg) { var n = (agg[k] && agg[k].count) || 0; if (n > 0) counts.push(n); }
-    var thr = rareThreshold(counts);
-    if (thr < 0) return set;
-    for (k in agg) { var c = (agg[k] && agg[k].count) || 0; if (c > 0 && c <= thr) set[k] = 1; }
+  // "Rare here" for the species list — the same verdict the map legend reaches
+  // (isRareProb), just sourced differently: the row already carries the model
+  // probability in data-prob, so no extra inference is needed. Restricted to
+  // species actually OBSERVED here (agg), because the list also holds hundreds of
+  // predicted-but-unseen species and the low-probability tail of those would
+  // otherwise all light up.
+  function spRareSet(agg, tbody) {
+    var set = Object.create(null);
+    if (!agg || !tbody) return set;
+    Array.prototype.forEach.call(tbody.querySelectorAll("td.sp-flags[data-key]"), function (td) {
+      var k = td.getAttribute("data-key"), e = agg[k];
+      if (!e || !(e.count > 0)) return;                       // not observed here → not "rare here"
+      var tr = td.parentNode;
+      if (isRareProb(parseFloat(tr.getAttribute("data-prob")))) set[k] = 1;
+    });
     return set;
   }
   // Label for the status (⚑) column header — the glyph of the active filter,
@@ -2770,8 +2775,9 @@
       td.innerHTML = '<button type="button" class="det-count-btn" data-key="' + escapeHtml(key) + '">' + entry.count + "</button>" +
         (days != null ? '<span class="det-d">(' + days + ")</span>" : "");
     });
-    // Counts are in — the status column can now show ◉ for the locally-rare ones.
-    var rareSet = tbody._rareSet = spRareSet(agg);
+    // We now know WHICH species were seen here, so the status column can mark the
+    // ones the model considers unlikely at this spot.
+    var rareSet = tbody._rareSet = spRareSet(agg, tbody);
     tbody.querySelectorAll("td.sp-flags[data-key]").forEach(function (td) {
       var k = td.getAttribute("data-key");
       td.innerHTML = spFlagsHtml(k, !!rareSet[k]);
@@ -5475,46 +5481,30 @@
   function detPassesStar(k) { return !detStarFilter || isInteresting((detPlot[k] && detPlot[k].key) || k); }
   function detPassesYear(k) { return !detYearFilter || !inYearList((detPlot[k] && detPlot[k].key) || k); }
   function detPassesLife(k) { return !detLifeFilter || !inLifeList((detPlot[k] && detPlot[k].key) || k); }
-  // "Rare locally": a species among the LEAST-REPORTED rarePct% of the species
-  // recorded at this spot — a rank percentile, not a fraction of the commonest
-  // species' count.
+  // "Rare here": a species observed at this spot that the HABITAT MODEL says is
+  // unlikely to be here — model probability at most rarePct%.
   //
-  // It used to be the latter ("at most rarePct% of the max"), which measured the
-  // wrong thing: observation counts are steeply long-tailed (at Stockholm the
-  // median species had 20 records and the top one 174), so "≤5% of the max" came
-  // out at ≤8 records and flagged a THIRD of the list — Great Black-backed Gull,
-  // Common Swift, Garden Warbler and friends. Anchoring to one dominant species
-  // says "isn't among the few most-reported", not "is rare". Measured on the
-  // switch: Stockholm 53→23 of ~165 flagged, Oslo 59→12 of ~170, and every
-  // remaining one had a single record.
+  // This deliberately ignores how many times it was reported. Two earlier
+  // versions were count-based ("at most rarePct% of the commonest species'
+  // count", then a rank percentile over the counts) and both measured observer
+  // effort rather than rarity: at rarePct=3 EVERY flagged species was simply one
+  // with a single report, so Lesser Whitethroat (model 50%), Common Cuckoo
+  // (49%), Eurasian Hobby (46%), Dunlin (38%) and Hooded Crow all came out
+  // "rare" purely because few people had logged them there.
   //
-  // A rank percentile also can't be dragged by one mega-reported species (a
-  // twitch generating 500 reports moves the max, not the ranking), and still
-  // discriminates where the commonest species has only a handful of records.
-  // Caveat: species TIED at the threshold count all qualify, so the flagged set
-  // can exceed rarePct% — at Stockholm 23 species share a single record, and all
-  // 23 are (correctly) the tail.
-  function rarePct() { var p = +window.GeoState.get("rarePct", 5); return (p > 0 && p <= 100) ? p : 5; }
-  // Count at or below which a species counts as rare, given every recorded
-  // species' count. -1 when there is nothing to rank (→ nothing is rare).
-  function rareThreshold(counts) {
-    if (!counts || !counts.length) return -1;
-    var s = counts.slice().sort(function (a, b) { return a - b; });
-    return s[Math.floor((rarePct() / 100) * (s.length - 1))];
-  }
-  // Cached for the plotted set and refreshed before each render
-  // (recomputeRareThreshold) so detIsRare stays O(1).
-  var detRareThr = -1;
-  function recomputeRareThreshold() {
-    var counts = Object.keys(detPlot).map(function (k) { return (detPlot[k].rows || []).length; })
-      .filter(function (n) { return n > 0; });
-    detRareThr = rareThreshold(counts);
-  }
-  function detIsRare(k) {
-    var e = detPlot[k]; if (!e || detRareThr < 0) return false;
-    var n = (e.rows || []).length;
-    return n > 0 && n <= detRareThr;
-  }
+  // Probability is the honest signal, and the model is what this app is for. It
+  // also gets the twitch case right: a vagrant with 40 reports is still rare
+  // (counts would have hidden it), and a spot with nothing unusual about simply
+  // shows no ◉ at all.
+  function rarePct() { var p = +window.GeoState.get("rarePct", 10); return (p > 0 && p <= 100) ? p : 10; }
+  // Model probability (0–1) → is this rare? Shared by the map legend and the
+  // species list so they can never disagree. p < 0 means "not known / not a
+  // model species" → never rare.
+  function isRareProb(p) { return isFinite(p) && p >= 0 && p * 100 <= rarePct(); }
+  // Plotted species are observed by definition, so rarity is purely the model's
+  // verdict. detProb is filled in asynchronously by computeDetProbs (and is -1
+  // for non-model "extras"), so nothing is flagged until it lands.
+  function detIsRare(k) { return isRareProb((k in detProb) ? detProb[k] : -1); }
   function detPassesRare(k) { return !detRareFilter || detIsRare(k); }
   // Taxonomic class of a plotted species: model species via the taxonomy table,
   // "extra" species (x:…) carry their own class on the detPlot entry (stored at
@@ -6517,7 +6507,6 @@
     var e = { key: key, name: (name || (prev && prev.name)), color: (prev && prev.color) || "#888", rows: merged, group: null, cls: eCls };
     detPlot[key] = e;
     recolorDetections();   // assign family-based colours now that this species is in the set
-    recomputeRareThreshold();
     // Over the draw cap (single add) → re-render everything under the newest-N
     // limit. Under the cap, or mid-bulk (defer), render just this species; a bulk
     // run's trailing rebuildDetLayers() applies the cap once at the end.
@@ -6538,7 +6527,6 @@
     ensureDedup();
     if (detFocusKey && !detPlot[detFocusKey]) detFocusKey = null;   // focused species gone → don't mute everything
     recolorDetections();
-    recomputeRareThreshold();
     var allowed = detDrawAllowed();   // newest-N cap across all species (null = under cap)
     // Draw order = z-order (shared SVG renderer). Where several species pile on the
     // same pixel, the HIGHEST-PRIORITY species shows on top. Priority per species:
@@ -7260,7 +7248,9 @@
         .catch(function () { detProb[j.k] = -1; });
     })).then(function () {
       detProbSig = sig; detProbBusy = false;      // mark done only on success, so a failed pass retries
-      if (detPlotSig() === sig) updateDetLegend();
+      // These probabilities now decide ◉ rare (detIsRare), which styles the DOTS
+      // as well as the legend — so redraw both, not just the legend.
+      if (detPlotSig() === sig) { rebuildDetLayers(); updateDetLegend(); }
     }, function () { detProbBusy = false; });      // hard failure → leave detProbSig so it retries
   }
   function maybeComputeDetProbs() {
@@ -7278,7 +7268,6 @@
     // the map shows). The legend itself stays up so the filter can be toggled.
     // Species are ordered by habitat-model probability (lowest → highest); see the
     // sort below.
-    recomputeRareThreshold();
     // The list reflects ALL the active filters: the per-species mode filter
     // (★/◉/🟡/group) AND the days + observer filters (a species with nothing left
     // after those drops out, like its dots do on the map).
@@ -8267,7 +8256,7 @@
   // open the same popups as fetched data. Injected rows are flagged `_list` (with
   // the list's colour for the halo) so they can be re-derived each render and are
   // never persisted as fetched dots (see serializeDetPlot). Reuses mergeDetRows,
-  // recolourDetections, recomputeRareThreshold, rebuildDetLayers and updateDetLegend.
+  // recolourDetections, rebuildDetLayers and updateDetLegend.
   function syncListDetections() {
     if (!map || typeof detPlot === "undefined") return;
     var changed = false;
@@ -8294,7 +8283,6 @@
     });
     if (!changed) return;   // no list rows added/removed → fetched layers already current
     recolorDetections();
-    recomputeRareThreshold();
     rebuildDetLayers();
     updateDetLegend();
   }
@@ -9192,7 +9180,7 @@
       });
     }
     function relayerDet() { rebuildDetLayers(); updateDetLegend(); }
-    wireNumSetting("rare-pct", rarePct, 1, 100, 5, function (v) { window.GeoState.save({ rarePct: v }); }, relayerDet);
+    wireNumSetting("rare-pct", rarePct, 1, 100, 10, function (v) { window.GeoState.save({ rarePct: v }); }, relayerDet);
     wireNumSetting("max-points", detMaxPoints, 50, 100000, 5000, function (v) { window.GeoState.save({ maxMapPoints: v }); }, relayerDet);
     wireNumSetting("nearby-count", nearbyCount, 1, 500, 25, function (v) { window.GeoState.save({ nearbyCount: v }); }, function () { if (nearbyIsOpen()) renderNearby(); });
     var nearbyPtsEl = document.getElementById("nearby-points-toggle");

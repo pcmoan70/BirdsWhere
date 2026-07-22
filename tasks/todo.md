@@ -299,3 +299,26 @@ inherited it when reusing the rule.
 
 Known/accepted: species tied at the threshold all qualify, so the set can exceed
 rarePct% (Stockholm 23 species share one record → all flagged).
+
+## Follow-up 2: rarity must come from the MODEL, not counts (v679)
+
+User: "crow as a rarity while the probability shows 74%", then "it looks like the
+rarity icon depends on the number of observations, not the probability" — correct
+diagnosis. My v678 percentile fix made the rule stricter but left it measuring
+the wrong quantity.
+
+Measured at rarePct=3: EVERY flagged species had exactly n=1 record, regardless of
+model probability (Lesser Whitethroat 50%, Cuckoo 49%, Hobby 46%, Dunlin 38%).
+
+- [x] `isRareProb(p)` — one shared rule: observed here AND model prob ≤ rarePct%.
+- [x] `detIsRare` reads `detProb` (already computed for legend ordering);
+      `spRareSet` reads each row's `data-prob`. Extras (non-model) never rare.
+- [x] `rebuildDetLayers()` on detProb completion — probabilities now style dots.
+- [x] Removed `rareThreshold` / `detRareThr` / `recomputeRareThreshold` (dead).
+- [x] Default rarePct 5 → 10 (now a probability cutoff).
+- [x] Suite reworked to derive expectations from the page's own model output
+      (33/33), incl. a guard that no species with prob ≥25% is ever flagged and a
+      non-vacuity check. Live: 7 / 8 / 16 flagged, none ≥25%, at three locations.
+
+Lesson: I reused an existing rule (`detIsRare`) without checking that what it
+measured matched what the new column claimed to mean. Twice.
