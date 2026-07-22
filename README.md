@@ -39,8 +39,8 @@ Ranked predicted species at a clicked location, with an optional comparison colu
 When live sources are enabled, each row also fills in **recent observation counts** and a
 "days since most recent" age (the list updates progressively as each source returns).
 Five narrow **status columns** sit left of the species name — **★** starred, **◉** rare here,
-**🟡** not on this year's list, **🟠** not on the life list, **🚫** blocked. Each column header
-is its own filter toggle (greyed when off, coloured when on) and they **combine**, so ★ + 🟠
+**🟠** not on this year's list, **🟡** not on the life list, **🚫** blocked. Each column header
+is its own filter toggle (greyed when off, coloured when on) and they **combine**, so ★ + 🟡
 lists starred species still missing from your life list. **◉ rare here** means the habitat
 model gives the species at most the "Rare species threshold" probability at that point — it is
 not a count of reports. Clicking **Species** sorts A–Z / Z–A; **n(d)** cycles the age filter.
@@ -72,7 +72,9 @@ A per-location list started from the species list or a country. Each card has a 
 count stepper, an activity picker (54 codes incl. breeding/traces), a sex toggle, a note,
 and ＋ to confirm — GPS-stamped automatically. The ⋮ menu offers **PDF / CSV / Log** export,
 **📍 Map** (plot entries by species), and **⬆ Upload** (an eBird-record-format CSV for
-ebird.org/import). Year & life lists drive on-map "needs" edges (thin = year, thick = life).
+ebird.org/import). Year & life lists drive on-map "needs" edges: a thin **bronze** rim = missing from this
+year’s list (🟠), a thick **yellow** rim = missing from the life list (🟡) — the same
+colour convention as the species list’s status columns and the map legend.
 
 ### Species detail card
 Right-click / long-press any species name for quick links: **Wikipedia**, **BirdLife

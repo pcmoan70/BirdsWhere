@@ -856,8 +856,8 @@
   var interestingSpecies = {};
   // Year lists (one per calendar year, kept until the user deletes them) and a
   // single life list of species the user has recorded. Used to highlight
-  // "needs" on the map (missing-from-life = thick yellow edge, missing-from-this-
-  // year = thin yellow edge), fed by the species menu + field checklist, and
+  // "needs" on the map (missing-from-life = thick YELLOW edge, missing-from-this-
+  // year = thin BRONZE edge), fed by the species menu + field checklist, and
   // merged across devices on sync. yearLists shape: { "YYYY": { key: true } }.
   var lifeList = {};
   var yearLists = {};
@@ -902,20 +902,39 @@
     if (!yearLists[y][key]) { yearLists[y][key] = true; changed = true; }
     if (changed) { persistLists(); if (typeof detPlot !== "undefined" && detPlot[key]) { rebuildDetLayers(); updateDetLegend(); } }
   }
-  // Edge style for a plotted species' dots/stars: thick yellow = missing from the
-  // life list (a lifer), thin yellow = missing from this year's list (a year
-  // tick), else the normal dark edge. Only applies once the list has entries.
+  // ---- The year/life "needs" colours -----------------------------------------
+  // ONE definition, used by the map dots' edges, the star halo, the legend and
+  // Detections-list swatches (via the CSS classes below) and the species list's
+  // status columns:
+  //
+  //   LIFE-list miss = YELLOW (🟡) — a lifer
+  //   YEAR-list miss = BRONZE (🟠) — a year tick
+  //
+  // A life-list miss is by definition also a year-list miss, so the life colour
+  // always wins and only one of the two is ever drawn.
+  var NEED_LIFE_COLOR = "#ffcc00";   // yellow, matching 🟡
+  var NEED_YEAR_COLOR = "#cd7f32";   // bronze, matching 🟠
+  var EDGE_PLAIN_COLOR = "#1a1a1a";
+  function detNeedColor(key) {
+    if (lifeListActive() && !inLifeList(key)) return NEED_LIFE_COLOR;
+    if (yearListActive() && !inYearList(key)) return NEED_YEAR_COLOR;
+    return "";
+  }
+  // Edge style for a plotted species' dots/stars: a thick yellow rim = missing
+  // from the life list (a lifer), a thinner bronze rim = missing from this year's
+  // list (a year tick), else the normal dark edge. Only applies once the list has
+  // entries. Colour carries the meaning; the weight just reinforces it.
   function listEdgesOn() { return window.GeoState.get("listEdges", true) !== false; }
   function detEdgeStyle(key) {
-    if (!listEdgesOn()) return { color: "#1a1a1a", weight: 1 };   // user turned the year/life-list edges off
-    if (lifeListActive() && !inLifeList(key)) return { color: "#ffcc00", weight: 4 };
-    if (yearListActive() && !inYearList(key)) return { color: "#ffcc00", weight: 2 };
-    return { color: "#1a1a1a", weight: 1 };
+    if (!listEdgesOn()) return { color: EDGE_PLAIN_COLOR, weight: 1 };   // user turned the year/life-list edges off
+    var c = detNeedColor(key);
+    if (c) return { color: c, weight: c === NEED_LIFE_COLOR ? 4 : 2 };
+    return { color: EDGE_PLAIN_COLOR, weight: 1 };
   }
   // Year/life "needs" weight for a species, using the SAME condition as the legend
   // swatch (detNeedClass) so the map and legend always agree — and, unlike
-  // detEdgeStyle, NOT gated by the list-edges toggle, so the yellow star halo
-  // always shows. 0 = not needed. thin (year) = 2, thick (life) = 4.
+  // detEdgeStyle, NOT gated by the list-edges toggle, so the star halo always
+  // shows. 0 = not needed. thin (year, bronze) = 2, thick (life, yellow) = 4.
   function detNeedWeight(key) {
     if (lifeListActive() && !inLifeList(key)) return 4;
     if (yearListActive() && !inYearList(key)) return 2;
@@ -980,12 +999,13 @@
   // Wrapped in a styled span so the star is visually distinct from the name.
   function interestingStar(key) { return isInteresting(key) ? '<span class="int-star" aria-label="interesting">★</span> ' : ""; }
   // The five status columns of the species list, one narrow <td> each so every
-  // cue gets its own filter header: ★ tagged interesting · ◉ rare here · 🟡 not
-  // on this year's list · 🟠 not on the life list · 🚫 blocked.
-  // 🟠 implies 🟡, so only the stronger of the two is drawn — matching
-  // detNeedClass on the map. Only the ◉ cell changes after the initial render
+  // cue gets its own filter header: ★ tagged interesting · ◉ rare here · 🟠 not
+  // on this year's list · 🟡 not on the life list · 🚫 blocked (yellow = lifer,
+  // bronze = year tick, the same convention as the map edges — see NEED_*_COLOR).
+  // A life miss is also a year miss, so 🟡 wins and only one of the two is drawn,
+  // matching detNeedColor on the map. Only the ◉ cell changes after the render
   // (it needs the fetched observations), so that one carries the data-key.
-  var SP_FLAG_GLYPH = { star: "★", rare: "◉", year: "🟡", life: "🟠", hidden: "🚫" };
+  var SP_FLAG_GLYPH = { star: "★", rare: "◉", year: "🟠", life: "🟡", hidden: "🚫" };
   function spFlagCells(key, rare) {
     var life = !!key && lifeListActive() && !inLifeList(key);
     var year = !!key && !life && yearListActive() && !inYearList(key);
@@ -1632,6 +1652,8 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { date: "2026-07-22", text: "One colour convention for the year/life lists everywhere: 🟡 YELLOW = missing from your life list (a lifer), 🟠 BRONZE = missing from this year’s list. It now matches across the species-list columns, the map dot edges and star halos, the legend and the species menu." },
+    { date: "2026-07-22", text: "Species menu: the list actions are toggles that show their state — ★ / 🟠 / 🟡 in colour when the species is in that set, greyed when not. “Interesting” toggles the star, and “Hidden” now works both ways (red when the click will hide the species, green when it will bring it back), so you can unblock straight from the list’s 🚫 filter." },
     { date: "2026-07-22", text: "Species-at-location: five status columns left of the species name — ★ starred · ◉ rare here · 🟡 not on this year’s list · 🟠 not on the life list · 🚫 blocked. Each header icon is its own filter toggle (grey when off, coloured when on) and they combine, so ★ + 🟠 shows starred species you still need. “Rare here” means the habitat model thinks the species is unlikely at that spot, not that few people reported it." },
     { date: "2026-07-22", text: "Fågelkartan link under the map popup’s 📍 Location menu for points in Sweden and Norway — opens that point’s county (län / fylke) page." },
     { date: "2026-07-21", text: "Manage your saved map-point lists from their own popup: press-and-hold (or right-click) the Points button to open it. Protect a list from deletion (🔒), delete a list, edit its colour + tags, or expand one to edit/remove individual points. (This moved out of Settings → Administer lists, which now holds the year/life species lists only.)" },
@@ -4051,7 +4073,7 @@
         '<div id="lists-modal" style="display:none"><div id="lists-box">' +
           '<button type="button" id="lists-close" aria-label="Close">×</button>' +
           '<h3 data-i18n="lists.title">Year &amp; life lists</h3>' +
-          '<p class="cu-hint" data-i18n="lists.hint">Add species from a species menu or a field checklist. Species missing from this year\'s list get a thin yellow edge on the map; missing from the life list, a thick one. Old year lists are kept until you delete them.</p>' +
+          '<p class="cu-hint" data-i18n="lists.hint">Add species from a species menu or a field checklist. Species missing from this year\'s list get a thin bronze edge on the map; missing from the life list, a thick yellow one. Old year lists are kept until you delete them.</p>' +
           '<label class="ctrl-check lists-edges-row"><input type="checkbox" id="list-edges-toggle"> <span data-i18n="lists.edgesToggle">Show the year/life-list edges on map markers</span></label>' +
           '<div id="lists-list"></div>' +
         '</div></div>' +
@@ -5570,7 +5592,7 @@
   // Legend / list swatch: a coloured ★ for starred species, a coloured dot with a
   // black centre for locally-rare species, a star-with-centre-dot when both, else
   // a plain coloured dot.
-  // "needs" ring class for a swatch — a yellow halo mirroring the map dots'
+  // "needs" ring class for a swatch — the halo mirroring the map dots'
   // edge: thick (life-list miss) or thin (this-year miss). Applied wherever a
   // species swatch is shown so the year/life "needs" cue is consistent.
   function detNeedClass(key) {
@@ -5684,7 +5706,7 @@
   function detDrawableCount() { var n = 0; eachDrawableRow(function () { n++; }); return n; }
   // The set of row objects allowed on the map: the newest detMaxPoints() across
   // all visible species. Returns null when under the cap (draw everything).
-  // Year/life-list "needs" species (the yellow-bordered ones) are ALWAYS kept —
+  // Year/life "needs" species (the yellow/bronze-bordered ones) are ALWAYS kept —
   // they're the whole point of plotting, so the newest-N cap must never drop them
   // in favour of commoner species' dots (which would hide them on the map while
   // they still showed in the legend). The rest of the budget is the newest of all.
@@ -6020,6 +6042,28 @@
     el.style.top = Math.max(6, Math.min(top, window.innerHeight - el.offsetHeight - 8)) + "px";
   }
   function closeDetRowMenu() { closeAnchoredMenu(); }   // alias kept for its many call sites
+  // A toggle row in the species menu's "actions" section. The leading icon shows
+  // STATE using the app's colour convention (★ yellow = interesting, 🟡 gold =
+  // life list, 🟠 bronze = year list) and greys out when the species is not in
+  // that set, so one glance says what you have. `extraCls` lets the Hidden row
+  // opt out and colour by ACTION instead (red = this click hides it).
+  // `glyph` is an emoji/text icon, or { html } for an inline SVG (used by Hidden,
+  // whose icon has to take a red/green colour — an emoji can't be recoloured).
+  function drmToggle(glyph, on, label, onClick, extraCls) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "detrow-menu-item drm-toggle" + (on ? " on" : "") + (extraCls ? " " + extraCls : "");
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+    var ic = document.createElement("span");
+    ic.className = "drm-ico";
+    if (glyph && glyph.html) { ic.classList.add("drm-ico-svg"); ic.innerHTML = glyph.html; }
+    else ic.textContent = glyph;
+    var tx = document.createElement("span");
+    tx.className = "drm-txt"; tx.textContent = label;
+    b.appendChild(ic); b.appendChild(tx);
+    b.addEventListener("click", function (e) { e.stopPropagation(); onClick(); });
+    return b;
+  }
   function drmBtn(label, onClick, iconName) {
     var b = document.createElement("button");
     b.type = "button"; b.className = "detrow-menu-item";
@@ -6088,11 +6132,21 @@
     // 3) Lists & actions — your data (any keyed species).
     if (key) {
       head("menu.secActions");
-      var starred = isInteresting(key);
-      el.appendChild(drmBtn(t(starred ? "menu.interestingRemove" : "menu.interestingAdd"), function () { toggleInteresting(key); closeDetRowMenu(); redraw(); }));
-      el.appendChild(drmBtn(t(inYearList(key) ? "menu.yearlistRemove" : "menu.yearlistAdd", { year: curYear() }), function () { toggleYearList(key); closeDetRowMenu(); redraw(); }));
-      el.appendChild(drmBtn(t(inLifeList(key) ? "menu.lifelistRemove" : "menu.lifelistAdd"), function () { toggleLifeList(key); closeDetRowMenu(); redraw(); }));
-      el.appendChild(drmBtn(t("menu.hide"), function () { hideSpecies(key); closeDetRowMenu(); redraw(); }, "block"));
+      // Each row is a toggle whose icon shows the current state in the app's
+      // colours, so the menu reads the same way as the list columns and the map.
+      el.appendChild(drmToggle(SP_FLAG_GLYPH.star, isInteresting(key), t("menu.interesting"),
+        function () { toggleInteresting(key); closeDetRowMenu(); redraw(); }));
+      el.appendChild(drmToggle(SP_FLAG_GLYPH.year, inYearList(key), t("menu.yearlist", { year: curYear() }),
+        function () { toggleYearList(key); closeDetRowMenu(); redraw(); }));
+      el.appendChild(drmToggle(SP_FLAG_GLYPH.life, inLifeList(key), t("menu.lifelist"),
+        function () { toggleLifeList(key); closeDetRowMenu(); redraw(); }));
+      // Hidden toggles both ways — reachable because the list's 🚫 filter can
+      // show blocked species. Its icon previews the ACTION rather than the state:
+      // red = this click hides the species, green = this click brings it back.
+      var hid = isHidden(key);
+      el.appendChild(drmToggle({ html: ico("block") }, false, t("menu.hidden"),
+        function () { (hid ? unhideSpecies : hideSpecies)(key); closeDetRowMenu(); redraw(); },
+        hid ? "drm-will-show" : "drm-will-hide"));
     }
   }
   function drmRenderLists(el, d) {
@@ -6405,7 +6459,7 @@
     var g = L.layerGroup(), visible = 0;
     var fill = color;
     var fillOp = 0.9, strokeOp = 0.9;
-    var edge = detEdgeStyle(key);   // year/life-list "needs" → yellow edge (thin year, thick life)
+    var edge = detEdgeStyle(key);   // year/life "needs" → thin bronze (year) or thick yellow (life)
     // Pre-pass: which locations (this species) were reported by ≥2 distinct
     // observers — those get a dashed outer ring (independent corroboration), so a
     // rarity confirmed by several people stands out. Built over the same rows
@@ -6431,13 +6485,14 @@
       if (r.listColor) {
         g.addLayer(L.circleMarker([r.lat, r.lon], { radius: starred ? 11 : (rare ? 9 : 8), color: r.listColor, weight: 1.5, opacity: strokeOp, fillColor: r.listColor, fillOpacity: 0.5, interactive: false, bubblingMouseEvents: false, renderer: detRenderer() }));
       }
-      // A starred species missing from the year/life list: draw a larger YELLOW
-      // star first, then the species-coloured star centred on top — the yellow rim
-      // follows the star's edges. Uses detNeedWeight (same condition as the legend
-      // swatch), so the map always matches the legend regardless of the edge toggle.
+      // A starred species missing from the year/life list: draw a larger star in
+      // the "needs" colour first (yellow = lifer, bronze = year tick), then the
+      // species-coloured star centred on top — so the rim follows the star's
+      // edges. Uses detNeedWeight (same condition as the legend swatch), so the
+      // map always matches the legend regardless of the edge toggle.
       var nw = starred ? detNeedWeight(key) : 0;
       if (nw) {
-        g.addLayer(detStarMarker([r.lat, r.lon], { radius: 9 + nw, fill: true, fillColor: "#ffcc00", fillOpacity: 1, stroke: false, interactive: false, bubblingMouseEvents: false, renderer: detRenderer() }));
+        g.addLayer(detStarMarker([r.lat, r.lon], { radius: 9 + nw, fill: true, fillColor: detNeedColor(key) || NEED_LIFE_COLOR, fillOpacity: 1, stroke: false, interactive: false, bubblingMouseEvents: false, renderer: detRenderer() }));
       }
       var base = { color: edge.color, weight: edge.weight, opacity: strokeOp, fillColor: fill, fillOpacity: fillOp, bubblingMouseEvents: false, renderer: detRenderer() };
       var m = starred
@@ -7127,8 +7182,8 @@
       { m: "", sym: "–", txt: t("det.allSpecies") },
       { m: "star", sym: "★", txt: t("det.starred") },
       { m: "rare", sym: "◉", txt: t("det.rare") },
-      { m: "year", sym: "🟡", txt: t("det.needsYear", { year: curYear() }) },
-      { m: "life", sym: "🔴", txt: t("det.needsLife") }
+      { m: "year", sym: "🟠", txt: t("det.needsYear", { year: curYear() }) },
+      { m: "life", sym: "🟡", txt: t("det.needsLife") }
     ];
     var cur = detStarFilter ? "star" : detRareFilter ? "rare" : detYearFilter ? "year" : detLifeFilter ? "life" : "";
     var rows = opts.map(function (o) {
@@ -7339,7 +7394,7 @@
     var daysLbl = detDaysLabel();
     var daysOn = detRecencyDays() !== 0 || !!detDateRange();
     var modeOn = detStarFilter || detRareFilter || detYearFilter || detLifeFilter;
-    var modeLbl = detStarFilter ? "★" : detRareFilter ? "◉" : detYearFilter ? "🟡" : detLifeFilter ? "🔴" : "–";
+    var modeLbl = detStarFilter ? "★" : detRareFilter ? "◉" : detYearFilter ? "🟠" : detLifeFilter ? "🟡" : "–";
     var modeTip = detStarFilter ? t("det.starred") : detRareFilter ? t("det.rare") : detYearFilter ? t("det.needsYear", { year: curYear() }) : detLifeFilter ? t("det.needsLife") : t("det.allSpecies");
     // One control line: − minimise · ☰ list · time · ★/◉/🟡 species · 👤 observers ·
     // (black ×) clear filters · (red ×) delete areas / all, plus a ⚠ (right-aligned)
@@ -9151,7 +9206,7 @@
         document.getElementById("lists-modal").style.display = "flex";
         navOpen("lists", function () { document.getElementById("lists-modal").style.display = "none"; });
       });
-      // Toggle the year/life-list yellow edge on map markers (off when many dots
+      // Toggle the year/life-list coloured edge on map markers (off when many dots
       // make it distracting).
       if (leTog) leTog.addEventListener("change", function () {
         window.GeoState.save({ listEdges: this.checked });

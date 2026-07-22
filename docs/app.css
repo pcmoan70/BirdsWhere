@@ -2464,6 +2464,30 @@ a.dl-row:hover, .dl-row-menu:hover { background: var(--surface-2, rgba(0,0,0,.05
   overflow: hidden; text-overflow: ellipsis; }
 .detrow-menu-item:hover { background: var(--surface-2); }
 /* List-picker rows: the pin icon sits left of the list name, in brand green. */
+/* Toggle rows in the species menu (★ interesting / 🟠 year list / 🟡 life list /
+   🚫 hidden). The icon greys out when the species is NOT in that set and takes
+   its full colour when it is — the same cue the list columns and map edges use.
+   Hidden is the exception: it colours by what the click will DO. */
+.detrow-menu-item.drm-toggle { display: flex; align-items: center; gap: 9px; }
+.drm-ico {
+  flex: 0 0 1.15em; text-align: center; font-size: 0.95rem; line-height: 1;
+  filter: grayscale(1); opacity: 0.4;
+  transition: opacity 0.12s, filter 0.12s;
+}
+.drm-toggle.on .drm-ico { filter: none; opacity: 1; }
+.drm-toggle:hover .drm-ico { opacity: 0.75; }
+.drm-toggle.on:hover .drm-ico { opacity: 1; }
+.drm-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* The Hidden row uses an inline SVG (stroke: currentColor) rather than an emoji,
+   precisely so it can take a real red/green — red when the click will hide the
+   species, green when it will bring it back. */
+.drm-ico-svg { display: inline-flex; align-items: center; justify-content: center; filter: none; opacity: 1; }
+.drm-ico-svg .btn-ico { width: 15px; height: 15px; color: inherit; }
+.drm-toggle.drm-will-hide .drm-ico,
+.drm-toggle.drm-will-show .drm-ico { filter: none; opacity: 1; }
+.drm-toggle.drm-will-hide { color: var(--danger, #c0392b); }
+.drm-toggle.drm-will-show { color: var(--brand-strong, #1e7a5a); }
+
 .detrow-menu-item.ico-btn { display: flex; justify-content: flex-start; }
 .detrow-menu-item .btn-ico { color: var(--brand); width: 16px; height: 16px; }
 .detrow-menu-item.ico-btn > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -2501,9 +2525,11 @@ a.dl-row:hover, .dl-row-menu:hover { background: var(--surface-2, rgba(0,0,0,.05
 .det-row-on .det-nm { font-weight: 700; }
 .det-row-off { opacity: 0.55; }
 .det-sw { position: relative; width: 11px; height: 11px; border-radius: 50%; flex: 0 0 auto; border: 1px solid #1a1a1a; }
-/* Year/life-list "needs" halo on a swatch — mirrors the map dots' yellow edge:
-   thin = missing from this year's list, thick = missing from the life list. */
-.det-sw.det-need-year { box-shadow: 0 0 0 1.5px #ffcc00; }
+/* Year/life-list "needs" halo on a swatch — mirrors the map dots' edge, and uses
+   the same colour convention throughout the app (see NEED_*_COLOR in app.js):
+     YELLOW, thick = missing from the LIFE list (a lifer, 🟡)
+     BRONZE, thin  = missing from THIS YEAR's list (a year tick, 🟠) */
+.det-sw.det-need-year { box-shadow: 0 0 0 1.5px #cd7f32; }
 .det-sw.det-need-life { box-shadow: 0 0 0 2.5px #ffcc00; }
 /* Starred species: the swatch is a coloured ★ (legend + Detections list). The
    on-map ★ and rare-disc are drawn as SVG vector markers (see detStarMarker /
@@ -2511,10 +2537,11 @@ a.dl-row:hover, .dl-row-menu:hover { background: var(--surface-2, rgba(0,0,0,.05
 .det-sw-star { width: 14px; height: 14px; border: none; border-radius: 0; line-height: 14px;
   font-size: 14px; text-align: center; text-shadow: 0 0 1px rgba(0,0,0,.55); }
 /* The "needs" halo on a STAR swatch must follow the star's edges, not box it in.
-   Drop the square box-shadow and outline the ★ glyph with a yellow text-shadow
-   (thin = year, thick = life) — mirroring the map's edged star marker. */
+   Drop the square box-shadow and outline the ★ glyph with a text-shadow in the
+   needs colour (bronze/thin = year tick, yellow/thick = lifer) — mirroring the
+   map's edged star marker. */
 .det-sw-star.det-need-year { box-shadow: none;
-  text-shadow: -1px 0 #ffcc00, 1px 0 #ffcc00, 0 -1px #ffcc00, 0 1px #ffcc00; }
+  text-shadow: -1px 0 #cd7f32, 1px 0 #cd7f32, 0 -1px #cd7f32, 0 1px #cd7f32; }
 .det-sw-star.det-need-life { box-shadow: none;
   text-shadow: -1.5px 0 #ffcc00, 1.5px 0 #ffcc00, 0 -1.5px #ffcc00, 0 1.5px #ffcc00, -1.5px -1.5px #ffcc00, 1.5px -1.5px #ffcc00, -1.5px 1.5px #ffcc00, 1.5px 1.5px #ffcc00; }
 /* Locally-rare species swatch: a coloured disc with a black centre dot; a

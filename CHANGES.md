@@ -1,5 +1,31 @@
 # Changes
 
+## 2026-07-22 — One year/life colour convention, everywhere (sw v681)
+
+- **🟡 YELLOW = life-list miss (a lifer), 🟠 BRONZE = year-list miss.** Until now
+  the app disagreed with itself: the species list used 🟡 for the year list and
+  🟠 for the life list, the map legend used 🟡 and 🔴, and the map dot edges used
+  the *same* yellow for both, distinguishing them only by rim thickness.
+- The convention is now defined once (`NEED_LIFE_COLOR` / `NEED_YEAR_COLOR`,
+  `detNeedColor`) and applied to the species-list status columns, the map dot
+  edges, the star halos, the legend and Detections-list swatches, and the
+  species menu. Verified on a real plot: 315 markers stroked yellow at weight 4
+  (lifers) and 119 bronze at weight 2 (year ticks).
+- Rim thickness is kept as a secondary cue, but colour now carries the meaning.
+
+### Species menu
+- The list actions became **toggles that show their state**: ★ / 🟠 / 🟡 in full
+  colour when the species is in that set, greyed out when not — the same read as
+  the list columns.
+- “★ Mark interesting” / “★ Remove interesting tag” collapse to one **“Interesting”**
+  row whose star colours and greys as you click it. Same for the year and life
+  lists (six Add/Remove strings become three).
+- **“Hidden” now toggles both ways.** Previously it could only hide, so a blocked
+  species surfaced via the list’s 🚫 filter could not be unblocked from there.
+  Its icon previews the *action*: red when the click will hide the species,
+  green when it will bring it back (an inline SVG rather than an emoji, so it
+  can actually take those colours).
+
 ## 2026-07-22 — Status column split into five filter columns (sw v680)
 
 - The single ⚑ status column becomes **five narrow columns**, one per cue:

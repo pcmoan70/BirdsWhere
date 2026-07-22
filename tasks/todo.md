@@ -340,3 +340,39 @@ measured matched what the new column claimed to mean. Twice.
 
 Note: the list uses 🟠 for a life-list miss while the map legend uses 🔴 for the
 same thing — a pre-existing inconsistency, not touched here.
+
+## Follow-up 4: one year/life colour convention + menu toggles (v681)
+
+User: "the yellow dot is lifer, while the more bronze is yearlist. make sure this
+is done throughout, also when coloring dots edges in the map etc."
+
+Before this, three different conventions coexisted:
+| place | year list | life list |
+|---|---|---|
+| species-list columns | 🟡 | 🟠 |
+| map legend | 🟡 | 🔴 |
+| map dot edges | yellow, thin | yellow, thick (colour identical!) |
+
+- [x] `NEED_LIFE_COLOR` #ffcc00 / `NEED_YEAR_COLOR` #cd7f32 + `detNeedColor()` —
+      one definition feeding dot edges, star halos, swatch CSS and the columns.
+- [x] Glyphs swapped: year 🟠, life 🟡 in the columns, legend subwindow and its
+      collapsed label. 🔴 retired.
+- [x] Verified on a real plot: 315 strokes #ffcc00 w4, 119 #cd7f32 w2.
+- [x] Stale prose fixed in app.js comments, the Lists-panel hint (en + sv) and README.
+
+Species menu (same request, second message):
+- [x] `drmToggle()` — state-showing toggle rows (coloured when in the set, grey
+      when not), replacing the Add/Remove label pairs.
+- [x] "Interesting" (was "★ Mark interesting" / "★ Remove interesting tag").
+- [x] Hidden toggles BOTH ways; icon previews the action (red = will hide,
+      green = will restore). Uses the block SVG, not an emoji, so it can be
+      recoloured. Fixes: a species surfaced by the 🚫 filter could not be
+      unblocked from the menu.
+- [x] Six Add/Remove i18n keys → three; 88 dead locale entries removed.
+- [x] Tests: menu suite 15/15 (labels, glyphs, grey/colour per state, red/green
+      preview, both toggle directions persisted); main suite 44/44 with new
+      swatch-colour assertions.
+
+Open question for the user: in the MENU a coloured dot means "in that list",
+whereas in the LIST COLUMNS it means "missing from that list". Deliberate per the
+request, but the inversion is worth a second look.
