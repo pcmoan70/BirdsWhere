@@ -376,3 +376,29 @@ Species menu (same request, second message):
 Open question for the user: in the MENU a coloured dot means "in that list",
 whereas in the LIST COLUMNS it means "missing from that list". Deliberate per the
 request, but the inversion is worth a second look.
+
+## Follow-up 5: 🟠 year cue never showed + Fågelkartan placement (v682)
+
+User: "I dont see any yearlist dots". Reproduced across four list configurations
+before touching anything:
+
+| life list | year list | 🟠 before | 🟠 after |
+|---|---|---|---|
+| 17 | 0 (empty) | **0** | **17** |
+| 17 | 5 | 12 | 12 |
+| 0 | 5 | 0 | 0 (correct — see below) |
+| 0 | 0 | 0 | 0 |
+
+Root cause: the year tier required `yearListActive()` (this year's list non-empty).
+With a life list and an empty year list, every life-list species IS a year tick,
+but none were shown. Now gated on tracking ANY list.
+
+Row 3 is correct, not a bug: `reconcileLifeFromYears()` makes the life list a
+superset of every year list, so with only a year list everything else is a lifer.
+
+- [x] Single `detNeedTier()` predicate behind map edges, star-halo weight, swatch
+      classes and the list columns (was four copies of the condition).
+- [x] Fågelkartan link moved out of the 📍 Location submenu to the popup top
+      level, directly below Birdingplaces; test now asserts the ORDER, not just
+      presence.
+- [x] Suites: main 44/44, menu 15/15, Fågelkartan 18/18.

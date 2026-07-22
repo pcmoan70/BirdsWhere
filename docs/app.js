@@ -915,10 +915,28 @@
   var NEED_LIFE_COLOR = "#ffcc00";   // yellow, matching 🟡
   var NEED_YEAR_COLOR = "#cd7f32";   // bronze, matching 🟠
   var EDGE_PLAIN_COLOR = "#1a1a1a";
-  function detNeedColor(key) {
-    if (lifeListActive() && !inLifeList(key)) return NEED_LIFE_COLOR;
-    if (yearListActive() && !inYearList(key)) return NEED_YEAR_COLOR;
+  // Which "needs" tier a species falls in — the ONE predicate behind the map
+  // edges, the star halo, the swatch classes and the species-list columns, so
+  // colour, ring weight and glyph can never disagree:
+  //   "life" — never seen at all (a lifer)      → yellow
+  //   "year" — seen before, but not this year   → bronze
+  //   ""     — nothing to flag
+  //
+  // The year tier used to be gated on THIS YEAR's list being non-empty, which
+  // hid it entirely in the most ordinary situation: you keep a life list but
+  // haven't ticked anything this year yet (early January, or you simply don't
+  // maintain a year list). Every life-list species is a year tick then. Gating
+  // on tracking ANY list fixes that; with no lists at all, nothing is flagged.
+  function detNeedTier(key) {
+    if (!key) return "";
+    if (!lifeListActive() && !yearListActive()) return "";      // not tracking lists
+    if (lifeListActive() && !inLifeList(key)) return "life";    // never seen → a lifer
+    if (!inYearList(key)) return "year";                        // seen before, not this year
     return "";
+  }
+  function detNeedColor(key) {
+    var tier = detNeedTier(key);
+    return tier === "life" ? NEED_LIFE_COLOR : tier === "year" ? NEED_YEAR_COLOR : "";
   }
   // Edge style for a plotted species' dots/stars: a thick yellow rim = missing
   // from the life list (a lifer), a thinner bronze rim = missing from this year's
@@ -936,9 +954,8 @@
   // detEdgeStyle, NOT gated by the list-edges toggle, so the star halo always
   // shows. 0 = not needed. thin (year, bronze) = 2, thick (life, yellow) = 4.
   function detNeedWeight(key) {
-    if (lifeListActive() && !inLifeList(key)) return 4;
-    if (yearListActive() && !inYearList(key)) return 2;
-    return 0;
+    var tier = detNeedTier(key);
+    return tier === "life" ? 4 : tier === "year" ? 2 : 0;
   }
   // The species list's five status columns each have their own filter, toggled by
   // clicking that column's header icon (greyed when off, coloured when on).
@@ -1007,8 +1024,8 @@
   // (it needs the fetched observations), so that one carries the data-key.
   var SP_FLAG_GLYPH = { star: "★", rare: "◉", year: "🟠", life: "🟡", hidden: "🚫" };
   function spFlagCells(key, rare) {
-    var life = !!key && lifeListActive() && !inLifeList(key);
-    var year = !!key && !life && yearListActive() && !inYearList(key);
+    var tier = detNeedTier(key);
+    var life = tier === "life", year = tier === "year";
     var on = { star: !!key && isInteresting(key), rare: !!rare, year: year, life: life, hidden: !!key && isHidden(key) };
     return SP_FILTER_KEYS.map(function (f) {
       return '<td class="spf-c spf-c-' + f + '"' + (f === "rare" && key ? ' data-key="' + escapeHtml(key) + '"' : "") + ">" +
@@ -5597,9 +5614,8 @@
   // species swatch is shown so the year/life "needs" cue is consistent.
   function detNeedClass(key) {
     if (!key) return "";
-    if (lifeListActive() && !inLifeList(key)) return " det-need-life";
-    if (yearListActive() && !inYearList(key)) return " det-need-year";
-    return "";
+    var tier = detNeedTier(key);
+    return tier === "life" ? " det-need-life" : tier === "year" ? " det-need-year" : "";
   }
   function detSwatch(color, starred, rare, key) {
     var need = detNeedClass(key);
@@ -11480,17 +11496,6 @@
     locSub.appendChild(makePopupBtn("📍 " + t("loc.save"), "demo-btn-light", function () { mk.closePopup(); registerLocationPrompt(lat, lon); }));
     locSub.appendChild(makePopupBtn("🔗 " + t("share.link"), "demo-btn-light", function () { mk.closePopup(); doShare({ v: 1, type: "point", lat: lat, lon: lon }, t("share.link")); }));
     locSub.appendChild(makePopupBtn("📋 " + coordsText(lat, lon), "demo-btn-light", function () { mk.closePopup(); copyCoords(lat, lon); }));
-    // Fågelkartan's county page — Sweden and Norway only, and only once the
-    // county-level reverse-geocode resolves, so the submenu opens instantly.
-    AppGeo.countryCode(lat, lon).then(function (cc) {
-      if (!hasFagelkartan(cc)) return;
-      return AppGeo.regionInfo(lat, lon).then(function (reg) {
-        locSub.appendChild(makePopupBtn("🐦 " + t("link.fagelkartan") + " ↗", "demo-btn-light", function () {
-          mk.closePopup(); openExternal(fagelkartanUrl(cc, reg.county, lat, lon));
-        }));
-        var pop = mk.getPopup(); if (pop && pop.isOpen() && locSub.style.display !== "none") pop.update();
-      });
-    }).catch(function () { /* leave the submenu as-is */ });
     var locBtn = makePopupBtn("📍 " + t("popup.location") + " ▸", "demo-btn-light", function () {
       var show = locSub.style.display === "none";
       locSub.style.display = show ? "" : "none";
@@ -11502,6 +11507,19 @@
     wrap.appendChild(makePopupBtn(t("link.birdingplaces") + " ↗", "demo-btn-light", function () {
       mk.closePopup(); openExternal(birdingPlacesUrl(lat, lon));
     }));
+    // Fågelkartan's county page, directly below Birdingplaces — Sweden and Norway
+    // only, and appended once the county-level reverse-geocode resolves so the
+    // popup itself opens instantly. Nothing else is added to `wrap` after this,
+    // so the late append still lands under Birdingplaces.
+    AppGeo.countryCode(lat, lon).then(function (cc) {
+      if (!hasFagelkartan(cc)) return;
+      return AppGeo.regionInfo(lat, lon).then(function (reg) {
+        wrap.appendChild(makePopupBtn("🐦 " + t("link.fagelkartan") + " ↗", "demo-btn-light", function () {
+          mk.closePopup(); openExternal(fagelkartanUrl(cc, reg.county, lat, lon));
+        }));
+        var pop = mk.getPopup(); if (pop && pop.isOpen()) pop.update();   // re-layout for the added button
+      });
+    }).catch(function () { /* leave the popup as-is */ });
     // Country resources (Blogs / BirdLife / national services) now live in the
     // right-side "Country" button (openCountryMenu), not this per-point popup.
     mk.bindPopup(wrap, { closeButton: true, autoClose: true, autoPan: true, className: "choose-popup", offset: [0, -8] });

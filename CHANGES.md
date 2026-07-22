@@ -1,5 +1,27 @@
 # Changes
 
+## 2026-07-22 — Fix: the 🟠 year-list cue never appeared (sw v682)
+
+- The year tier was gated on **this year’s list being non-empty**, so in the most
+  ordinary situation — you keep a life list but haven’t ticked anything yet this
+  year (early January, or you simply don’t maintain a year list) — no 🟠 appeared
+  anywhere: not in the species list, not on the map edges, not in the legend.
+  Yet every species on your life list is precisely a year tick then.
+- The cue is now gated on tracking **any** list. Measured at Stockholm with a
+  17-species life list and an empty year list: **0 → 17** bronze markers, life
+  markers unchanged at 192. With no lists at all, still nothing is flagged.
+- All four consumers — map dot edges, star halo weight, legend/Detections swatch
+  classes and the species-list columns — now share a single `detNeedTier()`
+  predicate, so colour, ring weight and glyph can no longer drift apart (they
+  had four separate copies of the condition).
+- Not a bug: with only a year list and no life list you still see no 🟠. Ticking
+  a species for the year also adds it to the life list (`reconcileLifeFromYears`),
+  so everything else is a genuine lifer.
+
+### Map popup
+- **Fågelkartan moved out of the 📍 Location submenu** to the popup’s top level,
+  directly below Birdingplaces.
+
 ## 2026-07-22 — One year/life colour convention, everywhere (sw v681)
 
 - **🟡 YELLOW = life-list miss (a lifer), 🟠 BRONZE = year-list miss.** Until now
