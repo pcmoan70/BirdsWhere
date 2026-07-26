@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-26 — Star / year / life toggles no longer re-fetch the whole list (sw v685)
+
+- In the recent (and historic) species list, tagging ★ or adding/removing a species
+  from the year/life list now just repaints that row's status icons in place —
+  instead of re-running the model and re-doing the observation fetch for the whole
+  list. Instant, and it keeps your scroll position. If a status filter is active, a
+  row that no longer matches is hidden immediately (no rebuild).
+
 ## 2026-07-22 — Fix: the 🟠 column stayed near-empty in the species list (sw v684)
 
 - The two list columns were treated as mutually exclusive: a species missing

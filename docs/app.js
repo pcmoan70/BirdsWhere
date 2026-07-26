@@ -889,7 +889,9 @@
   function yearListActive() { var s = yearLists[curYear()]; if (s) { for (var k in s) return true; } return false; }
   function afterListChange(key) {
     persistLists();
-    keepListScroll = true; refreshCurrentView();
+    // Patch the species list's cue cells in place (no refetch / re-inference) when
+    // it's up; otherwise fall back to a full refresh of whatever view is showing.
+    if (!refreshCueCellsInPlace()) { keepListScroll = true; refreshCurrentView(); }
     if (typeof detPlot !== "undefined" && detPlot[key]) { rebuildDetLayers(); updateDetLegend(); }
   }
   function toggleLifeList(key) { if (!key) return; if (lifeList[key]) delete lifeList[key]; else lifeList[key] = true; afterListChange(key); }
@@ -1006,8 +1008,9 @@
     if (!key) return;
     if (interestingSpecies[key]) delete interestingSpecies[key]; else interestingSpecies[key] = true;
     persistInteresting();
-    keepListScroll = true;   // re-render in place — don't jump the list back to the top
-    refreshCurrentView();
+    // In-place cue repaint when the species list is up (no refetch / re-inference);
+    // else a full refresh of the current view.
+    if (!refreshCueCellsInPlace()) { keepListScroll = true; refreshCurrentView(); }
     // If this species is plotted, flip its dots ↔ ★ on the map + legend now.
     if (detPlot[key]) { rebuildDetLayers(); updateDetLegend(); }
   }
@@ -1161,11 +1164,16 @@
   // same `display` property, so they are decided together. Operates on the
   // cached sightings aggregation stored on the tbody, so toggling either filter
   // is instant (no re-fetch); before that data lands neither filter bites.
-  function applyAgeFilter() {
+  // `withBuild` also re-applies the build-time star/year/life/hidden filters as a
+  // pure show/hide pass — used when a cue is toggled in place (so a now-excluded
+  // row disappears) WITHOUT rebuilding the list. Normally those filters are applied
+  // when the rows are built, so the default (no arg) leaves them alone.
+  function applyAgeFilter(withBuild) {
     var tbody = document.getElementById("sp-tbody");
     if (!tbody) return;
     var agg = tbody._sightingsAgg, days = speciesAgeFilterDays;
     var rareSet = spFilters.rare ? tbody._rareSet : null;
+    var anyBuild = withBuild && (spFilters.star || spFilters.year || spFilters.life || spFilters.hidden);
     var now = Date.now();
     Array.prototype.forEach.call(tbody.querySelectorAll("tr"), function (tr) {
       var extra = tr.classList.contains("sp-extra");
@@ -1181,8 +1189,37 @@
       }
       // ◉ rare: species outside the model ("extras") never carry the marker.
       var rareOk = !rareSet || (!extra && !!(key && rareSet[key]));
-      tr.style.display = (ageOk && rareOk) ? "" : "none";
+      // Build filters apply to model rows only (extras aren't star/list-tracked).
+      var buildOk = !anyBuild || extra || (!!key && passSpeciesFilter(key));
+      tr.style.display = (ageOk && rareOk && buildOk) ? "" : "none";
     });
+  }
+  // Toggling a cue (★ / year / life / 🚫) in the recent or historic species list
+  // only changes that species' status icons — it needs NO refetch and NO re-run of
+  // the model. Repaint the cue cells for the visible rows from the live state and
+  // re-apply the filters as a show/hide pass. Returns false when the species list
+  // isn't the current page, so the caller can fall back to a full refresh.
+  // (This is the difference between an instant tick and re-doing the whole fetch.)
+  function refreshCueCellsInPlace() {
+    var panel = document.getElementById("species-panel");
+    var tbody = document.getElementById("sp-tbody");
+    if (!panel || panel.style.display === "none" || !tbody) return false;
+    if (!currentSpView || (currentSpView.mode !== "point" && currentSpView.mode !== "historic")) return false;
+    // Year/life cells depend on whether ANY list is being tracked (empty ↔ non-empty
+    // flips every row), so repaint all model rows, not just the toggled one.
+    var tracking = lifeListActive() || yearListActive();
+    Array.prototype.forEach.call(tbody.querySelectorAll("tr"), function (tr) {
+      if (tr.classList.contains("sp-extra")) return;   // extras carry no model cues
+      var sl = tr.querySelector(".sp-link[data-key]"), key = sl && sl.getAttribute("data-key");
+      if (!key) return;
+      var st = { star: isInteresting(key), year: tracking && !inYearList(key), life: tracking && !inLifeList(key), hidden: isHidden(key) };
+      ["star", "year", "life", "hidden"].forEach(function (f) {
+        var td = tr.querySelector("td.spf-c-" + f); if (!td) return;
+        td.innerHTML = st[f] ? '<i class="spf spf-' + f + '" title="' + escapeHtml(t("flag." + f)) + '">' + SP_FLAG_GLYPH[f] + "</i>" : "";
+      });
+    });
+    applyAgeFilter(true);   // re-apply build + age + rare visibility (no rebuild, no refetch)
+    return true;
   }
   // Clickable species-name span (opens the species menu). Prepends ★ when the
   // species is tagged interesting; data-name keeps the bare name (no star).
