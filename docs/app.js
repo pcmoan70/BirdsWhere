@@ -1717,7 +1717,7 @@
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
     { date: "2026-07-27", text: "The bottom-left legend now lists only the species with an observation visible on the map right now, updating as you pan and zoom — so it reflects the area you're looking at. Turn it off in Settings (“Filter the legend to the map view”) to list every plotted species regardless of the viewport." },
-    { date: "2026-07-27", text: "Observation.org observations: the map-point popup has an “Observation.org ↗” link. Observation.org has no public API, but it publishes everything to GBIF, so this opens GBIF’s explorer showing observation.org’s records for the spot you tapped (a box the size of your Sightings radius), narrowed to your current species group." },
+    { date: "2026-07-27", text: "Observation.org: the map-point popup has an “Observation.org ↗” link that opens that country’s Observation.org portal (e.g. no.observation.org) with its recent observations. Falls back to the international site when the point isn’t in a country." },
     { date: "2026-07-27", text: "Share a location: the map popup’s 🔗 Share link now makes a plain, readable URL that carries just the coordinates (…?lat=&lon=&zoom=). Open it to land on that exact spot with the pin down — short enough to paste anywhere, and you can see where it points before following it." },
     { date: "2026-07-22", text: "One colour convention for the year/life lists everywhere: 🟡 YELLOW = missing from your life list (a lifer), 🟠 BRONZE = missing from this year’s list. It now matches across the species-list columns, the map dot edges and star halos, the legend and the species menu." },
     { date: "2026-07-22", text: "Species menu: the list actions are toggles that show their state — ★ / 🟠 / 🟡 in colour when the species is in that set, greyed when not. “Interesting” toggles the star, and “Hidden” now works both ways (red when the click will hide the species, green when it will bring it back), so you can unblock straight from the list’s 🚫 filter." },
@@ -1756,27 +1756,15 @@
     var z = map ? map.getZoom() : 12;
     return "https://www.birdingplaces.eu/en/find-a-birdingplace#" + z.toFixed(2) + "/" + lat.toFixed(4) + "/" + lon.toFixed(4);
   }
-  // Observation.org has no public download API, but it publishes ALL its records to
-  // GBIF (this dataset), so we can browse them on GBIF's occurrence explorer scoped
-  // precisely to the clicked area — a bounding box the size of the Sightings radius,
-  // and to the active species group when one is chosen. "More precise than country"
-  // as requested: the polygon centres on the exact point, no country lookup needed.
-  var OBS_ORG_GBIF_DATASET = "8a863029-f435-446a-821e-275f4f641165";
-  function observationOrgUrl(lat, lon) {
-    var rkm = recentRadiusKm();
-    var dLat = rkm / 111.32;
-    var cos = Math.cos(lat * Math.PI / 180);
-    var dLon = rkm / (111.32 * (cos > 0.01 ? cos : 0.01));
-    var f = function (x) { return x.toFixed(4); };
-    var s = f(Math.max(-90, lat - dLat)), n = f(Math.min(90, lat + dLat));
-    var w = f(Math.max(-180, lon - dLon)), e = f(Math.min(180, lon + dLon));
-    // WKT ring, counter-clockwise + closed (GBIF's expected winding for a filter box).
-    var poly = "POLYGON((" + w + " " + s + "," + e + " " + s + "," + e + " " + n + "," + w + " " + n + "," + w + " " + s + "))";
-    var url = "https://www.gbif.org/occurrence/search?dataset_key=" + OBS_ORG_GBIF_DATASET +
-      "&geometry=" + encodeURIComponent(poly);
-    // Narrow to the active taxonomic group (birds/mammals/…) when one is selected.
-    if (speciesGroup !== "all" && GROUP_TAXA[speciesGroup]) url += "&taxon_key=" + GROUP_TAXA[speciesGroup].gbif;
-    return url;
+  // Observation.org's own site, on the country's portal: it runs one instance per
+  // country at <iso2>.observation.org (e.g. no.observation.org, nl.observation.org),
+  // whose home shows that country's recent observations. Falls back to the
+  // international site when the point has no country (e.g. open sea). Area-level
+  // scoping isn't offered — observation.org's per-area browse needs region IDs from
+  // its API, which is closed to the public.
+  function observationOrgUrl(cc) {
+    cc = String(cc || "").toLowerCase();
+    return /^[a-z]{2}$/.test(cc) ? "https://" + cc + ".observation.org/" : "https://observation.org/";
   }
   // Fågelkartan (fagelkartan.se) — a Swedish/Norwegian bird map & guide, with a
   // page per county: Sweden at /lan/<slug>/, Norway at /no/fylke/<slug>/. We stop
@@ -11645,22 +11633,22 @@
     wrap.appendChild(makePopupBtn(t("link.birdingplaces") + " ↗", "demo-btn-light", function () {
       mk.closePopup(); openExternal(birdingPlacesUrl(lat, lon));
     }));
-    // Observation.org records for this spot (browsed on GBIF, which holds the full
-    // observation.org dataset — the site itself has no public API/map deep-link).
-    wrap.appendChild(makePopupBtn(t("link.observationOrg") + " ↗", "demo-btn-light", function () {
-      mk.closePopup(); openExternal(observationOrgUrl(lat, lon));
-    }));
-    // Fågelkartan's county page, directly below Birdingplaces — Sweden and Norway
-    // only, and appended once the county-level reverse-geocode resolves so the
-    // popup itself opens instantly. Nothing else is added to `wrap` after this,
-    // so the late append still lands under Birdingplaces.
+    // Observation.org (the country's own portal) and, for SE/NO, Fågelkartan — both
+    // added once the country/county reverse-geocode resolves so the popup opens
+    // instantly. Nothing else is appended to `wrap` after this, so the late appends
+    // land under Birdingplaces.
     AppGeo.countryCode(lat, lon).then(function (cc) {
+      var obsUrl = observationOrgUrl(cc);   // <cc>.observation.org, or the intl site
+      wrap.appendChild(makePopupBtn(t("link.observationOrg") + " ↗", "demo-btn-light", function () {
+        mk.closePopup(); openExternal(obsUrl);
+      }));
+      var pop = mk.getPopup(); if (pop && pop.isOpen()) pop.update();   // re-layout for the added button
       if (!hasFagelkartan(cc)) return;
       return AppGeo.regionInfo(lat, lon).then(function (reg) {
         wrap.appendChild(makePopupBtn(t("link.fagelkartan") + " ↗", "demo-btn-light", function () {
           mk.closePopup(); openExternal(fagelkartanUrl(cc, reg.county, lat, lon));
         }));
-        var pop = mk.getPopup(); if (pop && pop.isOpen()) pop.update();   // re-layout for the added button
+        var pop2 = mk.getPopup(); if (pop2 && pop2.isOpen()) pop2.update();
       });
     }).catch(function () { /* leave the popup as-is */ });
     // Country resources (Blogs / BirdLife / national services) now live in the

@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-07-27 — Observation.org link now opens the country's own portal (sw v691)
+
+- The map-point popup's <b>Observation.org ↗</b> link now opens observation.org's
+  own site — the country portal at <code>&lt;iso2&gt;.observation.org</code> (e.g.
+  <code>no.observation.org</code>), showing that country's recent observations —
+  instead of the GBIF-hosted view. Falls back to the international site for a point
+  with no country (open sea). Verified the country-subdomain pattern resolves across
+  20 countries. Area-level scoping isn't offered: observation.org's per-area browse
+  needs region IDs from its API, which is closed to the public (the site also blocks
+  automated access), so country is as precise as its own site reliably allows.
+
 ## 2026-07-27 — All 15 languages complete (sw v690)
 
 - Filled the 43 UI strings that had been added to English/Swedish over time but never
