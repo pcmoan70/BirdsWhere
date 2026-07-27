@@ -1,5 +1,21 @@
 # Changes
 
+## 2026-07-27 — Share a bare location as a plain URL (sw v686)
+
+- The map popup’s 🔗 Share link (under 📍 Location) now produces a **plain,
+  readable** URL for a point — `…/migration_calendar/?lat=59.33017&lon=18.06978
+  &zoom=12` — instead of the opaque compressed `?s=` blob. It is about a third
+  the length (~66 chars), survives being retyped or hand-edited, and a recipient
+  can see where they are being sent before opening it.
+- Opening such a link centres the map on the shared spot at the shared zoom and
+  drops the point pin, then leaves the readable URL in the address bar (it is
+  idempotent and bookmarkable, unlike the one-shot `?s=` import which is
+  consumed on load).
+- A point never carried anything but its coordinates, so nothing is lost by the
+  switch. Existing `?s=` links keep working — the decoder stays for detection
+  sets, point lists and whole-map shares, which genuinely need it.
+- A malformed `?lat/?lon` is ignored rather than breaking boot.
+
 ## 2026-07-26 — Star / year / life toggles no longer re-fetch the whole list (sw v685)
 
 - In the recent (and historic) species list, tagging ★ or adding/removing a species

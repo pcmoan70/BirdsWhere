@@ -1716,6 +1716,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { date: "2026-07-27", text: "Share a location: the map popup’s 🔗 Share link now makes a plain, readable URL that carries just the coordinates (…?lat=&lon=&zoom=). Open it to land on that exact spot with the pin down — short enough to paste anywhere, and you can see where it points before following it." },
     { date: "2026-07-22", text: "One colour convention for the year/life lists everywhere: 🟡 YELLOW = missing from your life list (a lifer), 🟠 BRONZE = missing from this year’s list. It now matches across the species-list columns, the map dot edges and star halos, the legend and the species menu." },
     { date: "2026-07-22", text: "Species menu: the list actions are toggles that show their state — ★ / 🟠 / 🟡 in colour when the species is in that set, greyed when not. “Interesting” toggles the star, and “Hidden” now works both ways (red when the click will hide the species, green when it will bring it back), so you can unblock straight from the list’s 🚫 filter." },
     { date: "2026-07-22", text: "Species-at-location: five status columns left of the species name — ★ starred · ◉ rare here · 🟡 not on this year’s list · 🟠 not on the life list · 🚫 blocked. Each header icon is its own filter toggle (grey when off, coloured when on) and they combine, so ★ + 🟠 shows starred species you still need. “Rare here” means the habitat model thinks the species is unlikely at that spot, not that few people reported it." },
@@ -4186,8 +4187,9 @@
       initInstall();
       var hasHere = false; try { hasHere = new URLSearchParams(location.search).has("here"); } catch (e) {}
       if (!hasHere) restoreSession();   // return to the view we left (reload-safe)
-      maybeUrlAutoLocate();   // ?here=1 → geolocate + open species list
-      maybeImportShared();    // #s=… → import a shared point / list / detection set
+      maybeUrlAutoLocate();     // ?here=1 → geolocate + open species list
+      maybeOpenSharedPoint();   // ?lat=&lon= → a shared location: go there, drop the pin
+      maybeImportShared();      // ?s=… → import a shared point / list / detection set
       // Start Google Drive sync last, after all init-time GeoState writes, so
       // its open-time pull isn't fooled into thinking local is newer.
       if (window.GDriveSync) window.GDriveSync.init();
@@ -11262,10 +11264,7 @@
         // The native share sheet silently dropped the long URL on some devices, so
         // copy the FULL link to the clipboard and show it in a copyable dialog —
         // the reliable way to actually send it. Paste it into any message/app.
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          try { navigator.clipboard.writeText(url).then(function () { setStatus(t("share.copied")); }, function () {}); } catch (e) {}
-        }
-        uiDialog({ message: t("share.copyManual"), input: true, value: url, alert: true });
+        offerShareUrl(url);
       }, warn);
     }).catch(warn);
   }
@@ -11497,6 +11496,40 @@
     try { history.replaceState(null, "", location.pathname); } catch (e) {}   // consume it → no re-import on reload
     importShared(enc);
   }
+  // ---- Sharing a bare location ------------------------------------------------
+  // A point carries nothing but its coordinates, so it gets a PLAIN, readable URL
+  // (?lat=&lon=&zoom=) rather than the opaque compressed ?s= payload the richer
+  // shares need. It is a third the length, survives being retyped or edited by
+  // hand, and a recipient can see where they are being sent before opening it.
+  // ?s= links still work — decodeShare stays for detection sets, point lists and
+  // whole-map shares.
+  function pointShareUrl(lat, lon) {
+    var z = map ? Math.round(map.getZoom()) : 12;
+    return location.origin + location.pathname +
+      "?lat=" + (+lat).toFixed(5) + "&lon=" + wrapLon(+lon).toFixed(5) + "&zoom=" + z;
+  }
+  // Hand a finished link to the user: copy it, and show it in a copyable dialog
+  // too (the native share sheet silently dropped long URLs on some devices).
+  function offerShareUrl(url) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try { navigator.clipboard.writeText(url).then(function () { setStatus(t("share.copied")); }, function () {}); } catch (e) {}
+    }
+    uiDialog({ message: t("share.copyManual"), input: true, value: url, alert: true });
+  }
+  // ?lat=&lon=[&zoom=] on load → go there and drop the point pin, so a shared
+  // location opens exactly where it was shared from. Left in the address bar (it
+  // is idempotent and bookmarkable), unlike the one-shot ?s= import.
+  function maybeOpenSharedPoint() {
+    var q; try { q = new URLSearchParams(location.search); } catch (e) { return false; }
+    var lat = parseFloat(q.get("lat")), lon = parseFloat(q.get("lon"));
+    if (!isFinite(lat) || !isFinite(lon) || lat < -90 || lat > 90) return false;
+    lat = Math.max(-90, Math.min(90, lat)); lon = wrapLon(lon);
+    var z = parseInt(q.get("zoom"), 10);
+    if (map) map.setView([lat, lon], isFinite(z) && z > 0 ? z : Math.max(map.getZoom() || 0, 12));
+    setPointMarker(lat, lon);
+    setMpDistOrigin(lat, lon);
+    return true;
+  }
   // Copy a point's coordinates as plain "lat, lon" text (decimal degrees) — pastes
   // straight into Google/Apple Maps and most tools.
   function coordsText(lat, lon) { return (+lat).toFixed(5) + ", " + wrapLon(+lon).toFixed(5); }
@@ -11541,7 +11574,7 @@
     var locSub = document.createElement("div");
     locSub.className = "choose-sub"; locSub.style.display = "none";
     locSub.appendChild(makePopupBtn("📍 " + t("loc.save"), "demo-btn-light", function () { mk.closePopup(); registerLocationPrompt(lat, lon); }));
-    locSub.appendChild(makePopupBtn("🔗 " + t("share.link"), "demo-btn-light", function () { mk.closePopup(); doShare({ v: 1, type: "point", lat: lat, lon: lon }, t("share.link")); }));
+    locSub.appendChild(makePopupBtn("🔗 " + t("share.link"), "demo-btn-light", function () { mk.closePopup(); offerShareUrl(pointShareUrl(lat, lon)); }));
     locSub.appendChild(makePopupBtn("📋 " + coordsText(lat, lon), "demo-btn-light", function () { mk.closePopup(); copyCoords(lat, lon); }));
     var locBtn = makePopupBtn("📍 " + t("popup.location") + " ▸", "demo-btn-light", function () {
       var show = locSub.style.display === "none";

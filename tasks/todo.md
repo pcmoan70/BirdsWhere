@@ -427,3 +427,25 @@ Lesson (again): I reused a map-shaped rule in a list-shaped context without
 checking the constraint still applied — and then wrote a test ("never both 🟡 and
 🟠 on one row") that encoded the bug as expected behaviour, which is why two
 green runs hid it.
+
+## Follow-up 7: share a bare location as a plain URL (v686)
+
+User: "add a direct share location function, creating a url with only the
+location". The Location submenu's 🔗 Share link already encoded {lat,lon} into an
+opaque ?s= blob; user had no preference on add-vs-replace, so replaced it (no
+near-duplicate button; nothing lost — a point only ever held its coordinates).
+
+- [x] `pointShareUrl(lat,lon)` → …?lat=&lon=&zoom= ; `offerShareUrl(url)` shared
+      by both this and doShare's clipboard+dialog hand-off.
+- [x] `maybeOpenSharedPoint()` on boot (before restoreSession's re-centre would
+      fight it): ?lat=&lon=[&zoom=] → setView + drop pin; left in the URL
+      (bookmarkable), unlike the one-shot ?s= import.
+- [x] Point's Share link rewired to the plain URL. ?s= decoder untouched.
+- [x] Test suite 10/10: link is plain/short (~66 ch, no ?s=), round-trips to the
+      spot with the pin, honours zoom (± the app's H3 grid snap), malformed
+      ?lat/?lon ignored without breaking the app.
+
+Process note: pulled a teammate's v685 (cue toggles patch rows in place) before
+committing — stashed WIP, ff, popped clean, no conflict. v685's independent
+year/life cell logic matches my v684 column fix. Built this on v685 → v686.
+Regressions: main 48/48, fk 18/18.
