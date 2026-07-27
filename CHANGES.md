@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-07-27 — All 15 languages complete (sw v690)
+
+- Filled the 43 UI strings that had been added to English/Swedish over time but never
+  propagated to the other 13 languages (they had been falling back to English). Every
+  offered language now carries the full 739-key set. Covered keys include the offline-
+  map manager, place-name labels, the crosshair/read-cursor tooltips, the species-list
+  status/filter cues (★ / rare / year / life / hidden), photo attachments and the
+  stored-locations fetch messages. Placeholders and emoji preserved; verified each
+  language has exactly the English key set.
+
 ## 2026-07-27 — Legend filters to the map view (new setting, default on) (sw v689)
 
 - New Settings toggle <b>"Filter the legend to the map view"</b> (on by default): the
