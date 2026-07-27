@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-27 — Legend filters to the map view (new setting, default on) (sw v689)
+
+- New Settings toggle <b>"Filter the legend to the map view"</b> (on by default): the
+  bottom-left legend lists only species that have an observation inside the current
+  map view, and re-lists as you pan/zoom. Off = list every plotted species regardless
+  of the viewport (the previous behaviour). Implemented by having detVisibleCount()
+  honour the map bounds when the setting is on, and re-rendering the legend on
+  moveend/zoomend.
+
 ## 2026-07-27 — Observation.org observations from the point popup (sw v688)
 
 - The map-point popup gains an <b>Observation.org ↗</b> link. Observation.org has no

@@ -1716,6 +1716,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { date: "2026-07-27", text: "The bottom-left legend now lists only the species with an observation visible on the map right now, updating as you pan and zoom — so it reflects the area you're looking at. Turn it off in Settings (“Filter the legend to the map view”) to list every plotted species regardless of the viewport." },
     { date: "2026-07-27", text: "Observation.org observations: the map-point popup has an “Observation.org ↗” link. Observation.org has no public API, but it publishes everything to GBIF, so this opens GBIF’s explorer showing observation.org’s records for the spot you tapped (a box the size of your Sightings radius), narrowed to your current species group." },
     { date: "2026-07-27", text: "Share a location: the map popup’s 🔗 Share link now makes a plain, readable URL that carries just the coordinates (…?lat=&lon=&zoom=). Open it to land on that exact spot with the pin down — short enough to paste anywhere, and you can see where it points before following it." },
     { date: "2026-07-22", text: "One colour convention for the year/life lists everywhere: 🟡 YELLOW = missing from your life list (a lifer), 🟠 BRONZE = missing from this year’s list. It now matches across the species-list columns, the map dot edges and star halos, the legend and the species menu." },
@@ -3801,6 +3802,10 @@
                 '<p class="cu-hint" data-i18n="ctrl.deduphint">When the same sighting is registered in two databases (e.g. eBird and Artsobservasjoner) — same observer, approximate location, date, count and species — show it once instead of twice. Off = show every source\'s copy.</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
+                '<label class="ctrl-check"><input type="checkbox" id="legend-inview-toggle"> <span data-i18n="ctrl.legendInView">Filter the legend to the map view</span></label>' +
+                '<p class="cu-hint" data-i18n="ctrl.legendInViewHint">The bottom-left legend lists only species with an observation currently visible on the map, updating as you pan and zoom. Off = list every plotted species.</p>' +
+              '</div>' +
+              '<div class="ctrl-group">' +
                 '<label for="nearby-count" data-i18n="ctrl.nearbycount">Close by — rows shown</label>' +
                 '<input id="nearby-count" type="number" min="1" max="500" step="1" />' +
                 '<p class="cu-hint" data-i18n="ctrl.nearbycounthint">How many of the nearest detections the Close by list shows, sorted by distance from the live/fixed cross or placed pin.</p>' +
@@ -4511,6 +4516,12 @@
     map.whenReady(updateWorldMinZoom);
     // Offline: if the view isn't cached but a downloaded area covers it, offer it.
     map.on("moveend zoomend", scheduleOfflineCheck);
+    // "Filter legend to view" (setting): re-list the legend as the viewport changes,
+    // so it reflects only the species with a dot on screen. moveend fires once per
+    // pan/zoom gesture (not continuously), and this doesn't move the map, so no loop.
+    map.on("moveend zoomend", function () {
+      if (legendInView() && detLegend && typeof detPlot !== "undefined" && Object.keys(detPlot).length) updateDetLegendKeepObsScroll();
+    });
     window.addEventListener("offline", scheduleOfflineCheck);
     window.addEventListener("online", refreshOfflineZoomCap);   // reconnected → fetch full-res deep tiles again
     window.addEventListener("popstate", onNavPop);   // browser/phone Back closes the top in-app screen
@@ -5545,6 +5556,11 @@
   var detDupHidden = new Set();   // rows hidden as cross-database duplicates (dedup setting)
   var detDupSig = "";             // plotted-set + setting signature detDupHidden was computed for
   function dedupDetections() { return window.GeoState.get("dedupDetections", false) === true; }
+  // "Filter legend to the current view" (default on): the legend lists only species
+  // that have at least one plotted dot inside the map's visible bounds, and updates
+  // as you pan/zoom. Off = list every plotted species regardless of the viewport.
+  function legendInView() { return window.GeoState.get("legendInView", true) !== false; }
+  var legendViewBounds = null;   // set per updateDetLegend() call: the map bounds when the filter is on, else null
   var detLegend = null;
   // Legend-driven visibility: dots always draw in their species colour. Click a
   // legend row to "select" it — that isolates the selected species (the rest are
@@ -7319,11 +7335,18 @@
     return true;
   }
   // How many of a species' detections pass the current days + observer filters
-  // (NOT the per-species selection). Drives which species the legend lists.
+  // (NOT the per-species selection). Drives which species the legend lists. When
+  // legendViewBounds is set (the "filter legend to view" setting), a row must also
+  // fall inside the current map view — so panning/zooming narrows the legend.
   function detVisibleCount(k) {
     var e = detPlot[k]; if (!e || !e.rows) return 0;
-    var n = 0;
-    for (var i = 0; i < e.rows.length; i++) { var r = e.rows[i]; if (detDatePasses(r.date) && detObsPasses(r)) n++; }
+    var b = legendViewBounds, n = 0;
+    for (var i = 0; i < e.rows.length; i++) {
+      var r = e.rows[i];
+      if (!detDatePasses(r.date) || !detObsPasses(r)) continue;
+      if (b && !(isFinite(+r.lat) && isFinite(+r.lon) && b.contains([+r.lat, +r.lon]))) continue;
+      n++;
+    }
     return n;
   }
   // Model week (1–48) for an observation date; falls back to the current week.
@@ -7420,6 +7443,10 @@
     // The list reflects ALL the active filters: the per-species mode filter
     // (★/◉/🟡/group) AND the days + observer filters (a species with nothing left
     // after those drops out, like its dots do on the map).
+    // Filter the legend to species with a dot in the current view (setting; default
+    // on). Bounds captured once here so every detVisibleCount() call this render uses
+    // the same viewport.
+    legendViewBounds = (legendInView() && map) ? map.getBounds() : null;
     var visCount = Object.create(null);
     allKeys.forEach(function (k) { visCount[k] = detVisibleCount(k); });
     var keys = allKeys.filter(function (k) { return detPassesStar(k) && detPassesGroup(k) && detPassesRare(k) && detPassesYear(k) && detPassesLife(k) && visCount[k] > 0; });
@@ -9347,6 +9374,14 @@
         window.GeoState.save({ dedupDetections: this.checked });
         rebuildDetLayers(); updateDetLegend();   // ensureDedup() re-runs (setting is in its signature)
         if (document.getElementById("detlist-modal") && document.getElementById("detlist-modal").style.display === "flex" && typeof renderDetListModal === "function") renderDetListModal();
+      });
+    }
+    var legendViewEl = document.getElementById("legend-inview-toggle");
+    if (legendViewEl) {
+      legendViewEl.checked = legendInView();
+      legendViewEl.addEventListener("change", function () {
+        window.GeoState.save({ legendInView: this.checked });
+        updateDetLegend();   // re-list with/without the viewport filter now
       });
     }
 
