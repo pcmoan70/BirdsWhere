@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-27 — Observation.org observations from the point popup (sw v688)
+
+- The map-point popup gains an <b>Observation.org ↗</b> link. Observation.org has no
+  public download API, but it publishes its full dataset (132 M records) to GBIF, so
+  the link opens GBIF's occurrence explorer filtered to observation.org's records for
+  the clicked spot — a bounding box the size of the Sightings radius (point-precise,
+  no country lookup needed) — and narrowed to the active species group when one is
+  chosen. Verified against the GBIF API (dataset 8a863029-…, geometry + taxon filters).
+
 ## 2026-07-27 — "New version — Reload" banner now appears on long-open desktop tabs (sw v687)
 
 - The update banner only appeared after a page load ran an update check, so a
