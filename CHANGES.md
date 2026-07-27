@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-07-27 — "New version — Reload" banner now appears on long-open desktop tabs (sw v687)
+
+- The update banner only appeared after a page load ran an update check, so a
+  desktop browser left open for a long time (typical on a Windows PC) never noticed
+  new deploys — while a phone did, because it's reopened often. The app now actively
+  checks for updates on tab focus / becoming visible and every 15 minutes, re-shows
+  the banner for an already-waiting version, and registers the worker with
+  updateViaCache:"none" so the check always fetches sw.js fresh.
+- Note: this only starts working once the PC has loaded this version — do one hard
+  reload (Ctrl+F5) to pick it up; after that the banner surfaces future updates on
+  its own.
+
 ## 2026-07-27 — Share a bare location as a plain URL (sw v686)
 
 - The map popup’s 🔗 Share link (under 📍 Location) now produces a **plain,
