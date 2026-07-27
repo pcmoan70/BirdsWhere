@@ -10648,6 +10648,22 @@
         if (!seen[cell]) { seen[cell] = 1; out.push(cell); }
       }
     }
+    // Screen-sampling on a fixed step can skip a cell that no sample point happened
+    // to land inside — H3 cells are distorted, and Mercator scale varies with
+    // latitude across a zoomed-out view — leaving a regular pattern of gaps in the
+    // heatmap. Each skipped cell is surrounded by found ones, so add the 1-ring
+    // neighbours of every sampled cell: that fills the gaps (and adds a thin border
+    // of just-off-screen cells, which is harmless — they draw off-canvas).
+    if (window.h3.gridDisk) {
+      var nBase = out.length;
+      for (var bi = 0; bi < nBase; bi++) {
+        var ring = window.h3.gridDisk(out[bi], 1);
+        for (var ri = 0; ri < ring.length; ri++) {
+          var nb = ring[ri];
+          if (!seen[nb]) { seen[nb] = 1; out.push(nb); }
+        }
+      }
+    }
     _civKey = ck; _civCells = out;
     return out;
   }

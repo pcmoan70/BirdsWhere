@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-28 — Fix: remaining regular gaps in the Richness/Range hex overlay (sw v693)
+
+- The heatmap enumerates the H3 cells in view by sampling screen points on a fixed
+  step; because H3 cells are distorted (and Mercator scale varies with latitude), a
+  fixed step could skip cells in a regular pattern — those cells were never computed
+  or drawn. Now every sampled cell's 1-ring neighbours are added, which fills the
+  isolated gaps (a skipped cell is always surrounded by found ones). Applies to both
+  Species Richness and Species Range.
+
 ## 2026-07-27 — Fix: regular "holes" in the Species Richness heatmap (sw v692)
 
 - Over a large area the richness heatmap showed a regular pattern of missing
