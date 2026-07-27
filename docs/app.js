@@ -168,6 +168,9 @@
 
   // Richness cache key — distinct per group so counts don't collide.
   function richKey() { return "__richness__@" + speciesGroup; }
+  // Per-H3-cell richness cache tag (group + week). Shares the h3RangeCache store as
+  // the Range overlay; species codes never start with "__richness__", so no collision.
+  function richTag(week) { return richKey() + ":" + week; }
 
   // The header (settings) icon reflects the active species group. All icons are
   // monochrome SVGs in one style (currentColor; small details in deep teal),
@@ -10520,7 +10523,11 @@
     if (_paintRAF) { cancelAnimationFrame(_paintRAF); _paintRAF = 0; }
     if (!cachedRender || !map) return;
     if (!window.h3) { paintOverlaySmooth(); return; }
-    try { if (cachedRender.h3range) paintRangeH3(); else paintOverlayH3(); } catch (e) { console.warn("h3 overlay", e); }
+    try {
+      if (cachedRender.h3richness) paintRichnessH3();
+      else if (cachedRender.h3range) paintRangeH3();
+      else paintOverlayH3();
+    } catch (e) { console.warn("h3 overlay", e); }
   }
 
   // Draw the Species-Range overlay from the per-cell H3 cache (Richness still
@@ -10557,6 +10564,50 @@
       var p = Math.pow(raw / max, DISPLAY_GAMMA);
       if (!(p >= 0.01)) continue;
       var sh = h3Shape(cells[i]); if (sh.straddles) continue;   // skip antimeridian-straddling hexes
+      var bnd = sh.bnd;
+      ctx.beginPath();
+      for (var vtx = 0; vtx < bnd.length; vtx++) {
+        var pt = map.latLngToContainerPoint([bnd[vtx][0], bnd[vtx][1]]);
+        if (vtx === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y);
+      }
+      ctx.closePath();
+      var col = colormapLookup(p);
+      ctx.fillStyle = "rgba(" + col[0] + "," + col[1] + "," + col[2] + "," + Math.min(1, 0.25 + p * 0.75).toFixed(3) + ")";
+      ctx.fill();
+    }
+  }
+
+  // Richness overlay, drawn per H3 cell from the per-cell cache — each hexagon's
+  // value is the model evaluated AT THAT HEXAGON'S CENTROID (see renderRichness),
+  // so the tiling has no gaps. (The old path sampled a rectangular grid and then
+  // re-sampled it onto the hexagons, which left regular "holes" at low zoom where
+  // the two grids beat against each other.) Same colour mapping as the Range
+  // overlay — normalise by the peak count, then gamma — but no probability-slider
+  // filter, since richness is a species COUNT, not a probability.
+  function paintRichnessH3() {
+    ensureOverlayCanvas();
+    var cache = h3RangeCache.get(cachedRender.tag) || {};
+    var size = map.getSize();
+    if (overlayCanvas.width !== size.x || overlayCanvas.height !== size.y) { overlayCanvas.width = size.x; overlayCanvas.height = size.y; }
+    L.DomUtil.setPosition(overlayCanvas, map.containerPointToLayerPoint([0, 0]));
+    var ctx = overlayCanvas.getContext("2d");
+    ctx.clearRect(0, 0, size.x, size.y);
+    var targetRes = h3ResForView(), cells = h3CellsInView(targetRes);
+    // Peak across cached cells of the CURRENT resolution (ignore leftovers from an
+    // earlier detail setting), so colours stay stable when zooming into a low area.
+    var i, max = 0, v, allKeys = Object.keys(cache);
+    for (i = 0; i < allKeys.length; i++) {
+      if (h3ResOf(allKeys[i]) !== targetRes) continue;
+      v = cache[allKeys[i]]; if (v != null && v > max) max = v;
+    }
+    if (max <= 0) max = 1;
+    cachedRender.maxVal = max;   // legend shows the peak species count
+    for (i = 0; i < cells.length; i++) {
+      var raw = cache[cells[i]];
+      if (raw == null) continue;
+      var p = Math.pow(raw / max, DISPLAY_GAMMA);
+      if (!(p >= 0.01)) continue;
+      var sh = h3Shape(cells[i]); if (sh.straddles) continue;
       var bnd = sh.bnd;
       ctx.beginPath();
       for (var vtx = 0; vtx < bnd.length; vtx++) {
@@ -10897,17 +10948,17 @@
   // stay put during Play); omitted, it reads the selected week as usual.
   function showCachedWeek(weekOverride) {
     var week = weekOverride != null ? weekOverride : +document.getElementById("week-select").value;
-    var g = viewportGrid();
 
     if (currentMode === "richness") {
-      var cm = getCellMap(cacheKey(richKey(),week), g.step);
-      if (viewportMissing(cm, g).length === 0) {
-        var raw = buildViewportArray(cm, g);
-        var maxVal = 0;
-        for (var i = 0; i < raw.length; i++) if (raw[i] > maxVal) maxVal = raw[i];
-        cachedRender = { grid: g, probs: perceptualNorm(raw, maxVal), maxVal: maxVal, product: "richness" };
+      // Paint from the per-cell H3 cache when every visible hexagon for this week is
+      // cached (e.g. animation playback); otherwise compute the missing cells.
+      var rcache = window.h3 && h3RangeCache.get(richTag(week));
+      var rcells = window.h3 ? h3CellsInView(h3ResForView()) : [];
+      var allR = rcache && rcells.every(function (c) { return c in rcache; });
+      if (allR) {
+        cachedRender = { h3richness: true, tag: richTag(week) };
         paintOverlay();
-        setStatus(t("status.richnessCached", { week: weekText(week), n: g.nLat * g.nLon, step: fmtStep(g.step) }));
+        setStatus(t("status.richnessCached", { week: weekText(week), n: rcells.length, step: "" }));
         updateLegend();
         updateMapCsv();
       } else { renderRichness(); }
@@ -10933,29 +10984,33 @@
   // ---- Species richness ----------------------------------------------------
   var RICHNESS_THRESHOLD = 0.05;
 
+  // Richness is now computed per H3 cell — the model is evaluated at each visible
+  // hexagon's CENTROID (window.h3.cellToLatLng), exactly like the Range overlay,
+  // and cached per cell. This replaces the old rectangular-grid sampling that, once
+  // re-sampled onto the hex tiling, left regular holes over a large area.
   async function renderRichness() {
     if (!animateAll) invalidateAnimation();   // a fresh single-week render makes any precomputed animation stale
+    if (!window.h3) return;                    // richness draws per H3 cell (like Range)
     if (rendering) { renderGeneration++; return; }
     var gen = ++renderGeneration;
     var selectedWeek = +document.getElementById("week-select").value;
-    var weeks = weeksToCompute(), nSpecies = labels.length, CHUNK = inferChunk();
-    var g = viewportGrid(), totalPoints = g.nLat * g.nLon;
+    var weeks = weeksToCompute(), CHUNK = inferChunk();
+    var res = h3ResForView(), cells = h3CellsInView(res);
+    var approxStep = fmtStep(+(window.h3.getHexagonEdgeLengthAvg(res, "m") / 111320).toFixed(3));
+    var mask = groupMask();
     var richName = t("legend.count");
 
-    var weekMissing = [];
+    // Collect the (week, cell) pairs not yet cached.
+    var missing = [];
     weeks.forEach(function (w) {
-      var cm = getCellMap(cacheKey(richKey(),w), g.step);
-      var miss = viewportMissing(cm, g);
-      if (miss.length > 0) weekMissing.push({ week: w, missing: miss, cellMap: cm });
+      var cache = h3RangeCacheFor(richTag(w));
+      for (var i = 0; i < cells.length; i++) if (!(cells[i] in cache)) missing.push({ w: w, c: cells[i], cache: cache });
     });
 
-    if (weekMissing.length === 0) {
-      var raw = buildViewportArray(getCellMap(cacheKey(richKey(),selectedWeek), g.step), g);
-      var maxVal = 0;
-      for (var i = 0; i < raw.length; i++) if (raw[i] > maxVal) maxVal = raw[i];
-      cachedRender = { grid: g, probs: perceptualNorm(raw, maxVal), maxVal: maxVal, product: "richness" };
+    if (missing.length === 0) {   // fully cached for this view
+      cachedRender = { h3richness: true, tag: richTag(selectedWeek) };
       paintOverlay();
-      setStatus(t("status.richnessCached", { week: weekText(selectedWeek), n: totalPoints.toLocaleString(), step: fmtStep(g.step) }));
+      setStatus(t("status.richnessCached", { week: weekText(selectedWeek), n: cells.length.toLocaleString(), step: approxStep }));
       updateLegend();
       updateMapCsv();
       return;
@@ -10963,47 +11018,30 @@
 
     rendering = true;
     showComputingOverlay(true, richName);
-    var mask = groupMask();
-    var chunksTotal = totalChunks(weekMissing, CHUNK), chunksDone = 0;
+    var total = Math.ceil(missing.length / CHUNK), done = 0;
     try {
-      for (var wi = 0; wi < weekMissing.length; wi++) {
-        var wm = weekMissing[wi];
-        setStatus(t("status.computing", { name: richName, week: weekText(wm.week), n: wm.missing.length, i: wi + 1, total: weekMissing.length }));
-        var inputs = new Float32Array(wm.missing.length * 3);
-        for (var ii = 0; ii < wm.missing.length; ii++) {
-          inputs[ii * 3] = wm.missing[ii].lat;
-          inputs[ii * 3 + 1] = wm.missing[ii].lon;
-          inputs[ii * 3 + 2] = wm.week;
-        }
-        var counts = new Float32Array(wm.missing.length);
-        for (var start = 0; start < wm.missing.length; start += CHUNK) {
-          if (gen !== renderGeneration) return;
-          var end = Math.min(start + CHUNK, wm.missing.length);
-          // Worker counts species ≥ threshold (optionally masked to a group)
-          // and returns one count per cell.
-          var out = await runInference(inputs.subarray(start * 3, end * 3), end - start,
-            { task: "richness", threshold: RICHNESS_THRESHOLD, mask: mask });
-          for (var j = 0; j < end - start; j++) counts[start + j] = out[j];
-          setComputeProgress(++chunksDone / chunksTotal);
-        }
+      for (var s = 0; s < missing.length; s += CHUNK) {
         if (gen !== renderGeneration) return;
-        for (var k = 0; k < wm.missing.length; k++) wm.cellMap.set(cellId(wm.missing[k].lat, wm.missing[k].lon), counts[k]);
-        if (wm.week === selectedWeek) {
-          var rawW = buildViewportArray(wm.cellMap, g);
-          var maxV = 0;
-          for (var m = 0; m < rawW.length; m++) if (rawW[m] > maxV) maxV = rawW[m];
-          cachedRender = { grid: g, probs: perceptualNorm(rawW, maxV), maxVal: maxV, product: "richness" };
-          schedulePaint();
+        var batch = missing.slice(s, s + CHUNK);
+        var inputs = new Float32Array(batch.length * 3);
+        for (var j = 0; j < batch.length; j++) {
+          var ll = window.h3.cellToLatLng(batch[j].c);   // sample the hexagon's centre
+          inputs[j * 3] = ll[0]; inputs[j * 3 + 1] = ll[1]; inputs[j * 3 + 2] = batch[j].w;
         }
+        // Worker counts species ≥ threshold (optionally masked to a group) per cell.
+        var out = await runInference(inputs, batch.length, { task: "richness", threshold: RICHNESS_THRESHOLD, mask: mask });
+        for (var k = 0; k < batch.length; k++) batch[k].cache[batch[k].c] = out[k];
+        setComputeProgress(++done / total);
+        setStatus(t("status.computing", { name: richName, week: weekText(selectedWeek), n: missing.length, i: done, total: total }));
+        if (gen === renderGeneration) { cachedRender = { h3richness: true, tag: richTag(selectedWeek) }; schedulePaint(); }
       }
-      var rawF = buildViewportArray(getCellMap(cacheKey(richKey(),selectedWeek), g.step), g);
-      var maxF = 0;
-      for (var n = 0; n < rawF.length; n++) if (rawF[n] > maxF) maxF = rawF[n];
-      cachedRender = { grid: g, probs: perceptualNorm(rawF, maxF), maxVal: maxF, product: "richness" };
+      if (gen !== renderGeneration) return;
+      cachedRender = { h3richness: true, tag: richTag(selectedWeek) };
       paintOverlay();
-      setStatus(t("status.richnessDone", { week: weekText(selectedWeek), n: totalPoints.toLocaleString(), step: fmtStep(g.step) }));
+      setStatus(t("status.richnessDone", { week: weekText(selectedWeek), n: cells.length.toLocaleString(), step: approxStep }));
       updateLegend();
       updateMapCsv();
+      scheduleH3Save();
     } catch (e) { setStatus(t("status.error", { msg: e.message })); console.error(e); }
     finally { rendering = false; showComputingOverlay(false); if (gen !== renderGeneration) triggerRender(); }
   }

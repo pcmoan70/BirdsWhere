@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-07-27 — Fix: regular "holes" in the Species Richness heatmap (sw v692)
+
+- Over a large area the richness heatmap showed a regular pattern of missing
+  hexagons. Cause: richness values were computed on a rectangular lat/lon grid and
+  then re-sampled onto the hexagon tiling, and the two grids beat against each other.
+  Richness now evaluates the model at each hexagon's <b>centroid</b> and caches it
+  per cell — the same per-H3-cell path the Species Range overlay already uses — so
+  every visible hexagon has its own value and the tiling is gap-free. Colouring
+  (normalise by peak count, then gamma) is unchanged.
+
 ## 2026-07-27 — Observation.org link now opens the country's own portal (sw v691)
 
 - The map-point popup's <b>Observation.org ↗</b> link now opens observation.org's
