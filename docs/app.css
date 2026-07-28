@@ -2426,6 +2426,12 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;   /* fitDetTitle shrinks the font so the full name fits; ellipsis is the last-resort */
 }
 #detlist-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+/* Filter bar (time / species-mode / observer) moved into the detections-list popup.
+   The .det-tog / subwindow styles are shared with the (former) legend controls. */
+#detlist-filters-wrap { margin: 0 0 8px; }
+.detlist-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.detlist-filters .det-clear-sel { margin-left: auto; border: none; background: transparent; cursor: pointer; color: var(--ink, #1a1a1a); font: inherit; font-size: 1.2rem; line-height: 1; padding: 2px 6px; }
+.detlist-filters .det-clear-sel:hover { color: #000; }
 /* Single sort pill: shows only the active mode (tap to switch), to save space. */
 .detlist-sort-toggle { margin-left: auto; border: 1px solid var(--border); background: var(--surface); border-radius: 999px; cursor: pointer; font: inherit; font-size: 0.74rem; padding: 3px 12px; color: var(--ink-muted); white-space: nowrap; }
 .detlist-sort-toggle:hover { border-color: var(--brand); color: var(--brand-deep); }

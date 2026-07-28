@@ -1719,6 +1719,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { date: "2026-07-28", text: "The detection filters — time window / date range, the ★ starred · ◉ rare · 🟡 year-list · 🔴 life-list species filter, and the 👤 observer filter — have moved into the detections-list popup (☰). The bottom-left legend is now just the species list plus a black × (clear all filters) and the red × (clear the map). Filters stay set until you clear them with the black × or switch them off in the list — clearing the map keeps them." },
     { date: "2026-07-28", text: "In the detections list (☰), the species search box now also filters the dots on the map: the list narrows as you type, and a moment (~1.5 s) after you stop, the map and legend narrow to the matching species too. Clearing the box — or closing the list — restores every dot." },
     { date: "2026-07-27", text: "The bottom-left legend now lists only the species with an observation visible on the map right now, updating as you pan and zoom — so it reflects the area you're looking at. Turn it off in Settings (“Filter the legend to the map view”) to list every plotted species regardless of the viewport." },
     { date: "2026-07-27", text: "Observation.org: the map-point popup has an “Observation.org ↗” link that opens that country’s Observation.org portal (e.g. no.observation.org) with its recent observations. Falls back to the international site when the point isn’t in a country." },
@@ -4210,6 +4211,7 @@
             '</div>' +
           '</div>' +
           '<input type="text" id="detlist-search" autocomplete="off" spellcheck="false" data-i18n-ph="detlist.search" placeholder="Filter species…" />' +
+          '<div id="detlist-filters-wrap"></div>' +
           '<div id="detlist-body"></div>' +
         '</div></div>' +
         '<div id="offline-modal" style="display:none"><div id="offline-box">' +
@@ -6126,6 +6128,7 @@
     detListNear = near || null;
     detListOpenSp = {};
     detListQuery = "";
+    detDaysPanelOpen = detModePanelOpen = detObsPanelOpen = false;   // filter subwindows start closed
     clearDetMapSearch();   // start with the map unfiltered
     var si = document.getElementById("detlist-search"); if (si) si.value = "";
     m.style.display = "flex";
@@ -6443,6 +6446,9 @@
     var sortBtn = document.getElementById("detlist-sort");   // single toggle: shows only the ACTIVE mode, title = what a tap switches to
     if (sortBtn) { var sp = detListSort === "species"; sortBtn.textContent = sp ? t("detlist.bySpecies") : t("detlist.byTime"); sortBtn.title = sp ? t("detlist.byTime") : t("detlist.bySpecies"); }
     recolorDetections();   // swatches reflect the latest family colours
+    // Filter bar (time / species-mode / observer) at the top of the popup.
+    var fw = document.getElementById("detlist-filters-wrap");
+    if (fw) { fw.innerHTML = detFilterBarHtml(); wireDetFilters(fw); }
     var rows = collectVisibleDetections(detListNear);
     var totalRows = rows.length;   // pre-filter count → drives whether the search box is worth showing
     // Title = the place name the data SOURCE supplies for this spot: an eBird hotspot
@@ -6997,6 +7003,12 @@
     updateDetLegend(); saveDetections(); saveLegendState();
     if (fromList && typeof refreshMpPanel === "function") refreshMpPanel();   // keep the points-panel count current
   }
+  // Is any detection filter active? (species selection, ★/◉/🟡/🔴 mode, observer,
+  // recency days / date range.) Drives the black × (clear all) in both the legend
+  // and the detections-list filter bar.
+  function detHasFilter() {
+    return detSelectionActive() || detStarFilter || detRareFilter || detYearFilter || detLifeFilter || !!detObsFilter || (detRecencyDays() !== 0) || !!detDateRange();
+  }
   // Reset every legend filter at once (the black ×): the species selection, the
   // ★/◉/🟡 mode filter, the observer filter, and the recency (days) window → All.
   // Dots stay plotted; only the filtering is cleared.
@@ -7007,6 +7019,8 @@
     setDetObsFilter(null);                                                   // observer → all
     window.GeoState.save({ detRecencyDays: 0, detDateRange: null });        // days + range → All
     saveLegendState(); rebuildDetLayers(); updateDetLegend();
+    var dm = document.getElementById("detlist-modal");
+    if (dm && dm.style.display === "flex" && typeof renderDetListModal === "function") renderDetListModal();
   }
   // The red × clears the WHOLE map of plotted points: fetched dots, plus every
   // shown saved list / detection set (un-ticked so nothing is re-injected — the
@@ -7018,8 +7032,9 @@
     clearFetchedAreas();   // remembered fetched-area outlines go with the detections
     Object.keys(detPlot).forEach(function (k) { if (detPlot[k].group) map.removeLayer(detPlot[k].group); });
     detPlot = {}; detSelected = {};
-    detStarFilter = false; detRareFilter = false; detYearFilter = false; detLifeFilter = false;
-    setDetObsFilter(null); detObsPanelOpen = false; detDaysPanelOpen = false; detModePanelOpen = false; detLegendMini = false;
+    // Filters are DELIBERATELY kept (they persist until the black × / toggled off) —
+    // only the transient subwindow-open flags and the minimise state reset here.
+    detObsPanelOpen = false; detDaysPanelOpen = false; detModePanelOpen = false; detLegendMini = false;
     var hadShown = Object.keys(shownColls).length || Object.keys(shownDetSets).length;
     shownColls = {}; shownDetSets = {};
     updateDetSetOverlays();     // remove detection-set overlays
@@ -7277,9 +7292,13 @@
   }
   // Rebuild the legend but keep the observer checklist scrolled where it was.
   function updateDetLegendKeepObsScroll() {
-    var lst = document.querySelector("#det-legend .det-obs-list"), st = lst ? lst.scrollTop : 0;
+    // The observer checklist lives in the detections-list popup now; preserve ITS
+    // scroll across the re-render (and still refresh the legend).
+    var lst = document.querySelector("#detlist-filters-wrap .det-obs-list"), st = lst ? lst.scrollTop : 0;
     updateDetLegend();
-    var nl = document.querySelector("#det-legend .det-obs-list"); if (nl) nl.scrollTop = st;
+    var dm = document.getElementById("detlist-modal");
+    if (dm && dm.style.display === "flex" && typeof renderDetListModal === "function") renderDetListModal();
+    var nl = document.querySelector("#detlist-filters-wrap .det-obs-list"); if (nl) nl.scrollTop = st;
   }
   // Small popup (anchored to a clicked observer name) to toggle that observer's
   // membership in each saved list, or start a new list containing them. Uses the
@@ -7625,33 +7644,19 @@
       el.querySelector(".det-restore").addEventListener("click", function () { mapClickGuardUntil = Date.now() + 250; detLegendMini = false; saveLegendState(); updateDetLegend(); });
       return;
     }
-    // Three subwindow toggles, each opening a dropdown (mutually exclusive): the
-    // time window (days / date range), which species (★/◉/🟡), and the observers.
-    var daysLbl = detDaysLabel();
-    var daysOn = detRecencyDays() !== 0 || !!detDateRange();
-    var modeOn = detStarFilter || detRareFilter || detYearFilter || detLifeFilter;
-    var modeLbl = detStarFilter ? "★" : detRareFilter ? "◉" : detYearFilter ? "🟠" : detLifeFilter ? "🟡" : "–";
-    var modeTip = detStarFilter ? t("det.starred") : detRareFilter ? t("det.rare") : detYearFilter ? t("det.needsYear", { year: curYear() }) : detLifeFilter ? t("det.needsLife") : t("det.allSpecies");
-    // One control line: − minimise · ☰ list · time · ★/◉/🟡 species · 👤 observers ·
-    // (black ×) clear filters · (red ×) delete areas / all, plus a ⚠ (right-aligned)
-    // only when the draw cap is truncating the map.
+    // The time / species-mode / observer FILTERS now live in the detections-list
+    // popup (☰); the legend keeps only: − minimise · ☰ list · (black ×) clear
+    // filters · (red ×) delete areas / all, plus a ⚠ (right-aligned) when the draw
+    // cap is truncating the map, and the species rows.
     var hasSel = detSelectionActive();
-    // The black × clears ALL filters (selection, ★/◉/🟡 mode, observer, recency
-    // days + date range). Shown whenever any of them is active.
-    var hasFilter = hasSel || detStarFilter || detRareFilter || detYearFilter || detLifeFilter || !!detObsFilter || (detRecencyDays() !== 0) || !!detDateRange();
+    var hasFilter = detHasFilter();   // any filter active → show the black × (clear all)
     el.innerHTML = '<div class="det-legend-head">' +
         '<button type="button" class="det-min" title="' + escapeHtml(t("det.minimise")) + '" aria-label="' + escapeHtml(t("det.minimise")) + '">−</button>' +
         '<button type="button" class="det-list-btn ico-btn" title="' + escapeHtml(t("detlist.open")) + '" aria-label="' + escapeHtml(t("detlist.open")) + '">' + ico("menu") + "</button>" +
-        '<button type="button" class="det-tog det-days-tog' + (daysOn ? " on" : "") + (detDaysPanelOpen ? " open" : "") + '" title="' + escapeHtml(t("det.recency")) + '">' + escapeHtml(daysLbl) + "</button>" +
-        '<button type="button" class="det-tog det-mode-tog' + (modeOn ? " on" : "") + (detModePanelOpen ? " open" : "") + '" title="' + escapeHtml(modeTip) + '">' + escapeHtml(modeLbl) + "</button>" +
-        '<button type="button" class="det-tog det-obs-tog ico-btn' + (detObsFilter ? " on" : "") + (detObsPanelOpen ? " open" : "") + '" title="' + escapeHtml(t("det.observers")) + '" aria-label="' + escapeHtml(t("det.observers")) + '">' + ico("user") + "</button>" +
         (hasFilter ? '<button type="button" class="det-clear-sel" title="' + escapeHtml(t("det.clearFilters")) + '" aria-label="' + escapeHtml(t("det.clearFilters")) + '">×</button>' : "") +
         '<button type="button" class="det-clear' + (detAreaDeleteMode ? " armed" : "") + '" title="' + escapeHtml(detAreaDeleteMode ? t("det.delAreaHint") : (fetchedAreas.length ? t("det.delAreaArm") : t("det.clearAll"))) + '" aria-label="' + escapeHtml(t("det.clearAll")) + '">×</button>' +
         (capped ? '<span class="det-cap-warn" role="img" title="' + escapeHtml(capTip) + '" aria-label="' + escapeHtml(capTip) + '">⚠</span>' : "") +
       "</div>" +
-      (detDaysPanelOpen ? detDaysPanelHtml() : "") +
-      (detModePanelOpen ? detModePanelHtml() : "") +
-      (detObsPanelOpen ? detObsPanelHtml() : "") +
       (keys.length ? "" : '<div class="det-empty">' + escapeHtml(t("det.noMatch")) + "</div>") +
       keys.map(function (k) {
         var e = detPlot[k], nm = escapeHtml(detName(e));
@@ -7730,87 +7735,79 @@
         updateDetLegend();
       });
     });
-    // Days toggle: open the time-window subwindow. These handlers re-render the
-    // legend (replacing their own button), so a tap can fall through to the map;
-    // stop propagation and arm the map-click guard so it can't drop a map point /
-    // open the point popup behind the legend.
-    el.querySelector(".det-days-tog").addEventListener("click", function (e) {
-      e.stopPropagation(); mapClickGuardUntil = Date.now() + 400;
-      openDetPanel("days"); updateDetLegend();
-    });
-    // A preset chip → set that rolling window (and clear any date range).
+  }
+  // The filter bar (time / species-mode / observer) shown at the top of the
+  // detections-list popup, plus whichever subwindow is open. Reuses the same panel
+  // builders the legend used to host. `hasFilter` decides whether a compact "clear
+  // all filters" × appears (mirrors the legend's black ×).
+  function detFilterBarHtml() {
+    var daysLbl = detDaysLabel();
+    var daysOn = detRecencyDays() !== 0 || !!detDateRange();
+    var modeOn = detStarFilter || detRareFilter || detYearFilter || detLifeFilter;
+    var modeLbl = detStarFilter ? "★" : detRareFilter ? "◉" : detYearFilter ? "🟠" : detLifeFilter ? "🟡" : "–";
+    var modeTip = detStarFilter ? t("det.starred") : detRareFilter ? t("det.rare") : detYearFilter ? t("det.needsYear", { year: curYear() }) : detLifeFilter ? t("det.needsLife") : t("det.allSpecies");
+    return '<div class="detlist-filters">' +
+        '<button type="button" class="det-tog det-days-tog' + (daysOn ? " on" : "") + (detDaysPanelOpen ? " open" : "") + '" title="' + escapeHtml(t("det.recency")) + '">' + escapeHtml(daysLbl) + "</button>" +
+        '<button type="button" class="det-tog det-mode-tog' + (modeOn ? " on" : "") + (detModePanelOpen ? " open" : "") + '" title="' + escapeHtml(modeTip) + '">' + escapeHtml(modeLbl) + "</button>" +
+        '<button type="button" class="det-tog det-obs-tog ico-btn' + (detObsFilter ? " on" : "") + (detObsPanelOpen ? " open" : "") + '" title="' + escapeHtml(t("det.observers")) + '" aria-label="' + escapeHtml(t("det.observers")) + '">' + ico("user") + "</button>" +
+        (detHasFilter() ? '<button type="button" class="det-clear-sel" title="' + escapeHtml(t("det.clearFilters")) + '" aria-label="' + escapeHtml(t("det.clearFilters")) + '">×</button>' : "") +
+      "</div>" +
+      (detDaysPanelOpen ? detDaysPanelHtml() : "") +
+      (detModePanelOpen ? detModePanelHtml() : "") +
+      (detObsPanelOpen ? detObsPanelHtml() : "");
+  }
+  // Wire the filter bar + subwindows inside the detections-list popup box `el`.
+  // Changes save + refresh the map/legend, then re-render the popup.
+  function wireDetFilters(el) {
+    var refresh = function () { saveLegendState(); rebuildDetLayers(); updateDetLegend(); renderDetListModal(); };
+    var daysTog = el.querySelector(".det-days-tog");
+    if (daysTog) daysTog.addEventListener("click", function (e) { e.stopPropagation(); openDetPanel("days"); renderDetListModal(); });
     el.querySelectorAll(".det-days-chip").forEach(function (chip) {
-      chip.addEventListener("click", function (e) {
-        e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
-        window.GeoState.save({ detRecencyDays: +this.getAttribute("data-days"), detDateRange: null });
-        saveLegendState(); rebuildDetLayers(); updateDetLegend();
-      });
+      chip.addEventListener("click", function (e) { e.stopPropagation(); window.GeoState.save({ detRecencyDays: +this.getAttribute("data-days"), detDateRange: null }); refresh(); });
     });
-    // A date input → set the from–to range (takes precedence over the presets).
     el.querySelectorAll(".det-date-from, .det-date-to").forEach(function (inp) {
       inp.addEventListener("change", function (e) {
-        e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
-        var from = (el.querySelector(".det-date-from") || {}).value || "";
-        var to = (el.querySelector(".det-date-to") || {}).value || "";
-        window.GeoState.save({ detDateRange: (from || to) ? { from: from, to: to } : null });
-        saveLegendState(); rebuildDetLayers(); updateDetLegend();
+        e.stopPropagation();
+        var from = (el.querySelector(".det-date-from") || {}).value || "", to = (el.querySelector(".det-date-to") || {}).value || "";
+        window.GeoState.save({ detDateRange: (from || to) ? { from: from, to: to } : null }); refresh();
       });
     });
-    // Mode toggle: open the species subwindow.
-    el.querySelector(".det-mode-tog").addEventListener("click", function (e) {
-      e.stopPropagation(); mapClickGuardUntil = Date.now() + 400;
-      openDetPanel("mode"); updateDetLegend();
-    });
-    // A mode row → set that species filter exclusively (all / starred / rare / needs).
+    var modeTog = el.querySelector(".det-mode-tog");
+    if (modeTog) modeTog.addEventListener("click", function (e) { e.stopPropagation(); openDetPanel("mode"); renderDetListModal(); });
     el.querySelectorAll(".det-mode-row").forEach(function (row) {
       row.addEventListener("click", function (e) {
-        e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
+        e.stopPropagation();
         var m = this.getAttribute("data-mode");
         detStarFilter = m === "star"; detRareFilter = m === "rare"; detYearFilter = m === "year"; detLifeFilter = m === "life";
-        saveLegendState(); rebuildDetLayers(); updateDetLegend();
+        refresh();
       });
     });
-    // 👤 observer filter: open the checklist subwindow.
-    el.querySelector(".det-obs-tog").addEventListener("click", function (e) {
-      e.stopPropagation(); mapClickGuardUntil = Date.now() + 400;
-      openDetPanel("obs"); updateDetLegend();
-    });
-    // Tick/untick observers → restrict the map + list to the selected ones. All
-    // ticked collapses back to "no filter" (null) so the 👤 icon goes inactive.
+    var obsTog = el.querySelector(".det-obs-tog");
+    if (obsTog) obsTog.addEventListener("click", function (e) { e.stopPropagation(); openDetPanel("obs"); renderDetListModal(); });
     el.querySelectorAll(".det-obs-cb").forEach(function (cb) {
       cb.addEventListener("change", function (e) {
-        e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
-        var lst = el.querySelector(".det-obs-list"), st = lst ? lst.scrollTop : 0;   // keep the dropdown scrolled where it was
+        e.stopPropagation();
+        var lst0 = el.querySelector(".det-obs-list"), st = lst0 ? lst0.scrollTop : 0;   // keep the checklist scrolled where it was
         var boxes = el.querySelectorAll(".det-obs-cb"), checked = [], allOn = true;
         Array.prototype.forEach.call(boxes, function (b) { if (b.checked) checked.push(b.getAttribute("data-obs")); else allOn = false; });
-        setDetObsFilter(allOn ? null : new Set(checked));
-        saveLegendState(); rebuildDetLayers(); updateDetLegend();
-        var nl = el.querySelector(".det-obs-list"); if (nl) nl.scrollTop = st;       // restore after the re-render
+        setDetObsFilter(allOn ? null : new Set(checked)); refresh();
+        var lst1 = document.querySelector("#detlist-filters-wrap .det-obs-list"); if (lst1) lst1.scrollTop = st;   // el was replaced by refresh()
       });
     });
-    // Click an observer's name → menu to add/remove them from a saved list.
-    // preventDefault stops the surrounding <label> from toggling the checkbox.
-    // Hover (mouse only) isolates that observer's records on the map, mirroring
-    // the species-row hover.
     var canHoverObs = !window.matchMedia || window.matchMedia("(hover: hover)").matches;
     el.querySelectorAll(".det-obs-name.det-obs-addable").forEach(function (nm) {
-      nm.addEventListener("click", function (e) {
-        e.preventDefault(); e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
-        showAddToListMenu(this.getAttribute("data-obs"), this);
-      });
+      nm.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); showAddToListMenu(this.getAttribute("data-obs"), this); });
       if (canHoverObs) {
         nm.addEventListener("mouseenter", function () { focusDetObs(this.getAttribute("data-obs")); });
         nm.addEventListener("mouseleave", unfocusDetObs);
       }
     });
-    // Scope cycle button: All → None → each saved list → All.
     var obsCycle = el.querySelector(".det-obs-cycle");
-    if (obsCycle) obsCycle.addEventListener("click", function (e) {
-      e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
-      cycleObsFilter();
-    });
+    if (obsCycle) obsCycle.addEventListener("click", function (e) { e.stopPropagation(); cycleObsFilter(); renderDetListModal(); });
     var edLists = el.querySelector(".det-obs-editlists");
-    if (edLists) edLists.addEventListener("click", function (e) { e.stopPropagation(); mapClickGuardUntil = Date.now() + 250; openObserverEditor(); });
+    if (edLists) edLists.addEventListener("click", function (e) { e.stopPropagation(); openObserverEditor(); });
+    var clrSel = el.querySelector(".det-clear-sel");
+    if (clrSel) clrSel.addEventListener("click", function (e) { e.stopPropagation(); clearAllFilters(); renderDetListModal(); });
   }
 
   // ---- Map points (user-added pins + named lists) ---------------------------

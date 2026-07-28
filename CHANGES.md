@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-07-28 — Detection filters moved to the list popup; filters persist (sw v700)
+
+- The time-window/date-range, species-mode (★ starred · ◉ rare · 🟡 year · 🔴 life)
+  and 👤 observer filters have moved from the bottom-left legend into the detections-
+  list popup (☰) — a toggle-button bar reusing the same subwindows. The legend keeps
+  the species list, the black × (clear all filters, shown when any is active) and the
+  red × (clear the map).
+- Filters now <b>persist</b> until you turn them off — via the black × (legend or
+  popup) or by toggling them off in the list. Clearing the map with the red × no
+  longer resets them, so the next fetch re-applies your filters.
+
 ## 2026-07-28 — Historic: date-range picker collapses after a fetch (sw v699)
 
 - After a historic fetch the From–To date picker tucks itself away into a compact
