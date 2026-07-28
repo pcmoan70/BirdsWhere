@@ -659,8 +659,16 @@ input:focus-visible {
 #custom-urls-list .cu-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--brand-deep); text-decoration: none; font-size: 0.82rem; }
 #custom-urls-list .cu-name:hover { text-decoration: underline; }
 #custom-urls-list .cu-host { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-muted, #5b6f69); font-size: 0.7rem; }
-#custom-urls-list .cu-block, #custom-urls-list .cu-del { flex: 0 0 auto; width: 26px; height: 26px; padding: 0; border: 1px solid var(--border, #ccc); border-radius: 4px; background: var(--surface, #fff); cursor: pointer; line-height: 1; font-size: 0.8rem; }
+#custom-urls-list .cu-edit, #custom-urls-list .cu-block, #custom-urls-list .cu-del { flex: 0 0 auto; width: 26px; height: 26px; padding: 0; border: 1px solid var(--border, #ccc); border-radius: 4px; background: var(--surface, #fff); cursor: pointer; line-height: 1; font-size: 0.8rem; }
 #custom-urls-list .cu-del { color: var(--danger, #c0392b); }
+/* Add/edit link popup — one window with all fields (shared by + Add and ✎ Edit). */
+.natdb-editor { max-width: 380px; width: 92vw; }
+.natdb-editor h3 { margin: 0 0 10px; font-size: 1rem; color: var(--ink, inherit); }
+.natdb-editor .nle-lbl { display: flex; flex-direction: column; gap: 3px; font-size: 0.78rem; font-weight: 600; color: var(--ink-muted, #5b6f69); margin-bottom: 8px; }
+.natdb-editor .nle-lbl input { box-sizing: border-box; width: 100%; height: 32px; font: inherit; font-size: 0.85rem; font-weight: 400; padding: 0 8px; border: 1px solid var(--border, #ccc); border-radius: 5px; background: var(--md-default-bg-color, #fff); color: var(--ink, inherit); }
+.natdb-editor #nle-cc { text-transform: uppercase; width: 6em; }
+.natdb-editor .nle-err { color: var(--danger, #c0392b); font-size: 0.76rem; margin: -2px 0 8px; }
+.natdb-editor .nle-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
 #custom-urls-list .cu-row.cu-blocked .cu-name { color: var(--ink-muted, #8a9a95); text-decoration: line-through; }
 #custom-urls-list .cu-row.cu-blocked { opacity: 0.6; }
 .country-menu .cm-subhead { font-weight: 700; font-size: 0.82rem; color: var(--ink-muted, #5b6f69); margin: 8px 0 2px; }

@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-28 — National databases: edit links in a popup (shared by Add) (sw v715)
+
+- Each row in Settings → National databases now has an **✎ edit** icon. It opens a popup with
+  all fields — country/category code, display name and URL — and Save writes the change.
+  The same popup is used by **+ Add** for a new link. Editing a built-in's name overrides just
+  its label; changing its code/URL replaces the entry (the original is tombstoned so it stays
+  gone). Category codes (WLD/EU/AME/OCE) are accepted, so worldwide/continental links are
+  editable too.
+
 ## 2026-07-28 — National databases: per-continent "… & Worldwide" category (sw v714)
 
 - The single "Europe & Worldwide" submenu that showed everywhere is split into a worldwide

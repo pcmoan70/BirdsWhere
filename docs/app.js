@@ -1677,11 +1677,12 @@
   // Each entry carries { cc, url, label, builtin, blocked }; a blocked entry
   // stays in the list but is hidden from the map popups (see natServicesFor).
   function effectiveCountryLinks() {
-    var removed = getNatRemoved(), blocked = getNatBlocked(), out = [], seen = {};
+    var removed = getNatRemoved(), blocked = getNatBlocked(), out = [], idx = {};
     function add(e, builtin) {
       var key = linkKey(e.cc, e.url);
-      if (seen[key] || removed[key] || !e.cc || !e.url) return;
-      seen[key] = 1;
+      if (removed[key] || !e.cc || !e.url) return;
+      if (key in idx) { if (e.label) out[idx[key]].label = e.label; return; }   // a user entry overrides the built-in's label (edit)
+      idx[key] = out.length;
       out.push({ cc: String(e.cc).toUpperCase(), url: e.url, label: e.label || "", builtin: builtin, blocked: !!blocked[key] });
     }
     builtinCountryLinks().forEach(function (e) { add(e, true); });
@@ -1689,13 +1690,15 @@
       .filter(function (c) { return c && c.cc && c.url; }).forEach(function (e) { add(e, false); });
     return out;
   }
+  // A valid link scope is a 2-letter country code or a continental category code.
+  function isValidLinkCc(cc) { cc = String(cc || "").toUpperCase(); return /^[A-Z]{2}$/.test(cc) || (cc in LINK_CATEGORIES); }
   function saveCountryLinks(arr) { window.GeoState.save({ countryLinks: arr }); }
   // A built-in/user entry keeps its curated label; otherwise show the hostname.
   function labelForLink(e) { return (e && e.label) ? e.label : urlHostLabel(e.url); }
   // Add a user link; clears any deletion tombstone so re-adding un-hides it.
   function addCountryLink(cc, url, label) {
     cc = String(cc || "").trim().toUpperCase(); url = linkUrl(url);   // http(s)-only
-    if (!/^[A-Z]{2}$/.test(cc) || !url) return false;
+    if (!isValidLinkCc(cc) || !url) return false;
     var key = linkKey(cc, url);
     window.GeoState.save({ natRemoved: (window.GeoState.get("natRemoved", []) || []).filter(function (x) { return x !== key; }) });
     var links = getUserCountryLinks();
@@ -1739,15 +1742,51 @@
     list.innerHTML = order.map(function (cc) {
       var rows = byCc[cc].map(function (e) {
         var blk = e.blocked, bt = t(blk ? "natdb.unblock" : "natdb.block");
-        return '<div class="cu-row' + (blk ? " cu-blocked" : "") + '" data-cc="' + escapeHtml(e.cc) + '" data-url="' + escapeHtml(e.url) + '">' +
+        return '<div class="cu-row' + (blk ? " cu-blocked" : "") + '" data-cc="' + escapeHtml(e.cc) + '" data-url="' + escapeHtml(e.url) + '" data-label="' + escapeHtml(labelForLink(e)) + '">' +
           '<a class="cu-name" href="' + escapeHtml(safeHref(e.url)) + '" target="_blank" rel="noopener">' + escapeHtml(labelForLink(e)) + '</a>' +
           '<span class="cu-host">' + escapeHtml(urlHostLabel(e.url)) + '</span>' +
+          '<button type="button" class="cu-edit" title="' + escapeHtml(t("natdb.edit")) + '" aria-label="' + escapeHtml(t("natdb.edit")) + '">✎</button>' +
           '<button type="button" class="cu-block" title="' + escapeHtml(bt) + '" aria-label="' + escapeHtml(bt) + '">' + (blk ? "🚫" : "👁") + '</button>' +
           '<button type="button" class="cu-del" title="' + escapeHtml(t("offline.delete")) + '" aria-label="' + escapeHtml(t("offline.delete")) + '">×</button>' +
         '</div>';
       }).join("");
       return '<div class="cu-group"><div class="cu-country">' + escapeHtml(countryDisplayName(cc)) + '</div>' + rows + '</div>';
     }).join("");
+  }
+  // Persist an add/edit from the link editor. `orig` is the entry being edited
+  // ({cc,url,label}) or null when adding. A changed cc/url replaces the original
+  // (tombstoning a built-in); an unchanged key just overrides the label.
+  function saveLinkEdit(orig, cc, url, label) {
+    cc = String(cc || "").trim().toUpperCase(); url = linkUrl(url);
+    if (!isValidLinkCc(cc) || !url) return false;
+    if (orig && (String(orig.cc).toUpperCase() !== cc || orig.url !== url)) removeCountryLink(orig.cc, orig.url);
+    return addCountryLink(cc, url, label);
+  }
+  // The add/edit popup: one window with all fields, shared by "+ Add" (orig=null)
+  // and the per-row ✎ edit icon.
+  function openLinkEditor(orig) {
+    var m = createModal({ boxClass: "natdb-editor", escClose: true });
+    var box = m.box, close = m.close, isEdit = !!orig;
+    box.innerHTML =
+      '<h3>' + escapeHtml(t(isEdit ? "natdb.editTitle" : "natdb.addTitle")) + '</h3>' +
+      '<label class="nle-lbl">' + escapeHtml(t("natdb.addCc")) +
+        '<input id="nle-cc" type="text" maxlength="3" autocapitalize="characters" value="' + escapeHtml(orig ? orig.cc : "") + '"></label>' +
+      '<label class="nle-lbl">' + escapeHtml(t("natdb.addName")) +
+        '<input id="nle-name" type="text" value="' + escapeHtml(orig ? (orig.label || "") : "") + '"></label>' +
+      '<label class="nle-lbl">' + escapeHtml(t("natdb.addUrl")) +
+        '<input id="nle-url" type="url" value="' + escapeHtml(orig ? orig.url : "https://") + '"></label>' +
+      '<div class="nle-err" id="nle-err" style="display:none"></div>' +
+      '<div class="nle-actions">' +
+        '<button type="button" id="nle-save" class="demo-btn">' + escapeHtml(t("popup.ok")) + '</button>' +
+        '<button type="button" id="nle-cancel" class="demo-btn demo-btn-light">' + escapeHtml(t("btn.close")) + '</button>' +
+      '</div>';
+    box.querySelector("#nle-cancel").addEventListener("click", close);
+    box.querySelector("#nle-save").addEventListener("click", function () {
+      var cc = box.querySelector("#nle-cc").value, name = box.querySelector("#nle-name").value, url = box.querySelector("#nle-url").value;
+      if (saveLinkEdit(orig, cc, url, name)) { close(); renderCustomUrls(); }
+      else { var er = box.querySelector("#nle-err"); er.textContent = t("natdb.invalid"); er.style.display = ""; }
+    });
+    var f = box.querySelector("#nle-cc"); if (f) f.focus();
   }
   // All national/regional links to offer for a country, from the effective list
   // minus blocked entries. Returns [{ label, url }]. When a country has no entry
@@ -9609,27 +9648,18 @@
       applyShowSci();
     });
 
-    // National-database list: block / delete per row, plus add / reset. Each row
-    // carries its cc+url in data-*, so actions persist immediately (tombstone for
-    // delete, natBlocked for block) and never depend on editable input state.
+    // National-database list: edit / block / delete per row, plus add / reset. Each
+    // row carries its cc+url+label in data-*, so actions persist immediately
+    // (tombstone for delete, natBlocked for block); edit + add share one popup.
     var cuList = document.getElementById("custom-urls-list");
     cuList.addEventListener("click", function (e) {
       var row = e.target.closest && e.target.closest(".cu-row"); if (!row) return;
-      var cc = row.getAttribute("data-cc"), url = row.getAttribute("data-url");
+      var cc = row.getAttribute("data-cc"), url = row.getAttribute("data-url"), label = row.getAttribute("data-label");
       if (e.target.closest(".cu-del")) { removeCountryLink(cc, url); renderCustomUrls(); }
       else if (e.target.closest(".cu-block")) { toggleCountryLinkBlock(cc, url); renderCustomUrls(); }
+      else if (e.target.closest(".cu-edit")) { openLinkEditor({ cc: cc, url: url, label: label }); }
     });
-    document.getElementById("custom-urls-add").addEventListener("click", function () {
-      modalPrompt(t("natdb.addCc"), "").then(function (cc) {
-        cc = String(cc || "").trim().toUpperCase(); if (!/^[A-Z]{2}$/.test(cc)) return;
-        modalPrompt(t("natdb.addUrl"), "https://").then(function (url) {
-          url = linkUrl(url); if (!url || url === "https://") return;
-          modalPrompt(t("natdb.addName"), urlHostLabel(url)).then(function (label) {
-            addCountryLink(cc, url, label); renderCustomUrls();
-          });
-        });
-      });
-    });
+    document.getElementById("custom-urls-add").addEventListener("click", function () { openLinkEditor(null); });
     document.getElementById("custom-urls-reset").addEventListener("click", function () {
       window.GeoState.save({ countryLinks: null, customCountryUrls: null, natRemoved: null, natBlocked: null });   // back to built-in defaults
       renderCustomUrls();
