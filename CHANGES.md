@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-28 — Fan out several species on one spot (detection dots) (sw v723)
+
+- Tapping a detection dot that sits on the exact same spot as other species now **fans them
+  out** in a rainbow (each in its species colour, with a name tooltip), like the map-point pins
+  already do — so a location with several species (common on shared maps and eBird hotspots) is
+  visible, not one dot hiding the rest. A lone species still opens its co-located list; a fanned
+  dot opens the spot's detection list. (The data was always there — in the legend, the hover
+  card and the list — this makes it visible on the map too.)
+
 ## 2026-07-28 — Shared maps: detections join the legend; flag no-access sources (sw v722)
 
 - Imported shared detections now go through the main detection pipeline (`detPlot`) instead of a

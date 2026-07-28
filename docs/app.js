@@ -1279,6 +1279,7 @@
   // empty-map click should just tidy up (close it) or open the point popup.
   function isPopupOrMenuOpen() {
     if (document.querySelector(".leaflet-popup")) return true;
+    if (spiderLayer) return true;   // a fanned-out cluster is showing
     if (detDaysPanelOpen || detModePanelOpen || detObsPanelOpen) return true;
     if (_anchMenuEl) return true;   // an anchored row menu is up
     var ids = ["hidden-panel", "checklists-panel", "settings-panel", "mp-panel", "stored-loc-panel"];
@@ -6887,9 +6888,48 @@
   }
   // Clicking a plotted dot opens the list scoped to that spot (co-located
   // detections within 50 m), still honouring the legend's filters.
+  // Distinct plotted species with a dot within `px` screen-pixels of latlng — for
+  // fanning out several species that sit on the exact same spot (e.g. a hotspot, or
+  // a shared map). One representative point per species.
+  function detSpeciesNear(latlng, px) {
+    if (!map) return [];
+    var c = map.latLngToLayerPoint(latlng), thr = px || 16, out = [];
+    Object.keys(detPlot).forEach(function (k) {
+      var e = detPlot[k]; if (!e || !e.group || !e.group.eachLayer) return;
+      var hit = null;
+      e.group.eachLayer(function (lyr) {
+        if (hit || !lyr.getLatLng) return;
+        if (map.latLngToLayerPoint(lyr.getLatLng()).distanceTo(c) <= thr) hit = lyr.getLatLng();
+      });
+      if (hit) out.push({ key: k, e: e, ll: hit });
+    });
+    return out;
+  }
+  // Fan the co-located species out around the spot ("rainbow"), each a dot in its
+  // species colour with a name tooltip; a fanned dot opens that spot's list. Reuses
+  // the sticky-spider teardown (clearSpider on map click / pan / zoom / Escape).
+  function spiderOutDet(center, group) {
+    clearSpider();
+    var layer = L.layerGroup(), n = group.length, R = Math.min(64, 20 + n * 5), cpt = map.latLngToLayerPoint(center);
+    group.forEach(function (o, i) {
+      var a = 2 * Math.PI * i / n - Math.PI / 2;
+      var ll = map.layerPointToLatLng(L.point(cpt.x + R * Math.cos(a), cpt.y + R * Math.sin(a)));
+      layer.addLayer(L.polyline([center, ll], { color: "#888", weight: 1, opacity: 0.6, interactive: false }));
+      var fm = L.circleMarker(ll, { radius: 7, color: "#111", weight: 1, fillColor: o.e.color || "#888", fillOpacity: 0.95 });
+      fm.bindTooltip(escapeHtml(detName(o.e)), { direction: "top", className: "det-hover-tip" });
+      fm.on("click", function (ev) { if (ev && ev.originalEvent) L.DomEvent.stopPropagation(ev.originalEvent); clearSpider(); openDetListModal({ lat: center.lat, lon: center.lng, meters: 50 }); });
+      layer.addLayer(fm);
+    });
+    layer.addTo(map);
+    spiderLayer = layer;
+  }
   function onDetMarkerClick(marker) {
     var ll = marker.getLatLng();
     setMpDistOrigin(ll.lat, ll.lng);   // selecting a detection dot re-measures + re-sorts the point lists
+    // Several species on the exact same spot → fan them out so each is visible;
+    // a lone species just opens its co-located list.
+    var group = detSpeciesNear(ll, 16);
+    if (group.length > 1) { spiderOutDet(ll, group); return; }
     openDetListModal({ lat: ll.lat, lon: ll.lng, meters: 50 });
   }
   // Hover tooltip: the distinct species plotted within ~50 m of the point, each
