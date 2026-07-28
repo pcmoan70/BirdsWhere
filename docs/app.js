@@ -1260,6 +1260,20 @@
     try { if (typeof marker !== "undefined" && marker && marker.closePopup) marker.closePopup(); } catch (e) {}
     try { clearSpider(); } catch (e) {}
   }
+  // Dismiss every floating (non-modal) window on an empty-map click: Leaflet popups,
+  // header dropdowns, anchored row menus, the stored-locations preview and the three
+  // legend filter subwindows. Modals cover the map and self-close on a backdrop click,
+  // so they're left to their own handlers.
+  function dismissTransientUI() {
+    try { closeMapPopups(); } catch (e) {}
+    try { closeDropdowns(); } catch (e) {}
+    try { closeContextMenus(); } catch (e) {}
+    try { hideStoredLocations(); } catch (e) {}
+    if (detDaysPanelOpen || detModePanelOpen || detObsPanelOpen) {
+      detDaysPanelOpen = detModePanelOpen = detObsPanelOpen = false;
+      try { updateDetLegend(); } catch (e) {}
+    }
+  }
   // Close every open modal overlay except `keep`.
   function closeModals(keep) {
     Object.keys(MODAL_IDS).forEach(function (id) {
@@ -11556,12 +11570,16 @@
     // previous one (rapid double-taps, or a legend re-render leaking through).
     if (Date.now() < mapClickGuardUntil) return;
     mapClickGuardUntil = Date.now() + 200;
+    // Don't fire the point-options popup — nor dismiss anything — if the user was
+    // tapping a plotted detection (or just a few pixels off it); its own popup owns
+    // the tap.
+    if (clickNearDetection(e.latlng)) return;
+    // A genuine empty-map click closes any open floating window (popups, dropdowns,
+    // legend subwindows, …) in EVERY mode — including Richness, which returns below.
+    dismissTransientUI();
     // List + Range show the per-point species list; Migration the analysis;
     // Historic the GBIF date-range search.
     if (["list", "barchart", "range", "historic"].indexOf(currentMode) < 0) return;
-    // Don't fire the point-options popup if the user was tapping a plotted
-    // detection (or just a few pixels off it).
-    if (clickNearDetection(e.latlng)) return;
     // Normalize: latitude clamped to [-90, 90]; longitude wrapped to [-180, 180]
     // (a click on a panned world-copy can otherwise give e.g. lon = 635).
     var lat = Math.max(-90, Math.min(90, e.latlng.lat)), lon = wrapLon(e.latlng.lng);

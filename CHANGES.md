@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-28 — Click the map to dismiss open floating windows (sw v716)
+
+- A click on empty map now closes every open floating window — Leaflet popups, header
+  dropdowns, anchored row menus, the stored-locations preview and the three legend filter
+  subwindows — in every mode (including Richness). Taps on a plotted detection still belong to
+  its own popup, and full-screen modals keep closing on a backdrop click as before.
+
 ## 2026-07-28 — National databases: edit links in a popup (shared by Add) (sw v715)
 
 - Each row in Settings → National databases now has an **✎ edit** icon. It opens a popup with
