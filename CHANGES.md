@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-28 — National databases: use each site's nationalized version (sw v712)
+
+- Where a multinational site runs a per-country version, each country is now assigned that
+  localized URL: Observation.org entries point at the country instance (`<cc>.observation.org`
+  instead of `observation.org/countries/<cc>/`), and Spain/Portugal use the branded eBird
+  portals (eBird España `ebird.org/spain`, eBird Portugal `ebird.org/portugal`). Countries
+  without a branded eBird portal keep their `ebird.org/region/<CC>` page, which is already
+  the country-specific view.
+
 ## 2026-07-28 — National databases: add North America, Central America & Oceania (sw v711)
 
 - Extended the National-databases store beyond Europe: curated links for Canada, the US,
