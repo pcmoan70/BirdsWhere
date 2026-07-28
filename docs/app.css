@@ -1380,6 +1380,18 @@ button.dd-name:hover { text-decoration: underline; }
 .offline-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; font-size: 0.8rem; }
 .blogs-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--brand-deep); text-decoration: none; }
 .blogs-name:hover { text-decoration: underline; }
+/* Birding-blogs list — one tidy card per blog: name + host + delete. */
+#blogs-list { display: flex; flex-direction: column; gap: 2px; }
+.blog-row { display: flex; align-items: baseline; gap: 8px; padding: 7px 9px; border-radius: 8px; }
+.blog-row:hover { background: var(--surface-2, #f2f5f4); }
+.blog-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: 0.9rem; color: var(--brand-deep); text-decoration: none; }
+.blog-name::after { content: " ↗"; color: var(--ink-faint); font-weight: 400; }
+.blog-name:hover { text-decoration: underline; }
+.blog-host { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.72rem; color: var(--ink-muted, #5b6f69); }
+.blog-del { flex: 0 0 auto; align-self: center; width: 26px; height: 26px; padding: 0; border: 1px solid var(--border, #ccc); border-radius: 6px; background: var(--surface, #fff); color: var(--danger, #c0392b); cursor: pointer; line-height: 1; font-size: 0.9rem; }
+.blog-empty { text-align: center; }
+.blog-fb { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border, #e0e0e0); width: 100%; box-sizing: border-box; color: var(--ink-muted, #5b6f69); text-decoration: none; font-size: 0.8rem; }
+.blog-fb:hover { text-decoration: underline; }
 .offline-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .offline-meta { flex: 0 0 auto; color: var(--ink-muted, #777); font-size: 0.74rem; }
 .offline-redl { flex: 0 0 auto; margin-left: auto; padding: 2px 4px; background: none; border: none; cursor: pointer; color: var(--ink-muted, #777); display: inline-flex; align-items: center; }

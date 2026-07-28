@@ -1869,13 +1869,16 @@
     if (title) title.textContent = t("blogs.title") + (blogsCountryName ? " · " + blogsCountryName : "");
     var blogs = blogsFor(blogsCC);
     var rows = blogs.map(function (b) {
-      return '<div class="offline-row"><a class="blogs-name" href="' + escapeHtml(safeHref(b.url)) + '" target="_blank" rel="noopener">' + escapeHtml(b.label) + " ↗</a>" +
-        '<button type="button" class="dd-del blogs-del" data-url="' + escapeHtml(b.url) + '" aria-label="' + escapeHtml(t("offline.delete")) + '">×</button></div>';
+      return '<div class="blog-row">' +
+        '<a class="blog-name" href="' + escapeHtml(safeHref(b.url)) + '" target="_blank" rel="noopener">' + escapeHtml(b.label) + '</a>' +
+        '<span class="blog-host">' + escapeHtml(urlHostLabel(b.url)) + '</span>' +
+        '<button type="button" class="blog-del blogs-del" data-url="' + escapeHtml(b.url) + '" title="' + escapeHtml(t("offline.delete")) + '" aria-label="' + escapeHtml(t("offline.delete")) + '">×</button>' +
+      '</div>';
     }).join("");
     // Always offer the respective country's blogs page on Fatbirder (a directory,
     // not deletable) so there's a fallback even where there are no personal blogs.
-    var fb = '<div class="offline-row blogs-fb"><a class="blogs-name" href="' + escapeHtml(fatbirderUrl(blogsCC, blogsCountryName)) + '" target="_blank" rel="noopener">' + escapeHtml(t("blogs.fatbirder")) + " ↗</a></div>";
-    var empty = blogs.length ? "" : '<p class="dd-empty">' + escapeHtml(t("blogs.empty")) + "</p>";
+    var fb = '<a class="blog-fb" href="' + escapeHtml(fatbirderUrl(blogsCC, blogsCountryName)) + '" target="_blank" rel="noopener">📖 ' + escapeHtml(t("blogs.fatbirder")) + ' ↗</a>';
+    var empty = blogs.length ? "" : '<p class="dd-empty blog-empty">' + escapeHtml(t("blogs.empty")) + "</p>";
     list.innerHTML = empty + rows + fb;
     list.querySelectorAll(".blogs-del").forEach(function (btn) {
       btn.addEventListener("click", function () { removeBlog(this.getAttribute("data-url")); });

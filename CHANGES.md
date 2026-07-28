@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-28 — Nicer birding-blogs list layout (sw v718)
+
+- The birding-blogs list now shows one tidy card per blog (bold name + faint host + delete),
+  with row hover, and the Fatbirder directory as a divided footer link (📖) instead of a plain
+  row. Replaces the generic offline-row styling.
+
 ## 2026-07-28 — Drop the globe button; fold Blogs + BirdLife into the point popup (sw v717)
 
 - Removed the on-map globe "Country" button. Its two unique items — **Blogs** and the
