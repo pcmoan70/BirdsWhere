@@ -2738,8 +2738,24 @@
   // Historic-observations counterpart of fetchAllSightingsAt: GBIF only, over a
   // custom date range, returning the SAME aggregated shape ({agg, extras, bySrc,
   // dedupTotal, failed, timedOut}) so the species list and the map-plot can reuse
-  // it unchanged. Honors histAbort (the Fetch's per-search abort) and reports
-  // GBIF page progress via onProg.
+  // it unchanged. The range is split into ~1-month batches fetched NEWEST-FIRST with
+  // a few in parallel, so a multi-year range fills fast instead of one long
+  // sequential crawl. onProg(monthsDone, monthsTotal) drives the month-based progress
+  // bar; the status line shows a running observation count. Honors histAbort.
+  var HIST_MONTH_CONCURRENCY = 3;
+  function histMonthChunks(from, to) {
+    // Calendar-month batches clamped to [from, to], ordered NEWEST → OLDEST.
+    var chunks = [], end = to, guard = 0;
+    while (end >= from && guard++ < 800) {
+      var d = new Date(end + "T00:00:00Z");
+      var start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString().slice(0, 10);
+      if (start < from) start = from;
+      chunks.push([start, end]);
+      if (start <= from) break;
+      end = new Date(Date.parse(start) - 86400000).toISOString().slice(0, 10);   // day before this month's first
+    }
+    return chunks;
+  }
   function fetchHistoricSightingsAt(lat, lon, range, onProg) {
     var rkm = recentRadiusKm();
     var months = histMonthsParam();   // "" = all months, else "&month=5&month=6"
@@ -2749,12 +2765,25 @@
     var sig = histAbort ? histAbort.signal : null;
     var rp = String(range).split(","), from = rp[0], to = rp[1] || rp[0];
     var pr = AppGeo.countryCode(lat, lon).catch(function () { return ""; }).then(function (cc) {
-      return AppFetch.fetchGbifHistoric(lat, lon, from, to, rkm, cc, sig, onProg, months).then(function (raw) {
-        // Dedup across sub-ranges by GBIF key (a record with a date RANGE
-        // spanning a split boundary could be returned by both halves).
-        var seen = Object.create(null), uniq = [];
-        (raw || []).forEach(function (o) { if (o && o.key != null) { if (seen[o.key]) return; seen[o.key] = 1; } uniq.push(o); });
-        var recs = AppNormalize.normGbif(uniq);
+      var chunks = histMonthChunks(from, to);
+      var allRecs = [], seen = Object.create(null), monthsDone = 0, nextChunk = 0;
+      async function worker() {
+        while (true) {
+          if (sig && sig.aborted) return;
+          var i = nextChunk++; if (i >= chunks.length) return;
+          var r = chunks[i];
+          var raw = await AppFetch.fetchGbifHistoric(lat, lon, r[0], r[1], rkm, cc, sig, null, months);
+          // Dedup by GBIF key across batches (a record can straddle a month boundary).
+          (raw || []).forEach(function (o) { if (o && o.key != null) { if (seen[o.key]) return; seen[o.key] = 1; } allRecs.push(o); });
+          monthsDone++;
+          if (onProg) { try { onProg(monthsDone, chunks.length); } catch (e) {} }
+          try { setStatus(t("hist.progress", { done: monthsDone, total: chunks.length, n: allRecs.length })); } catch (e) {}
+        }
+      }
+      var pool = [];
+      for (var w = 0; w < Math.min(HIST_MONTH_CONCURRENCY, chunks.length); w++) pool.push(worker());
+      return Promise.all(pool).then(function () {
+        var recs = AppNormalize.normGbif(allRecs);
         var out = AppAggregate.aggregateRecords(recs, fetchGroup);   // sets out.dedupTotal
         out.bySrc = { GBIF: recs.length }; out.group = fetchGroup;
         out.failed = []; out.timedOut = [];

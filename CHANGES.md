@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-07-28 — Historic fetch: parallel month batches, newest-first (sw v695)
+
+- Fetching historic observations was a slow sequential crawl. The date range is now
+  split into <b>~1-month batches fetched newest-first, 3 in parallel</b>, so a
+  multi-year query completes much faster and the most recent months arrive first. A
+  <b>global cap of 8 in-flight GBIF requests</b> keeps the extra parallelism from
+  tripping GBIF's rate limiter. The progress bar now advances <b>per month</b> and the
+  status shows a <b>running observation count</b>. (Artportalen/Artsobservasjoner data
+  already arrives through their GBIF datasets.) Progressive per-month map plotting and
+  a direct-API top-up for the newest ~2 months are the next step.
+
 ## 2026-07-28 — Detections-list search also filters the map dots (debounced) (sw v694)
 
 - Typing in the detections list's (☰) species search now filters the plotted dots on

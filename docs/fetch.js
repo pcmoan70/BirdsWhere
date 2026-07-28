@@ -107,10 +107,29 @@ window.AppFetch = (function () {
   }
   // Fetch one GBIF page: the retried request above, parsed to JSON (null on a
   // non-OK status or a malformed body — the historic pager retries that offset).
+  // Global cap on concurrent GBIF page requests. The historic fetch now splits a
+  // long range into many parallel month batches (each with its own per-dataset
+  // concurrency), so without a shared gate the combined burst would trip GBIF's
+  // rate limiter. Every gbifPage acquires a slot and releases it when done, so no
+  // matter how the work is split the number of in-flight page requests is bounded.
+  var GBIF_MAX_INFLIGHT = 8, _gbifActive = 0, _gbifQueue = [];
+  function gbifAcquire() {
+    return new Promise(function (resolve) {
+      if (_gbifActive < GBIF_MAX_INFLIGHT) { _gbifActive++; resolve(); }
+      else _gbifQueue.push(resolve);
+    });
+  }
+  function gbifRelease() {
+    if (_gbifQueue.length) _gbifQueue.shift()();   // hand the slot to a waiter (active count unchanged)
+    else _gbifActive--;
+  }
   async function gbifPage(url, extSignal) {
-    var resp = await fetchRetry(url, null, extSignal);
-    if (!resp || !resp.ok) return null;
-    try { return await resp.json(); } catch (e) { return null; }
+    await gbifAcquire();
+    try {
+      var resp = await fetchRetry(url, null, extSignal);
+      if (!resp || !resp.ok) return null;
+      try { return await resp.json(); } catch (e) { return null; }
+    } finally { gbifRelease(); }
   }
   // Run task thunks with a bounded concurrency so the parallel dataset queries
   // don't fire as one big burst (which is what trips GBIF's rate limiter). Order
