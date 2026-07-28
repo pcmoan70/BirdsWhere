@@ -13,17 +13,17 @@ if ("serviceWorker" in navigator) {
       if (reloaded) return; reloaded = true; window.location.reload();
     });
 
-    // Ask a specific worker for its VERSION over a MessageChannel (sw.js replies on
-    // the port). Used to show the incoming version in the banner text; resolves to
-    // "" on any failure so the banner still shows without a number.
-    function workerVersion(worker) {
+    // Ask a specific worker over a MessageChannel (sw.js replies on the port) for its
+    // VERSION and NOTES — used to show the incoming version + a short changelog in the
+    // banner. Resolves to {} on any failure so the banner still shows.
+    function workerInfo(worker) {
       return new Promise(function (resolve) {
-        if (!worker) { resolve(""); return; }
+        if (!worker) { resolve({}); return; }
         var ch = new MessageChannel();
-        var done = false, finish = function (v) { if (done) return; done = true; resolve(v || ""); };
-        ch.port1.onmessage = function (e) { finish(e.data && e.data.version); };
-        try { worker.postMessage({ type: "getVersion" }, [ch.port2]); } catch (e) { finish(""); }
-        setTimeout(function () { finish(""); }, 1500);
+        var done = false, finish = function (d) { if (done) return; done = true; resolve(d || {}); };
+        ch.port1.onmessage = function (e) { finish(e.data); };
+        try { worker.postMessage({ type: "getVersion" }, [ch.port2]); } catch (e) { finish({}); }
+        setTimeout(function () { finish({}); }, 1500);
       });
     }
 
@@ -33,17 +33,27 @@ if ("serviceWorker" in navigator) {
       bar.id = "sw-update-bar";
       bar.style.cssText = "position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:99999;" +
         "background:#0f1b24;color:#fff;padding:10px 14px;border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,.35);" +
-        "font:14px/1.3 system-ui,-apple-system,sans-serif;display:flex;gap:12px;align-items:center;max-width:92vw;";
+        "font:14px/1.3 system-ui,-apple-system,sans-serif;display:flex;flex-direction:column;gap:8px;max-width:min(92vw,360px);";
+      var row = document.createElement("div");
+      row.style.cssText = "display:flex;gap:12px;align-items:center;";
       var msg = document.createElement("span"); msg.textContent = "New version available";
-      // Fill in the actual version once the waiting worker reports it.
-      workerVersion(worker).then(function (v) { if (v && !msg.dataset.updating) msg.textContent = "New version " + v + " available"; });
+      msg.style.cssText = "flex:1 1 auto;font-weight:600;";
       var go = document.createElement("button"); go.textContent = "Reload";
-      go.style.cssText = "background:#2f6f4f;color:#fff;border:none;border-radius:7px;padding:6px 14px;font:inherit;font-weight:600;cursor:pointer;";
+      go.style.cssText = "background:#2f6f4f;color:#fff;border:none;border-radius:7px;padding:6px 14px;font:inherit;font-weight:600;cursor:pointer;flex:0 0 auto;";
       var x = document.createElement("button"); x.textContent = "×"; x.setAttribute("aria-label", "Dismiss");
-      x.style.cssText = "background:transparent;color:#fff;border:none;font-size:20px;line-height:1;cursor:pointer;padding:0 2px;";
+      x.style.cssText = "background:transparent;color:#fff;border:none;font-size:20px;line-height:1;cursor:pointer;padding:0 2px;flex:0 0 auto;";
       go.addEventListener("click", function () { go.disabled = true; msg.dataset.updating = "1"; msg.textContent = "Updating…"; try { worker.postMessage({ type: "skipWaiting" }); } catch (e) {} });
       x.addEventListener("click", function () { if (bar.parentNode) bar.parentNode.removeChild(bar); });
-      bar.appendChild(msg); bar.appendChild(go); bar.appendChild(x);
+      row.appendChild(msg); row.appendChild(go); row.appendChild(x);
+      bar.appendChild(row);
+      // A short changelog (from the waiting worker's NOTES) under the banner.
+      var notes = document.createElement("div");
+      notes.style.cssText = "font-size:12px;line-height:1.4;color:#c7d2d0;white-space:pre-line;display:none;max-height:38vh;overflow:auto;";
+      bar.appendChild(notes);
+      workerInfo(worker).then(function (d) {
+        if (d && d.version && !msg.dataset.updating) msg.textContent = "New version " + d.version + " available";
+        if (d && d.notes) { notes.textContent = d.notes; notes.style.display = ""; }
+      });
       document.body.appendChild(bar);
     }
 

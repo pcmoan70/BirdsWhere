@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-28 — Update banner shows a short changelog (sw v729)
+
+- The "New version available" banner now shows a few lines of what changed, read from a
+  `NOTES` string in `sw.js` (reported alongside VERSION over the MessageChannel). Bumping
+  VERSION and refreshing NOTES per deploy keeps it current; the banner falls back to just the
+  version if NOTES is empty.
+
 ## 2026-07-28 — Download points as GeoJSON; clearer backup filename (sw v728)
 
 - Map points / saved lists can now be exported (and imported) as **GeoJSON** — a lossless,

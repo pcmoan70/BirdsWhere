@@ -21,7 +21,16 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v728";
+var VERSION = "v729";
+// A short "what's new" shown under the update banner (one bullet per line). Keep it
+// to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
+var NOTES = [
+  "What's new:",
+  "• The update banner now shows a short changelog.",
+  "• Export your map points as GeoJSON (Settings → Map points).",
+  "• Right-click / long-press the map: Add point, Save location, Navigate…",
+  "• In-app Help rewritten to match the app."
+].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs
 // version-INDEPENDENT shared pool: map tiles AND the app's computed range-data
@@ -52,8 +61,9 @@ self.addEventListener("message", function (event) {
     // behind the update banner — and not just the active controller); otherwise
     // fall back to event.source (the startup popup asks the active worker).
     try {
-      if (event.ports && event.ports[0]) event.ports[0].postMessage({ type: "version", version: VERSION });
-      else if (event.source && event.source.postMessage) event.source.postMessage({ type: "version", version: VERSION });
+      var payload = { type: "version", version: VERSION, notes: NOTES };
+      if (event.ports && event.ports[0]) event.ports[0].postMessage(payload);
+      else if (event.source && event.source.postMessage) event.source.postMessage(payload);
     } catch (e) {}
     return;
   }
