@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-07-28 — Cross-source de-dup keys on species + observer + date + place + count (sw v698)
+
+- The de-duplication that drops a GBIF record when the same sighting arrives natively
+  (e.g. GBIF's copy of an Artportalen record) now keys on <b>species + observer +
+  date + approximate location + count</b> — the observer-based key had been missing
+  the <b>date</b>, so two different-day sightings by the same observer at one spot
+  with the same count could wrongly merge. All fields must match to merge, so it errs
+  toward keeping both copies rather than hiding a real record ("better too many than
+  too few"). Cached fetches recompute (cache version bumped).
+
 ## 2026-07-28 — Historic: direct-API top-up for the newest months (SE/NO/FI) (sw v697)
 
 - GBIF's copy of the Nordic/Finnish databases lags by weeks, so for the newest ~2

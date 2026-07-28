@@ -2622,7 +2622,7 @@
   function sightTtlMs() { return sightTtlMin() * 60000; }
   // Bump when the aggregation/matching logic changes so results cached by the
   // previous code are ignored and the next fetch re-aggregates.
-  var SIGHT_CACHE_VER = 2;
+  var SIGHT_CACHE_VER = 3;   // bumped: dedup key gained the date field (aggregate.js)
   var persistedSightings = {};           // ck -> { ts, sig, ver, out }, loaded once at boot
   function sightCK(lat, lon, rkm, group) { return lat.toFixed(2) + "," + lon.toFixed(2) + ":" + rkm + ":" + group; }
   // Signature of the settings that change what a fetch returns; a mismatch means a
@@ -7479,7 +7479,9 @@
     return ks.join("|") + "#" + n;
   }
   // Duplicate key WITHIN a species: same username + approximate location (~1 km) +
-  // date + count. No username → not a same-user cross-database duplicate.
+  // date + count. All must match to merge — a STRICT key, so a genuine second
+  // sighting is never hidden ("better too many than too few"). No username → not a
+  // same-user cross-database duplicate.
   function detDupKey(r) {
     var obs = (r.observer || "").toLowerCase().replace(/\s+/g, " ").trim();
     if (!obs) return null;

@@ -155,16 +155,18 @@ window.AppAggregate = (function () {
     // eBird, iNaturalist), so the same sighting can arrive once natively and once
     // via GBIF. Build a set of keys for every non-GBIF record, then drop any GBIF
     // record that matches one — keeping the native copy (fresher, better link).
-    // Key = species + location (~110 m) + observer + count, per the user's rule.
-    // Many GBIF records (and eBird's geo/recent) carry NO observer, so the
-    // observer-based key alone misses those duplicates. A second key swaps the
-    // observer for the calendar date (species + loc + day + count) to catch the
-    // no-observer case — used only when the GBIF record lacks an observer, so
-    // observer-tagged records still dedup precisely.
+    // Key = species + location (~110 m) + observer + date (day) + count, per the
+    // user's rule. (Date was previously missing from the observer key, so two
+    // different-date sightings by the same observer at one spot with the same count
+    // could wrongly merge.) Many GBIF records (and eBird's geo/recent) carry NO
+    // observer, so a second key swaps the observer for the date (species + loc + day
+    // + count) to catch the no-observer case — used only when the GBIF record lacks
+    // an observer, so observer-tagged records still dedup precisely.
     function dkLoc(r) { return (r.lat != null ? r.lat.toFixed(3) : "") + "," + (r.lon != null ? r.lon.toFixed(3) : ""); }
     function dkCount(r) { return String(r.count != null ? r.count : ""); }
-    function dedupKey(r) { return r.sciName.toLowerCase() + "|" + dkLoc(r) + "|" + String(r.observer || "").toLowerCase().replace(/\s+/g, " ").trim() + "|" + dkCount(r); }
-    function dedupKeyNoObs(r) { return r.sciName.toLowerCase() + "|" + dkLoc(r) + "|" + String(r.date || "").slice(0, 10) + "|" + dkCount(r); }
+    function dkDate(r) { return String(r.date || "").slice(0, 10); }
+    function dedupKey(r) { return r.sciName.toLowerCase() + "|" + dkLoc(r) + "|" + String(r.observer || "").toLowerCase().replace(/\s+/g, " ").trim() + "|" + dkDate(r) + "|" + dkCount(r); }
+    function dedupKeyNoObs(r) { return r.sciName.toLowerCase() + "|" + dkLoc(r) + "|" + dkDate(r) + "|" + dkCount(r); }
     var nativeKeys = Object.create(null), nativeNoObs = Object.create(null);
     (records || []).forEach(function (r) {
       if (!r || !r.sciName || r.src === "GBIF") return;
