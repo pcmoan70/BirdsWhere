@@ -5642,7 +5642,8 @@
   var detPlot = {};     // speciesKey -> { key, name (fallback), color, rows, group }
   var detFocusKey = null;   // legend hover: this species keeps colour, the rest grey out
   var detFocusObs = null;   // legend hover on an observer name: show only that observer's records
-  var detProb = Object.create(null);   // species key -> max habitat-model probability over its observations (drives legend order)
+  var detProb = Object.create(null);     // species key -> MIN habitat prob over an area grid (drives legend order)
+  var detProbMax = Object.create(null);  // species key -> MAX habitat prob over the same grid (drives ◉ rare)
   var detProbSig = "";      // the plotted-set signature detProb was computed for
   var detProbBusy = false;  // an inference pass is in flight
   var detDupHidden = new Set();   // rows hidden as cross-database duplicates (dedup setting)
@@ -5727,9 +5728,10 @@
   // model species" → never rare.
   function isRareProb(p) { return isFinite(p) && p >= 0 && p * 100 <= rarePct(); }
   // Plotted species are observed by definition, so rarity is purely the model's
-  // verdict. detProb is filled in asynchronously by computeDetProbs (and is -1
-  // for non-model "extras"), so nothing is flagged until it lands.
-  function detIsRare(k) { return isRareProb((k in detProb) ? detProb[k] : -1); }
+  // verdict. detProbMax (the grid's MAX habitat prob for the species — its best spot
+  // in the area) is filled in asynchronously by computeDetProbs (and is -1 for
+  // non-model "extras"), so nothing is flagged until it lands.
+  function detIsRare(k) { return isRareProb((k in detProbMax) ? detProbMax[k] : -1); }
   function detPassesRare(k) { return !detRareFilter || detIsRare(k); }
   // Taxonomic class of a plotted species: model species via the taxonomy table,
   // "extra" species (x:…) carry their own class on the detPlot entry (stored at
@@ -7570,48 +7572,50 @@
   // its observations — evaluated at each observation's own location + week (input
   // to the geomodel). Extras (non-model "x:" keys) get -1 so they sort lowest.
   // Runs one column inference per species; on completion the legend re-renders.
-  // The worker computes an n × 12 012-species tensor per inference, so a species
-  // with thousands of plotted points would build a huge one. Sample at most this
-  // many UNIQUE locations per species for its max-probability estimate (enough for
-  // the legend ordering + ◉ rare check); without this a big fetch (25 k+ dots) OOMs
-  // the worker and takes the map/legend down with it.
-  var DET_PROB_MAX_PTS = 100;
+  // Legend ordering + ◉ rare come from ONE inference over a 10×10 grid covering the
+  // bounding box of the plotted detections (100 cells, current week) — NOT a batch
+  // per species. A single fixed-size call can't OOM the worker no matter how many
+  // dots are fetched. For each plotted MODEL species we then read the grid's
+  // per-species MIN (drives the legend order — the least-likely-anywhere species
+  // float to the top) and MAX (drives the ◉ rare cue, i.e. its best habitat here).
+  var DET_PROB_GRID = 10;
   function computeDetProbs(sig) {
-    var jobs = [];
-    Object.keys(detPlot).forEach(function (k) {
-      var e = detPlot[k], lbl = labelsByKey[e.key || k];
-      if (!lbl || lbl.index == null || !e.rows || !e.rows.length) { detProb[k] = -1; return; }
-      var seen = Object.create(null), pts = [], rows = e.rows;
-      for (var ri = 0; ri < rows.length && pts.length < DET_PROB_MAX_PTS * 3; ri++) {
-        var r = rows[ri];
-        if (r.lat == null || r.lon == null || !isFinite(+r.lat) || !isFinite(+r.lon)) continue;
-        var la = +(+r.lat).toFixed(2), lo = +(+r.lon).toFixed(2), wk = weekOfDate(r.date);
-        var pk = la + "," + lo + ":" + wk; if (seen[pk]) continue; seen[pk] = 1;
-        pts.push(la, lo, wk);
-      }
-      if (!pts.length) { detProb[k] = -1; return; }
-      jobs.push({ k: k, idx: lbl.index, inputs: new Float32Array(pts), n: pts.length / 3 });
+    var keys = Object.keys(detPlot);
+    var minLat = 90, maxLat = -90, minLon = 180, maxLon = -180, any = false;
+    keys.forEach(function (k) {
+      (detPlot[k].rows || []).forEach(function (r) {
+        if (r.lat == null || r.lon == null || !isFinite(+r.lat) || !isFinite(+r.lon)) return;
+        any = true; var la = +r.lat, lo = +r.lon;
+        if (la < minLat) minLat = la; if (la > maxLat) maxLat = la;
+        if (lo < minLon) minLon = lo; if (lo > maxLon) maxLon = lo;
+      });
     });
-    if (!jobs.length) { detProbSig = sig; detProbBusy = false; return; }   // only extras → nothing to infer
-    // Run with BOUNDED concurrency (a few at a time) rather than firing one
-    // inference per species at once — hundreds of simultaneous jobs overwhelm the
-    // single worker's memory when many species are plotted.
-    var next = 0, CONC = Math.min(4, jobs.length);
-    function runNext() {
-      if (next >= jobs.length) return Promise.resolve();
-      var j = jobs[next++];
-      return runInference(j.inputs, j.n, { task: "column", speciesIdx: j.idx })
-        .then(function (out) { var m = 0; for (var i = 0; i < out.length; i++) if (out[i] > m) m = out[i]; detProb[j.k] = m; },
-              function () { detProb[j.k] = -1; })
-        .then(runNext);
+    if (!any) { keys.forEach(function (k) { detProb[k] = -1; detProbMax[k] = -1; }); detProbSig = sig; detProbBusy = false; return; }
+    if (maxLat - minLat < 0.01) { maxLat += 0.005; minLat -= 0.005; }   // avoid a zero-size box
+    if (maxLon - minLon < 0.01) { maxLon += 0.005; minLon -= 0.005; }
+    var N = DET_PROB_GRID, week = weekOfToday(), inputs = new Float32Array(N * N * 3), c = 0;
+    for (var iy = 0; iy < N; iy++) {
+      var la = minLat + (iy + 0.5) / N * (maxLat - minLat);
+      for (var ix = 0; ix < N; ix++) {
+        var lo = minLon + (ix + 0.5) / N * (maxLon - minLon);
+        inputs[c * 3] = la; inputs[c * 3 + 1] = lo; inputs[c * 3 + 2] = week; c++;
+      }
     }
-    var pool = []; for (var w = 0; w < CONC; w++) pool.push(runNext());
-    Promise.all(pool).then(function () {
-      detProbSig = sig; detProbBusy = false;      // mark done only on success, so a failed pass retries
-      // These probabilities now decide ◉ rare (detIsRare), which styles the DOTS
-      // as well as the legend — so redraw both, not just the legend.
+    runInference(inputs, N * N, { task: "raw" }).then(function (out) {
+      var cells = N * N, nSpecies = out.length / cells;
+      keys.forEach(function (k) {
+        var e = detPlot[k], lbl = labelsByKey[e.key || k];
+        if (!lbl || lbl.index == null) { detProb[k] = -1; detProbMax[k] = -1; return; }
+        var idx = lbl.index, mn = Infinity, mx = -Infinity;
+        for (var cell = 0; cell < cells; cell++) { var v = out[cell * nSpecies + idx]; if (v < mn) mn = v; if (v > mx) mx = v; }
+        detProb[k] = (mn === Infinity) ? -1 : mn;      // legend order
+        detProbMax[k] = (mx === -Infinity) ? -1 : mx;  // ◉ rare
+      });
+      detProbSig = sig; detProbBusy = false;
+      // These values decide ◉ rare (detIsRare), which styles the DOTS as well as the
+      // legend — so redraw both, not just the legend.
       if (detPlotSig() === sig) { rebuildDetLayers(); updateDetLegend(); }
-    }, function () { detProbBusy = false; });      // hard failure → leave detProbSig so it retries
+    }, function () { detProbBusy = false; });   // hard failure → leave detProbSig so it retries
   }
   function maybeComputeDetProbs() {
     if (!worker || detProbBusy) return;

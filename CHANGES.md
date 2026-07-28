@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-28 — Legend order from one area-grid inference (fixes big-fetch OOM cleanly) (sw v707)
+
+- The legend's habitat-probability ranking is now computed from a SINGLE inference
+  over a 10×10 grid covering the plotted detections' area (100 cells, current week),
+  instead of one inference per species over its points. A fixed-size call can't OOM
+  the worker no matter how many dots are fetched. Legend order uses each species' MIN
+  over the grid (least-likely-anywhere species float to the top); the ◉ rare cue uses
+  its MAX (best habitat in the area).
+
 ## 2026-07-28 — Fix: large fetches (25 k+ dots) crashed the map/legend (sw v706)
 
 - Fetching a very large number of detections could make the legend vanish and only a
