@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-28 — Location actions moved to the right-click / long-press menu (sw v719)
+
+- The left-click point popup's "Location ▸" submenu (Save location, Share link, Copy
+  coordinates) is gone; those actions — plus **Add point** — now open from the right-click
+  (long-press on touch) map menu. The left-click popup stays focused on Species list,
+  Birdingplaces and the country/continental resources. New i18n key `points.add` (15 langs).
+
 ## 2026-07-28 — Nicer birding-blogs list layout (sw v718)
 
 - The birding-blogs list now shows one tidy card per blog (bold name + faint host + delete),

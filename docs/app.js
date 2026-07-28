@@ -2023,6 +2023,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { date: "2026-07-28", text: "Location & map actions moved to the right-click menu: right-click (or long-press on touch) anywhere on the map for ➕ Add point, 📍 Save location, 🔗 Share link and 📋 Copy coordinates. The normal left-click popup is now just species & country resources. And a click on empty map closes any open popup or filter window." },
     { date: "2026-07-28", text: "National & regional bird sites for the map popups now all live in one place — Settings → National databases — with a curated set per country across Europe, North & Central America and Oceania. Click a point on the map to see that country’s portals (plus its Blogs and BirdLife page), plus a continental submenu — “🌍 Europe & Worldwide”, “Americas & Worldwide” or “Oceania & Worldwide” depending on where you clicked — holding the region’s and the global sites (eBird, Observation.org, iNaturalist, GBIF, Avibase, xeno-canto…). Each entry has two icons: × deletes it, and 👁/🚫 blocks it (keeps it listed but hides it from the popups). Add your own with + Add." },
     { date: "2026-07-28", text: "The detection filters — time window / date range, the ★ starred · ◉ rare · 🟡 year-list · 🔴 life-list species filter, and the 👤 observer filter — have moved into the detections-list popup (☰). The bottom-left legend is now just the species list plus a black × (clear all filters) and the red × (clear the map). Filters stay set until you clear them with the black × or switch them off in the list — clearing the map keeps them." },
     { date: "2026-07-28", text: "In the detections list (☰), the species search box now also filters the dots on the map: the list narrows as you type, and a moment (~1.5 s) after you stop, the map and legend narrow to the matching species too. Clearing the box — or closing the list — restores every dot." },
@@ -9088,7 +9089,20 @@
     mapClickGuardUntil = Date.now() + 200;
     var lat = Math.max(-90, Math.min(90, e.latlng.lat));
     var lon = wrapLon(e.latlng.lng);
-    openPointEditor({ lat: lat, lon: lon, name: "", tags: [], note: "" });
+    showMapContextMenu(lat, lon);
+  }
+  // Right-click / long-press menu: the location & map-feature actions (Add point,
+  // Save location, Share link, Copy coordinates) — moved here from the left-click
+  // point popup so that popup stays focused on species/country resources.
+  function showMapContextMenu(lat, lon) {
+    var wrap = document.createElement("div");
+    wrap.className = "map-choose";
+    wrap.appendChild(makePopupBtn("➕ " + t("points.add"), "", function () { map.closePopup(); openPointEditor({ lat: lat, lon: lon, name: "", tags: [], note: "" }); }));
+    wrap.appendChild(makePopupBtn("📍 " + t("loc.save"), "demo-btn-light", function () { map.closePopup(); registerLocationPrompt(lat, lon); }));
+    wrap.appendChild(makePopupBtn("🔗 " + t("share.link"), "demo-btn-light", function () { map.closePopup(); offerShareUrl(pointShareUrl(lat, lon)); }));
+    wrap.appendChild(makePopupBtn("📋 " + coordsText(lat, lon), "demo-btn-light", function () { map.closePopup(); copyCoords(lat, lon); }));
+    L.popup({ className: "choose-popup", closeButton: true, autoClose: true, autoPan: true, offset: [0, -2] })
+      .setLatLng([lat, lon]).setContent(wrap).openOn(map);
   }
 
   // ---- Points dropdown panel ----
@@ -12092,21 +12106,8 @@
     var wrap = document.createElement("div");
     wrap.className = "map-choose";
     wrap.appendChild(makePopupBtn(t("mode.list"), "", function () { mk.closePopup(); renderSpeciesList(lat, lon); }));
-    // "Location" submenu: Save location / Share link / Copy coordinates, collapsed
-    // under one entry so the popup stays tidy.
-    var locSub = document.createElement("div");
-    locSub.className = "choose-sub"; locSub.style.display = "none";
-    locSub.appendChild(makePopupBtn("📍 " + t("loc.save"), "demo-btn-light", function () { mk.closePopup(); registerLocationPrompt(lat, lon); }));
-    locSub.appendChild(makePopupBtn("🔗 " + t("share.link"), "demo-btn-light", function () { mk.closePopup(); offerShareUrl(pointShareUrl(lat, lon)); }));
-    locSub.appendChild(makePopupBtn("📋 " + coordsText(lat, lon), "demo-btn-light", function () { mk.closePopup(); copyCoords(lat, lon); }));
-    var locBtn = makePopupBtn("📍 " + t("popup.location") + " ▸", "demo-btn-light", function () {
-      var show = locSub.style.display === "none";
-      locSub.style.display = show ? "" : "none";
-      this.textContent = "📍 " + t("popup.location") + (show ? " ▾" : " ▸");
-      var pop = mk.getPopup(); if (pop && pop.isOpen()) pop.update();   // re-layout for the expanded items
-    });
-    wrap.appendChild(locBtn);
-    wrap.appendChild(locSub);
+    // Save location / Share link / Copy coordinates now live in the right-click
+    // (long-press) map menu — see showMapContextMenu.
     wrap.appendChild(makePopupBtn(t("link.birdingplaces") + " ↗", "demo-btn-light", function () {
       mk.closePopup(); openExternal(birdingPlacesUrl(lat, lon));
     }));
