@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-28 — Drop the globe button; fold Blogs + BirdLife into the point popup (sw v717)
+
+- Removed the on-map globe "Country" button. Its two unique items — **Blogs** and the
+  **BirdLife country factsheet** — now sit in the point popup for the clicked location, below
+  the national databases and above the "… & Worldwide" continental submenu. The popup resolves
+  the country name (reverse-geocode) so Blogs/BirdLife are country-correct. Removed the now-unused
+  openCountryMenu/showCountryMenu.
+
 ## 2026-07-28 — Click the map to dismiss open floating windows (sw v716)
 
 - A click on empty map now closes every open floating window — Leaflet popups, header

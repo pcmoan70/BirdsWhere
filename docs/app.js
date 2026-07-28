@@ -2020,7 +2020,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
-    { date: "2026-07-28", text: "National & regional bird sites for the map popups now all live in one place — Settings → National databases — with a curated set per country across Europe, North & Central America and Oceania. Click a point (or the Country button) to see that country’s portals, plus a continental submenu — “🌍 Europe & Worldwide”, “Americas & Worldwide” or “Oceania & Worldwide” depending on where you clicked — holding the region’s and the global sites (eBird, Observation.org, iNaturalist, GBIF, Avibase, xeno-canto…). Each entry has two icons: × deletes it, and 👁/🚫 blocks it (keeps it listed but hides it from the popups). Add your own with + Add." },
+    { date: "2026-07-28", text: "National & regional bird sites for the map popups now all live in one place — Settings → National databases — with a curated set per country across Europe, North & Central America and Oceania. Click a point on the map to see that country’s portals (plus its Blogs and BirdLife page), plus a continental submenu — “🌍 Europe & Worldwide”, “Americas & Worldwide” or “Oceania & Worldwide” depending on where you clicked — holding the region’s and the global sites (eBird, Observation.org, iNaturalist, GBIF, Avibase, xeno-canto…). Each entry has two icons: × deletes it, and 👁/🚫 blocks it (keeps it listed but hides it from the popups). Add your own with + Add." },
     { date: "2026-07-28", text: "The detection filters — time window / date range, the ★ starred · ◉ rare · 🟡 year-list · 🔴 life-list species filter, and the 👤 observer filter — have moved into the detections-list popup (☰). The bottom-left legend is now just the species list plus a black × (clear all filters) and the red × (clear the map). Filters stay set until you clear them with the black × or switch them off in the list — clearing the map keeps them." },
     { date: "2026-07-28", text: "In the detections list (☰), the species search box now also filters the dots on the map: the list narrows as you type, and a moment (~1.5 s) after you stop, the map and legend narrow to the matching species too. Clearing the box — or closing the list — restores every dot." },
     { date: "2026-07-27", text: "The bottom-left legend now lists only the species with an observation visible on the map right now, updating as you pan and zoom — so it reflects the area you're looking at. Turn it off in Settings (“Filter the legend to the map view”) to list every plotted species regardless of the viewport." },
@@ -5115,21 +5115,6 @@
       }
     });
     map.addControl(new DownloadControl());
-
-    // "Country" resources (Blogs / BirdLife / national services) for the country at
-    // the map centre — a globe button on the right.
-    var CountryControl = L.Control.extend({
-      options: { position: "topright" },
-      onAdd: function () {
-        var c = L.DomUtil.create("div", "leaflet-bar leaflet-control");
-        var a = L.DomUtil.create("a", "country-btn", c);
-        a.href = "#"; a.title = t("popup.country"); a.setAttribute("aria-label", t("popup.country"));
-        a.innerHTML = ico("globe");
-        L.DomEvent.on(a, "click", function (e) { L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e); openCountryMenu(); });
-        return c;
-      }
-    });
-    map.addControl(new CountryControl());
 
     // Live position (blue "follow" state): keep the plus marker on the current
     // location. On the first fix, centre the map and populate the click-driven modes
@@ -12100,39 +12085,6 @@
       navigator.clipboard.writeText(txt).then(function () { setStatus(t("coords.copied", { coords: txt })); }, function () { modalPrompt(t("coords.copyManual"), txt); });
     } else { modalPrompt(t("coords.copyManual"), txt); }
   }
-  // Country resources for the country at the map centre: Blogs, BirdLife, and the
-  // national observation/registration services — opened from the right-side globe.
-  function openCountryMenu() {
-    if (!map) return;
-    var c = map.getCenter();
-    AppGeo.countryInfo(c.lat, c.lng).then(function (info) { showCountryMenu(info.cc, info.name); },
-      function () { showCountryMenu("", ""); });
-  }
-  function showCountryMenu(cc, name) {
-    var m = createModal({ boxClass: "map-choose country-menu", escClose: true });
-    var box = m.box, close = m.close;
-    var head = document.createElement("div"); head.className = "cm-head";
-    var title = document.createElement("span"); title.className = "cm-title";
-    title.textContent = name || t("popup.country");
-    var x = document.createElement("button");
-    x.type = "button"; x.className = "cm-close"; x.textContent = "×"; x.setAttribute("aria-label", t("btn.close"));
-    x.addEventListener("click", close);
-    head.appendChild(title); head.appendChild(x);
-    box.appendChild(head);
-    box.appendChild(makePopupBtn(t("blogs.title") + " ▸", "demo-btn-light", function () { close(); openBlogs(cc, name); }));
-    box.appendChild(makePopupBtn(t("link.birdlife") + " ↗", "demo-btn-light", function () { close(); openExternal(birdLifeCountryUrl(cc, name)); }));
-    natServicesFor(cc).forEach(function (s) {
-      box.appendChild(makePopupBtn(s.label + " ↗", "demo-btn-light", function () { close(); openExternal(s.url); }));
-    });
-    var wide = continentServices(cc);
-    if (wide.length) {
-      var h = document.createElement("div"); h.className = "cm-subhead"; h.textContent = "🌍 " + categoryLabel(continentFor(cc));
-      box.appendChild(h);
-      wide.forEach(function (s) {
-        box.appendChild(makePopupBtn(s.label + " ↗", "demo-btn-light", function () { close(); openExternal(s.url); }));
-      });
-    }
-  }
   function bindPointPopup(mk, lat, lon) {
     var wrap = document.createElement("div");
     wrap.className = "map-choose";
@@ -12155,14 +12107,20 @@
     wrap.appendChild(makePopupBtn(t("link.birdingplaces") + " ↗", "demo-btn-light", function () {
       mk.closePopup(); openExternal(birdingPlacesUrl(lat, lon));
     }));
-    // National & regional links for the clicked country + a collapsible "Europe &
-    // Worldwide" submenu — all sourced from the National-databases store (Settings
-    // → National databases), so the user can add / delete / block any of them.
+    // Country resources for the clicked point — the national databases, then Blogs
+    // and the BirdLife country factsheet, then a collapsible "… & Worldwide" submenu
+    // for the point's continent. All the site links come from the National-databases
+    // store (Settings → National databases), so any can be added / deleted / blocked.
     // Added once the country reverse-geocode resolves so the popup opens instantly.
-    AppGeo.countryCode(lat, lon).then(function (cc) {
+    AppGeo.countryInfo(lat, lon).then(function (info) {
+      var cc = (info && info.cc) || "", cname = (info && info.name) || "";
       natServicesFor(cc).forEach(function (s) {
         wrap.appendChild(makePopupBtn(s.label + " ↗", "demo-btn-light", function () { mk.closePopup(); openExternal(s.url); }));
       });
+      if (cc) {
+        wrap.appendChild(makePopupBtn(t("blogs.title") + " ▸", "demo-btn-light", function () { mk.closePopup(); openBlogs(cc, cname); }));
+        wrap.appendChild(makePopupBtn(t("link.birdlife") + " ↗", "demo-btn-light", function () { mk.closePopup(); openExternal(birdLifeCountryUrl(cc, cname)); }));
+      }
       var wide = continentServices(cc), wlabel = categoryLabel(continentFor(cc));
       if (wide.length) {
         var wSub = document.createElement("div");
@@ -12179,8 +12137,7 @@
         wrap.appendChild(wBtn); wrap.appendChild(wSub);
       }
       var pop = mk.getPopup(); if (pop && pop.isOpen()) pop.update();   // re-layout for the added buttons
-    }).catch(function () { /* leave the popup as-is */ });
-    // Blogs / BirdLife also live in the right-side "Country" button (openCountryMenu).
+    }).catch(function () { /* reverse-geocode failed — leave the popup as-is */ });
     mk.bindPopup(wrap, { closeButton: true, autoClose: true, autoPan: true, className: "choose-popup", offset: [0, -8] });
     mk.openPopup();
   }
