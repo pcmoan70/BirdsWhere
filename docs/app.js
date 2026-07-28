@@ -3367,7 +3367,7 @@
     };
   }
   function exportAppData() {
-    downloadCsv("migration_calendar_" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify(buildPayload(), null, 2));
+    downloadCsv("BirdsWhere_backup_" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify(buildPayload(), null, 2));
   }
   function mergeChecklists(local, incoming) {
     var out = {}; Object.keys(local || {}).forEach(function (k) { out[k] = local[k]; });
@@ -8388,6 +8388,61 @@
     if (!pointsHasAny()) { setStatus(t("points.exportEmpty")); return; }
     downloadCsv("map_points_" + new Date().toISOString().slice(0, 10) + ".kml", buildPointsKml());
   }
+  // GeoJSON export/import — a lossless, JSON-native alternative to KML so a user can
+  // download and keep their points/lists as a standard file: name, tags, note, colour
+  // and species key survive in each feature's properties; the saved-list name goes in
+  // "list". (KML flattens these into folders + description; GeoJSON keeps them exact.)
+  function buildPointsGeoJson() {
+    var loose = mpActiveName ? [] : mapPoints, feats = [];
+    function feat(p, listName) {
+      var props = {};
+      if (p.name) props.name = p.name;
+      if (p.tags && p.tags.length) props.tags = p.tags.slice();
+      if (p.note) props.note = p.note;
+      if (p.noteHtml) props.noteHtml = true;
+      if (p.color) props.color = p.color;
+      if (p.spKey) props.spKey = p.spKey;
+      if (p.spColor) props.spColor = p.spColor;
+      if (p.date) props.date = p.date;
+      if (listName) props.list = listName;
+      return { type: "Feature", properties: props, geometry: { type: "Point", coordinates: [+(+p.lon).toFixed(6), +(+p.lat).toFixed(6)] } };
+    }
+    mpCollections.forEach(function (c) { (c.points || []).forEach(function (p) { if (isFinite(+p.lat) && isFinite(+p.lon)) feats.push(feat(p, c.name)); }); });
+    loose.forEach(function (p) { if (isFinite(+p.lat) && isFinite(+p.lon)) feats.push(feat(p, "")); });
+    return JSON.stringify({ type: "FeatureCollection", features: feats }, null, 2);
+  }
+  function exportPointsGeoJson() {
+    if (!pointsHasAny()) { setStatus(t("points.exportEmpty")); return; }
+    downloadCsv("map_points_" + new Date().toISOString().slice(0, 10) + ".geojson", buildPointsGeoJson());
+  }
+  // Parse GeoJSON Point features into the SAME {marks, fields, folders} shape the KML
+  // importer produces, so the import field-mapping dialog is shared.
+  function parseGeoJsonText(text) {
+    var gj; try { gj = JSON.parse(text); } catch (e) { throw new Error(t("kml.parseErr")); }
+    var feats = (gj && gj.type === "FeatureCollection" && Array.isArray(gj.features)) ? gj.features
+              : (gj && gj.type === "Feature") ? [gj] : [];
+    var marks = [], fieldSet = {}, folderSet = {};
+    feats.forEach(function (f) {
+      if (!f || !f.geometry || f.geometry.type !== "Point" || !Array.isArray(f.geometry.coordinates)) return;
+      var lon = +f.geometry.coordinates[0], lat = +f.geometry.coordinates[1];
+      if (!isFinite(lat) || !isFinite(lon)) return;
+      var pr = f.properties || {}, data = {};
+      Object.keys(pr).forEach(function (k) {
+        if (k === "name" || k === "note" || k === "list") return;
+        var v = pr[k]; data[k] = Array.isArray(v) ? v.join(", ") : String(v == null ? "" : v);
+        fieldSet[k] = 1;
+      });
+      var folder = pr.list ? String(pr.list) : "";
+      if (folder) folderSet[folder] = 1;
+      marks.push({ name: pr.name ? String(pr.name) : "", lat: lat, lon: lon, desc: pr.note ? String(pr.note) : "", data: data, folder: folder });
+    });
+    return { marks: marks, fields: Object.keys(fieldSet), folders: Object.keys(folderSet) };
+  }
+  function startGeoJsonImport(text) {
+    var parsed; try { parsed = parseGeoJsonText(text); } catch (e) { setStatus(t("kml.parseErr")); return; }
+    if (!parsed.marks.length) { setStatus(t("kml.none")); return; }
+    kmlImport = parsed; openKmlImportDialog();
+  }
   // ---- KMZ (a ZIP holding doc.kml) — a tiny single-entry ZIP writer/reader,
   // using the browser's deflate-raw (same as share-link payloads). ----
   var _crcTable = null;
@@ -9965,17 +10020,19 @@
     document.getElementById("sync-export").addEventListener("click", exportAppData);
     // One Export button + a KML/KMZ format toggle (the label is the current format).
     var fmtTog = document.getElementById("points-fmt-toggle");
-    function pointsFmt() { return window.GeoState.get("pointsExportFmt", "kml") === "kmz" ? "kmz" : "kml"; }
+    var FMT_SEQ = ["kml", "kmz", "geojson"];
+    function pointsFmt() { var v = window.GeoState.get("pointsExportFmt", "kml"); return FMT_SEQ.indexOf(v) >= 0 ? v : "kml"; }
     if (fmtTog) {
       fmtTog.textContent = pointsFmt().toUpperCase();
       fmtTog.addEventListener("click", function () {
-        var next = pointsFmt() === "kml" ? "kmz" : "kml";
+        var next = FMT_SEQ[(FMT_SEQ.indexOf(pointsFmt()) + 1) % FMT_SEQ.length];   // KML → KMZ → GeoJSON
         window.GeoState.save({ pointsExportFmt: next });
         fmtTog.textContent = next.toUpperCase();
       });
     }
     document.getElementById("points-export").addEventListener("click", function () {
-      if (pointsFmt() === "kmz") exportPointsKmz(); else exportPointsKml();
+      var f = pointsFmt();
+      if (f === "kmz") exportPointsKmz(); else if (f === "geojson") exportPointsGeoJson(); else exportPointsKml();
     });
     var kmlFile = document.getElementById("points-kml-file");
     document.getElementById("points-kml-import").addEventListener("click", function () { kmlFile.click(); });
@@ -9986,12 +10043,16 @@
         var buf = rd.result;
         var h = new Uint8Array(buf, 0, Math.min(4, buf.byteLength || 0));
         var isZip = h.length >= 4 && h[0] === 0x50 && h[1] === 0x4B && h[2] === 0x03 && h[3] === 0x04;   // "PK\x03\x04" → KMZ
-        var done = function (kml) { try { startKmlImport(kml); } catch (err) { setStatus(t("kml.parseErr")); } };
-        if (isZip) extractKmlFromKmz(buf).then(done).catch(function () { setStatus(t("kml.parseErr")); });
-        else done(new TextDecoder().decode(new Uint8Array(buf)));
+        var doneKml = function (kml) { try { startKmlImport(kml); } catch (err) { setStatus(t("kml.parseErr")); } };
+        if (isZip) extractKmlFromKmz(buf).then(doneKml).catch(function () { setStatus(t("kml.parseErr")); });
+        else {
+          var txt = new TextDecoder().decode(new Uint8Array(buf)).replace(/^﻿/, "").trim();
+          if (txt.charAt(0) === "{" || txt.charAt(0) === "[") startGeoJsonImport(txt);   // GeoJSON
+          else doneKml(txt);                                                              // KML
+        }
         e.target.value = "";
       };
-      rd.readAsArrayBuffer(f);   // read binary; branch on the ZIP magic for KMZ vs KML text
+      rd.readAsArrayBuffer(f);   // read binary; branch on the ZIP magic (KMZ) then JSON vs KML text
     });
     document.getElementById("offline-zoom").addEventListener("change", function () {
       offlineMaxZoom = +this.value || 17;

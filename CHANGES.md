@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-07-28 — Download points as GeoJSON; clearer backup filename (sw v728)
+
+- Map points / saved lists can now be exported (and imported) as **GeoJSON** — a lossless,
+  JSON-native file that keeps each point's name, tags, note, colour and species key (KML/KMZ
+  flatten those). The Map-points format toggle now cycles KML → KMZ → GeoJSON, and import
+  auto-detects GeoJSON vs KML/KMZ. (Everything else — all lists, points and settings — is
+  already downloadable as one JSON file via Settings → Share between devices → Export.)
+- That full-backup file is now named `BirdsWhere_backup_<date>.json` (the internal format id
+  is unchanged, so old backups still import).
+
 ## 2026-07-28 — Rewrote the English Help/About to match the current app (sw v727)
 
 - Audited the whole app and corrected the English "About" text: added the **Historic** mode and
