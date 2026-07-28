@@ -21,7 +21,7 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v712";
+var VERSION = "v713";
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs
 // version-INDEPENDENT shared pool: map tiles AND the app's computed range-data
@@ -47,9 +47,14 @@ function getTileCap() {
 self.addEventListener("message", function (event) {
   var d = event.data || {};
   if (d.type === "getVersion") {
-    // Report the version of the code actually running (this active worker), so the
-    // app can show it in the startup popup.
-    try { if (event.source && event.source.postMessage) event.source.postMessage({ type: "version", version: VERSION }); } catch (e) {}
+    // Report THIS worker's version. Reply on the MessageChannel port when one is
+    // supplied (so the page can ask a specific worker — e.g. the *waiting* one
+    // behind the update banner — and not just the active controller); otherwise
+    // fall back to event.source (the startup popup asks the active worker).
+    try {
+      if (event.ports && event.ports[0]) event.ports[0].postMessage({ type: "version", version: VERSION });
+      else if (event.source && event.source.postMessage) event.source.postMessage({ type: "version", version: VERSION });
+    } catch (e) {}
     return;
   }
   if (d.type === "skipWaiting") {

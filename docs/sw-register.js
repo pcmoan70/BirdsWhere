@@ -13,6 +13,20 @@ if ("serviceWorker" in navigator) {
       if (reloaded) return; reloaded = true; window.location.reload();
     });
 
+    // Ask a specific worker for its VERSION over a MessageChannel (sw.js replies on
+    // the port). Used to show the incoming version in the banner text; resolves to
+    // "" on any failure so the banner still shows without a number.
+    function workerVersion(worker) {
+      return new Promise(function (resolve) {
+        if (!worker) { resolve(""); return; }
+        var ch = new MessageChannel();
+        var done = false, finish = function (v) { if (done) return; done = true; resolve(v || ""); };
+        ch.port1.onmessage = function (e) { finish(e.data && e.data.version); };
+        try { worker.postMessage({ type: "getVersion" }, [ch.port2]); } catch (e) { finish(""); }
+        setTimeout(function () { finish(""); }, 1500);
+      });
+    }
+
     function showUpdateBar(worker) {
       if (!worker || document.getElementById("sw-update-bar")) return;
       var bar = document.createElement("div");
@@ -21,11 +35,13 @@ if ("serviceWorker" in navigator) {
         "background:#0f1b24;color:#fff;padding:10px 14px;border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,.35);" +
         "font:14px/1.3 system-ui,-apple-system,sans-serif;display:flex;gap:12px;align-items:center;max-width:92vw;";
       var msg = document.createElement("span"); msg.textContent = "New version available";
+      // Fill in the actual version once the waiting worker reports it.
+      workerVersion(worker).then(function (v) { if (v && !msg.dataset.updating) msg.textContent = "New version " + v + " available"; });
       var go = document.createElement("button"); go.textContent = "Reload";
       go.style.cssText = "background:#2f6f4f;color:#fff;border:none;border-radius:7px;padding:6px 14px;font:inherit;font-weight:600;cursor:pointer;";
       var x = document.createElement("button"); x.textContent = "×"; x.setAttribute("aria-label", "Dismiss");
       x.style.cssText = "background:transparent;color:#fff;border:none;font-size:20px;line-height:1;cursor:pointer;padding:0 2px;";
-      go.addEventListener("click", function () { go.disabled = true; msg.textContent = "Updating…"; try { worker.postMessage({ type: "skipWaiting" }); } catch (e) {} });
+      go.addEventListener("click", function () { go.disabled = true; msg.dataset.updating = "1"; msg.textContent = "Updating…"; try { worker.postMessage({ type: "skipWaiting" }); } catch (e) {} });
       x.addEventListener("click", function () { if (bar.parentNode) bar.parentNode.removeChild(bar); });
       bar.appendChild(msg); bar.appendChild(go); bar.appendChild(x);
       document.body.appendChild(bar);

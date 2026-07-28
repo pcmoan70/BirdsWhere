@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-28 — Update banner shows the incoming version number (sw v713)
+
+- The "New version available" banner now reads the waiting service worker's VERSION over a
+  MessageChannel and shows it — e.g. "New version v713 available" — so the popup text
+  corresponds to the version being installed. Bumping `VERSION` in `sw.js` (already required
+  on every deploy) updates this text automatically; it falls back to the generic wording if
+  the version can't be read.
+
 ## 2026-07-28 — National databases: use each site's nationalized version (sw v712)
 
 - Where a multinational site runs a per-country version, each country is now assigned that
