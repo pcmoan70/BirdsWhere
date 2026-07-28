@@ -1266,13 +1266,24 @@
   // so they're left to their own handlers.
   function dismissTransientUI() {
     try { closeMapPopups(); } catch (e) {}
-    try { closeDropdowns(); } catch (e) {}
+    try { closeDropdowns(); } catch (e) {}   // header dropdowns + the Points (point-set) panel
     try { closeContextMenus(); } catch (e) {}
     try { hideStoredLocations(); } catch (e) {}
-    if (detDaysPanelOpen || detModePanelOpen || detObsPanelOpen) {
-      detDaysPanelOpen = detModePanelOpen = detObsPanelOpen = false;
-      try { updateDetLegend(); } catch (e) {}
-    }
+    var legendChanged = false;
+    if (detDaysPanelOpen || detModePanelOpen || detObsPanelOpen) { detDaysPanelOpen = detModePanelOpen = detObsPanelOpen = false; legendChanged = true; }
+    // Minimise the bottom-left legend to its corner chip (only when it's actually shown).
+    if (!detLegendMini && typeof detPlot !== "undefined" && Object.keys(detPlot).length) { detLegendMini = true; try { saveLegendState(); } catch (e) {} legendChanged = true; }
+    if (legendChanged) { try { updateDetLegend(); } catch (e) {} }
+  }
+  // A popup or menu (NOT the legend) is currently showing — used to decide whether an
+  // empty-map click should just tidy up (close it) or open the point popup.
+  function isPopupOrMenuOpen() {
+    if (document.querySelector(".leaflet-popup")) return true;
+    if (detDaysPanelOpen || detModePanelOpen || detObsPanelOpen) return true;
+    if (_anchMenuEl) return true;   // an anchored row menu is up
+    var ids = ["hidden-panel", "checklists-panel", "settings-panel", "mp-panel", "stored-loc-panel"];
+    for (var i = 0; i < ids.length; i++) { var p = document.getElementById(ids[i]); if (p && p.style && p.style.display !== "none") return true; }
+    return false;
   }
   // Close every open modal overlay except `keep`.
   function closeModals(keep) {
@@ -11574,9 +11585,14 @@
     // tapping a plotted detection (or just a few pixels off it); its own popup owns
     // the tap.
     if (clickNearDetection(e.latlng)) return;
-    // A genuine empty-map click closes any open floating window (popups, dropdowns,
-    // legend subwindows, …) in EVERY mode — including Richness, which returns below.
+    // A genuine empty-map click always tidies up: close any open popup / menu / dropdown
+    // (incl. the Points panel) and minimise the legend, in EVERY mode. If a popup or menu
+    // WAS showing, that's all this click does — so the click that dismisses a popup can't
+    // also drop a new one. With nothing open, it falls through to the mode's action below
+    // (e.g. the point popup pops up).
+    var hadPopupOrMenu = isPopupOrMenuOpen();
     dismissTransientUI();
+    if (hadPopupOrMenu) return;
     // List + Range show the per-point species list; Migration the analysis;
     // Historic the GBIF date-range search.
     if (["list", "barchart", "range", "historic"].indexOf(currentMode) < 0) return;
@@ -14460,7 +14476,7 @@
   }
 
   function closeDropdowns() {
-    ["hidden-panel", "checklists-panel", "settings-panel"].forEach(function (idp) {
+    ["hidden-panel", "checklists-panel", "settings-panel", "mp-panel"].forEach(function (idp) {
       var p = document.getElementById(idp);
       if (p) p.style.display = "none";
     });

@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-28 — Background click tidies up (legend + Points panel minimise; popup toggles) (sw v721)
+
+- An empty-map click now closes the Points (point-set) panel and minimises the bottom-left
+  legend to its corner chip, alongside popups/dropdowns/menus. If a popup or menu was showing,
+  the click only dismisses it (it won't also drop a new point popup); with nothing open, the
+  click opens the point popup as before. `closeDropdowns` now also closes the Points panel.
+
 ## 2026-07-28 — Navigate moved to the right-click map menu (sw v720)
 
 - The 🧭 **Navigate here** action moved out of the Add-point editor into the right-click
