@@ -9357,6 +9357,7 @@
     var modeEl = document.getElementById("mode-select");
     modeEl.addEventListener("change", function () {
       stopAnimation();
+      spListGen++;   // invalidate any in-flight species-list render so it can't fire a (recent) fetch after the switch
       currentMode = modeEl.value;
       window.GeoState.save({ mode: currentMode });
       saveSession({ mode: currentMode, page: "" });   // switching mode closes any open page
@@ -13338,6 +13339,11 @@
   // Which species-panel context is showing — drives whether the Checklist
   // button creates a point-anchored checklist or a country-wide one.
   var currentSpView = null;
+  // Bumped on every renderSpeciesList call AND on a mode change. A render that
+  // suspends at its inference await while the user switches mode (or clicks a new
+  // point) sees its captured gen fall behind and bails BEFORE firing its
+  // sightings fetch — so leaving "Recent" mid-render can't fire a recent fetch.
+  var spListGen = 0;
   // eBird country species list (all species ever recorded in the region) —
   // used as the "official" national bird list to merge against the model's
   // predictions. BirdLife DataZone factsheets aren't fetchable from a static
@@ -13697,6 +13703,7 @@
     // counts and the map-plot come from a GBIF fetch over the historic range
     // instead of the recent all-source fetch.
     var keepScroll = keepListScroll; keepListScroll = false;   // consume one-shot flag
+    var myGen = ++spListGen;   // supersede any older in-flight render (see spListGen)
     currentSpView = hist
       ? { mode: "historic", lat: lat, lon: lon, from: hist.from, to: hist.to, range: hist.range, months: hist.months || [] }
       : { mode: "point", lat: lat, lon: lon };
@@ -13720,6 +13727,10 @@
     try {
       var out = await runInference(new Float32Array([lat, lon, week]), 1);
       var cmp = await computeComparison(lat, lon, week);
+      // Superseded while awaiting inference (mode switch / newer point) — bail out
+      // BEFORE rendering or firing the sightings fetch. This is the fix for a recent
+      // fetch firing when the user switches Recent → Historic mid-render.
+      if (myGen !== spListGen) return;
       var hasCompare = !!cmp.probs;
       var kind = cmp.kind;   // "delta" | "ratio" | "focus"
       function buildResults() {

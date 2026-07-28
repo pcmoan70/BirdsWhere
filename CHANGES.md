@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-07-28 — Fix: switching Recent → Historic no longer fires a recent fetch (sw v708)
+
+- Opening a Species list in "Recent" mode suspends at the model-inference await. If the
+  user switched the mode dropdown to "Historic" during that await, the inference would
+  resolve and the render would resume and fire a recent-observations fetch *after* the
+  switch. A render now captures a generation counter (bumped on every render and on any
+  mode change) and bails right after its inference await when superseded — so leaving
+  Recent mid-render can no longer fire a fetch. In Historic mode nothing fetches until
+  the explicit "Fetch" button.
+
 ## 2026-07-28 — Legend order from one area-grid inference (fixes big-fetch OOM cleanly) (sw v707)
 
 - The legend's habitat-probability ranking is now computed from a SINGLE inference
