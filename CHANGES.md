@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-07-28 — Historic: direct-API top-up for the newest months (SE/NO/FI) (sw v697)
+
+- GBIF's copy of the Nordic/Finnish databases lags by weeks, so for the newest ~2
+  months of a historic range the fetch now tops up directly from the source's own API
+  when the point is in that country: <b>Norway → Artsobservasjoner</b>, <b>Sweden →
+  Artportalen</b>, <b>Finland → Laji.fi</b> (only when the source is enabled and its
+  key, if any, is set). Those records are plotted with the month too and merged into
+  the result; overlaps with GBIF's copy are de-duplicated. Skipped when a month-of-
+  year filter is active (the direct APIs don't take it).
+
 ## 2026-07-28 — Historic: plot each month on the map as it arrives (sw v696)
 
 - The map now fills in month by month during a historic fetch (newest month first) —

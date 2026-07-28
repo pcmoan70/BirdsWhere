@@ -2756,13 +2756,12 @@
     }
     return chunks;
   }
-  // Plot one month's raw GBIF records onto the map as they arrive (accumulating —
+  // Plot a batch of NORMALIZED records onto the map as they arrive (accumulating —
   // plotDetections dedups by row), so the map fills in month by month during a
   // historic fetch (behind the species list). No-op when the historic view is gone.
-  function plotHistoricMonth(raw, grp) {
-    if (!raw || !raw.length || typeof plotDetections !== "function") return;
+  function plotHistoricRecs(recsM, grp) {
+    if (!recsM || !recsM.length || typeof plotDetections !== "function") return;
     if (!(currentSpView && currentSpView.mode === "historic")) return;
-    var recsM = AppNormalize.normGbif(raw);
     var outM = AppAggregate.aggregateRecords(recsM, grp);
     var inGrp = function (cls) { return grp === "all" || (cls && String(cls).toLowerCase() === grp); };
     var entries = [];
@@ -2780,6 +2779,25 @@
     entries.forEach(function (e) { plotDetections(e.key, e.name, e.rows, false, true, e.cls); });   // defer=true → rebuild once below
     rebuildDetLayers(); updateDetLegend();
   }
+  // GBIF's republish of the Nordic databases lags by weeks, so for the NEWEST months
+  // of a historic range we top up from the source's OWN API (fresher): Norway →
+  // Artsobservasjoner, Sweden → Artportalen, Finland → Laji.fi. Only when the point
+  // is in that country, the source is enabled, and any required key is set.
+  function nordicHistoricSourceFor(cc) {
+    var id = cc === "NO" ? "artsobs" : cc === "SE" ? "artportalen" : cc === "FI" ? "laji" : null;
+    if (!id || isSourceOff(id)) return null;
+    if (id === "artportalen" && !artKey()) return null;   // keyed sources need their key
+    if (id === "laji" && !directKey("laji")) return null;
+    return (directSources().filter(function (x) { return x.id === id; })[0]) || null;
+  }
+  async function fetchNordicHistoric(s, lat, lon, rkm, from, to, sig) {
+    try {
+      if (s.id === "artsobs") return AppNormalize.normArtsobs(await AppFetch.fetchArtsobsAll(lat, lon, from, to, rkm, s.url, sig));
+      if (s.id === "artportalen") return AppNormalize.normArtportalen(await AppFetch.fetchArtportalenAll(lat, lon, from, to, rkm, artKey(), s.url, sig));
+      if (s.id === "laji") return AppNormalize.normLaji(await AppFetch.fetchLajiAll(lat, lon, from, to, rkm, directKey("laji"), s.url, sig));
+    } catch (e) { /* a failed top-up just leaves GBIF's copy for that month */ }
+    return [];
+  }
   function fetchHistoricSightingsAt(lat, lon, range, onProg) {
     var rkm = recentRadiusKm();
     var months = histMonthsParam();   // "" = all months, else "&month=5&month=6"
@@ -2790,7 +2808,12 @@
     var rp = String(range).split(","), from = rp[0], to = rp[1] || rp[0];
     var pr = AppGeo.countryCode(lat, lon).catch(function () { return ""; }).then(function (cc) {
       var chunks = histMonthChunks(from, to);
-      var allRecs = [], seen = Object.create(null), monthsDone = 0, nextChunk = 0;
+      var allRecs = [], seen = Object.create(null), directNorm = [], monthsDone = 0, nextChunk = 0;
+      // Top up the NEWEST ~2 months from the Nordic/Finnish source's own API (GBIF's
+      // copy of them lags). `months` (month-of-year filter) leaves the direct APIs
+      // out — they don't take it — so only top up when no such filter is active.
+      var nordicSrc = (!months) ? nordicHistoricSourceFor(cc) : null;
+      var recentCutoff = new Date(Date.now() - 62 * 86400000).toISOString().slice(0, 10);
       async function worker() {
         while (true) {
           if (sig && sig.aborted) return;
@@ -2799,21 +2822,33 @@
           var raw = await AppFetch.fetchGbifHistoric(lat, lon, r[0], r[1], rkm, cc, sig, null, months);
           // Dedup by GBIF key across batches (a record can straddle a month boundary).
           (raw || []).forEach(function (o) { if (o && o.key != null) { if (seen[o.key]) return; seen[o.key] = 1; } allRecs.push(o); });
-          if (!(sig && sig.aborted)) { try { plotHistoricMonth(raw, fetchGroup); } catch (e) {} }   // fill the map month by month
+          if (!(sig && sig.aborted)) { try { plotHistoricRecs(AppNormalize.normGbif(raw), fetchGroup); } catch (e) {} }   // fill the map month by month
+          // Direct-API top-up for the newest months (fresher than GBIF's republish).
+          if (nordicSrc && r[1] >= recentCutoff && !(sig && sig.aborted)) {
+            var dn = await fetchNordicHistoric(nordicSrc, lat, lon, rkm, r[0], r[1], sig);
+            if (dn && dn.length) {
+              directNorm.push.apply(directNorm, dn);
+              if (!(sig && sig.aborted)) { try { plotHistoricRecs(dn, fetchGroup); } catch (e) {} }
+            }
+          }
           monthsDone++;
           if (onProg) { try { onProg(monthsDone, chunks.length); } catch (e) {} }
-          try { setStatus(t("hist.progress", { done: monthsDone, total: chunks.length, n: allRecs.length })); } catch (e) {}
+          try { setStatus(t("hist.progress", { done: monthsDone, total: chunks.length, n: allRecs.length + directNorm.length })); } catch (e) {}
         }
       }
       var pool = [];
       for (var w = 0; w < Math.min(HIST_MONTH_CONCURRENCY, chunks.length); w++) pool.push(worker());
       return Promise.all(pool).then(function () {
         // Persist the progressively-plotted dots once (per-month plotting didn't save).
-        if (allRecs.length && currentSpView && currentSpView.mode === "historic") { try { saveDetections(); } catch (e) {} }
-        var recs = AppNormalize.normGbif(allRecs);
+        if ((allRecs.length || directNorm.length) && currentSpView && currentSpView.mode === "historic") { try { saveDetections(); } catch (e) {} }
+        // GBIF (raw → normalised) + the Nordic/Finnish direct top-up (already
+        // normalised); aggregateRecords dedups the overlap (GBIF's copy vs the direct
+        // record for the same observation).
+        var gbifRecs = AppNormalize.normGbif(allRecs);
+        var recs = directNorm.length ? gbifRecs.concat(directNorm) : gbifRecs;
         var out = AppAggregate.aggregateRecords(recs, fetchGroup);   // sets out.dedupTotal
-        out.bySrc = { GBIF: recs.length }; out.group = fetchGroup;
-        out.failed = []; out.timedOut = [];
+        out.bySrc = { GBIF: gbifRecs.length }; if (nordicSrc && directNorm.length) out.bySrc[nordicSrc.name] = directNorm.length;
+        out.group = fetchGroup; out.failed = []; out.timedOut = [];
         return out;
       });
     });
