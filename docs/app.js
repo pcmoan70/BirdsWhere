@@ -2035,7 +2035,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
-    { date: "2026-07-28", text: "Shared maps are richer: received detections now appear in the bottom-left legend and stack (several species at one spot fan out on tap), just like your own dots — and nothing is re-fetched, the data comes from the link. In the detections list (☰), a record from a source you can't access (e.g. eBird with no key set) shows a 🔒 with the source struck through." },
+    { date: "2026-07-28", text: "Received shared maps now build up exactly like data you fetch yourself: the detections go through the same pipeline, so the bottom-left legend and the co-located list (tap a dot) show every species and every date at a location — nothing is re-fetched, the data comes from the link. In the detections list (☰), a record from a source you can't access (e.g. eBird with no key set) shows a 🔒 with the source struck through." },
     { date: "2026-07-28", text: "Location & map actions moved to the right-click menu: right-click (or long-press on touch) anywhere on the map for ➕ Add point, 📍 Save location, 🔗 Share link and 📋 Copy coordinates. The normal left-click popup is now just species & country resources. And a click on empty map closes any open popup or filter window." },
     { date: "2026-07-28", text: "National & regional bird sites for the map popups now all live in one place — Settings → National databases — with a curated set per country across Europe, North & Central America and Oceania. Click a point on the map to see that country’s portals (plus its Blogs and BirdLife page), plus a continental submenu — “🌍 Europe & Worldwide”, “Americas & Worldwide” or “Oceania & Worldwide” depending on where you clicked — holding the region’s and the global sites (eBird, Observation.org, iNaturalist, GBIF, Avibase, xeno-canto…). Each entry has two icons: × deletes it, and 👁/🚫 blocks it (keeps it listed but hides it from the popups). Add your own with + Add." },
     { date: "2026-07-28", text: "The detection filters — time window / date range, the ★ starred · ◉ rare · 🟡 year-list · 🔴 life-list species filter, and the 👤 observer filter — have moved into the detections-list popup (☰). The bottom-left legend is now just the species list plus a black × (clear all filters) and the red × (clear the map). Filters stay set until you clear them with the black × or switch them off in the list — clearing the map keeps them." },
@@ -6888,48 +6888,9 @@
   }
   // Clicking a plotted dot opens the list scoped to that spot (co-located
   // detections within 50 m), still honouring the legend's filters.
-  // Distinct plotted species with a dot within `px` screen-pixels of latlng — for
-  // fanning out several species that sit on the exact same spot (e.g. a hotspot, or
-  // a shared map). One representative point per species.
-  function detSpeciesNear(latlng, px) {
-    if (!map) return [];
-    var c = map.latLngToLayerPoint(latlng), thr = px || 16, out = [];
-    Object.keys(detPlot).forEach(function (k) {
-      var e = detPlot[k]; if (!e || !e.group || !e.group.eachLayer) return;
-      var hit = null;
-      e.group.eachLayer(function (lyr) {
-        if (hit || !lyr.getLatLng) return;
-        if (map.latLngToLayerPoint(lyr.getLatLng()).distanceTo(c) <= thr) hit = lyr.getLatLng();
-      });
-      if (hit) out.push({ key: k, e: e, ll: hit });
-    });
-    return out;
-  }
-  // Fan the co-located species out around the spot ("rainbow"), each a dot in its
-  // species colour with a name tooltip; a fanned dot opens that spot's list. Reuses
-  // the sticky-spider teardown (clearSpider on map click / pan / zoom / Escape).
-  function spiderOutDet(center, group) {
-    clearSpider();
-    var layer = L.layerGroup(), n = group.length, R = Math.min(64, 20 + n * 5), cpt = map.latLngToLayerPoint(center);
-    group.forEach(function (o, i) {
-      var a = 2 * Math.PI * i / n - Math.PI / 2;
-      var ll = map.layerPointToLatLng(L.point(cpt.x + R * Math.cos(a), cpt.y + R * Math.sin(a)));
-      layer.addLayer(L.polyline([center, ll], { color: "#888", weight: 1, opacity: 0.6, interactive: false }));
-      var fm = L.circleMarker(ll, { radius: 7, color: "#111", weight: 1, fillColor: o.e.color || "#888", fillOpacity: 0.95 });
-      fm.bindTooltip(escapeHtml(detName(o.e)), { direction: "top", className: "det-hover-tip" });
-      fm.on("click", function (ev) { if (ev && ev.originalEvent) L.DomEvent.stopPropagation(ev.originalEvent); clearSpider(); openDetListModal({ lat: center.lat, lon: center.lng, meters: 50 }); });
-      layer.addLayer(fm);
-    });
-    layer.addTo(map);
-    spiderLayer = layer;
-  }
   function onDetMarkerClick(marker) {
     var ll = marker.getLatLng();
     setMpDistOrigin(ll.lat, ll.lng);   // selecting a detection dot re-measures + re-sorts the point lists
-    // Several species on the exact same spot → fan them out so each is visible;
-    // a lone species just opens its co-located list.
-    var group = detSpeciesNear(ll, 16);
-    if (group.length > 1) { spiderOutDet(ll, group); return; }
     openDetListModal({ lat: ll.lat, lon: ll.lng, meters: 50 });
   }
   // Hover tooltip: the distinct species plotted within ~50 m of the point, each
@@ -12061,21 +12022,35 @@
   function detRowCount(detections) {
     var n = 0; Object.keys(detections || {}).forEach(function (k) { n += ((detections[k] || {}).rows || []).length; }); return n;
   }
-  // Plot shared detections through the MAIN detection pipeline (detPlot) — so they
-  // land in the bottom-left legend, stack / fan-out with several species at one
-  // location, and are filtered/styled like the recipient's own dots. The rows come
-  // straight from the link, so NO source is fetched. The sharer's per-species colour
-  // is kept. Returns the [lat,lon] list for fit-to-bounds.
+  // Plot shared detections EXACTLY like a self-fetch: rebuild the same `result`
+  // shape that a live fetch produces ({agg, extras, …}) and run it through the very
+  // same plotSightingsResult pipeline — so the legend and the co-located list build
+  // up identically. Model species go in `agg` (localised name), non-model in
+  // `extras`. Rows come straight from the link, so NO source is fetched. Returns the
+  // [lat,lon] list for fit-to-bounds.
   function plotSharedDetections(detections) {
-    var ll = [];
+    // Shared dots can be historic; open the legend's recency window to "All" so the
+    // recipient's default (30 d) doesn't hide older records (as pinning historic does).
+    window.GeoState.save({ detRecencyDays: 0 });
+    var agg = {}, extras = {}, ll = [];
     Object.keys(detections || {}).forEach(function (k) {
       var e = detections[k]; if (!e || !e.rows || !e.rows.length) return;
-      var spKey = e.key || k;
-      var nm = detName({ key: spKey, cls: e.cls || "", name: e.name }) || e.name || spKey;
-      plotDetections(spKey, nm, e.rows, false, true, e.cls || "");   // defer=true → batch, no per-species redraw
-      (e.rows || []).forEach(function (r) { if (isFinite(+r.lat) && isFinite(+r.lon)) ll.push([+r.lat, +r.lon]); });
+      var spKey = e.key || k, count = 0, latest = 0;
+      e.rows.forEach(function (r) {
+        var n = parseInt(r.count, 10); count += (isFinite(n) && n > 0) ? n : 1;
+        var ts = Date.parse(r.date); if (ts && ts > latest) latest = ts;
+        if (isFinite(+r.lat) && isFinite(+r.lon)) ll.push([+r.lat, +r.lon]);
+      });
+      if (spKey.indexOf("x:") === 0 || !labelsByKey[spKey]) {   // non-model → extras (keyed by sci)
+        var sci = spKey.indexOf("x:") === 0 ? spKey.slice(2) : spKey;
+        var ex = extras[sci] || (extras[sci] = { rows: [], count: 0, name: e.name || sci, sci: sci, cls: e.cls || "", latestTs: 0 });
+        ex.rows = ex.rows.concat(e.rows); ex.count += count; if (latest > ex.latestTs) ex.latestTs = latest;
+      } else {
+        var a = agg[spKey] || (agg[spKey] = { rows: [], count: 0, latestTs: 0 });
+        a.rows = a.rows.concat(e.rows); a.count += count; if (latest > a.latestTs) a.latestTs = latest;
+      }
     });
-    rebuildDetLayers(); updateDetLegend(); saveDetections();   // colours follow the recipient's family scheme
+    plotSightingsResult({ agg: agg, extras: extras, bySrc: {}, failed: [], timedOut: [], group: "all" });
     return ll;
   }
   function importShared(str) {

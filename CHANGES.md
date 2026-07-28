@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-28 — Shared detections build up exactly like a self-fetch (sw v724)
+
+- Importing a shared map now reconstructs the same `result` a live fetch produces (model species
+  in `agg`, others in `extras`, with counts + latest date) and runs it through the **same**
+  `plotSightingsResult` pipeline — so the legend and the co-located list build up identically,
+  with every species and every date at a location. The recency window is opened to "All" on
+  import so historic shared dots aren't hidden by the 30-day default. Still no source fetch.
+- Reverted the v723 detection-dot fan-out (map-pin fan-out is unchanged).
+
 ## 2026-07-28 — Fan out several species on one spot (detection dots) (sw v723)
 
 - Tapping a detection dot that sits on the exact same spot as other species now **fans them
