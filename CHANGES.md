@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-28 — Legend ☰ button turns green when a filter is active (sw v705)
+
+- Since the filters now live in the detections-list popup, the legend's ☰ (open list)
+  button now shows <b>green</b> whenever any filter is active — a cue that filtering is
+  on and where to change it.
+
 ## 2026-07-28 — Tighter species search (less over-matching) (sw v704)
 
 - The detections-list species search's forgiving "skip-typing" tier was too loose — a
