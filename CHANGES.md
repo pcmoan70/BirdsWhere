@@ -1,5 +1,10 @@
 # Changes
 
+## 2026-07-28 — Time filter: months presets now 1–6 too (sw v701)
+
+- The detections time-window filter's <b>months</b> row now offers 1–6 (30/60/90/
+  120/150/180 days), matching the days and weeks rows. Button label reads 4m/5m/6m.
+
 ## 2026-07-28 — Detection filters moved to the list popup; filters persist (sw v700)
 
 - The time-window/date-range, species-mode (★ starred · ◉ rare · 🟡 year · 🔴 life)

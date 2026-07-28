@@ -7392,7 +7392,7 @@
   var DET_DAYS_PRESETS = [
     { unit: "days", vals: [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6]] },
     { unit: "weeks", vals: [[1, 7], [2, 14], [3, 21], [4, 28], [5, 35], [6, 42]] },
-    { unit: "months", vals: [[1, 30], [2, 60], [3, 90]] }
+    { unit: "months", vals: [[1, 30], [2, 60], [3, 90], [4, 120], [5, 150], [6, 180]] }
   ];
   function detDaysPanelHtml() {
     var rg = detDateRange(), days = detRecencyDays();
@@ -7441,7 +7441,8 @@
     var d = detRecencyDays();
     if (!d) return "∞";
     var map = { 1: "1d", 2: "2d", 3: "3d", 4: "4d", 5: "5d", 6: "6d",
-      7: "1w", 14: "2w", 21: "3w", 28: "4w", 35: "5w", 42: "6w", 30: "1m", 60: "2m", 90: "3m" };
+      7: "1w", 14: "2w", 21: "3w", 28: "4w", 35: "5w", 42: "6w",
+      30: "1m", 60: "2m", 90: "3m", 120: "4m", 150: "5m", 180: "6m" };
     return map[d] || String(d);
   }
   // Label for the cycle button: All / None / a saved list's name / Custom.
