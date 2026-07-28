@@ -1631,6 +1631,24 @@ button.dd-name:hover { text-decoration: underline; }
   cursor: pointer; font-size: 1.5rem; line-height: 1; color: var(--ink-muted);
 }
 #gbif-close:hover, #natdb-close:hover, #offline-close:hover, #sources-close:hover, #det-sets-close:hover, #blocked-close:hover, #lists-close:hover, #blogs-close:hover { color: var(--ink); }
+/* Tall dialogs (long lists / the Help text) scroll, but the title bar — with the ×
+   close — stays pinned at the top so it's always reachable. (The detections list
+   uses a flex header for the same effect.) The box's top padding moves into the
+   sticky header so it sits flush at the top while scrolling. */
+#gbif-box, #natdb-box, #sources-box, #det-sets-box, #blocked-box, #lists-box, #blogs-box {
+  padding-top: 0; max-height: 88vh; overscroll-behavior: contain;
+}
+#gbif-box > h3, #natdb-box > h3, #sources-box > h3, #det-sets-box > h3, #blocked-box > h3,
+#lists-box > h3, #blogs-box > h3 {
+  position: sticky; top: 0; z-index: 3; background: var(--surface);
+  margin-right: 0; margin-bottom: 8px; padding: 16px 40px 8px 0;
+  border-bottom: 1px solid var(--border, rgba(0,0,0,.12));
+}
+#gbif-close, #natdb-close, #sources-close, #det-sets-close, #blocked-close, #lists-close, #blogs-close {
+  position: sticky; float: right; top: 0; right: auto; z-index: 4; margin: 14px -2px 0 8px;
+}
+/* createModal dialogs (link editor, prompts, country/area pickers): cap + scroll. */
+.ui-modal { max-height: 90vh; overflow-y: auto; }
 #gbif-box .cu-hint, #natdb-box .cu-hint, #offline-box .cu-hint, #sources-box .cu-hint, #det-sets-box .cu-hint, #blocked-box .cu-hint, #lists-box .cu-hint, #blogs-box .cu-hint { font-size: 0.74rem; color: var(--ink-muted); margin: 0 0 12px; }
 #det-sets-box .cu-actions { display: flex; gap: 8px; margin: 0 0 12px; }
 #det-sets-list .dset-name { font-weight: 600; }
@@ -1878,6 +1896,14 @@ button.dd-name:hover { text-decoration: underline; }
   font-size: 1.5rem; line-height: 1; color: var(--ink-muted);
 }
 #about-close:hover { color: var(--ink); }
+/* Keep the Help title bar + × pinned while the (long) text scrolls. */
+#about-box { padding-top: 0; max-height: 88vh; overscroll-behavior: contain; }
+#about-box h3 {
+  position: sticky; top: 0; z-index: 3; background: var(--surface);
+  margin: 0 0 8px 0; padding: 16px 40px 8px 0;
+  border-bottom: 1px solid var(--border, rgba(0,0,0,.12));
+}
+#about-close { position: sticky; float: right; top: 0; right: auto; z-index: 4; margin: 14px -2px 0 8px; }
 
 /* ===== Feedback form (EmailJS) — replaces the explicit email link ===== */
 .feedback-open {

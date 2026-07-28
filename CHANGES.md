@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-28 — Tall dialogs: scroll the body, keep the title bar + × pinned (sw v725)
+
+- Dialogs taller than the screen (the Help/About text, National databases, GBIF datasets,
+  Data sources, saved-lists, blogs, blocked-species) now keep their title bar — and the ×
+  close — pinned at the top while the content scrolls, so you can always close them. The
+  detections list already worked this way. createModal dialogs (link editor, prompts) also
+  cap at 90vh and scroll.
+
 ## 2026-07-28 — Shared detections build up exactly like a self-fetch (sw v724)
 
 - Importing a shared map now reconstructs the same `result` a live fetch produces (model species
