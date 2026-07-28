@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-28 — Point popup: Oiseaux.net link for French territories (sw v709)
+
+- Clicking a point in France or a French overseas territory/department (FR + DOM-TOM:
+  GF, GP, MQ, RE, YT, NC, PF, BL, MF, PM, WF, TF) now adds an **Oiseaux.net ↗** link
+  to the point popup (the French-language bird encyclopedia). Opens the English section
+  (oiseaux.net/en) when the app language is English, otherwise the French site.
+
 ## 2026-07-28 — Fix: switching Recent → Historic no longer fires a recent fetch (sw v708)
 
 - Opening a Species list in "Recent" mode suspends at the model-inference await. If the

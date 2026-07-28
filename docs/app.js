@@ -1803,6 +1803,11 @@
     return base + slug + "/?lat=" + lat.toFixed(4) + "&lng=" + lon.toFixed(4) + "&zoom=" + z;
   }
   function hasFagelkartan(cc) { return cc === "SE" || cc === "NO"; }
+  // oiseaux.net — the French-language bird encyclopedia. Shown for France and its
+  // overseas departments/territories (metropolitan + DOM-TOM).
+  var FR_TERRITORIES = ["FR", "GF", "GP", "MQ", "RE", "YT", "NC", "PF", "BL", "MF", "PM", "WF", "TF"];
+  function hasOiseaux(cc) { return FR_TERRITORIES.indexOf(String(cc || "").toUpperCase()) >= 0; }
+  function oiseauxUrl() { return lang === "en" ? "https://www.oiseaux.net/en" : "https://www.oiseaux.net/"; }
 
   // BirdLife DataZone factsheet for a country. Their canonical URL uses the
   // English country name lowercased and hyphen-separated (verified: monaco,
@@ -11893,6 +11898,11 @@
       wrap.appendChild(makePopupBtn(t("link.observationOrg") + " ↗", "demo-btn-light", function () {
         mk.closePopup(); openExternal(obsUrl);
       }));
+      if (hasOiseaux(cc)) {   // France + overseas territories → the French bird encyclopedia
+        wrap.appendChild(makePopupBtn(t("link.oiseaux") + " ↗", "demo-btn-light", function () {
+          mk.closePopup(); openExternal(oiseauxUrl());
+        }));
+      }
       var pop = mk.getPopup(); if (pop && pop.isOpen()) pop.update();   // re-layout for the added button
       if (!hasFagelkartan(cc)) return;
       return AppGeo.regionInfo(lat, lon).then(function (reg) {
