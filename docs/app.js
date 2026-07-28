@@ -2034,6 +2034,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { date: "2026-07-28", text: "Shared maps are richer: received detections now appear in the bottom-left legend and stack (several species at one spot fan out on tap), just like your own dots — and nothing is re-fetched, the data comes from the link. In the detections list (☰), a record from a source you can't access (e.g. eBird with no key set) shows a 🔒 with the source struck through." },
     { date: "2026-07-28", text: "Location & map actions moved to the right-click menu: right-click (or long-press on touch) anywhere on the map for ➕ Add point, 📍 Save location, 🔗 Share link and 📋 Copy coordinates. The normal left-click popup is now just species & country resources. And a click on empty map closes any open popup or filter window." },
     { date: "2026-07-28", text: "National & regional bird sites for the map popups now all live in one place — Settings → National databases — with a curated set per country across Europe, North & Central America and Oceania. Click a point on the map to see that country’s portals (plus its Blogs and BirdLife page), plus a continental submenu — “🌍 Europe & Worldwide”, “Americas & Worldwide” or “Oceania & Worldwide” depending on where you clicked — holding the region’s and the global sites (eBird, Observation.org, iNaturalist, GBIF, Avibase, xeno-canto…). Each entry has two icons: × deletes it, and 👁/🚫 blocks it (keeps it listed but hides it from the popups). Add your own with + Add." },
     { date: "2026-07-28", text: "The detection filters — time window / date range, the ★ starred · ◉ rare · 🟡 year-list · 🔴 life-list species filter, and the 👤 observer filter — have moved into the detections-list popup (☰). The bottom-left legend is now just the species list plus a black × (clear all filters) and the red × (clear the map). Filters stay set until you clear them with the black × or switch them off in the list — clearing the map keeps them." },
@@ -6180,6 +6181,18 @@
   // Source label for a row: the GBIF origin dataset (shortened) when present,
   // else the raw source tag (eBird / iNaturalist / Checklist …).
   function srcLabel(r) { return (r.src === "GBIF" && r.origin) ? shortOrigin(r.origin) : (r.src || ""); }
+  // Whether the user can actually query a source — used to flag records in a shared
+  // map that came from a source the recipient has no access to (a keyed source with
+  // no key set). Open sources (GBIF / iNaturalist / Observation.org …) are always
+  // accessible; eBird and other keyed direct sources need their key.
+  function sourceAccessible(srcName) {
+    var nm = String(srcName || "").trim();
+    if (!nm) return true;
+    if (/^ebird$/i.test(nm)) return !!ebirdKey();
+    var s = directSources().filter(function (x) { return x.name === nm; })[0];
+    if (s) { var d = DIRECT_BY_ID[s.id] || {}; if (d.keyed) return !!directKey(s.id); }
+    return true;
+  }
   // Every detection currently shown under the legend (its star / row-selection
   // and recency filters), flattened to one entry per observation row. This is the
   // exact set of dots on the map, so the list always matches what's visible.
@@ -6431,12 +6444,18 @@
       // The station name/#id is shown in the date-section HEADER (in the slot the
       // observer name uses for other sources), NOT here next to the species. So the
       // species row carries only the count-prefixed source; no sub-line.
-      meta = [showDate ? fmtDate(d.date) : "", "×" + (d.count || 1) + " BirdWeather"].filter(Boolean).join(" · ");
+      meta = [showDate ? escapeHtml(fmtDate(d.date)) : "", "×" + escapeHtml(String(d.count || 1)) + " BirdWeather"].filter(Boolean).join(" · ");
       subLines = "";
     } else {
-      meta = [showDate ? fmtDate(d.date) : "",
-        (d.count != null && d.count !== "") ? "×" + d.count : "",
-        srcLabel(d)].filter(Boolean).join(" · ");
+      // Source is struck through when the recipient can't access it (a shared record
+      // from a keyed source with no key here) — the rest of the meta is plain text.
+      var srcTxt = srcLabel(d);
+      var srcHtml = !srcTxt ? "" : (sourceAccessible(d.src)
+        ? escapeHtml(srcTxt)
+        : '<span class="dl-noaccess-ic" title="' + escapeHtml(t("detlist.noAccess")) + '">🔒</span><span class="dl-src-noaccess" title="' + escapeHtml(t("detlist.noAccess")) + '">' + escapeHtml(srcTxt) + "</span>");
+      meta = [showDate ? escapeHtml(fmtDate(d.date)) : "",
+        (d.count != null && d.count !== "") ? "×" + escapeHtml(String(d.count)) : "",
+        srcHtml].filter(Boolean).join(" · ");
       subLines =
         (al ? '<span class="dl-sub" title="' + escapeHtml(al) + '">' + escapeHtml(al) + "</span>" : "") +
         (note ? '<span class="dl-sub dl-note" title="' + escapeHtml(note) + '">' + escapeHtml(note) + "</span>" : "");
@@ -6444,7 +6463,7 @@
     var nameBlock = '<span class="dl-name-wrap"><span class="dl-sp">' + escapeHtml(detListName(d.key, d.name)) + "</span>" + subLines + "</span>";
     var inner = detSwatch(d.color || "#888", isInteresting(d.key), detIsRare(d.key), d.key) +
       nameBlock +
-      '<span class="dl-meta">' + escapeHtml(meta) + "</span>";
+      '<span class="dl-meta">' + meta + "</span>";
     var attrs = ' data-key="' + escapeHtml(d.key) + '" data-name="' + escapeHtml(d.name) +
       '" data-lat="' + (d.lat == null ? "" : d.lat) + '" data-lon="' + (d.lon == null ? "" : d.lon) +
       '" data-url="' + escapeHtml(d.url || "") +
@@ -11992,16 +12011,6 @@
   // Apply a payload decoded from #s= at boot. Points / detection sets are imported
   // (after a confirm) into the recipient's saved lists, shown, and fitted; a single
   // point just drops a marker and opens its popup.
-  // Add a shared detection set to the store (shown); returns { name, ll }.
-  function importDetSetColl(nm, detections) {
-    var name = uniqueShareName(nm, function (x) { return detSets().some(function (s) { return s.name === x; }); });
-    var blob = { name: name, createdAt: 0, detections: detections, interesting: [] };
-    detSetStore.push(blob); persistDetSet(name, blob);
-    window.GeoState.save({ mapDetectionSetsDel: detSetTombstones().filter(function (x) { return x !== name; }) });
-    shownDetSets[name] = true;
-    var ll = []; Object.keys(detections || {}).forEach(function (k) { ((detections[k] || {}).rows || []).forEach(function (r) { if (isFinite(+r.lat) && isFinite(+r.lon)) ll.push([+r.lat, +r.lon]); }); });
-    return { name: name, ll: ll };
-  }
   // Add a shared point-list collection (shown); returns { name, ll }.
   function importPointsColl(nm, pts) {
     var name = uniqueShareName(nm, function (x) { return mpCollections.some(function (c) { return c.name === x; }); });
@@ -12011,6 +12020,23 @@
   }
   function detRowCount(detections) {
     var n = 0; Object.keys(detections || {}).forEach(function (k) { n += ((detections[k] || {}).rows || []).length; }); return n;
+  }
+  // Plot shared detections through the MAIN detection pipeline (detPlot) — so they
+  // land in the bottom-left legend, stack / fan-out with several species at one
+  // location, and are filtered/styled like the recipient's own dots. The rows come
+  // straight from the link, so NO source is fetched. The sharer's per-species colour
+  // is kept. Returns the [lat,lon] list for fit-to-bounds.
+  function plotSharedDetections(detections) {
+    var ll = [];
+    Object.keys(detections || {}).forEach(function (k) {
+      var e = detections[k]; if (!e || !e.rows || !e.rows.length) return;
+      var spKey = e.key || k;
+      var nm = detName({ key: spKey, cls: e.cls || "", name: e.name }) || e.name || spKey;
+      plotDetections(spKey, nm, e.rows, false, true, e.cls || "");   // defer=true → batch, no per-species redraw
+      (e.rows || []).forEach(function (r) { if (isFinite(+r.lat) && isFinite(+r.lon)) ll.push([+r.lat, +r.lon]); });
+    });
+    rebuildDetLayers(); updateDetLegend(); saveDetections();   // colours follow the recipient's family scheme
+    return ll;
   }
   function importShared(str) {
     decodeShare(str).then(function (raw) {
@@ -12024,7 +12050,7 @@
         modalConfirm(t("share.importMapPrompt", { d: nDet, p: nPts })).then(function (ok) {
           if (!ok) return;
           var ll = [];
-          if (nDet) ll = ll.concat(importDetSetColl(mnm, detObj.detections).ll);
+          if (nDet) ll = ll.concat(plotSharedDetections(detObj.detections));
           if (nPts) { ll = ll.concat(importPointsColl(mnm, mpts).ll); saveMapPoints(); }
           saveShownState(); renderMapPoints(); fitSharedLatLngs(ll);
           setStatus(t("share.imported", { name: mnm }));
@@ -12056,8 +12082,8 @@
         if (!n) { setStatus(t("share.badLink")); return; }
         modalConfirm(t("share.importPrompt", { name: nm, n: n })).then(function (ok) {
           if (!ok) return;
-          var r = importDetSetColl(nm, obj.detections); saveShownState(); renderMapPoints();
-          fitSharedLatLngs(r.ll); setStatus(t("share.imported", { name: r.name }));
+          var ll = plotSharedDetections(obj.detections);
+          fitSharedLatLngs(ll); setStatus(t("share.imported", { name: nm }));
         });
         return;
       }

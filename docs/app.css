@@ -2543,6 +2543,9 @@ a.dl-row:hover, .dl-row-menu:hover { background: var(--surface-2, rgba(0,0,0,.05
 .dl-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.66rem; line-height: 1.15; color: var(--ink-muted, #777); }
 .dl-note { font-style: italic; }
 .dl-meta { flex: 0 0 auto; margin-left: auto; padding-left: 10px; color: var(--ink-muted, #666); font-size: 0.72rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* A shared record from a source the recipient can't query (keyed, no key here). */
+.dl-noaccess-ic { margin-right: 2px; }
+.dl-src-noaccess { text-decoration: line-through; text-decoration-thickness: from-font; color: var(--danger, #c0392b); }
 .dl-go { flex: 0 0 auto; color: var(--brand); font-weight: 700; }
 /* Always-visible "focus this record on the map" shortcut on each list row. */
 .dl-focus { flex: 0 0 auto; cursor: pointer; font-size: 0.95rem; line-height: 1; padding: 0 2px; }

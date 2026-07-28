@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-28 — Shared maps: detections join the legend; flag no-access sources (sw v722)
+
+- Imported shared detections now go through the main detection pipeline (`detPlot`) instead of a
+  separate flat overlay: they appear in the bottom-left **legend**, and several species at one
+  spot **stack / fan-out** (previously one species per location, and missing from the legend).
+- No source is fetched when a shared map is opened — the dots come straight from the link.
+- In the detections list, a record from a source the recipient **can't access** (a keyed source
+  like eBird with no key set here) is shown with a 🔒 and the source **struck through**.
+
 ## 2026-07-28 — Background click tidies up (legend + Points panel minimise; popup toggles) (sw v721)
 
 - An empty-map click now closes the Points (point-set) panel and minimises the bottom-left
