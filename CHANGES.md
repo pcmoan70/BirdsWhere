@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-28 — Detections list: "Select N on map" to build a species selection (sw v702)
+
+- Typing in the detections-list search now shows a <b>＋ Select N on map</b> button
+  that adds every matching species to the legend's map selection (isolating them on
+  the map). The search box then clears so the next search's matches <b>stack</b> onto
+  the selection — search "swallow" → Select, search "warbler" → Select, and both sets
+  show together. Clear the selection with the legend's black ×.
+
 ## 2026-07-28 — Time filter: months presets now 1–6 too (sw v701)
 
 - The detections time-window filter's <b>months</b> row now offers 1–6 (30/60/90/

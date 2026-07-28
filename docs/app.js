@@ -4210,7 +4210,10 @@
               '<button type="button" id="detlist-sort" class="detlist-sort-toggle">By date</button>' +
             '</div>' +
           '</div>' +
-          '<input type="text" id="detlist-search" autocomplete="off" spellcheck="false" data-i18n-ph="detlist.search" placeholder="Filter species…" />' +
+          '<div id="detlist-search-row">' +
+            '<input type="text" id="detlist-search" autocomplete="off" spellcheck="false" data-i18n-ph="detlist.search" placeholder="Filter species…" />' +
+            '<button type="button" id="detlist-select" class="detlist-select-btn" style="display:none"></button>' +
+          '</div>' +
           '<div id="detlist-filters-wrap"></div>' +
           '<div id="detlist-body"></div>' +
         '</div></div>' +
@@ -6478,6 +6481,19 @@
     // already active so it can be cleared.
     var searchEl = document.getElementById("detlist-search");
     if (searchEl) searchEl.style.display = (totalRows >= 10 || detListQuery) ? "" : "none";
+    // While a search is active, offer a button to SELECT the matching species on the
+    // map (adds them to the legend's multi-select). Clicking clears the box so the
+    // next search's picks STACK onto the current selection.
+    var selBtn = document.getElementById("detlist-select");
+    if (selBtn) {
+      var matchKeys = Object.create(null);
+      rows.forEach(function (d) { if (d.key) matchKeys[d.key] = 1; });
+      var nMatch = Object.keys(matchKeys).length;
+      if (detListQuery && nMatch) {
+        selBtn.style.display = "";
+        selBtn.textContent = t("detlist.selectMatch", { n: nMatch });
+      } else { selBtn.style.display = "none"; }
+    }
     var saveBtn = document.getElementById("detlist-save"); if (saveBtn) saveBtn.disabled = !rows.length;
     var navBtn = document.getElementById("detlist-nav"); if (navBtn) navBtn.disabled = !rows.length;
     if (!rows.length) { body.innerHTML = '<div class="dl-empty">' + escapeHtml(emptyMsg) + "</div>"; return; }
@@ -9585,6 +9601,18 @@
     if (detlistSearch) detlistSearch.addEventListener("input", function () {
       detListQuery = this.value; renderDetListModal();   // the list filters instantly…
       scheduleDetMapSearch(this.value);                  // …the map dots follow ~1.5 s after the last keystroke
+    });
+    // "Select N on map": add every species currently matching the search to the
+    // legend's multi-select (which isolates them on the map), then clear the box so
+    // the next search STACKS more species onto the selection.
+    var detlistSelect = document.getElementById("detlist-select");
+    if (detlistSelect) detlistSelect.addEventListener("click", function (e) {
+      e.stopPropagation();
+      (detListLastRows || []).forEach(function (d) { if (d.key && detPlot[d.key]) detSelected[d.key] = true; });
+      detListQuery = ""; clearDetMapSearch();
+      if (detlistSearch) detlistSearch.value = "";
+      saveLegendState(); rebuildDetLayers(); updateDetLegend(); renderDetListModal();
+      if (detlistSearch) detlistSearch.focus();
     });
     var detlistSave = document.getElementById("detlist-save");
     if (detlistSave) detlistSave.addEventListener("click", function (e) {
