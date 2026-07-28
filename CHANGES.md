@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-28 — National databases: add North America, Central America & Oceania (sw v711)
+
+- Extended the National-databases store beyond Europe: curated links for Canada, the US,
+  Mexico, Greenland, Bermuda; Belize, Costa Rica, El Salvador, Guatemala, Honduras,
+  Nicaragua, Panama; and Australia, New Zealand, Papua New Guinea, Fiji, Solomon Islands,
+  Vanuatu, New Caledonia, French Polynesia, Samoa, Tonga, Guam, Palau, Micronesia, Kiribati
+  and the Marshall Islands. Each country lists its eBird region page plus notable national
+  bodies (Birds Canada, Audubon, BirdLife Australia, Birds New Zealand, …). 220 links total.
+
 ## 2026-07-28 — National databases: one managed store for all country links + block (sw v710)
 
 - The map popups' national/regional bird-site links are now all sourced from the
