@@ -9007,7 +9007,6 @@
       listSel +
       '<div class="mp-actions">' +
         '<button type="button" id="mp-save" class="demo-btn">' + esc(t("points.save")) + '</button>' +
-        '<button type="button" id="mp-nav" class="demo-btn demo-btn-light ico-btn" title="' + esc(t("nav.title")) + '">' + ico("nav") + "<span>" + esc(t("nav.go")) + "</span></button>" +
         '<button type="button" id="mp-route" class="demo-btn demo-btn-light" title="' + esc(t("route.add")) + '">＋</button>' +
         (isEdit ? '<button type="button" id="mp-del" class="demo-btn demo-btn-light">' + esc(t("btn.delete")) + '</button>' : "") +
       '</div>' +
@@ -9043,8 +9042,6 @@
     wireMpColorRow();
     var cc = document.querySelector(".mp-coords-copy");
     if (cc) cc.addEventListener("click", function () { copyCoords(this.getAttribute("data-lat"), this.getAttribute("data-lon")); });
-    var nv = document.getElementById("mp-nav");
-    if (nv) nv.addEventListener("click", function () { navigatePoints([{ lat: p.lat, lon: p.lon }]); });
     var rt = document.getElementById("mp-route");
     if (rt) rt.addEventListener("click", function () { addToRoute(p.lat, p.lon, p.name); });
     var save = document.getElementById("mp-save"); if (!save) return;
@@ -9101,6 +9098,7 @@
     wrap.appendChild(makePopupBtn("📍 " + t("loc.save"), "demo-btn-light", function () { map.closePopup(); registerLocationPrompt(lat, lon); }));
     wrap.appendChild(makePopupBtn("🔗 " + t("share.link"), "demo-btn-light", function () { map.closePopup(); offerShareUrl(pointShareUrl(lat, lon)); }));
     wrap.appendChild(makePopupBtn("📋 " + coordsText(lat, lon), "demo-btn-light", function () { map.closePopup(); copyCoords(lat, lon); }));
+    wrap.appendChild(makePopupBtn("🧭 " + t("nav.here"), "demo-btn-light", function () { map.closePopup(); navigatePoints([{ lat: lat, lon: lon }]); }));
     L.popup({ className: "choose-popup", closeButton: true, autoClose: true, autoPan: true, offset: [0, -2] })
       .setLatLng([lat, lon]).setContent(wrap).openOn(map);
   }

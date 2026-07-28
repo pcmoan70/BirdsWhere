@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-28 — Navigate moved to the right-click map menu (sw v720)
+
+- The 🧭 **Navigate here** action moved out of the Add-point editor into the right-click
+  (long-press) map menu, alongside Add point / Save location / Share link / Copy coordinates.
+  The point editor now just has Save, ＋ (add to route) and Delete.
+
 ## 2026-07-28 — Location actions moved to the right-click / long-press menu (sw v719)
 
 - The left-click point popup's "Location ▸" submenu (Save location, Share link, Copy
