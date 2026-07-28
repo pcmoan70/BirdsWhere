@@ -1,5 +1,10 @@
 # Changes
 
+## 2026-07-29 — Detections list “By species”: sort by most-recent date (sw v730)
+
+- In the detections list's **By species** view, species are now ordered by their most-recent
+  observed date, newest first (name breaks ties), instead of alphabetically.
+
 ## 2026-07-28 — Update banner shows a short changelog (sw v729)
 
 - The "New version available" banner now shows a few lines of what changed, read from a

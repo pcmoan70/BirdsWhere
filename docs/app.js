@@ -6800,10 +6800,13 @@
       // that species' individual records (each linking to its source).
       var bySp = {}, spOrder = [];
       rows.forEach(function (d) { if (!bySp[d.key]) { bySp[d.key] = { name: d.name, color: d.color, items: [] }; spOrder.push(d.key); } bySp[d.key].items.push(d); });
-      spOrder.sort(function (a, b) { return bySp[a].name.localeCompare(bySp[b].name); });
+      // Newest-observed species first (by each species' most-recent date, descending),
+      // then name as a tiebreaker for species that share a last-seen date.
+      spOrder.forEach(function (k) { bySp[k].last = bySp[k].items.reduce(function (acc, d) { return (d.date || "") > acc ? (d.date || "") : acc; }, ""); });
+      spOrder.sort(function (a, b) { return bySp[b].last.localeCompare(bySp[a].last) || bySp[a].name.localeCompare(bySp[b].name); });
       html = spOrder.map(function (k) {
         var g = bySp[k];
-        var last = g.items.reduce(function (acc, d) { return d.date > acc ? d.date : acc; }, "");
+        var last = g.last;
         var open = !!detListOpenSp[k];
         var head = '<button type="button" class="dl-sp-head' + (open ? " open" : "") + '" data-key="' + escapeHtml(k) + '">' +
           detSwatch(g.color || "#888", isInteresting(k), detIsRare(k), k) +

@@ -21,15 +21,15 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v729";
+var VERSION = "v730";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
-  "• The update banner now shows a short changelog.",
+  "• Detections list “By species” now sorts by most-recent date (newest first).",
+  "• This banner now shows a short changelog.",
   "• Export your map points as GeoJSON (Settings → Map points).",
-  "• Right-click / long-press the map: Add point, Save location, Navigate…",
-  "• In-app Help rewritten to match the app."
+  "• Right-click / long-press the map: Add point, Save location, Navigate…"
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs
