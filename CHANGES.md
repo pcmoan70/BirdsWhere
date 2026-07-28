@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-28 — Tighter species search (less over-matching) (sw v704)
+
+- The detections-list species search's forgiving "skip-typing" tier was too loose — a
+  plain subsequence let scattered letters (a…b…c across the whole name) match. It now
+  only tolerates a near-miss: the typed letters must start at the species name's
+  matching point and fit within ~2 skipped characters, and the query must be ≥ 4
+  letters (shorter ones already match as substrings). "brnswl" still finds "Barn
+  Swallow"; loose scatter no longer matches.
+
 ## 2026-07-28 — Detections list stays fully searchable after selecting (sw v703)
 
 - The detections list now shows every plotted species even when a map selection is

@@ -6108,14 +6108,26 @@
     if (!q) return true;
     return q.split(/\s+/).every(function (tok) { return text.indexOf(tok) >= 0; });
   }
-  // Tier 2 — partial: the exact match, or a spaces-ignored subsequence so a
-  // skip-typed "brnswl" still finds "Barn Swallow".
+  // Tier 2 — skip-typing tolerance: the exact match, or a TIGHT spaces-ignored
+  // subsequence so "brnswl" still finds "Barn Swallow" without flooding on loose
+  // matches. Unlike a plain subsequence (which lets "a…b…c" spread across the whole
+  // name), the match must START at the query's first character and fit inside a
+  // window of only a couple of extra characters (≤ 2 skipped), and the query must be
+  // at least 4 characters (shorter ones are already covered by the substring tier).
+  var FUZZY_MIN = 4, FUZZY_SKIP = 2;
   function detFuzzy(q, text) {
     if (detExactMatch(q, text)) return true;
-    var qc = String(q || "").toLowerCase().replace(/\s+/g, ""), tc = String(text || "").toLowerCase().replace(/\s+/g, ""), qi = 0;
+    var qc = String(q || "").toLowerCase().replace(/\s+/g, ""), tc = String(text || "").toLowerCase().replace(/\s+/g, "");
     if (!qc) return true;
-    for (var i = 0; i < tc.length && qi < qc.length; i++) { if (tc.charAt(i) === qc.charAt(qi)) qi++; }
-    return qi === qc.length;
+    if (qc.length < FUZZY_MIN) return false;   // too short to fuzzy safely — the substring tier handles it
+    var maxSpan = qc.length + FUZZY_SKIP;
+    for (var start = 0; start < tc.length; start++) {
+      if (tc.charAt(start) !== qc.charAt(0)) continue;   // window anchored at the first query char
+      var qi = 0, end = Math.min(tc.length, start + maxSpan);
+      for (var i = start; i < end && qi < qc.length; i++) { if (tc.charAt(i) === qc.charAt(qi)) qi++; }
+      if (qi === qc.length) return true;
+    }
+    return false;
   }
   // Everything a species can be matched against: the displayed (localised) name,
   // plus its English common name and scientific name — so a Norwegian-language
