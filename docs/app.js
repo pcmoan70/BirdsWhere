@@ -2756,6 +2756,30 @@
     }
     return chunks;
   }
+  // Plot one month's raw GBIF records onto the map as they arrive (accumulating —
+  // plotDetections dedups by row), so the map fills in month by month during a
+  // historic fetch (behind the species list). No-op when the historic view is gone.
+  function plotHistoricMonth(raw, grp) {
+    if (!raw || !raw.length || typeof plotDetections !== "function") return;
+    if (!(currentSpView && currentSpView.mode === "historic")) return;
+    var recsM = AppNormalize.normGbif(raw);
+    var outM = AppAggregate.aggregateRecords(recsM, grp);
+    var inGrp = function (cls) { return grp === "all" || (cls && String(cls).toLowerCase() === grp); };
+    var entries = [];
+    Object.keys(outM.agg || {}).forEach(function (key) {
+      var a = outM.agg[key];
+      if (a.rows && a.rows.length && inGrp((taxByCode[key] || {}).class_name))
+        entries.push({ key: key, name: (labelsByKey[key] && speciesName(labelsByKey[key])) || key, rows: a.rows, cls: (taxByCode[key] || {}).class_name || "" });
+    });
+    Object.keys(outM.extras || {}).forEach(function (k) {
+      var ex = outM.extras[k];
+      if (ex.rows && ex.rows.length && inGrp(ex.cls)) entries.push({ key: "x:" + k, name: ex.name || ex.sci, rows: ex.rows, cls: ex.cls || "" });
+    });
+    if (!entries.length) return;
+    if (isFinite(+currentSpView.lat) && isFinite(+currentSpView.lon)) rememberFetchedArea(+currentSpView.lat, +currentSpView.lon);
+    entries.forEach(function (e) { plotDetections(e.key, e.name, e.rows, false, true, e.cls); });   // defer=true → rebuild once below
+    rebuildDetLayers(); updateDetLegend();
+  }
   function fetchHistoricSightingsAt(lat, lon, range, onProg) {
     var rkm = recentRadiusKm();
     var months = histMonthsParam();   // "" = all months, else "&month=5&month=6"
@@ -2775,6 +2799,7 @@
           var raw = await AppFetch.fetchGbifHistoric(lat, lon, r[0], r[1], rkm, cc, sig, null, months);
           // Dedup by GBIF key across batches (a record can straddle a month boundary).
           (raw || []).forEach(function (o) { if (o && o.key != null) { if (seen[o.key]) return; seen[o.key] = 1; } allRecs.push(o); });
+          if (!(sig && sig.aborted)) { try { plotHistoricMonth(raw, fetchGroup); } catch (e) {} }   // fill the map month by month
           monthsDone++;
           if (onProg) { try { onProg(monthsDone, chunks.length); } catch (e) {} }
           try { setStatus(t("hist.progress", { done: monthsDone, total: chunks.length, n: allRecs.length })); } catch (e) {}
@@ -2783,6 +2808,8 @@
       var pool = [];
       for (var w = 0; w < Math.min(HIST_MONTH_CONCURRENCY, chunks.length); w++) pool.push(worker());
       return Promise.all(pool).then(function () {
+        // Persist the progressively-plotted dots once (per-month plotting didn't save).
+        if (allRecs.length && currentSpView && currentSpView.mode === "historic") { try { saveDetections(); } catch (e) {} }
         var recs = AppNormalize.normGbif(allRecs);
         var out = AppAggregate.aggregateRecords(recs, fetchGroup);   // sets out.dedupTotal
         out.bySrc = { GBIF: recs.length }; out.group = fetchGroup;

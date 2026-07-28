@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-28 — Historic: plot each month on the map as it arrives (sw v696)
+
+- The map now fills in month by month during a historic fetch (newest month first) —
+  each batch's dots are plotted as it lands, behind the species list, so you can
+  switch to the map and watch it build up rather than waiting for the whole range.
+
 ## 2026-07-28 — Historic fetch: parallel month batches, newest-first (sw v695)
 
 - Fetching historic observations was a slow sequential crawl. The date range is now
