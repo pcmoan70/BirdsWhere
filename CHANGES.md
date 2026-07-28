@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-28 — Detections list stays fully searchable after selecting (sw v703)
+
+- The detections list now shows every plotted species even when a map selection is
+  active — so after you Select a species, you can keep searching for and selecting
+  more, one at a time (the selection isolates the map; the list still lists all). This
+  makes the search-and-select stacking actually work.
+
 ## 2026-07-28 — Detections list: "Select N on map" to build a species selection (sw v702)
 
 - Typing in the detections-list search now shows a <b>＋ Select N on map</b> button

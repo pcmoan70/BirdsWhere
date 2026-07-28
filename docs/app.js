@@ -5923,7 +5923,10 @@
   // exact set of dots on the map, so the list always matches what's visible.
   // `near` (optional) = { lat, lon, meters }: restrict to rows within that radius
   // of a clicked dot. Without it, every visible detection on the map is returned.
-  function collectVisibleDetections(near) {
+  // `ignoreSel` = list species even when a legend selection is active (used by the
+  // detections list, so you can search for and add MORE species one at a time — the
+  // selection isolates the map, but the list must still show everything to pick from).
+  function collectVisibleDetections(near, ignoreSel) {
     ensureDedup();
     var out = [];
     var center = near ? L.latLng(near.lat, near.lon) : null;
@@ -5931,7 +5934,7 @@
     // with plain float compares before the per-row L.latLng alloc + haversine.
     var dLat = 0, dLon = 0;
     if (center) { dLat = near.meters / 111320; var cs = Math.cos(near.lat * Math.PI / 180); dLon = near.meters / (111320 * (Math.abs(cs) > 1e-6 ? Math.abs(cs) : 1e-6)); }
-    var selActive = detSelectionActive();
+    var selActive = ignoreSel ? false : detSelectionActive();
     Object.keys(detPlot).forEach(function (k) {
       if (!detIsVisible(k, selActive)) return;
       var e = detPlot[k], nm = detName(e);
@@ -6452,7 +6455,7 @@
     // Filter bar (time / species-mode / observer) at the top of the popup.
     var fw = document.getElementById("detlist-filters-wrap");
     if (fw) { fw.innerHTML = detFilterBarHtml(); wireDetFilters(fw); }
-    var rows = collectVisibleDetections(detListNear);
+    var rows = collectVisibleDetections(detListNear, true);   // ignore selection → all species stay searchable/selectable
     var totalRows = rows.length;   // pre-filter count → drives whether the search box is worth showing
     // Title = the place name the data SOURCE supplies for this spot: an eBird hotspot
     // / BirdWeather station name where present, else the first record's own place
