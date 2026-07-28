@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-28 — Historic: date-range picker collapses after a fetch (sw v699)
+
+- After a historic fetch the From–To date picker tucks itself away into a compact
+  "📅 from – to" bar (tap it to change the range again), freeing space for the map.
+  Re-expands when you re-enter Historic mode.
+
 ## 2026-07-28 — Cross-source de-dup keys on species + observer + date + place + count (sw v698)
 
 - The de-duplication that drops a GBIF record when the same sighting arrives natively

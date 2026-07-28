@@ -1769,6 +1769,11 @@ button.dd-name:hover { text-decoration: underline; }
 .hist-stage { text-align: center; font-size: 12px; color: var(--muted, #6b7280); margin: 4px 4px 0; }
 /* Historic-observations controls: date range (From – To) + Fetch, then a
    collapsed "Months" dropdown so it takes no space until opened. */
+/* Collapsed date-range bar shown after a fetch (tap to change the range again). */
+.hist-restore { display: inline-flex; align-items: center; gap: 6px; width: 100%; box-sizing: border-box;
+  border: 1px solid var(--border, #ccc); background: var(--surface, #fff); color: var(--ink); cursor: pointer;
+  font: inherit; font-size: 0.85rem; font-weight: 600; padding: 7px 10px; border-radius: 7px; text-align: left; }
+.hist-restore:hover { border-color: var(--brand, #2e8b74); }
 /* nowrap keeps Fetch to the RIGHT of From – To (the dates shrink within their
    min-width rather than wrapping the button onto a new line). */
 .hist-range-row { display: flex; align-items: center; flex-wrap: nowrap; gap: 4px; }

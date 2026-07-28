@@ -3760,14 +3760,18 @@
             '</select>' +
           '</div>' +
           '<div class="ctrl-group" id="histrange-wrap" style="display:none">' +
-            '<label data-i18n="hist.range">Date range</label>' +
-            '<div class="hist-range-row"><input type="date" id="hist-from" /><span>–</span><input type="date" id="hist-to" />' +
-              '<button type="button" id="hist-fetch" class="demo-btn" data-i18n="hist.fetch" disabled>Fetch</button></div>' +
-            '<details class="hist-months-dd">' +
-              '<summary class="hist-months-sum"><span data-i18n="hist.months">Months</span><span class="hist-months-sel" id="hist-months-sel"></span></summary>' +
-              '<div class="hist-months" id="hist-months"></div>' +
-              '<p class="cu-hint" data-i18n="hist.monthsHint">Leave blank for all months.</p>' +
-            '</details>' +
+            // Collapsed summary shown after a fetch (tap to change the range again).
+            '<button type="button" id="hist-restore" class="hist-restore" style="display:none"></button>' +
+            '<div id="hist-range-body">' +
+              '<label data-i18n="hist.range">Date range</label>' +
+              '<div class="hist-range-row"><input type="date" id="hist-from" /><span>–</span><input type="date" id="hist-to" />' +
+                '<button type="button" id="hist-fetch" class="demo-btn" data-i18n="hist.fetch" disabled>Fetch</button></div>' +
+              '<details class="hist-months-dd">' +
+                '<summary class="hist-months-sum"><span data-i18n="hist.months">Months</span><span class="hist-months-sel" id="hist-months-sel"></span></summary>' +
+                '<div class="hist-months" id="hist-months"></div>' +
+                '<p class="cu-hint" data-i18n="hist.monthsHint">Leave blank for all months.</p>' +
+              '</details>' +
+            '</div>' +
           '</div>' +
           '<div class="ctrl-group" id="species-search-wrap">' +
             '<label for="species-search" data-i18n="ctrl.species">Species</label>' +
@@ -9123,7 +9127,7 @@
     // its From/To range and hide the model-week selector.
     var isHist = currentMode === "historic";
     var hr = document.getElementById("histrange-wrap"); if (hr) hr.style.display = isHist ? "" : "none";
-    if (isHist) buildHistMonths();   // (re)build the localized month toggles when entering Historic
+    if (isHist) { buildHistMonths(); expandHistRange(); }   // entering Historic → build months + show the picker
     // Week applies in every mode (incl. Migration timeline, where it sets the
     // "current week" used by the Probability / Arrivals / Scatter tabs) — but not
     // in the date-range Historic mode.
@@ -9550,6 +9554,8 @@
       if (histPoint) renderHistoricObs(histPoint.lat, histPoint.lon);
       else setStatus(t("status.hintHistoric"));
     });
+    var histRestore = document.getElementById("hist-restore");
+    if (histRestore) histRestore.addEventListener("click", expandHistRange);
 
     var gbifOpen = document.getElementById("gbif-ds-open");
     if (gbifOpen) {
@@ -13598,6 +13604,20 @@
   // "species at location") — only the n(d) counts and the "Map" plot come from a
   // GBIF fetch over the chosen date range. This wrapper validates the dates and
   // arms the per-search abort, then delegates.
+  // The date-range picker collapses to a compact "📅 from – to" bar after a fetch
+  // (the range is set; the space is better used for the map). Tapping it re-expands.
+  function collapseHistRange(from, to) {
+    var wrap = document.getElementById("histrange-wrap"), body = document.getElementById("hist-range-body"), r = document.getElementById("hist-restore");
+    if (!wrap || !body || !r) return;
+    r.textContent = "📅 " + fmtDate(from) + " – " + fmtDate(to);
+    r.title = t("hist.range");
+    body.style.display = "none"; r.style.display = "";
+  }
+  function expandHistRange() {
+    var body = document.getElementById("hist-range-body"), r = document.getElementById("hist-restore");
+    if (body) body.style.display = "";
+    if (r) r.style.display = "none";
+  }
   async function renderHistoricObs(lat, lon) {
     var from = (document.getElementById("hist-from").value || "").trim();
     var to = (document.getElementById("hist-to").value || "").trim();
@@ -13607,6 +13627,7 @@
     histAbort = (typeof AbortController !== "undefined") ? new AbortController() : null;
     histSightingsCache = {};   // a fresh Fetch → don't reuse a prior (possibly aborted) historic fetch
     setStatus(t("hist.searching"));
+    collapseHistRange(from, to);   // fetch started → tuck the date picker away
     await renderSpeciesList(lat, lon, { from: from, to: to, range: from + "," + to, months: histMonths.slice() });
   }
   async function renderSpeciesList(lat, lon, hist) {
