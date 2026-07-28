@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-07-28 — National databases: per-continent "… & Worldwide" category (sw v714)
+
+- The single "Europe & Worldwide" submenu that showed everywhere is split into a worldwide
+  set (eBird, Observation.org, iNaturalist, GBIF, Avibase, BirdLife DataZone, xeno-canto)
+  shown for every country, plus continent-specific groups: Europe (EuroBirdPortal, EBBA2,
+  BirdLife Europe & Central Asia, Birdingplaces.eu, Trektellen) and the Americas (American
+  Ornithological Society, Partners in Flight, Neotropical Birds). The point popup / Country
+  menu now show the submenu for the clicked country's continent — "🌍 Europe & Worldwide",
+  "Americas & Worldwide" or "Oceania & Worldwide" — so Europe-only sites no longer appear in
+  the Americas or Oceania. In Settings the categories are listed after the countries.
+
 ## 2026-07-28 — Update banner shows the incoming version number (sw v713)
 
 - The "New version available" banner now reads the waiting service worker's VERSION over a

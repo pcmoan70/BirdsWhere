@@ -1595,21 +1595,29 @@
     { cc: "FM", label: "eBird", url: "https://ebird.org/region/FM" },
     { cc: "KI", label: "eBird", url: "https://ebird.org/region/KI" },
     { cc: "MH", label: "eBird", url: "https://ebird.org/region/MH" },
+    // Worldwide (WLD) — global sites, shown for every country alongside its continent.
+    { cc: "WLD", label: "eBird", url: "https://ebird.org/" },
+    { cc: "WLD", label: "Observation.org", url: "https://observation.org/" },
+    { cc: "WLD", label: "iNaturalist", url: "https://www.inaturalist.org/" },
+    { cc: "WLD", label: "GBIF", url: "https://www.gbif.org/" },
+    { cc: "WLD", label: "Avibase", url: "https://avibase.bsc-eoc.org/" },
+    { cc: "WLD", label: "BirdLife DataZone", url: "https://datazone.birdlife.org/" },
+    { cc: "WLD", label: "xeno-canto", url: "https://xeno-canto.org/" },
+    // Europe (EU) — continent-specific, shown only for European countries.
     { cc: "EU", label: "EuroBirdPortal", url: "https://www.eurobirdportal.org/" },
-    { cc: "EU", label: "eBird", url: "https://ebird.org/" },
-    { cc: "EU", label: "Observation.org", url: "https://observation.org/" },
+    { cc: "EU", label: "European Breeding Bird Atlas 2", url: "https://ebba2.info/" },
+    { cc: "EU", label: "BirdLife Europe and Central Asia", url: "https://www.birdlife.org/europe-and-central-asia/" },
     { cc: "EU", label: "Birdingplaces.eu", url: "https://www.birdingplaces.eu/" },
     { cc: "EU", label: "Trektellen", url: "https://www.trektellen.org/" },
-    { cc: "EU", label: "Avibase", url: "https://avibase.bsc-eoc.org/" },
-    { cc: "EU", label: "European Breeding Bird Atlas 2", url: "https://ebba2.info/" },
-    { cc: "EU", label: "BirdLife DataZone", url: "https://datazone.birdlife.org/" },
-    { cc: "EU", label: "BirdLife Europe and Central Asia", url: "https://www.birdlife.org/europe-and-central-asia/" },
-    { cc: "EU", label: "xeno-canto", url: "https://xeno-canto.org/" }
+    // Americas (AME) — shown for North & Central American countries.
+    { cc: "AME", label: "American Ornithological Society", url: "https://americanornithology.org/" },
+    { cc: "AME", label: "Partners in Flight", url: "https://partnersinflight.org/" },
+    { cc: "AME", label: "Neotropical Birds (Birds of the World)", url: "https://birdsoftheworld.org/bow/home" }
   ];
   // Country display names for the Settings list headers (offline; falls back to
-  // the raw code). "EU" heads the Europe & Worldwide category.
+  // the raw code). WLD/EU/AME/OCE head the continental categories.
   var COUNTRY_NAMES = {
-    EU: "Europe & Worldwide",
+    WLD: "Worldwide", EU: "Europe", AME: "Americas", OCE: "Oceania",
     AL: "Albania", AD: "Andorra", AM: "Armenia", AT: "Austria", AZ: "Azerbaijan", BY: "Belarus",
     BE: "Belgium", BA: "Bosnia and Herzegovina", BG: "Bulgaria", HR: "Croatia", CY: "Cyprus",
     CZ: "Czechia", DK: "Denmark", EE: "Estonia", FI: "Finland", FR: "France", GE: "Georgia",
@@ -1629,6 +1637,30 @@
     KI: "Kiribati", MH: "Marshall Islands"
   };
   function countryDisplayName(cc) { return COUNTRY_NAMES[String(cc || "").toUpperCase()] || cc; }
+  // Category pseudo-codes (not real countries) — sorted to the end of the Settings
+  // list and used to gate which "… & Worldwide" submenu a point popup shows.
+  var LINK_CATEGORIES = { WLD: 1, EU: 1, AME: 1, OCE: 1 };
+  var CATEGORY_ORDER = { EU: 0, AME: 1, OCE: 2, WLD: 3 };   // display order among categories
+  // Which continent category a country belongs to. Europe includes the Caucasus /
+  // Kazakhstan / Turkey as the source list did; the Americas cover North + Central.
+  var CONTINENT_OF = {};
+  ("AL AD AM AT AZ BY BE BA BG HR CY CZ DK EE FI FR GE DE GR HU IS IE IT KZ XK LV LI LT LU MT MD MC ME NL MK NO PL PT RO RU SM RS SK SI ES SE CH TR UA GB VA").split(" ").forEach(function (c) { CONTINENT_OF[c] = "EU"; });
+  ("CA US MX GL BM BZ CR SV GT HN NI PA").split(" ").forEach(function (c) { CONTINENT_OF[c] = "AME"; });
+  ("AU NZ PG FJ SB VU NC PF WS TO GU PW FM KI MH").split(" ").forEach(function (c) { CONTINENT_OF[c] = "OCE"; });
+  function continentFor(cc) { return CONTINENT_OF[String(cc || "").toUpperCase()] || ""; }
+  function categoryLabel(cont) {
+    return cont === "EU" ? t("natdb.euworld") : cont === "AME" ? t("natdb.amworld")
+         : cont === "OCE" ? t("natdb.ocworld") : t("natdb.wworld");
+  }
+  // Links for a country's continent + the worldwide set, de-duplicated by URL and
+  // minus blocked entries. Shown under one "<Continent> & Worldwide" submenu.
+  function continentServices(cc) {
+    var out = [], seen = {}, cont = continentFor(cc);
+    function push(list) { list.forEach(function (s) { if (!seen[s.url]) { seen[s.url] = 1; out.push(s); } }); }
+    if (cont) push(natServicesFor(cont));
+    push(natServicesFor("WLD"));
+    return out;
+  }
   function urlHostLabel(u) {
     try { return new URL(u).hostname.replace(/^www\./, ""); } catch (e) { return String(u || "").slice(0, 40); }
   }
@@ -1698,8 +1730,10 @@
       if (!byCc[e.cc]) { byCc[e.cc] = []; order.push(e.cc); }
       byCc[e.cc].push(e);
     });
-    order.sort(function (a, b) {   // countries A–Z by name; Europe & Worldwide last
-      if (a === "EU") return 1; if (b === "EU") return -1;
+    order.sort(function (a, b) {   // countries A–Z by name; the continental categories last
+      var ca = a in LINK_CATEGORIES, cb = b in LINK_CATEGORIES;
+      if (ca && cb) return CATEGORY_ORDER[a] - CATEGORY_ORDER[b];
+      if (ca) return 1; if (cb) return -1;
       return countryDisplayName(a).localeCompare(countryDisplayName(b));
     });
     list.innerHTML = order.map(function (cc) {
@@ -1933,7 +1967,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
-    { date: "2026-07-28", text: "National & regional bird sites for the map popups now all live in one place — Settings → National databases — with a curated set per country across Europe, North & Central America and Oceania, plus a “🌍 Europe & Worldwide” category. Click a point (or the Country button) to see its country’s portals; the international sites sit under the Europe & Worldwide submenu. Each entry has two icons: × deletes it, and 👁/🚫 blocks it — keeping it in the list but hiding it from the popups. Add your own with + Add." },
+    { date: "2026-07-28", text: "National & regional bird sites for the map popups now all live in one place — Settings → National databases — with a curated set per country across Europe, North & Central America and Oceania. Click a point (or the Country button) to see that country’s portals, plus a continental submenu — “🌍 Europe & Worldwide”, “Americas & Worldwide” or “Oceania & Worldwide” depending on where you clicked — holding the region’s and the global sites (eBird, Observation.org, iNaturalist, GBIF, Avibase, xeno-canto…). Each entry has two icons: × deletes it, and 👁/🚫 blocks it (keeps it listed but hides it from the popups). Add your own with + Add." },
     { date: "2026-07-28", text: "The detection filters — time window / date range, the ★ starred · ◉ rare · 🟡 year-list · 🔴 life-list species filter, and the 👤 observer filter — have moved into the detections-list popup (☰). The bottom-left legend is now just the species list plus a black × (clear all filters) and the red × (clear the map). Filters stay set until you clear them with the black × or switch them off in the list — clearing the map keeps them." },
     { date: "2026-07-28", text: "In the detections list (☰), the species search box now also filters the dots on the map: the list narrows as you type, and a moment (~1.5 s) after you stop, the map and legend narrow to the matching species too. Clearing the box — or closing the list — restores every dot." },
     { date: "2026-07-27", text: "The bottom-left legend now lists only the species with an observation visible on the map right now, updating as you pan and zoom — so it reflects the area you're looking at. Turn it off in Settings (“Filter the legend to the map view”) to list every plotted species regardless of the viewport." },
@@ -12042,11 +12076,11 @@
     natServicesFor(cc).forEach(function (s) {
       box.appendChild(makePopupBtn(s.label + " ↗", "demo-btn-light", function () { close(); openExternal(s.url); }));
     });
-    var eu = natServicesFor("EU");
-    if (eu.length) {
-      var h = document.createElement("div"); h.className = "cm-subhead"; h.textContent = "🌍 " + t("natdb.euworld");
+    var wide = continentServices(cc);
+    if (wide.length) {
+      var h = document.createElement("div"); h.className = "cm-subhead"; h.textContent = "🌍 " + categoryLabel(continentFor(cc));
       box.appendChild(h);
-      eu.forEach(function (s) {
+      wide.forEach(function (s) {
         box.appendChild(makePopupBtn(s.label + " ↗", "demo-btn-light", function () { close(); openExternal(s.url); }));
       });
     }
@@ -12081,20 +12115,20 @@
       natServicesFor(cc).forEach(function (s) {
         wrap.appendChild(makePopupBtn(s.label + " ↗", "demo-btn-light", function () { mk.closePopup(); openExternal(s.url); }));
       });
-      var eu = natServicesFor("EU");
-      if (eu.length) {
-        var euSub = document.createElement("div");
-        euSub.className = "choose-sub"; euSub.style.display = "none";
-        eu.forEach(function (s) {
-          euSub.appendChild(makePopupBtn(s.label + " ↗", "demo-btn-light", function () { mk.closePopup(); openExternal(s.url); }));
+      var wide = continentServices(cc), wlabel = categoryLabel(continentFor(cc));
+      if (wide.length) {
+        var wSub = document.createElement("div");
+        wSub.className = "choose-sub"; wSub.style.display = "none";
+        wide.forEach(function (s) {
+          wSub.appendChild(makePopupBtn(s.label + " ↗", "demo-btn-light", function () { mk.closePopup(); openExternal(s.url); }));
         });
-        var euBtn = makePopupBtn("🌍 " + t("natdb.euworld") + " ▸", "demo-btn-light", function () {
-          var show = euSub.style.display === "none";
-          euSub.style.display = show ? "" : "none";
-          this.textContent = "🌍 " + t("natdb.euworld") + (show ? " ▾" : " ▸");
+        var wBtn = makePopupBtn("🌍 " + wlabel + " ▸", "demo-btn-light", function () {
+          var show = wSub.style.display === "none";
+          wSub.style.display = show ? "" : "none";
+          this.textContent = "🌍 " + wlabel + (show ? " ▾" : " ▸");
           var p = mk.getPopup(); if (p && p.isOpen()) p.update();
         });
-        wrap.appendChild(euBtn); wrap.appendChild(euSub);
+        wrap.appendChild(wBtn); wrap.appendChild(wSub);
       }
       var pop = mk.getPopup(); if (pop && pop.isOpen()) pop.update();   // re-layout for the added buttons
     }).catch(function () { /* leave the popup as-is */ });
