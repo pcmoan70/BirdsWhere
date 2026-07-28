@@ -1719,6 +1719,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { date: "2026-07-28", text: "In the detections list (☰), the species search box now also filters the dots on the map: the list narrows as you type, and a moment (~1.5 s) after you stop, the map and legend narrow to the matching species too. Clearing the box — or closing the list — restores every dot." },
     { date: "2026-07-27", text: "The bottom-left legend now lists only the species with an observation visible on the map right now, updating as you pan and zoom — so it reflects the area you're looking at. Turn it off in Settings (“Filter the legend to the map view”) to list every plotted species regardless of the viewport." },
     { date: "2026-07-27", text: "Observation.org: the map-point popup has an “Observation.org ↗” link that opens that country’s Observation.org portal (e.g. no.observation.org) with its recent observations. Falls back to the international site when the point isn’t in a country." },
     { date: "2026-07-27", text: "Share a location: the map popup’s 🔗 Share link now makes a plain, readable URL that carries just the coordinates (…?lat=&lon=&zoom=). Open it to land on that exact spot with the pin down — short enough to paste anywhere, and you can see where it points before following it." },
@@ -5966,6 +5967,32 @@
   var detListNear = null;              // location scope: a clicked dot's { lat, lon, meters } (null = whole map)
   var detListQuery = "";               // fuzzy species-name filter for the list
   var detListLastRows = [];            // the exact rows currently shown (for "Save as list")
+  // The detections-list search also filters the MAP dots to the matching species,
+  // applied a beat AFTER the last keystroke (the list itself filters instantly).
+  // Reset when the list is opened/closed so a hidden filter never lingers.
+  var detMapSearch = "";
+  var detMapSearchTimer = null;
+  function detPassesSearch(k) {
+    if (!detMapSearch) return true;
+    var e = detPlot[k]; if (!e) return true;
+    return detFuzzy(detMapSearch, detSearchText({ key: e.key || k, name: detName(e) }));
+  }
+  // Apply (or clear) the map-dot search filter and redraw. Debounced by the caller.
+  function applyDetMapSearch(q) {
+    q = String(q || "").trim();
+    if (q === detMapSearch) return;
+    detMapSearch = q;
+    rebuildDetLayers();
+    updateDetLegend();
+  }
+  function scheduleDetMapSearch(q) {
+    clearTimeout(detMapSearchTimer);
+    detMapSearchTimer = setTimeout(function () { applyDetMapSearch(q); }, 1500);
+  }
+  function clearDetMapSearch() {
+    clearTimeout(detMapSearchTimer);
+    if (detMapSearch) { detMapSearch = ""; rebuildDetLayers(); updateDetLegend(); }
+  }
   // Forgiving filter for the Detections list (named detFuzzy to avoid the other
   // fuzzyMatch() defined later, which would shadow this one): every
   // whitespace-separated piece of the query must appear somewhere in the text
@@ -6004,9 +6031,12 @@
     detListNear = near || null;
     detListOpenSp = {};
     detListQuery = "";
+    clearDetMapSearch();   // start with the map unfiltered
     var si = document.getElementById("detlist-search"); if (si) si.value = "";
     m.style.display = "flex";
-    navOpen("detlist", function () { closeDetRowMenu(); m.style.display = "none"; });
+    // Closing the list drops the map-dot search filter too, so it never lingers
+    // invisibly once the search box is gone.
+    navOpen("detlist", function () { closeDetRowMenu(); m.style.display = "none"; clearDetMapSearch(); });
     renderDetListModal();
   }
   // One record row: colour swatch, species name, meta (date? + source). Clicking
@@ -6704,8 +6734,11 @@
       if (e.group) { map.removeLayer(e.group); e.group = null; }
       // Legend hover OVERRIDES the selection: while a species is focused, draw ONLY
       // it (regardless of what's selected); otherwise apply the normal selection.
+      // The detections-list search (debounced) narrows the drawn dots to matching
+      // species — kept out of detIsVisible so the LIST (which shares it) stays
+      // governed by its own instant query.
       if (detFocusKey) { if (k !== detFocusKey) return; }
-      else if (!detIsVisible(k, selActive)) return;
+      else if (!detIsVisible(k, selActive) || !detPassesSearch(k)) return;
       e.group = renderDetGroup(detName(e), e.rows, e.color, isInteresting(e.key), detIsRare(k), allowed, e.key);
       e.group.addTo(map);
     });
@@ -7440,7 +7473,7 @@
     legendViewBounds = (legendInView() && map) ? map.getBounds() : null;
     var visCount = Object.create(null);
     allKeys.forEach(function (k) { visCount[k] = detVisibleCount(k); });
-    var keys = allKeys.filter(function (k) { return detPassesStar(k) && detPassesGroup(k) && detPassesRare(k) && detPassesYear(k) && detPassesLife(k) && visCount[k] > 0; });
+    var keys = allKeys.filter(function (k) { return detPassesStar(k) && detPassesGroup(k) && detPassesRare(k) && detPassesYear(k) && detPassesLife(k) && detPassesSearch(k) && visCount[k] > 0; });
     // Legend hover/hold-isolate: if the focused row is no longer in the legend (a
     // filter/refresh removed it), clear the focus so the map doesn't stay stuck
     // isolated to one species after its row's mouseleave never fired.
@@ -9452,7 +9485,10 @@
     var sortToggle = document.getElementById("detlist-sort");
     if (sortToggle) sortToggle.addEventListener("click", function () { detListSort = detListSort === "species" ? "time" : "species"; renderDetListModal(); });
     var detlistSearch = document.getElementById("detlist-search");
-    if (detlistSearch) detlistSearch.addEventListener("input", function () { detListQuery = this.value; renderDetListModal(); });
+    if (detlistSearch) detlistSearch.addEventListener("input", function () {
+      detListQuery = this.value; renderDetListModal();   // the list filters instantly…
+      scheduleDetMapSearch(this.value);                  // …the map dots follow ~1.5 s after the last keystroke
+    });
     var detlistSave = document.getElementById("detlist-save");
     if (detlistSave) detlistSave.addEventListener("click", function (e) {
       e.stopPropagation();

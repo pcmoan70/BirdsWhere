@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-28 — Detections-list search also filters the map dots (debounced) (sw v694)
+
+- Typing in the detections list's (☰) species search now filters the plotted dots on
+  the map too: the list narrows instantly, and ~1.5 s after the last keystroke the
+  map and legend narrow to the matching species. Applied only to the map draw +
+  legend (not the shared list predicate), so the list stays instant. Clearing the box
+  or closing the list restores every dot.
+
 ## 2026-07-28 — Fix: remaining regular gaps in the Richness/Range hex overlay (sw v693)
 
 - The heatmap enumerates the H3 cells in view by sampling screen points on a fixed
