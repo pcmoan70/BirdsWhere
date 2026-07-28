@@ -653,12 +653,17 @@ input:focus-visible {
 #custom-urls-wrap { margin-top: 4px; border-top: 1px solid var(--border, #d8e1dd); padding-top: 8px; }
 #custom-urls-wrap summary { cursor: pointer; font-size: 0.9rem; font-weight: 700; color: var(--ink, inherit); padding: 2px 0; }
 #custom-urls-wrap .cu-hint { font-size: 0.72rem; color: var(--ink-muted, #5b6f69); margin: 6px 0; }
-#custom-urls-list .cu-row { display: flex; gap: 4px; margin-bottom: 4px; align-items: center; width: 100%; }
-/* ID-scoped so these beat .settings-panel input[type="text"]{width:100%}. */
-#custom-urls-list .cu-row input { box-sizing: border-box; height: 30px; font: inherit; font-size: 0.82rem; padding: 0 6px; border: 1px solid var(--border, #ccc); border-radius: 4px; background: var(--md-default-bg-color, #fff); color: var(--ink, inherit); }
-#custom-urls-list .cu-row .cu-cc { width: 3em; flex: 0 0 auto; text-transform: uppercase; text-align: center; }
-#custom-urls-list .cu-row .cu-url { flex: 1 1 auto; min-width: 0; width: auto; }
-#custom-urls-list .cu-row .cu-del { flex: 0 0 auto; width: 26px; height: 30px; padding: 0; border: 1px solid var(--border, #ccc); border-radius: 4px; background: var(--surface, #fff); color: var(--danger, #c0392b); cursor: pointer; line-height: 1; }
+#custom-urls-list .cu-group { margin-bottom: 8px; }
+#custom-urls-list .cu-country { font-weight: 700; font-size: 0.82rem; color: var(--ink, inherit); margin: 6px 0 2px; padding-bottom: 2px; border-bottom: 1px solid var(--border, #e0e0e0); }
+#custom-urls-list .cu-row { display: flex; gap: 6px; margin-bottom: 3px; align-items: center; width: 100%; }
+#custom-urls-list .cu-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--brand-deep); text-decoration: none; font-size: 0.82rem; }
+#custom-urls-list .cu-name:hover { text-decoration: underline; }
+#custom-urls-list .cu-host { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-muted, #5b6f69); font-size: 0.7rem; }
+#custom-urls-list .cu-block, #custom-urls-list .cu-del { flex: 0 0 auto; width: 26px; height: 26px; padding: 0; border: 1px solid var(--border, #ccc); border-radius: 4px; background: var(--surface, #fff); cursor: pointer; line-height: 1; font-size: 0.8rem; }
+#custom-urls-list .cu-del { color: var(--danger, #c0392b); }
+#custom-urls-list .cu-row.cu-blocked .cu-name { color: var(--ink-muted, #8a9a95); text-decoration: line-through; }
+#custom-urls-list .cu-row.cu-blocked { opacity: 0.6; }
+.country-menu .cm-subhead { font-weight: 700; font-size: 0.82rem; color: var(--ink-muted, #5b6f69); margin: 8px 0 2px; }
 .cu-actions { display: flex; gap: 6px; margin-top: 4px; }
 .cu-actions .demo-btn { font-size: 0.78rem; padding: 3px 8px; }
 #custom-urls-list { max-height: 40vh; overflow-y: auto; overflow-x: hidden; }

@@ -1378,138 +1378,288 @@
     var code = ebpCode(sci);
     return code ? "https://eurobirdportal.org/embedded/ebp/en/" + code + "/traces/2000" : EBP_URL;
   }
-  // National observation sites by ISO-3166 alpha-2 country code — homepage
-  // URLs plus the i18n key for each label. We append the scientific name as a
-  // hash so the species is visible in the address bar for copy/paste into the
-  // site's own search; the sites don't reliably take a search query string.
-  // GB and IE share BirdTrack. Single source of truth for both the map-click
-  // chooser and the saved-point popup.
-  var NAT_LIST_URLS = {
-    NO: "https://www.artsobservasjoner.no/",
-    SE: "https://www.artportalen.se/",
-    DK: "https://dofbasen.dk/",
-    FI: "https://www.tiira.fi/",
-    DE: "https://www.ornitho.de/",
-    AT: "https://www.ornitho.at/",
-    CH: "https://www.ornitho.ch/",
-    FR: "https://www.faune-france.org/",
-    IT: "https://www.ornitho.it/",
-    LU: "https://www.ornitho.lu/",
-    PL: "https://www.ornitho.pl/",
-    HR: "https://www.fauna.hr/",
-    NL: "https://waarneming.nl/",
-    BE: "https://waarnemingen.be/",
-    GB: "https://www.bto.org/our-science/projects/birdtrack",
-    IE: "https://www.bto.org/our-science/projects/birdtrack",
-    LV: "https://dabasdati.lv/",
-    CZ: "https://avif.birds.cz/",
-    SK: "https://aves.vtaky.sk/",
-    ES: "https://ebird.org/spain/home",
-    PT: "https://ebird.org/portugal/home",
-    EE: "https://elurikkus.ee/",
-    LT: "https://birdlife.lt/",
-    SI: "https://www.ptice.si/",
-    HU: "https://map.mme.hu/",
-    GR: "https://www.ornithologiki.gr/",
-    TR: "https://ebird.org/region/TR",
-    MT: "https://birdlifemalta.org/",
-    RO: "https://openbirdmaps.ro/",
-    BG: "https://smartbirds.org/",
-    UA: "https://ukrbin.com/",
-    RS: "https://pticesrbije.rs/",
-    ME: "https://czip.me/",
-    MK: "https://mes.org.mk/",
-    AL: "https://aos-alb.org/",
-    BA: "https://naseptice.ba/",
-    CA: "https://ebird.org/canada/home",
-    US: "https://ebird.org/home",
-    AU: "https://ebird.org/australia/home",
-    NZ: "https://ebird.org/newzealand/home"
+  // National & regional bird sites, the single source of truth for the map
+  // popups' country links. A flat [{cc, url, label}] list (cc = ISO-3166 alpha-2;
+  // the pseudo-code "EU" is the Europe & Worldwide category). Curated from
+  // tasks/…/important_bird_websites_europe.md. Users add/delete/block entries in
+  // Settings → National databases (persisted as countryLinks / natRemoved /
+  // natBlocked), so this is only the shipped default set.
+  var BUILTIN_COUNTRY_LINKS = [
+    { cc: "AL", label: "Observation.org", url: "https://observation.org/countries/al/" },
+    { cc: "AL", label: "Albanian Ornithological Society", url: "https://aos-alb.org/" },
+    { cc: "AL", label: "PPNEA", url: "https://ppnea.org/" },
+    { cc: "AD", label: "ornitho.ad", url: "https://www.ornitho.ad/" },
+    { cc: "AD", label: "Andorra Research + Innovation: Ornitho", url: "https://www.ari.ad/en/projects/ornitho" },
+    { cc: "AM", label: "Armenian Bird Census", url: "https://armenian-bird-census.weebly.com/" },
+    { cc: "AM", label: "FPWC", url: "https://www.fpwc.org/" },
+    { cc: "AM", label: "eBird", url: "https://ebird.org/region/AM" },
+    { cc: "AT", label: "ornitho.at", url: "https://www.ornitho.at/" },
+    { cc: "AT", label: "BirdLife Österreich", url: "https://www.birdlife.at/" },
+    { cc: "AZ", label: "Azerbaijan Ornithological Society", url: "https://www.aos.az/" },
+    { cc: "AZ", label: "Birding Azerbaijan", url: "https://birdingazerbaijan.org/" },
+    { cc: "AZ", label: "eBird", url: "https://ebird.org/region/AZ" },
+    { cc: "BY", label: "eBird", url: "https://ebird.org/region/BY" },
+    { cc: "BY", label: "Observation.org", url: "https://observation.org/countries/by/" },
+    { cc: "BY", label: "Belarusian Bird Ringing Centre", url: "https://www.ringing.center/" },
+    { cc: "BE", label: "Waarnemingen.be", url: "https://waarnemingen.be/" },
+    { cc: "BE", label: "Observations.be", url: "https://observations.be/" },
+    { cc: "BE", label: "Natuurpunt", url: "https://www.natuurpunt.be/" },
+    { cc: "BE", label: "Natagora", url: "https://www.natagora.be/" },
+    { cc: "BA", label: "Observation.org", url: "https://observation.org/countries/ba/" },
+    { cc: "BA", label: "Naše Ptice", url: "https://www.ptice.ba/" },
+    { cc: "BA", label: "eBird", url: "https://ebird.org/region/BA" },
+    { cc: "BG", label: "SmartBirds", url: "https://smartbirds.org/" },
+    { cc: "BG", label: "BSPB", url: "https://bspb.org/en/" },
+    { cc: "BG", label: "Atlas of Breeding Birds in Bulgaria", url: "https://atlas.bspb.org/en/" },
+    { cc: "HR", label: "Fauna.hr", url: "https://fauna.hr/" },
+    { cc: "HR", label: "BIOM", url: "https://www.biom.hr/en/" },
+    { cc: "HR", label: "Bioportal Croatia", url: "https://bioportal.hr/en/" },
+    { cc: "CY", label: "BirdLife Cyprus", url: "https://birdlifecyprus.org/" },
+    { cc: "CY", label: "Record Your Sightings", url: "https://birdlifecyprus.org/guide-to-birdwatching/record-your-sightings/" },
+    { cc: "CY", label: "eBird", url: "https://ebird.org/region/CY" },
+    { cc: "CZ", label: "AVIF / Birds.cz", url: "https://avif.birds.cz/" },
+    { cc: "CZ", label: "Czech Society for Ornithology", url: "https://www.birdlife.cz/" },
+    { cc: "DK", label: "DOFbasen", url: "https://dofbasen.dk/" },
+    { cc: "DK", label: "DOF BirdLife", url: "https://www.dof.dk/" },
+    { cc: "DK", label: "Netfugl", url: "https://www.netfugl.dk/" },
+    { cc: "EE", label: "eElurikkus", url: "https://elurikkus.ee/en" },
+    { cc: "EE", label: "Estonian Ornithological Society", url: "https://www.eoy.ee/" },
+    { cc: "EE", label: "PlutoF", url: "https://plutof.ut.ee/" },
+    { cc: "FI", label: "Tiira", url: "https://www.tiira.fi/" },
+    { cc: "FI", label: "BirdLife Finland", url: "https://www.birdlife.fi/" },
+    { cc: "FI", label: "Laji.fi", url: "https://laji.fi/en" },
+    { cc: "FR", label: "Faune-France", url: "https://www.faune-france.org/" },
+    { cc: "FR", label: "LPO", url: "https://www.lpo.fr/" },
+    { cc: "FR", label: "Oiseaux.net", url: "https://www.oiseaux.net/" },
+    { cc: "GE", label: "SABUKO", url: "https://www.sabuko.org/en/" },
+    { cc: "GE", label: "Batumi Raptor Count", url: "https://www.batumiraptorcount.org/" },
+    { cc: "GE", label: "eBird", url: "https://ebird.org/region/GE" },
+    { cc: "DE", label: "ornitho.de", url: "https://www.ornitho.de/" },
+    { cc: "DE", label: "DDA", url: "https://www.dda-web.de/" },
+    { cc: "DE", label: "NABU", url: "https://www.nabu.de/" },
+    { cc: "GR", label: "eBird", url: "https://ebird.org/region/GR" },
+    { cc: "GR", label: "Hellenic Ornithological Society", url: "https://ornithologiki.gr/en/" },
+    { cc: "HU", label: "MAP", url: "https://map.mme.hu/" },
+    { cc: "HU", label: "MME / BirdLife Hungary", url: "https://mme.hu/en" },
+    { cc: "IS", label: "Fuglar.is", url: "https://fuglar.is/" },
+    { cc: "IS", label: "Fuglavernd", url: "https://fuglavernd.is/" },
+    { cc: "IS", label: "Natural Science Institute of Iceland: Birds", url: "https://www.ni.is/is/dyr/fuglar" },
+    { cc: "IE", label: "BirdTrack", url: "https://www.bto.org/get-involved/volunteer/projects/birdtrack" },
+    { cc: "IE", label: "BirdWatch Ireland", url: "https://birdwatchireland.ie/" },
+    { cc: "IE", label: "IrishBirding", url: "https://www.irishbirding.com/" },
+    { cc: "IE", label: "Irish Rare Birds Committee", url: "https://irbc.ie/" },
+    { cc: "IT", label: "ornitho.it", url: "https://www.ornitho.it/" },
+    { cc: "IT", label: "LIPU", url: "https://www.lipu.it/" },
+    { cc: "IT", label: "CISO-COI", url: "https://ciso-coi.it/" },
+    { cc: "KZ", label: "Birds of Kazakhstan", url: "https://kz.birding.day/" },
+    { cc: "KZ", label: "ACBK", url: "https://www.acbk.kz/" },
+    { cc: "KZ", label: "eBird", url: "https://ebird.org/region/KZ" },
+    { cc: "XK", label: "Observation.org", url: "https://observation.org/countries/xk/" },
+    { cc: "XK", label: "Common Bird Monitoring in Kosovo", url: "https://observation.org/projects/101/" },
+    { cc: "XK", label: "eBird", url: "https://ebird.org/region/XK" },
+    { cc: "LV", label: "Dabas Dati", url: "https://dabasdati.ornitho.lv/" },
+    { cc: "LV", label: "Latvian Ornithological Society", url: "https://www.lob.lv/" },
+    { cc: "LV", label: "Latvian Fund for Nature", url: "https://ldf.lv/en/" },
+    { cc: "LI", label: "ornitho.ch", url: "https://www.ornitho.ch/" },
+    { cc: "LI", label: "BZG", url: "https://bzg.li/" },
+    { cc: "LI", label: "Avibase Liechtenstein", url: "https://avibase.bsc-eoc.org/checklist.jsp?region=LI" },
+    { cc: "LT", label: "Ornitologija Observation Portal", url: "https://ornitologija.lt/orni/web/" },
+    { cc: "LT", label: "Lithuanian Ornithological Society", url: "https://birdlife.lt/en/" },
+    { cc: "LU", label: "ornitho.lu", url: "https://www.ornitho.lu/" },
+    { cc: "LU", label: "natur&ëmwelt", url: "https://www.naturemweltasbl.lu/" },
+    { cc: "MT", label: "BirdLife Malta", url: "https://birdlifemalta.org/" },
+    { cc: "MT", label: "Malta Bird Reports", url: "https://birdlifemalta.org/information/publications/malta-bird-report/" },
+    { cc: "MT", label: "Birds of Malta", url: "https://www.birdsofmalta.com/" },
+    { cc: "MD", label: "Ornitodata Moldova", url: "https://ornitodata.sppn.md/ornitodata" },
+    { cc: "MD", label: "Society for the Protection of Birds and Nature", url: "https://sppn.md/" },
+    { cc: "MD", label: "eBird", url: "https://ebird.org/region/MD" },
+    { cc: "MC", label: "eBird", url: "https://ebird.org/region/MC" },
+    { cc: "MC", label: "Faune-PACA", url: "https://www.faune-paca.org/" },
+    { cc: "MC", label: "LPO PACA", url: "https://paca.lpo.fr/" },
+    { cc: "ME", label: "Observation.org", url: "https://observation.org/countries/me/" },
+    { cc: "ME", label: "CZIP", url: "https://czip.me/en/" },
+    { cc: "ME", label: "eBird", url: "https://ebird.org/region/ME" },
+    { cc: "NL", label: "Waarneming.nl", url: "https://waarneming.nl/" },
+    { cc: "NL", label: "Sovon", url: "https://www.sovon.nl/" },
+    { cc: "NL", label: "Vogelbescherming Nederland", url: "https://www.vogelbescherming.nl/" },
+    { cc: "NL", label: "Dutch Birding", url: "https://www.dutchbirding.nl/" },
+    { cc: "MK", label: "Ptici.mk", url: "https://ptici.mk/" },
+    { cc: "MK", label: "Macedonian Ecological Society", url: "https://mes.org.mk/" },
+    { cc: "MK", label: "eBird", url: "https://ebird.org/region/MK" },
+    { cc: "NO", label: "Artsobservasjoner", url: "https://artsobservasjoner.no/" },
+    { cc: "NO", label: "BirdLife Norge", url: "https://www.birdlife.no/" },
+    { cc: "NO", label: "BirdLifeData", url: "https://birdlifedata.no/" },
+    { cc: "NO", label: "Fågelkartan", url: "https://fagelkartan.se/no/" },
+    { cc: "PL", label: "ornitho.pl", url: "https://www.ornitho.pl/" },
+    { cc: "PL", label: "eBird", url: "https://ebird.org/region/PL" },
+    { cc: "PL", label: "OTOP", url: "https://otop.org.pl/" },
+    { cc: "PT", label: "eBird", url: "https://ebird.org/region/PT" },
+    { cc: "PT", label: "SPEA", url: "https://spea.pt/en/" },
+    { cc: "PT", label: "Aves de Portugal", url: "https://www.avesdeportugal.info/" },
+    { cc: "RO", label: "Ornitodata", url: "https://ornitodata2.sor.ro/web" },
+    { cc: "RO", label: "OpenBirdMaps", url: "https://openbirdmaps.ro/" },
+    { cc: "RO", label: "Romanian Ornithological Society", url: "https://www.sor.ro/" },
+    { cc: "RU", label: "RU-Birds", url: "https://ru-birds.ru/" },
+    { cc: "RU", label: "BirdsRussia", url: "https://birdsrussia.org/" },
+    { cc: "RU", label: "eBird", url: "https://ebird.org/region/RU" },
+    { cc: "SM", label: "ornitho.it", url: "https://www.ornitho.it/" },
+    { cc: "SM", label: "Centro Naturalistico Sammarinese", url: "https://www.istruzioneecultura.sm/pub1/IstruzioneSM/istruzione/Centro-Naturalistico-Sammarinese.html" },
+    { cc: "SM", label: "Avibase San Marino", url: "https://avibase.bsc-eoc.org/checklist.jsp?region=SM" },
+    { cc: "RS", label: "Observation.org", url: "https://observation.org/countries/rs/" },
+    { cc: "RS", label: "Bird Protection and Study Society of Serbia", url: "https://pticesrbije.rs/" },
+    { cc: "RS", label: "eBird", url: "https://ebird.org/region/RS" },
+    { cc: "SK", label: "Aves-Symfony", url: "https://aves.vtaky.sk/" },
+    { cc: "SK", label: "SOS / BirdLife Slovakia", url: "https://www.vtaky.sk/" },
+    { cc: "SK", label: "Atlas of Slovak Birds", url: "https://atlas.vtaky.sk/atlasvtakov.php?id=oatlase" },
+    { cc: "SI", label: "Atlas ptic", url: "https://atlas.ptice.si/atlas/" },
+    { cc: "SI", label: "DOPPS", url: "https://ptice.si/" },
+    { cc: "SI", label: "eBird", url: "https://ebird.org/region/SI" },
+    { cc: "ES", label: "eBird", url: "https://ebird.org/region/ES" },
+    { cc: "ES", label: "SEO/BirdLife", url: "https://seo.org/" },
+    { cc: "ES", label: "Reservoir Birds", url: "https://reservoirbirds.com/" },
+    { cc: "ES", label: "ornitho.cat", url: "https://www.ornitho.cat/" },
+    { cc: "SE", label: "Artportalen", url: "https://www.artportalen.se/" },
+    { cc: "SE", label: "BirdLife Sverige", url: "https://birdlife.se/" },
+    { cc: "SE", label: "Checklistan", url: "https://checklista.artportalen.se/" },
+    { cc: "SE", label: "Fågelkartan", url: "https://fagelkartan.se/" },
+    { cc: "CH", label: "ornitho.ch", url: "https://www.ornitho.ch/" },
+    { cc: "CH", label: "Swiss Ornithological Institute", url: "https://www.vogelwarte.ch/en/" },
+    { cc: "CH", label: "BirdLife Switzerland", url: "https://www.birdlife.ch/" },
+    { cc: "TR", label: "TRAKUS", url: "https://www.trakus.org/en" },
+    { cc: "TR", label: "Doğa Derneği", url: "https://www.dogadernegi.org/" },
+    { cc: "TR", label: "eBird", url: "https://ebird.org/region/TR" },
+    { cc: "UA", label: "UkrBIN", url: "https://www.ukrbin.com/" },
+    { cc: "UA", label: "Ukrainian Society for the Protection of Birds", url: "https://www.birdlife.org.ua/en/" },
+    { cc: "UA", label: "eBird", url: "https://ebird.org/region/UA" },
+    { cc: "GB", label: "BirdTrack", url: "https://www.bto.org/get-involved/volunteer/projects/birdtrack" },
+    { cc: "GB", label: "British Trust for Ornithology", url: "https://www.bto.org/" },
+    { cc: "GB", label: "RSPB", url: "https://www.rspb.org.uk/" },
+    { cc: "GB", label: "BirdGuides", url: "https://www.birdguides.com/" },
+    { cc: "VA", label: "eBird", url: "https://ebird.org/region/VA" },
+    { cc: "VA", label: "ornitho.it", url: "https://www.ornitho.it/" },
+    { cc: "VA", label: "Avibase Vatican City", url: "https://avibase.bsc-eoc.org/checklist.jsp?region=VA" },
+    { cc: "EU", label: "EuroBirdPortal", url: "https://www.eurobirdportal.org/" },
+    { cc: "EU", label: "eBird", url: "https://ebird.org/" },
+    { cc: "EU", label: "Observation.org", url: "https://observation.org/" },
+    { cc: "EU", label: "Birdingplaces.eu", url: "https://www.birdingplaces.eu/" },
+    { cc: "EU", label: "Trektellen", url: "https://www.trektellen.org/" },
+    { cc: "EU", label: "Avibase", url: "https://avibase.bsc-eoc.org/" },
+    { cc: "EU", label: "European Breeding Bird Atlas 2", url: "https://ebba2.info/" },
+    { cc: "EU", label: "BirdLife DataZone", url: "https://datazone.birdlife.org/" },
+    { cc: "EU", label: "BirdLife Europe and Central Asia", url: "https://www.birdlife.org/europe-and-central-asia/" },
+    { cc: "EU", label: "xeno-canto", url: "https://xeno-canto.org/" }
+  ];
+  // Country display names for the Settings list headers (offline; falls back to
+  // the raw code). "EU" heads the Europe & Worldwide category.
+  var COUNTRY_NAMES = {
+    EU: "Europe & Worldwide",
+    AL: "Albania", AD: "Andorra", AM: "Armenia", AT: "Austria", AZ: "Azerbaijan", BY: "Belarus",
+    BE: "Belgium", BA: "Bosnia and Herzegovina", BG: "Bulgaria", HR: "Croatia", CY: "Cyprus",
+    CZ: "Czechia", DK: "Denmark", EE: "Estonia", FI: "Finland", FR: "France", GE: "Georgia",
+    DE: "Germany", GR: "Greece", HU: "Hungary", IS: "Iceland", IE: "Ireland", IT: "Italy",
+    KZ: "Kazakhstan", XK: "Kosovo", LV: "Latvia", LI: "Liechtenstein", LT: "Lithuania",
+    LU: "Luxembourg", MT: "Malta", MD: "Moldova", MC: "Monaco", ME: "Montenegro",
+    NL: "Netherlands", MK: "North Macedonia", NO: "Norway", PL: "Poland", PT: "Portugal",
+    RO: "Romania", RU: "Russia", SM: "San Marino", RS: "Serbia", SK: "Slovakia", SI: "Slovenia",
+    ES: "Spain", SE: "Sweden", CH: "Switzerland", TR: "Turkey", UA: "Ukraine",
+    GB: "United Kingdom", VA: "Vatican City"
   };
-  var NAT_LIST_KEY = {
-    NO: "menu.artsobs", SE: "menu.artportalen", DK: "menu.dofbasen", FI: "menu.tiira",
-    DE: "menu.ornithode", AT: "menu.ornithoat", CH: "menu.ornithoch", FR: "menu.faunefr",
-    IT: "menu.ornithoit", LU: "menu.ornitholu", PL: "menu.ornithopl", HR: "menu.faunahr",
-    NL: "menu.waarnemingnl", BE: "menu.waarnemingenbe", GB: "menu.birdtrack", IE: "menu.birdtrack",
-    LV: "menu.dabasdati", CZ: "menu.avif", SK: "menu.avessk",
-    ES: "menu.ebirdes", PT: "menu.portugalaves", EE: "menu.elurikkus", LT: "menu.birdlifelt",
-    SI: "menu.dopps", HU: "menu.mme", GR: "menu.hos", TR: "menu.ebirdtr", MT: "menu.birdlifemt",
-    RO: "menu.openbirdmaps", BG: "menu.smartbirds", UA: "menu.ukrbin", RS: "menu.pticesrbije",
-    ME: "menu.czip", MK: "menu.mesmk", AL: "menu.aosal", BA: "menu.naseptice",
-    CA: "menu.ebirdca", US: "menu.ebirdus", AU: "menu.ebirdau", NZ: "menu.ebirdnz"
-  };
-  function natListUrl(cc, sci) {
-    var base = NAT_LIST_URLS[cc]; if (!base) return null;
-    var name = String(sci || "").trim();
-    return name ? base + "#species=" + encodeURIComponent(name) : base;
-  }
+  function countryDisplayName(cc) { return COUNTRY_NAMES[String(cc || "").toUpperCase()] || cc; }
   function urlHostLabel(u) {
     try { return new URL(u).hostname.replace(/^www\./, ""); } catch (e) { return String(u || "").slice(0, 40); }
   }
-  // The shipped defaults as a flat [{cc, url}] list, in declaration order.
+  // The shipped defaults as a flat [{cc, url, label, builtin}] list.
   function builtinCountryLinks() {
-    return Object.keys(NAT_LIST_URLS).map(function (cc) { return { cc: cc, url: NAT_LIST_URLS[cc] }; });
+    return BUILTIN_COUNTRY_LINKS.map(function (e) { return { cc: e.cc, url: e.url, label: e.label, builtin: true }; });
   }
-  // The effective national-database list. The built-in defaults are ALWAYS
-  // present (so the leading national portals can never be accidentally lost by
-  // editing) and the user's saved / legacy custom entries are layered on top,
-  // de-duplicated by cc+url.
+  function linkKey(cc, url) { return String(cc || "").toUpperCase() + "|" + url; }
+  function getNatRemoved() { var m = {}; (window.GeoState.get("natRemoved", []) || []).forEach(function (k) { m[k] = 1; }); return m; }
+  function getNatBlocked() { var m = {}; (window.GeoState.get("natBlocked", []) || []).forEach(function (k) { m[k] = 1; }); return m; }
+  function getUserCountryLinks() { return (window.GeoState.get("countryLinks", []) || []).filter(function (e) { return e && e.cc && e.url; }); }
+  // The effective national-database list: built-in defaults + the user's saved
+  // additions, minus deletion tombstones (natRemoved), de-duplicated by cc+url.
+  // Each entry carries { cc, url, label, builtin, blocked }; a blocked entry
+  // stays in the list but is hidden from the map popups (see natServicesFor).
   function effectiveCountryLinks() {
-    var out = builtinCountryLinks(), seen = {};
-    out.forEach(function (e) { seen[e.cc.toUpperCase() + "|" + e.url] = 1; });
-    var extra = (window.GeoState.get("countryLinks", []) || [])
-      .concat(window.GeoState.get("customCountryUrls", []) || [])
-      .filter(function (c) { return c && c.cc && c.url; });
-    extra.forEach(function (c) {
-      var key = String(c.cc).toUpperCase() + "|" + c.url;
-      if (!seen[key]) { seen[key] = 1; out.push({ cc: String(c.cc).toUpperCase(), url: c.url }); }
-    });
+    var removed = getNatRemoved(), blocked = getNatBlocked(), out = [], seen = {};
+    function add(e, builtin) {
+      var key = linkKey(e.cc, e.url);
+      if (seen[key] || removed[key] || !e.cc || !e.url) return;
+      seen[key] = 1;
+      out.push({ cc: String(e.cc).toUpperCase(), url: e.url, label: e.label || "", builtin: builtin, blocked: !!blocked[key] });
+    }
+    builtinCountryLinks().forEach(function (e) { add(e, true); });
+    getUserCountryLinks().concat(window.GeoState.get("customCountryUrls", []) || [])
+      .filter(function (c) { return c && c.cc && c.url; }).forEach(function (e) { add(e, false); });
     return out;
   }
   function saveCountryLinks(arr) { window.GeoState.save({ countryLinks: arr }); }
-  // A built-in entry keeps its localised brand label; user/custom entries show
-  // the URL hostname.
-  function labelForLink(e) {
-    if (NAT_LIST_URLS[e.cc] === e.url && NAT_LIST_KEY[e.cc]) return t(NAT_LIST_KEY[e.cc]);
-    return urlHostLabel(e.url);
+  // A built-in/user entry keeps its curated label; otherwise show the hostname.
+  function labelForLink(e) { return (e && e.label) ? e.label : urlHostLabel(e.url); }
+  // Add a user link; clears any deletion tombstone so re-adding un-hides it.
+  function addCountryLink(cc, url, label) {
+    cc = String(cc || "").trim().toUpperCase(); url = linkUrl(url);   // http(s)-only
+    if (!/^[A-Z]{2}$/.test(cc) || !url) return false;
+    var key = linkKey(cc, url);
+    window.GeoState.save({ natRemoved: (window.GeoState.get("natRemoved", []) || []).filter(function (x) { return x !== key; }) });
+    var links = getUserCountryLinks();
+    if (!links.some(function (e) { return linkKey(e.cc, e.url) === key; })) {
+      links.push({ cc: cc, url: url, label: String(label || "").trim() || urlHostLabel(url) });
+      saveCountryLinks(links);
+    }
+    return true;
   }
-  // Settings UI: one editable row per (cc, url) pair.
-  function cuRowHtml(cc, url) {
-    // Inline widths so the layout can't be overridden by the panel's generic
-    // input[type=text]{width:100%} rule (which previously stretched the CC box
-    // and hid the URL field). Inline style beats any stylesheet selector.
-    return '<div class="cu-row" style="display:flex;gap:4px;align-items:center;width:100%">' +
-      '<input type="text" class="cu-cc" maxlength="3" value="' + escapeHtml(cc || "") + '" placeholder="' + escapeHtml(t("ph.cc")) + '" style="flex:0 0 auto;width:3.2em;text-align:center;text-transform:uppercase">' +
-      '<input type="url" class="cu-url" value="' + escapeHtml(url || "") + '" placeholder="' + escapeHtml(t("ph.url")) + '" style="flex:1 1 auto;min-width:0;width:auto">' +
-      '<button type="button" class="cu-del" aria-label="remove" style="flex:0 0 auto;width:26px">×</button>' +
-    '</div>';
+  // Delete: tombstone the key (so built-ins stay gone across re-render / re-merge)
+  // and drop any user copy + blocked flag.
+  function removeCountryLink(cc, url) {
+    var key = linkKey(cc, url);
+    var rem = window.GeoState.get("natRemoved", []) || []; if (rem.indexOf(key) < 0) rem.push(key);
+    window.GeoState.save({ natRemoved: rem });
+    saveCountryLinks(getUserCountryLinks().filter(function (e) { return linkKey(e.cc, e.url) !== key; }));
+    window.GeoState.save({ natBlocked: (window.GeoState.get("natBlocked", []) || []).filter(function (x) { return x !== key; }) });
   }
+  // Block / unblock: keep the entry in the list but hide it from the popups.
+  function toggleCountryLinkBlock(cc, url) {
+    var key = linkKey(cc, url), b = window.GeoState.get("natBlocked", []) || [], i = b.indexOf(key);
+    if (i >= 0) b.splice(i, 1); else b.push(key);
+    window.GeoState.save({ natBlocked: b });
+  }
+  // Settings UI: entries grouped by country, each a static row with a block
+  // toggle + delete. Blocked rows are dimmed. Built-in and user rows behave the
+  // same (both blockable + deletable); "+ Add" appends user entries.
   function renderCustomUrls() {
     var list = document.getElementById("custom-urls-list"); if (!list) return;
-    list.innerHTML = effectiveCountryLinks().map(function (c) { return cuRowHtml(c.cc, c.url); }).join("");
-  }
-  // Read the editable rows back out (DOM is the source of truth while editing);
-  // only complete cc+url pairs are persisted.
-  function collectCustomUrls() {
-    var arr = [];
-    document.querySelectorAll("#custom-urls-list .cu-row").forEach(function (row) {
-      var cc = (row.querySelector(".cu-cc").value || "").trim().toUpperCase();
-      var url = linkUrl(row.querySelector(".cu-url").value);   // http(s)-only; drops javascript:/data:
-      // Persist only true additions — built-in defaults are always reapplied by
-      // effectiveCountryLinks(), so storing them again would just risk staleness.
-      if (cc && url && NAT_LIST_URLS[cc] !== url) arr.push({ cc: cc, url: url });
+    var byCc = {}, order = [];
+    effectiveCountryLinks().forEach(function (e) {
+      if (!byCc[e.cc]) { byCc[e.cc] = []; order.push(e.cc); }
+      byCc[e.cc].push(e);
     });
-    return arr;
+    order.sort(function (a, b) {   // countries A–Z by name; Europe & Worldwide last
+      if (a === "EU") return 1; if (b === "EU") return -1;
+      return countryDisplayName(a).localeCompare(countryDisplayName(b));
+    });
+    list.innerHTML = order.map(function (cc) {
+      var rows = byCc[cc].map(function (e) {
+        var blk = e.blocked, bt = t(blk ? "natdb.unblock" : "natdb.block");
+        return '<div class="cu-row' + (blk ? " cu-blocked" : "") + '" data-cc="' + escapeHtml(e.cc) + '" data-url="' + escapeHtml(e.url) + '">' +
+          '<a class="cu-name" href="' + escapeHtml(safeHref(e.url)) + '" target="_blank" rel="noopener">' + escapeHtml(labelForLink(e)) + '</a>' +
+          '<span class="cu-host">' + escapeHtml(urlHostLabel(e.url)) + '</span>' +
+          '<button type="button" class="cu-block" title="' + escapeHtml(bt) + '" aria-label="' + escapeHtml(bt) + '">' + (blk ? "🚫" : "👁") + '</button>' +
+          '<button type="button" class="cu-del" title="' + escapeHtml(t("offline.delete")) + '" aria-label="' + escapeHtml(t("offline.delete")) + '">×</button>' +
+        '</div>';
+      }).join("");
+      return '<div class="cu-group"><div class="cu-country">' + escapeHtml(countryDisplayName(cc)) + '</div>' + rows + '</div>';
+    }).join("");
   }
-  // All observation/registration links to offer for a country, from the
-  // effective (possibly user-edited) list. Returns [{ label, url }]. When a
-  // country has no entry at all, fall back to its eBird region page
-  // (ebird.org/region/<CC>) — eBird has a page for essentially every country.
+  // All national/regional links to offer for a country, from the effective list
+  // minus blocked entries. Returns [{ label, url }]. When a country has no entry
+  // at all, fall back to its eBird region page (eBird covers ~every country).
   function natServicesFor(cc) {
+    cc = String(cc || "").toUpperCase();
     var out = effectiveCountryLinks()
-      .filter(function (e) { return String(e.cc).toUpperCase() === cc; })
+      .filter(function (e) { return e.cc === cc && !e.blocked; })
       .map(function (e) { return { label: labelForLink(e), url: e.url }; });
-    if (!out.length && /^[A-Z]{2}$/.test(cc || "")) {
+    if (!out.length && cc !== "EU" && /^[A-Z]{2}$/.test(cc)) {
       out.push({ label: "eBird (" + cc + ")", url: "https://ebird.org/region/" + cc });
     }
     return out;
@@ -1719,6 +1869,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { date: "2026-07-28", text: "National & regional bird sites for the map popups now all live in one place — Settings → National databases — with a curated set for every European country plus a “🌍 Europe & Worldwide” category. Click a point (or the Country button) to see its country’s portals; the international sites sit under the Europe & Worldwide submenu. Each entry has two icons: × deletes it, and 👁/🚫 blocks it — keeping it in the list but hiding it from the popups. Add your own with + Add." },
     { date: "2026-07-28", text: "The detection filters — time window / date range, the ★ starred · ◉ rare · 🟡 year-list · 🔴 life-list species filter, and the 👤 observer filter — have moved into the detections-list popup (☰). The bottom-left legend is now just the species list plus a black × (clear all filters) and the red × (clear the map). Filters stay set until you clear them with the black × or switch them off in the list — clearing the map keeps them." },
     { date: "2026-07-28", text: "In the detections list (☰), the species search box now also filters the dots on the map: the list narrows as you type, and a moment (~1.5 s) after you stop, the map and legend narrow to the matching species too. Clearing the box — or closing the list — restores every dot." },
     { date: "2026-07-27", text: "The bottom-left legend now lists only the species with an observation visible on the map right now, updating as you pan and zoom — so it reflects the area you're looking at. Turn it off in Settings (“Filter the legend to the map view”) to list every plotted species regardless of the viewport." },
@@ -1761,53 +1912,6 @@
     var z = map ? map.getZoom() : 12;
     return "https://www.birdingplaces.eu/en/find-a-birdingplace#" + z.toFixed(2) + "/" + lat.toFixed(4) + "/" + lon.toFixed(4);
   }
-  // Observation.org's own site, on the country's portal: it runs one instance per
-  // country at <iso2>.observation.org (e.g. no.observation.org, nl.observation.org),
-  // whose home shows that country's recent observations. Falls back to the
-  // international site when the point has no country (e.g. open sea). Area-level
-  // scoping isn't offered — observation.org's per-area browse needs region IDs from
-  // its API, which is closed to the public.
-  function observationOrgUrl(cc) {
-    cc = String(cc || "").toLowerCase();
-    return /^[a-z]{2}$/.test(cc) ? "https://" + cc + ".observation.org/" : "https://observation.org/";
-  }
-  // Fågelkartan (fagelkartan.se) — a Swedish/Norwegian bird map & guide, with a
-  // page per county: Sweden at /lan/<slug>/, Norway at /no/fylke/<slug>/. We stop
-  // at county level because the municipality pages (/kommun/, /no/kommune/) are
-  // ~650 slugs we'd have to guess at — a wrong guess is a 404, whereas the 36
-  // county slugs are a closed set we can verify against.
-  // The ?lat/&lng/&zoom query is the form fagelkartan.se's own links use; it is
-  // carried through so the site can centre on the point if it reads them
-  // (harmless if not — the county page is the destination either way).
-  var FK_LAN = ["blekinge", "dalarna", "gavleborg", "gotland", "halland", "jamtland", "jonkoping", "kalmar",
-    "kronoberg", "norrbotten", "orebro", "ostergotland", "skane", "sodermanland", "stockholm", "uppsala",
-    "varmland", "vasterbotten", "vasternorrland", "vastmanland", "vastra-gotaland"];
-  var FK_FYLKE = ["agder", "akershus", "buskerud", "finnmark", "innlandet", "more-og-romsdal", "nordland",
-    "oslo", "ostfold", "rogaland", "telemark", "troms", "trondelag", "vestfold", "vestland"];
-  // Nominatim's English county name → the site's slug. Verified against live
-  // reverse-geocodes for every Norwegian fylke and the awkward Swedish names
-  // (Örebro/Östergötland/Gävleborg/Jämtland/Jönköping/Värmland/Västra Götaland…):
-  // dropping the " County" suffix and folding the Nordic vowels is enough.
-  function fkSlug(name) {
-    return String(name || "").toLowerCase()
-      .replace(/\s+county$/, "")
-      .replace(/[åäæ]/g, "a").replace(/[öø]/g, "o").replace(/é/g, "e")
-      .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  }
-  function fagelkartanUrl(cc, county, lat, lon) {
-    var no = cc === "NO";
-    var base = "https://fagelkartan.se/" + (no ? "no/fylke/" : "lan/");
-    var slug = fkSlug(county);
-    if ((no ? FK_FYLKE : FK_LAN).indexOf(slug) < 0) return base;   // unmappable → the county index
-    var z = map ? Math.round(map.getZoom()) : 10;
-    return base + slug + "/?lat=" + lat.toFixed(4) + "&lng=" + lon.toFixed(4) + "&zoom=" + z;
-  }
-  function hasFagelkartan(cc) { return cc === "SE" || cc === "NO"; }
-  // oiseaux.net — the French-language bird encyclopedia. Shown for France and its
-  // overseas departments/territories (metropolitan + DOM-TOM).
-  var FR_TERRITORIES = ["FR", "GF", "GP", "MQ", "RE", "YT", "NC", "PF", "BL", "MF", "PM", "WF", "TF"];
-  function hasOiseaux(cc) { return FR_TERRITORIES.indexOf(String(cc || "").toUpperCase()) >= 0; }
-  function oiseauxUrl() { return lang === "en" ? "https://www.oiseaux.net/en" : "https://www.oiseaux.net/"; }
 
   // BirdLife DataZone factsheet for a country. Their canonical URL uses the
   // English country name lowercased and hyphen-separated (verified: monaco,
@@ -9407,21 +9511,29 @@
       applyShowSci();
     });
 
-    // National-database list: add / edit / remove rows; the whole list (built-in
-    // defaults seeded + user edits) is persisted as countryLinks once touched.
+    // National-database list: block / delete per row, plus add / reset. Each row
+    // carries its cc+url in data-*, so actions persist immediately (tombstone for
+    // delete, natBlocked for block) and never depend on editable input state.
     var cuList = document.getElementById("custom-urls-list");
-    cuList.addEventListener("input", function () { saveCountryLinks(collectCustomUrls()); });
     cuList.addEventListener("click", function (e) {
-      var del = e.target.closest && e.target.closest(".cu-del");
-      if (del) { del.closest(".cu-row").remove(); saveCountryLinks(collectCustomUrls()); }
+      var row = e.target.closest && e.target.closest(".cu-row"); if (!row) return;
+      var cc = row.getAttribute("data-cc"), url = row.getAttribute("data-url");
+      if (e.target.closest(".cu-del")) { removeCountryLink(cc, url); renderCustomUrls(); }
+      else if (e.target.closest(".cu-block")) { toggleCountryLinkBlock(cc, url); renderCustomUrls(); }
     });
     document.getElementById("custom-urls-add").addEventListener("click", function () {
-      cuList.insertAdjacentHTML("beforeend", cuRowHtml("", ""));
-      var rows = cuList.querySelectorAll(".cu-row");
-      rows[rows.length - 1].querySelector(".cu-cc").focus();
+      modalPrompt(t("natdb.addCc"), "").then(function (cc) {
+        cc = String(cc || "").trim().toUpperCase(); if (!/^[A-Z]{2}$/.test(cc)) return;
+        modalPrompt(t("natdb.addUrl"), "https://").then(function (url) {
+          url = linkUrl(url); if (!url || url === "https://") return;
+          modalPrompt(t("natdb.addName"), urlHostLabel(url)).then(function (label) {
+            addCountryLink(cc, url, label); renderCustomUrls();
+          });
+        });
+      });
     });
     document.getElementById("custom-urls-reset").addEventListener("click", function () {
-      window.GeoState.save({ countryLinks: null, customCountryUrls: null });   // revert to built-in defaults
+      window.GeoState.save({ countryLinks: null, customCountryUrls: null, natRemoved: null, natBlocked: null });   // back to built-in defaults
       renderCustomUrls();
     });
     // National-databases popup (opens like the GBIF datasets list).
@@ -11866,6 +11978,14 @@
     natServicesFor(cc).forEach(function (s) {
       box.appendChild(makePopupBtn(s.label + " ↗", "demo-btn-light", function () { close(); openExternal(s.url); }));
     });
+    var eu = natServicesFor("EU");
+    if (eu.length) {
+      var h = document.createElement("div"); h.className = "cm-subhead"; h.textContent = "🌍 " + t("natdb.euworld");
+      box.appendChild(h);
+      eu.forEach(function (s) {
+        box.appendChild(makePopupBtn(s.label + " ↗", "demo-btn-light", function () { close(); openExternal(s.url); }));
+      });
+    }
   }
   function bindPointPopup(mk, lat, lon) {
     var wrap = document.createElement("div");
@@ -11889,31 +12009,32 @@
     wrap.appendChild(makePopupBtn(t("link.birdingplaces") + " ↗", "demo-btn-light", function () {
       mk.closePopup(); openExternal(birdingPlacesUrl(lat, lon));
     }));
-    // Observation.org (the country's own portal) and, for SE/NO, Fågelkartan — both
-    // added once the country/county reverse-geocode resolves so the popup opens
-    // instantly. Nothing else is appended to `wrap` after this, so the late appends
-    // land under Birdingplaces.
+    // National & regional links for the clicked country + a collapsible "Europe &
+    // Worldwide" submenu — all sourced from the National-databases store (Settings
+    // → National databases), so the user can add / delete / block any of them.
+    // Added once the country reverse-geocode resolves so the popup opens instantly.
     AppGeo.countryCode(lat, lon).then(function (cc) {
-      var obsUrl = observationOrgUrl(cc);   // <cc>.observation.org, or the intl site
-      wrap.appendChild(makePopupBtn(t("link.observationOrg") + " ↗", "demo-btn-light", function () {
-        mk.closePopup(); openExternal(obsUrl);
-      }));
-      if (hasOiseaux(cc)) {   // France + overseas territories → the French bird encyclopedia
-        wrap.appendChild(makePopupBtn(t("link.oiseaux") + " ↗", "demo-btn-light", function () {
-          mk.closePopup(); openExternal(oiseauxUrl());
-        }));
-      }
-      var pop = mk.getPopup(); if (pop && pop.isOpen()) pop.update();   // re-layout for the added button
-      if (!hasFagelkartan(cc)) return;
-      return AppGeo.regionInfo(lat, lon).then(function (reg) {
-        wrap.appendChild(makePopupBtn(t("link.fagelkartan") + " ↗", "demo-btn-light", function () {
-          mk.closePopup(); openExternal(fagelkartanUrl(cc, reg.county, lat, lon));
-        }));
-        var pop2 = mk.getPopup(); if (pop2 && pop2.isOpen()) pop2.update();
+      natServicesFor(cc).forEach(function (s) {
+        wrap.appendChild(makePopupBtn(s.label + " ↗", "demo-btn-light", function () { mk.closePopup(); openExternal(s.url); }));
       });
+      var eu = natServicesFor("EU");
+      if (eu.length) {
+        var euSub = document.createElement("div");
+        euSub.className = "choose-sub"; euSub.style.display = "none";
+        eu.forEach(function (s) {
+          euSub.appendChild(makePopupBtn(s.label + " ↗", "demo-btn-light", function () { mk.closePopup(); openExternal(s.url); }));
+        });
+        var euBtn = makePopupBtn("🌍 " + t("natdb.euworld") + " ▸", "demo-btn-light", function () {
+          var show = euSub.style.display === "none";
+          euSub.style.display = show ? "" : "none";
+          this.textContent = "🌍 " + t("natdb.euworld") + (show ? " ▾" : " ▸");
+          var p = mk.getPopup(); if (p && p.isOpen()) p.update();
+        });
+        wrap.appendChild(euBtn); wrap.appendChild(euSub);
+      }
+      var pop = mk.getPopup(); if (pop && pop.isOpen()) pop.update();   // re-layout for the added buttons
     }).catch(function () { /* leave the popup as-is */ });
-    // Country resources (Blogs / BirdLife / national services) now live in the
-    // right-side "Country" button (openCountryMenu), not this per-point popup.
+    // Blogs / BirdLife also live in the right-side "Country" button (openCountryMenu).
     mk.bindPopup(wrap, { closeButton: true, autoClose: true, autoPan: true, className: "choose-popup", offset: [0, -8] });
     mk.openPopup();
   }

@@ -1,5 +1,22 @@
 # Changes
 
+## 2026-07-28 — National databases: one managed store for all country links + block (sw v710)
+
+- The map popups' national/regional bird-site links are now all sourced from the
+  **National databases** store (Settings → National databases). Shipped with a curated
+  set per European country (from the important-bird-websites list) plus a new **"EU"
+  Europe & Worldwide** category (EuroBirdPortal, eBird, Observation.org, Birdingplaces,
+  Trektellen, Avibase, EBBA2, BirdLife DataZone/Europe, xeno-canto).
+- The point popup and the Country menu render the clicked country's links from the store,
+  with the Europe & Worldwide sites under a "🌍 Europe & Worldwide" submenu. The previously
+  hardcoded Observation.org / Oiseaux.net / Fågelkartan buttons are folded into the store.
+- Each entry in Settings now has **two icons**: **×** deletes it (built-ins included, via a
+  tombstone so it stays gone), and **👁/🚫** blocks it — keeping it in the list but hiding it
+  from the popups. "+ Add" adds your own (country code + URL + name); "Reset" restores defaults.
+- Removed the now-unused per-country Observation.org deep-link and the Fågelkartan county
+  slug logic. Note: the universal `<cc>.observation.org` button is gone; Observation.org now
+  shows only where the curated list includes it, plus the international site under Europe & Worldwide.
+
 ## 2026-07-28 — Point popup: Oiseaux.net link for French territories (sw v709)
 
 - Clicking a point in France or a French overseas territory/department (FR + DOM-TOM:
