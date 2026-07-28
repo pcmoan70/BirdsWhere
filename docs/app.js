@@ -7570,27 +7570,43 @@
   // its observations — evaluated at each observation's own location + week (input
   // to the geomodel). Extras (non-model "x:" keys) get -1 so they sort lowest.
   // Runs one column inference per species; on completion the legend re-renders.
+  // The worker computes an n × 12 012-species tensor per inference, so a species
+  // with thousands of plotted points would build a huge one. Sample at most this
+  // many UNIQUE locations per species for its max-probability estimate (enough for
+  // the legend ordering + ◉ rare check); without this a big fetch (25 k+ dots) OOMs
+  // the worker and takes the map/legend down with it.
+  var DET_PROB_MAX_PTS = 100;
   function computeDetProbs(sig) {
     var jobs = [];
     Object.keys(detPlot).forEach(function (k) {
       var e = detPlot[k], lbl = labelsByKey[e.key || k];
       if (!lbl || lbl.index == null || !e.rows || !e.rows.length) { detProb[k] = -1; return; }
-      var seen = Object.create(null), pts = [];
-      e.rows.forEach(function (r) {
-        if (r.lat == null || r.lon == null || !isFinite(+r.lat) || !isFinite(+r.lon)) return;
+      var seen = Object.create(null), pts = [], rows = e.rows;
+      for (var ri = 0; ri < rows.length && pts.length < DET_PROB_MAX_PTS * 3; ri++) {
+        var r = rows[ri];
+        if (r.lat == null || r.lon == null || !isFinite(+r.lat) || !isFinite(+r.lon)) continue;
         var la = +(+r.lat).toFixed(2), lo = +(+r.lon).toFixed(2), wk = weekOfDate(r.date);
-        var pk = la + "," + lo + ":" + wk; if (seen[pk]) return; seen[pk] = 1;
+        var pk = la + "," + lo + ":" + wk; if (seen[pk]) continue; seen[pk] = 1;
         pts.push(la, lo, wk);
-      });
+      }
       if (!pts.length) { detProb[k] = -1; return; }
       jobs.push({ k: k, idx: lbl.index, inputs: new Float32Array(pts), n: pts.length / 3 });
     });
     if (!jobs.length) { detProbSig = sig; detProbBusy = false; return; }   // only extras → nothing to infer
-    Promise.all(jobs.map(function (j) {
+    // Run with BOUNDED concurrency (a few at a time) rather than firing one
+    // inference per species at once — hundreds of simultaneous jobs overwhelm the
+    // single worker's memory when many species are plotted.
+    var next = 0, CONC = Math.min(4, jobs.length);
+    function runNext() {
+      if (next >= jobs.length) return Promise.resolve();
+      var j = jobs[next++];
       return runInference(j.inputs, j.n, { task: "column", speciesIdx: j.idx })
-        .then(function (out) { var m = 0; for (var i = 0; i < out.length; i++) if (out[i] > m) m = out[i]; detProb[j.k] = m; })
-        .catch(function () { detProb[j.k] = -1; });
-    })).then(function () {
+        .then(function (out) { var m = 0; for (var i = 0; i < out.length; i++) if (out[i] > m) m = out[i]; detProb[j.k] = m; },
+              function () { detProb[j.k] = -1; })
+        .then(runNext);
+    }
+    var pool = []; for (var w = 0; w < CONC; w++) pool.push(runNext());
+    Promise.all(pool).then(function () {
       detProbSig = sig; detProbBusy = false;      // mark done only on success, so a failed pass retries
       // These probabilities now decide ◉ rare (detIsRare), which styles the DOTS
       // as well as the legend — so redraw both, not just the legend.

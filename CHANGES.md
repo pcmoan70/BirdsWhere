@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-07-28 — Fix: large fetches (25 k+ dots) crashed the map/legend (sw v706)
+
+- Fetching a very large number of detections could make the legend vanish and only a
+  single dot render. Cause: the habitat-probability pass (used for legend ordering and
+  the ◉ rare cue) ran one inference PER species with EVERY point, all at once — the
+  worker materialises a batch×12 012 tensor, so a species with thousands of points
+  built hundreds of MB and, fired for many species simultaneously, ran the worker (and
+  the tab) out of memory. It now samples ≤100 points per species and runs the passes a
+  few at a time, keeping memory bounded.
+
 ## 2026-07-28 — Legend ☰ button turns green when a filter is active (sw v705)
 
 - Since the filters now live in the detections-list popup, the legend's ☰ (open list)
