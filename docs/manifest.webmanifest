@@ -1,6 +1,6 @@
 {
-  "name": "Species & Checklists",
-  "short_name": "Species",
+  "name": "BirdsWhere",
+  "short_name": "BirdsWhere",
   "description": "In-browser bird & wildlife distribution and migration explorer, powered by the BirdNET Geomodel running client-side. Works offline once loaded.",
   "start_url": "./",
   "scope": "./",

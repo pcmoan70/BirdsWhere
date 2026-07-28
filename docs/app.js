@@ -4800,7 +4800,7 @@
     about.innerHTML = t("about.html") +   // raw HTML doc, localized
       '<div id="about-install">' + t("about.installHtml") + "</div>" +   // clear install-for-offline steps (iOS + Android)
       '<div id="about-footer">' +
-        '<div id="visit-counter"><img src="https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fpcmoan70.github.io%2Fmigration_calendar&label=page%20visits&labelColor=%230f1b24&countColor=%232f6f4f" alt="page visits" /></div>' +
+        '<div id="visit-counter"><img src="https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fpcmoan70.github.io%2FBirdsWhere&label=page%20visits&labelColor=%230f1b24&countColor=%232f6f4f" alt="page visits" /></div>' +
         (lastChangeText ? '<div id="last-change">' + escapeHtml(t("footer.lastchange", { t: lastChangeText })) + "</div>" : "") +
       "</div>";
     // Localize the embedded [data-i18n] bits (e.g. the feedback button), scoped

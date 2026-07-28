@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-28 — Renamed the app to "BirdsWhere" (sw v726)
+
+- The app is now **BirdsWhere**: the browser tab title, the PWA manifest (name/short_name), the
+  startup popup title and the in-app name (all 15 languages) all say BirdsWhere. The GitHub Pages
+  URL is moving to `https://pcmoan70.github.io/BirdsWhere/` (repo renamed). Internal identifiers
+  (IndexedDB store, backup/sync file format) keep the old key so existing saved data and Drive
+  backups still load.
+
 ## 2026-07-28 — Tall dialogs: scroll the body, keep the title bar + × pinned (sw v725)
 
 - Dialogs taller than the screen (the Help/About text, National databases, GBIF datasets,

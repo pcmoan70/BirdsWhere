@@ -1,6 +1,6 @@
-# Species & Checklists
+# BirdsWhere
 
-**Live app:** <https://pcmoan70.github.io/migration_calendar/>
+**Live app:** <https://pcmoan70.github.io/BirdsWhere/>
 
 An interactive, **100% in-browser** explorer of species distribution, migration and
 **live observations**, powered by the [BirdNET Geomodel](https://github.com/birdnet-team/geomodel)

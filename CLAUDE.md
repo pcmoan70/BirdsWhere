@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-An interactive, **100% in-browser** explorer of species distribution, migration, and live observations ("Species & Checklists"). The BirdNET Geomodel (12,012 species) runs client-side via ONNX Runtime Web — no server, no backend, no API of our own. On top of the model it overlays live observations pulled directly from third-party APIs (eBird / GBIF / iNaturalist / Artsobservasjoner / Artportalen / Laji.fi).
+An interactive, **100% in-browser** explorer of species distribution, migration, and live observations ("BirdsWhere"). The BirdNET Geomodel (12,012 species) runs client-side via ONNX Runtime Web — no server, no backend, no API of our own. On top of the model it overlays live observations pulled directly from third-party APIs (eBird / GBIF / iNaturalist / Artsobservasjoner / Artportalen / Laji.fi).
 
 ## Build / run / deploy
 
@@ -15,7 +15,7 @@ There is **no build step, no framework, no npm, no bundler**. Everything is hand
 cd docs && python -m http.server 8000   # → http://localhost:8000
 ```
 
-**Deploy = `git push` to `main`.** GitHub Pages serves the `docs/` folder of `main` directly, so any push to `main` publishes the live site at `https://pcmoan70.github.io/migration_calendar/`. There is no CI/build between commit and production — treat every push to `main` as a deploy.
+**Deploy = `git push` to `main`.** GitHub Pages serves the `docs/` folder of `main` directly, so any push to `main` publishes the live site at `https://pcmoan70.github.io/BirdsWhere/`. There is no CI/build between commit and production — treat every push to `main` as a deploy.
 
 ### Two things that MUST happen on a user-visible change
 
