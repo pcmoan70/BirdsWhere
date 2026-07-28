@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-07-28 — Rewrote the English Help/About to match the current app (sw v727)
+
+- Audited the whole app and corrected the English "About" text: added the **Historic** mode and
+  renamed the mode to **📍 Recent**; documented the **right-click / long-press map menu** (Add point,
+  Save location, Share link, Copy coordinates, Navigate here) and the **National databases** point-popup
+  + Settings feature (edit / block / delete); moved the recency/species/observer **filters into the
+  Detections list** (with date range, ★/◉/🟠/🟡, Select-on-map, 🔒 no-access source); fixed the legend
+  controls, the species menu, plotted-detections hover (spider is pins-only), Add-point/Save-location/
+  Navigate locations, Data-sources keys, Species-group, on-map ± detail buttons, and the More/Key
+  settings lists. Other languages still to follow.
+
 ## 2026-07-28 — Renamed the app to "BirdsWhere" (sw v726)
 
 - The app is now **BirdsWhere**: the browser tab title, the PWA manifest (name/short_name), the
