@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-07-29 — eBird via GBIF for historic; direct eBird stays the recent feed (sw v757)
+
+- Added the **eBird Observation Dataset (EOD)** `4fa7b334-…` as a GBIF dataset flagged
+  **`historicOnly`** — it is queried **only** in a Historic date-range fetch, never the recent feed.
+  `fetchGbifAll` gained a `historic` argument; it skips `historicOnly` datasets unless
+  `fetchGbifHistoric` calls it with `historic=true` (the historic `gbifCount` includes them). So
+  Historic mode now gets eBird's deep, key-free global archive, while the **recent** feed keeps using
+  the **direct eBird** source (fresher — GBIF's eBird copy lags months). EOD is global but, being
+  historic-only, adds no per-fetch overhead to recent lookups and doesn't duplicate direct eBird.
+- Note: direct eBird's recent window can't be extended to 90 days — eBird's own API hard-caps
+  `back` at **30 days** (`fetch.js` clamps to 30). Recent eBird = ≤30 d (direct); older = EOD.
+
 ## 2026-07-29 — Add GBIF bird datasets: naturgucker (DE) + Birds of Ireland (sw v756)
 
 Surveyed the largest openly-published bird occurrence datasets on GBIF per European country

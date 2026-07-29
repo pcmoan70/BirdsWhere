@@ -143,7 +143,7 @@ window.AppFetch = (function () {
   }
   // onDataset(done, total) (optional) reports how many of the per-dataset queries
   // have finished — surfaced in the app's "Loading observations…" line as GBIF[d/t].
-  async function fetchGbifAll(lat, lon, range, rkm, cc, signal, onProgress, extra, onDataset) {
+  async function fetchGbifAll(lat, lon, range, rkm, cc, signal, onProgress, extra, onDataset, historic) {
     var base = "https://api.gbif.org/v1/occurrence/search?hasCoordinate=true&limit=300&geometry=" +
       encodeURIComponent(gbifGeometry(lat, lon, rkm)) + "&eventDate=" + encodeURIComponent(range) + GBIF_FILTER + gbifTaxonParam() + (extra || "");   // `extra` e.g. "&month=5&month=6" (historic month filter)
     // Page progress (estimate): each query learns its page count from `count` on
@@ -196,6 +196,9 @@ window.AppFetch = (function () {
     gbifDatasets().forEach(function (d) {
       if (!d || !d.key) return;
       if (isGbifOff(d.key)) return;   // user-disabled in Settings
+      // Historic-only datasets (e.g. eBird EOD — GBIF's copy lags eBird's live API)
+      // are queried ONLY for a Historic date-range fetch, never the recent feed.
+      if (d.historicOnly && !historic) return;
       // The FinBIF GBIF dataset is a delayed republish of Laji.fi — skip it when
       // the direct Laji.fi source is active (fresher, better links).
       if (d.key === LAJI_GBIF_KEY && lajiDirectActive()) return;
@@ -273,7 +276,7 @@ window.AppFetch = (function () {
     var mid = gbifMidDate(from, to);
     var canSplit = from < to && mid > from && mid < to;
     if (count <= 95000 || !canSplit) {
-      var recs = await fetchGbifAll(lat, lon, from + "," + to, rkm, cc, signal, onProgress, extra);
+      var recs = await fetchGbifAll(lat, lon, from + "," + to, rkm, cc, signal, onProgress, extra, null, true);   // historic=true → include historic-only datasets (eBird EOD)
       // Completeness guard: if paging still came back well short of the known
       // count (a transient truncation the per-page retries couldn't overcome)
       // and the range can still be split, recover the remainder by bisecting.

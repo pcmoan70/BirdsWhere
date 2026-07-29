@@ -40,6 +40,12 @@ window.AppSources = (function () {
     // Birds of Ireland (National Biodiversity Data Centre) — Ireland's general bird
     // occurrence dataset (~293k, ongoing); Ireland has no other portal here. Gated to IE.
     { key: "81b551f9-3e4f-47b4-952e-56e870c1b363", name: "Birds of Ireland (IE)", url: "https://www.biodiversityireland.ie/", country: "IE" },
+    // eBird Observation Dataset (EOD) — by far the largest bird source on GBIF, global.
+    // HISTORIC-ONLY: it's queried only for a Historic date-range fetch, not the recent
+    // fetch — GBIF's copy lags eBird's live API by months, so the direct eBird source
+    // (a free key, last ~30 days) stays the fresh recent feed, while EOD gives deep
+    // key-free historic coverage everywhere. Not country-gated (global).
+    { key: "4fa7b334-ce0d-4e88-aaae-2e0c138d049e", name: "eBird (GBIF · historic)", url: "https://ebird.org/", historicOnly: true },
     { key: "6ff8b3b0-ef0f-4f79-a310-5a5615c6aa0b", name: "Birda", url: "https://birda.org/" }
   ];
   var GBIF_DS_COUNTRY = {}; DEFAULT_GBIF_DATASETS.forEach(function (d) { if (d.country) GBIF_DS_COUNTRY[d.key] = d.country; });
