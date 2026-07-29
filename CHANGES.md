@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-30 — Collapsed species rows always show total individuals (sw v761)
+
+- In the detections list's per-species view (any sort other than "By date"), the **collapsed species
+  row badge now always shows the summed individual count**, not just under "By count". The "By date"
+  view is unchanged (per-date/observer record tallies).
+
 ## 2026-07-29 — "By count" sorts by summed individuals (sw v760)
 
 - Detections list **"By count"** now orders species by the **sum of individual counts** across their

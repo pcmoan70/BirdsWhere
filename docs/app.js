@@ -6949,7 +6949,7 @@
           detSwatch(g.color || "#888", isInteresting(k), detIsRare(k), k) +
           '<span class="dl-sp">' + escapeHtml(detListName(k, g.name)) + "</span>" +
           '<span class="dl-meta">' + escapeHtml(fmtDate(last)) + "</span>" +
-          '<span class="dl-ct"' + (detListSort === "count" ? ' title="' + escapeHtml(t("detlist.sumIndiv")) + '"' : "") + ">" + (detListSort === "count" ? g.sum : g.items.length) + "</span>" +
+          '<span class="dl-ct" title="' + escapeHtml(t("detlist.sumIndiv")) + '">' + g.sum + "</span>" +   // collapsed species row → total individuals
           '<span class="dl-caret">' + (open ? "▾" : "▸") + "</span></button>";
         var sub = open ? '<div class="dl-sp-body">' + g.items.slice().sort(function (a, b) { return (b.date || "").localeCompare(a.date || ""); }).map(function (d) { return detRowHtml(d, true); }).join("") + "</div>" : "";
         return '<div class="dl-sp-group">' + head + sub + "</div>";
