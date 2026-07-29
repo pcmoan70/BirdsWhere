@@ -6833,7 +6833,12 @@
         obs.sort(function (a, b) { if (!a !== !b) return a ? -1 : 1; return a.localeCompare(b); });   // named observers first, blank last
         var dateLbl = escapeHtml(fmtDate(dt) || t("detlist.noDate"));
         return obs.map(function (o) {
-          var items = byObs[o].slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
+          // Within a date/observer group: rarest first (lowest habitat probability),
+          // common species at the bottom — matching the legend's order; name breaks ties.
+          var items = byObs[o].slice().sort(function (a, b) {
+            var pa = (a.key in detProb) ? detProb[a.key] : -1, pb = (b.key in detProb) ? detProb[b.key] : -1;
+            return (pa - pb) || a.name.localeCompare(b.name);
+          });
           // BirdWeather groups by station name (not an observer) → not clickable.
           var isBW = items[0] && items[0].src === "BirdWeather";
           var obsSpan = !o ? "" : (isBW
@@ -7379,6 +7384,29 @@
     return out;
   }
   function saveDetections() { window.GeoState.save({ mapDetections: capDetections(serializeDetPlot(), DET_CAP) }); }
+  // Like serializeDetPlot, but ONLY the observations currently VISIBLE on the map —
+  // i.e. passing the active recency / date-range, species (★/◉/🟠/🟡) and observer
+  // filters and any legend selection (collectVisibleDetections is the exact set of
+  // drawn dots). Used for sharing, so a share carries what you see, not everything
+  // ever plotted. List-injected rows are excluded (they travel with their collection).
+  function serializeVisibleDetPlot() {
+    var out = {};
+    collectVisibleDetections(null, false).forEach(function (d) {
+      if (d.listName) return;   // came from a shown saved list → shared via its points, not here
+      var e = out[d.key] || (out[d.key] = { key: d.key, name: d.name, color: d.color, cls: (detPlot[d.key] && detPlot[d.key].cls) || "", rows: [] });
+      var r = { lat: d.lat, lon: d.lon };
+      if (d.date) r.date = d.date;
+      if (d.url) r.url = d.url;
+      if (d.src) r.src = d.src;
+      if (d.origin) r.origin = d.origin;
+      if (d.count !== "" && d.count != null) r.count = d.count;
+      if (d.observer) r.observer = d.observer;
+      if (d.act) r.act = d.act;
+      if (d.place) r.place = d.place;
+      e.rows.push(r);
+    });
+    return out;
+  }
   // ---- Named detection sets ("trips") ---------------------------------------
   // A saved snapshot of the plotted dots/stars under a name, so a trip's/day's
   // sightings can be reloaded or deleted as a unit. Stored (and synced) as
@@ -11907,13 +11935,16 @@
       setStatus(t("share.fileSaved"));
     } catch (e) { uiDialog({ message: t("share.copyManual"), input: true, value: text, alert: true }); }
   }
+  // Hosts (GitHub Pages / their CDN) reject request URLs longer than ~8 KB with a
+  // 414, so a ?s= link past this can't be opened. Under it we hand back the plain
+  // pastable string; over it we say so and OFFER the .mcshare file instead.
+  var SHARE_URL_MAX = 8100;
   function doShare(obj, title) {
     function warn() { uiDialog({ message: t("share.failed"), alert: true }); }
     encodeShare(obj).then(function (enc) {
       // Data lives in a QUERY param, not the hash (share targets strip the #fragment).
       // base64url is query-safe, so no extra encoding is needed.
       var url = location.origin + location.pathname + "?s=" + enc;
-      if (url.length > 20000) { setStatus(t("share.tooBigFile")); shareAsFile(enc, title); return; }   // too big for a link → send as a file
       // Verify the link BEFORE handing it over: parse ?s= back out of the URL and
       // decode it — if the URL doesn't carry the data intact or it doesn't
       // reconstruct a valid payload, warn instead of sharing a broken link.
@@ -11921,9 +11952,14 @@
       if (got !== enc) { warn(); return; }
       decodeShare(enc).then(function (payload) {
         if (!payload || (!payload.type && !payload.t)) { warn(); return; }
-        // The native share sheet silently dropped the long URL on some devices, so
-        // copy the FULL link to the clipboard and show it in a copyable dialog —
-        // the reliable way to actually send it. Paste it into any message/app.
+        if (url.length > SHARE_URL_MAX) {
+          // Too long to open as a link — tell the user and offer to save the file.
+          modalConfirm(t("share.tooBigOfferFile")).then(function (ok) { if (ok) shareAsFile(enc, title); });
+          return;
+        }
+        // Copy the FULL link to the clipboard and show it in a copyable dialog — the
+        // reliable way to send it (the native share sheet dropped long URLs on some
+        // devices). Paste it into any message/app.
         offerShareUrl(url);
       }, warn);
     }).catch(warn);
@@ -12014,7 +12050,7 @@
   // Share the detections currently loaded from data sources (the live plot), no
   // need to save them as a trip first.
   function shareCurrentDetections() {
-    var det = serializeDetPlot();
+    var det = serializeVisibleDetPlot();   // only what's visible on the map right now
     if (!det || !Object.keys(det).length) { setStatus(t("det.none")); return; }
     var name = t("share.detName");
     doShare(compactDet(name, det), name);
@@ -12027,9 +12063,9 @@
     (mpCollections || []).forEach(function (c) { if (shownColls[c.name]) (c.points || []).forEach(function (p) { if (p && !p.spKey) out.push(p); }); });
     return out;
   }
-  // Share the WHOLE map in one operation: all plotted detections + all user points.
+  // Share the WHOLE map in one operation: the VISIBLE plotted detections + all user points.
   function shareMap() {
-    var det = serializeDetPlot(), pts = allShownUserPoints();
+    var det = serializeVisibleDetPlot(), pts = allShownUserPoints();
     var hasDet = det && Object.keys(det).length, hasPts = pts.length;
     if (!hasDet && !hasPts) { setStatus(t("det.none")); return; }
     var name = t("share.mapName");

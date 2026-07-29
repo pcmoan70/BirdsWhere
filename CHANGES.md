@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-07-29 — Share: pastable link back + only visible; rare-first by-time list (sw v731)
+
+- **Share link** hands back the copyable string again by default. Only when the link would be
+  too long for a host to open (GitHub Pages 414s past ~8 KB) does it say so and offer to save
+  the `.mcshare` file instead — instead of always downloading a file.
+- **Sharing now includes only the observations currently visible on the map** (passing the active
+  recency/date, species ★/◉/🟠/🟡 and observer filters + selection), via a new
+  `serializeVisibleDetPlot()`. Persistence/sync still keep everything.
+- **Detections list, by time**: within each date/observer group, species are now ordered rarest
+  first (lowest habitat probability) → common at the bottom, matching the legend.
+
 ## 2026-07-29 — Detections list “By species”: sort by most-recent date (sw v730)
 
 - In the detections list's **By species** view, species are now ordered by their most-recent
