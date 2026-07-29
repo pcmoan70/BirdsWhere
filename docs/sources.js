@@ -58,7 +58,7 @@ window.AppSources = (function () {
     { id: "inat",        name: "iNaturalist",       url: "https://api.inaturalist.org/v1/observations",                                    country: null, keyed: false, days: 90 },
     { id: "artsobs",     name: "Artsobservasjoner", url: "https://artskart.artsdatabanken.no/publicapi/api/observations/list",             country: "NO", keyed: false, days: 90 },
     { id: "artportalen", name: "Artportalen",       url: "https://api.artdatabanken.se/species-observation-system/v1/Observations/Search", country: "SE", keyed: true,  days: 90 },
-    { id: "laji",        name: "Laji.fi (FI)",      url: "https://api.laji.fi/v0/warehouse/query/unit/list",                               country: "FI", keyed: true,  days: 90 },
+    { id: "laji",        name: "Laji",              url: "https://api.laji.fi/v0/warehouse/query/unit/list",                               country: "FI", keyed: true,  days: 90 },
     { id: "birdweather", name: "BirdWeather",       url: "https://app.birdweather.com/graphql",                                            country: null, keyed: false, days: 7 }
   ];
   var DIRECT_BY_ID = {}; DEFAULT_DIRECT_SOURCES.forEach(function (d) { DIRECT_BY_ID[d.id] = d; });
@@ -79,7 +79,9 @@ window.AppSources = (function () {
     var seen = {};
     return list.filter(function (s) { if (!s || !s.id || seen[s.id]) return false; seen[s.id] = 1; return true; }).map(function (s) {
       var d = DIRECT_BY_ID[s.id] || {};
-      return { id: s.id, name: s.name || d.name || s.id, url: s.url || d.url || "", keyed: !!d.keyed, country: d.country || null, days: (s.days != null && +s.days > 0) ? +s.days : (d.days || 90) };
+      var name = s.name || d.name || s.id;
+      if (s.id === "laji" && name === "Laji.fi (FI)") name = "Laji";   // migrate the old default label to the short name
+      return { id: s.id, name: name, url: s.url || d.url || "", keyed: !!d.keyed, country: d.country || null, days: (s.days != null && +s.days > 0) ? +s.days : (d.days || 90) };
     });
   }
   function saveDirectSources(list) { window.GeoState.save({ directSources: list }); onConfigChange(); }

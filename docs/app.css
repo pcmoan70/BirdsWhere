@@ -1754,7 +1754,8 @@ button.dd-name:hover { text-decoration: underline; }
 .src-row:hover { background: var(--surface-2, rgba(0,0,0,.04)); }
 .src-row-dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; background: var(--good, #2e8b74); }
 .src-row.src-off .src-row-dot { background: var(--border-strong, #c4c4c4); }
-.src-row-name { flex: 1 1 auto; font-weight: 600; }
+.src-row-name { flex: 1 1 auto; min-width: 0; font-weight: 600; display: flex; flex-direction: column; gap: 1px; }
+.src-row-desc { font-weight: 400; font-size: 0.76rem; line-height: 1.25; color: var(--ink-muted, #888); white-space: normal; }
 .src-row.src-off .src-row-name { color: var(--ink-muted, #888); font-weight: 500; }
 .src-row-region { flex: 0 0 auto; width: 2.2em; text-align: center; font-size: 0.8rem; color: var(--ink-muted, #888); }
 .src-row-key { flex: 0 0 auto; width: 2.8em; text-align: center; font-size: 0.8rem; color: var(--ink-muted, #888); }

@@ -2378,6 +2378,10 @@
     return { id: id, name: s.name, url: s.url, days: s.days, keyed: !!d.keyed, country: d.country || null, global: false, removable: true, isGbif: false };
   }
   function srcDescKey(info) { return "srcdesc." + (info.isGbif ? "gbif" : (DIRECT_BY_ID[info.id] ? info.id : "custom")); }
+  // One-line "what is this source" blurb for the sources LIST. Falls back to "" for
+  // custom sources (key resolves to itself → nothing shown).
+  function srcShortKey(info) { return "srcshort." + (info.isGbif ? "gbif" : (DIRECT_BY_ID[info.id] ? info.id : "custom")); }
+  function srcShortDesc(info) { var k = srcShortKey(info), s = t(k); return s === k ? "" : s; }
   function patchSource(id, field, value) {
     saveDirectSources(directSources().map(function (s) { var o = { id: s.id, name: s.name, url: s.url, days: s.days }; if (s.id === id) o[field] = value; return o; }));
   }
@@ -2413,9 +2417,11 @@
       if (!info.keyed) { keyCell = "–"; keyTitle = t("sources.nokey"); keyCls += " src-key-na"; }
       else if (directKey(id)) { keyCell = "🔑"; keyTitle = t("sources.keySet"); keyCls += " src-key-set"; }
       else { keyCell = "🔑✗"; keyTitle = t("sources.keyMissing"); keyCls += " src-key-missing"; }
+      var shortD = srcShortDesc(info);
       return '<button type="button" class="src-row' + (off ? " src-off" : "") + '" data-id="' + escapeHtml(id) + '">' +
         '<span class="src-row-dot" title="' + escapeHtml(off ? t("sources.disabled") : t("sources.enabled")) + '"></span>' +
-        '<span class="src-row-name">' + escapeHtml(info.name) + "</span>" +
+        '<span class="src-row-name">' + escapeHtml(info.name) +
+          (shortD ? '<span class="src-row-desc">' + escapeHtml(shortD) + "</span>" : "") + "</span>" +
         '<span class="src-row-region">' + region + "</span>" +
         '<span class="' + keyCls + '" title="' + escapeHtml(keyTitle) + '">' + keyCell + "</span>" +
         '<span class="src-row-chev">›</span></button>';

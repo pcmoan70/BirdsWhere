@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-29 — Data sources list: one-line descriptions + "Laji" rename (sw v753)
+
+- Each source in the **Data sources** list now shows a short one-line description under its name
+  (e.g. GBIF — "An international store of nature datasets"; eBird — "Worldwide bird observation
+  platform"; BirdWeather — "AI-based birdsong recognition"). New `srcshort.*` keys (English, with the
+  usual English fallback for other languages); shown via `srcRow`/`srcShortDesc`.
+- The Finnish source **"Laji.fi (FI)" is now shown simply as "Laji"** — default renamed and existing
+  stored copies still on the old default label are migrated on read (custom renames untouched).
+
 ## 2026-07-29 — Help: clearer AI-model explanation + data-privacy section (sw v752)
 
 - Rewrote the in-app Help (`about.html`, English) opening as **"What the AI model does"** — it now
