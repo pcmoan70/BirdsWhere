@@ -21,15 +21,15 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v739";
+var VERSION = "v740";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• Fix: an observer filter with no name chosen (or a remembered one that no longer matches) now shows all, not an empty map.",
   "• Saving fetched observations to a list asks for one colour for the whole batch (shows the count).",
   "• New points default to the last colour you picked — colour a whole year's points alike.",
-  "• Share a point list only from the 🔗 icon next to its name (keeps its colour).",
-  "• Shared points import as triangles and add to your existing pins."
+  "• Share a point list only from the 🔗 icon next to its name (keeps its colour)."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs

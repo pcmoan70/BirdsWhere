@@ -5970,8 +5970,21 @@
   function detObsSplit(s) { return String(s || "").split(/\s*[|;]\s*/).map(function (x) { return x.trim(); }).filter(Boolean); }
   function detObsRealNames(s) { return detObsSplit(s).filter(function (n) { return !isObsTag(n); }); }   // single names, tags removed
   function setDetObsFilter(set) {
-    detObsFilter = set || null; detObsNames = []; detObsAllowNone = false;
+    // An empty selection means "no observer chosen" → show ALL, not nothing. (A
+    // Set holding only "" is a real choice: the "(no observer)" bucket.)
+    detObsFilter = (set && set.size) ? set : null; detObsNames = []; detObsAllowNone = false;
     if (detObsFilter) detObsFilter.forEach(function (n) { if (n) detObsNames.push(n); else detObsAllowNone = true; });
+  }
+  // A remembered observer filter whose names aren't among the currently-plotted
+  // observers would silently blank the map (empty legend, no checkbox ticked).
+  // Heal it back to "all observers" so the points show. Returns true if changed.
+  function reconcileObsFilter() {
+    if (!detObsFilter) return false;
+    if (!Object.keys(detPlot).length) return false;   // nothing plotted → keep the filter (clearing the map keeps filters; a fetch may be incoming)
+    var ob = detAllObservers(), present = detObsAllowNone && ob.hasNone;
+    for (var i = 0; !present && i < detObsNames.length; i++) if (ob.names.indexOf(detObsNames[i]) >= 0) present = true;
+    if (present) return false;
+    setDetObsFilter(null); saveLegendState(); return true;
   }
   function detObsPasses(r) {
     if (detDupHidden.has(r)) return false;   // hidden cross-database duplicate (dedup setting)
@@ -7156,6 +7169,8 @@
   function rebuildDetLayers() {
     clearSpider();
     ensureDedup();
+    reconcileObsFilter();   // drop a stale observer filter that no longer matches any plotted observer
+
     if (detFocusKey && !detPlot[detFocusKey]) detFocusKey = null;   // focused species gone → don't mute everything
     recolorDetections();
     var allowed = detDrawAllowed();   // newest-N cap across all species (null = under cap)
@@ -7822,18 +7837,17 @@
     for (var i = 0; i < lists.length; i++) if (sameNameSet(detObsFilter, lists[i].observers)) return lists[i].name;
     return t("det.obsCustom");
   }
-  // Step the observer scope: All (null) → None (empty) → list0 → list1 → … → All.
-  // A custom checkbox selection resets to All on the next step.
+  // Step the observer scope: All (null) → list0 → list1 → … → All. A custom
+  // checkbox selection resets to All on the next step. (There's no "None" step —
+  // an empty selection means "all", so it would just duplicate All.)
   function cycleObsFilter() {
-    var lists = getObserverLists(), n = 2 + lists.length, cur = 0;
+    var lists = getObserverLists(), n = 1 + lists.length, cur = 0;
     if (detObsFilter) {
-      if (detObsFilter.size === 0) cur = 1;
-      else { cur = -1; for (var i = 0; i < lists.length; i++) if (sameNameSet(detObsFilter, lists[i].observers)) { cur = 2 + i; break; } }
+      cur = -1; for (var i = 0; i < lists.length; i++) if (sameNameSet(detObsFilter, lists[i].observers)) { cur = 1 + i; break; }
     }
     var next = cur < 0 ? 0 : (cur + 1) % n;
     if (next === 0) setDetObsFilter(null);
-    else if (next === 1) setDetObsFilter(new Set());
-    else setDetObsFilter(new Set(lists[next - 2].observers));
+    else setDetObsFilter(new Set(lists[next - 1].observers));
     saveLegendState(); rebuildDetLayers(); updateDetLegend();
   }
   // True if the current filter Set contains exactly the names in `arr`.

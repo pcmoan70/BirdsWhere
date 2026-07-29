@@ -1,5 +1,18 @@
 # Changes
 
+## 2026-07-29 — Fix: observer filter with no name chosen no longer blanks the map (sw v740)
+
+- The 👤 observer filter could get stuck in a state that hid every detection: an **empty selection**
+  (unchecking all observers, or the scope cycle's "None") filtered out *everything* instead of
+  showing all, and a **remembered filter** whose observer(s) aren't in the freshly-plotted data left
+  the legend empty with no checkbox ticked ("no user name chosen"). Both are fixed:
+  - `setDetObsFilter` now treats an empty Set as "no filter" (show all). A Set holding only `""` is
+    still the real "(no observer)" bucket.
+  - `reconcileObsFilter` (run on every `rebuildDetLayers`) drops a stale filter when none of its
+    names — nor the no-observer bucket — appear among the currently-plotted observers. Guarded to do
+    nothing when nothing is plotted, so **clearing the map still keeps filters**.
+  - The observer scope cycle drops its redundant "None" step (All → each saved list → All).
+
 ## 2026-07-29 — Tighter colour dialog: count + "Save points" button (sw v739)
 
 - The "Colour for these points?" dialog is now **tighter** (narrower box, less padding), shows the
