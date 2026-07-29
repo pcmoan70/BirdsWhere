@@ -21,15 +21,15 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v753";
+var VERSION = "v754";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• The observation details list now mirrors your legend species selection (search still finds every species to add).",
   "• Data sources list now shows a one-line description of each source (and “Laji.fi” is shortened to “Laji”).",
   "• Help now explains more clearly what the AI model does, and that your data stays on your device unless you share it.",
-  "• First run now picks up your device's language automatically (change it any time in Settings).",
-  "• Map-click popup scrolls instead of overflowing the screen when its country/worldwide options expand."
+  "• First run now picks up your device's language automatically (change it any time in Settings)."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs

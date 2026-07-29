@@ -6856,6 +6856,11 @@
       // the looser partial/subsequence matches, so a precise query isn't buried.
       var exact = rows.filter(function (d) { return detExactMatch(detListQuery, detSearchText(d)); });
       rows = exact.length ? exact : rows.filter(function (d) { return detFuzzy(detListQuery, detSearchText(d)); });
+    } else if (detSelectionActive()) {
+      // A legend species-selection isolates the map to those species — mirror it in
+      // the list so it matches the dots on screen. (While searching, everything stays
+      // visible above so more species can still be found and added to the selection.)
+      rows = rows.filter(function (d) { return detSelected[d.key]; });
     }
     detListLastRows = rows;   // what "Save as list" / "Navigate" will use
     // Only offer the species filter when the list is long enough to scroll (≥10

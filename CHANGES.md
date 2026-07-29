@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-29 — Observation details list mirrors the legend species selection (sw v754)
+
+- When a **legend species-selection** is active (isolating some species on the map), the observation
+  details list (`renderDetListModal`) now shows **only those species**, matching the dots on screen.
+  Rows are still *collected* for all species (`collectVisibleDetections(..., true)`) so the fuzzy
+  search can find any species to add — while **searching**, everything stays visible; only when not
+  searching are rows filtered to `detSelected`. `detListLastRows` (Save as list / Navigate) follows
+  suit.
+
 ## 2026-07-29 — Data sources list: one-line descriptions + "Laji" rename (sw v753)
 
 - Each source in the **Data sources** list now shows a short one-line description under its name
