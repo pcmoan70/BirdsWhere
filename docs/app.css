@@ -1368,14 +1368,14 @@ button.dd-name:hover { text-decoration: underline; }
   width: 100%; box-sizing: border-box; margin-top: 12px; padding: 8px 10px; font-size: 0.95rem;
   border: 1px solid var(--border, #ccc); border-radius: 5px;
 }
-.ui-modal-color { display: flex; justify-content: center; margin-top: 12px; }
-.ui-modal-color input[type="color"] { width: 64px; height: 40px; padding: 0; border: 1px solid var(--border, #ccc); border-radius: 6px; cursor: pointer; background: none; }
-/* Compact colour-pick dialog: swatch + Save close together, minimal padding. */
+.ui-modal-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+/* Compact colour-pick dialog: the swatch sits at the LEFT of the action row, so the
+   browser's native colour popup (which opens directly below the swatch) drops into
+   empty space instead of covering the Cancel / Save buttons. */
 .ui-modal-tight { padding: 14px 16px; width: min(300px, 90vw); }
 .ui-modal-tight .ui-modal-msg { margin: 0; }
-.ui-modal-tight .ui-modal-color { margin-top: 10px; }
-.ui-modal-tight .ui-modal-btns { margin-top: 10px; }
-.ui-modal-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.ui-modal-tight .ui-modal-btns { margin-top: 12px; align-items: center; }
+.ui-modal-color-inline { margin-right: auto; width: 48px; height: 34px; padding: 0; border: 1px solid var(--border, #ccc); border-radius: 6px; cursor: pointer; background: none; flex: 0 0 auto; }
 /* Offline-area download dialog + list */
 .area-dl .area-dl-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 0.85rem; }
 .area-dl .area-dl-row input[type=range] { flex: 1 1 auto; }

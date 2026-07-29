@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-29 — Colour-save dialog: swatch beside the buttons (sw v742)
+
+- In the "Colour for N points to save?" dialog the swatch sat directly **above** Cancel / Save
+  points, so the browser's native colour popup (which opens right below the swatch) covered the
+  buttons and you couldn't click them. Moved the swatch to the **left of the action row** (same
+  line as the buttons) so the popup drops into empty space below, leaving the buttons clickable.
+
 ## 2026-07-29 — Restore the observer filter's "None" state (sw v741)
 
 - v740 over-corrected: making an empty selection mean "all" removed the useful **None** state

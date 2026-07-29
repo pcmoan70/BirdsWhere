@@ -369,12 +369,13 @@
       }
       var colorInput = null;
       if (opts.color) {
-        var crow = document.createElement("label");
-        crow.className = "ui-modal-color";
+        // The swatch goes into the button row (see below), NOT above it — the native
+        // colour popup opens directly under the swatch and would otherwise cover the
+        // Cancel / Save buttons.
         colorInput = document.createElement("input");
         colorInput.type = "color"; colorInput.value = opts.color;
-        crow.appendChild(colorInput);
-        box.appendChild(crow);
+        colorInput.className = "ui-modal-color-inline";
+        colorInput.setAttribute("aria-label", opts.message || "");
       }
       function result(ok) {
         if (opts.color) return ok ? (colorInput.value || opts.color) : null;
@@ -387,6 +388,7 @@
       cancel.type = "button"; cancel.className = "demo-btn demo-btn-light"; cancel.textContent = t("btn.cancel");
       var ok = document.createElement("button");
       ok.type = "button"; ok.className = "demo-btn"; ok.textContent = opts.okLabel || t("popup.ok");
+      if (colorInput) btns.appendChild(colorInput);   // swatch at the LEFT of the action row (popup opens below it, clear of the buttons)
       if (!opts.alert) btns.appendChild(cancel);   // alert = OK only (just dismiss)
       btns.appendChild(ok);
       box.appendChild(btns); ov.appendChild(box);
