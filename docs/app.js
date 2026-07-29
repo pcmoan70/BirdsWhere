@@ -4108,6 +4108,8 @@
           '<div class="ctrl-group" id="settings-wrap">' +
             '<button type="button" id="settings-toggle" class="settings-icon-btn" aria-haspopup="true" aria-label="Settings" title="Settings"></button>' +
             '<div id="settings-panel" class="dd-panel settings-panel" style="display:none">' +
+              '<p class="settings-intro" data-i18n="settings.appIntro">BirdsWhere shows where species live, migrate, and are being seen right now — the BirdNET habitat model runs entirely in your browser, overlaid with live observations from eBird, GBIF, iNaturalist and national databases.</p>' +
+              '<button type="button" id="about-open" class="settings-about" data-i18n="ctrl.about">About &amp; how it works</button>' +
               '<div class="settings-section" data-i18n="settings.secView">View</div>' +
               '<div class="ctrl-group">' +
                 '<label for="group-select" data-i18n="ctrl.group">Species group</label>' +
@@ -4286,7 +4288,6 @@
                 '<label class="ctrl-check"><input type="checkbox" id="show-sci-toggle" checked> <span data-i18n="ctrl.showsci">Scientific names</span></label>' +
               '</div>' +
               '<div class="app-qr"><img src="qr-app.svg" alt="" width="140" height="140" /><span class="app-qr-cap" data-i18n="settings.qrShare">Scan to open / share this app</span></div>' +
-              '<button type="button" id="about-open" class="settings-about" data-i18n="ctrl.about">About &amp; how it works</button>' +
               '<div class="settings-section" data-i18n="settings.secWhatsNew">What’s new</div>' +
               '<div id="whatsnew-list" class="whatsnew-list"></div>' +
             '</div>' +

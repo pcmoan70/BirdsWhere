@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-29 — Settings opens with an app description + About at the top (sw v748)
+
+- The Settings panel now leads with a **short paragraph describing the app** and the **"About & how
+  it works" link moved to the very top** (it was previously near the bottom, above "What's new").
+  New i18n key `settings.appIntro` across all 15 languages; `.settings-intro` styling added.
+
 ## 2026-07-29 — Shared detections link: clear leftover filters so the legend shows them (sw v747)
 
 - Opening a shared **detections** link (or a whole-map share) now clears the recipient's leftover
