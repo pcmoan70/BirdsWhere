@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-29 — New points default to the last colour picked (sw v737)
+
+- When adding a point, the colour swatch now defaults to the **last colour you chose** (persisted
+  as `mpLastColor` in GeoState) instead of the tag-based automatic colour. A run of points shares a
+  colour until you change it — e.g. give each year's points a distinct colour within one list. The
+  ↺ button still resets a point to its automatic colour, and editing an existing point keeps its own
+  colour. `mpColorRow` defaults new (no-id) points to `mpLastColor`; the editor save handler updates
+  `mpLastColor` whenever an explicit colour is chosen.
+
 ## 2026-07-29 — Share only the detection dots on screen (viewport) (sw v736)
 
 - Sharing detections now includes only the dots inside the current map **viewport** (in addition

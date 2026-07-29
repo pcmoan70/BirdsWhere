@@ -8189,6 +8189,7 @@
   // auto-sync into it. Shape: GeoState.mapPointSets = [{ name, points[] }].
   var mpCollections = [];
   var mpActiveName = "";
+  var mpLastColor = "";   // last explicit point colour chosen — the default for the next NEW point
   var mpSort = "dist";   // points list order: "dist" (nearest first) | "name"
   // Distances + nearest-first sorting in the point lists are measured from the LAST
   // point the user selected on the map (a map click, a pin, a detection dot, or a
@@ -8296,7 +8297,10 @@
     // colour; changing it makes the colour custom, and ↺ resets it to automatic.
     // data-auto carries the auto colour so mpReadColor can tell them apart.
     var auto = mpHex6(mpColorFor(p));
-    var val = mpHex6((p && p.color) || auto);
+    // A NEW point (no id yet) defaults to the last colour you chose, so a run of
+    // points shares a colour until you change it (e.g. one colour per year).
+    var isNew = !(p && p.id);
+    var val = mpHex6((p && p.color) || (isNew && mpLastColor) || auto);
     return '<span class="mp-color-row"><span class="mp-color-lbl">' + escapeHtml(t("points.color")) + "</span>" +
       '<input type="color" id="mp-color" data-auto="' + escapeHtml(auto) + '" value="' + escapeHtml(val) + '" />' +
       '<button type="button" id="mp-color-auto" class="mp-color-reset" title="' + escapeHtml(t("points.colorAuto")) + '" aria-label="' + escapeHtml(t("points.colorAuto")) + '">↺</button></span>';
@@ -8321,6 +8325,7 @@
     mpFilter = window.GeoState.get("mapPointsFilter", []) || [];
     mpCollections = (window.GeoState.get("mapPointSets", []) || []).filter(function (c) { return c && c.name; });
     mpActiveName = window.GeoState.get("mapPointSetActive", "") || "";
+    mpLastColor = window.GeoState.get("mpLastColor", "") || "";
     mpSort = window.GeoState.get("mapPointsSort", "dist") === "name" ? "name" : "dist";
     shownColls = {}; (window.GeoState.get("mapPointsShownColls", []) || []).forEach(function (k) { shownColls[k] = true; });
     shownDetSets = {}; (window.GeoState.get("mapDetSetsShown", []) || []).forEach(function (k) { shownDetSets[k] = true; });
@@ -9178,6 +9183,7 @@
       var tags = mpParseTags(document.getElementById("mp-tags").value);
       var note = (document.getElementById("mp-note").value || "").trim();
       var color = mpReadColor();
+      if (color) { mpLastColor = color; try { window.GeoState.save({ mpLastColor: color }); } catch (e) {} }   // remember for the next new point
       var sel = document.getElementById("mp-listsel");
       var target = sel ? sel.value : "";
       if (isEdit) {
