@@ -1368,7 +1368,9 @@ button.dd-name:hover { text-decoration: underline; }
   width: 100%; box-sizing: border-box; margin-top: 12px; padding: 8px 10px; font-size: 0.95rem;
   border: 1px solid var(--border, #ccc); border-radius: 5px;
 }
-.ui-modal-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.ui-modal-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+/* An extra action button (e.g. "Manage data sources…") sits at the left of the row. */
+.ui-modal-action { margin-right: auto; }
 /* Compact colour-pick dialog: the swatch sits at the LEFT of the action row, so the
    browser's native colour popup (which opens directly below the swatch) drops into
    empty space instead of covering the Cancel / Save buttons. */

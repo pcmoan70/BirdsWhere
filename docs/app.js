@@ -389,6 +389,14 @@
       var ok = document.createElement("button");
       ok.type = "button"; ok.className = "demo-btn"; ok.textContent = opts.okLabel || t("popup.ok");
       if (colorInput) btns.appendChild(colorInput);   // swatch at the LEFT of the action row (popup opens below it, clear of the buttons)
+      // Optional extra action (e.g. "Manage data sources…"): a left-aligned button
+      // that dismisses the dialog and runs its handler.
+      if (opts.action && opts.action.label) {
+        var act = document.createElement("button");
+        act.type = "button"; act.className = "demo-btn demo-btn-light ui-modal-action"; act.textContent = opts.action.label;
+        act.addEventListener("click", function () { close(result(false)); try { if (opts.action.handler) opts.action.handler(); } catch (e) {} });
+        btns.appendChild(act);
+      }
       if (!opts.alert) btns.appendChild(cancel);   // alert = OK only (just dismiss)
       btns.appendChild(ok);
       box.appendChild(btns); ov.appendChild(box);
@@ -409,7 +417,7 @@
   function modalConfirm(message) { return uiDialog({ message: message, input: false }); }
   // OK/Cancel dialog with a colour swatch — resolves to the chosen hex, or null on cancel.
   function modalColorPick(message, color, okLabel) { return uiDialog({ message: message, color: color || "#3388ff", okLabel: okLabel }); }
-  function modalAlert(message, items) { return uiDialog({ message: message, items: items, input: false, alert: true }); }
+  function modalAlert(message, items, action) { return uiDialog({ message: message, items: items, input: false, alert: true, action: action }); }
   // Shared factory for the hand-built centred overlays (offline download, observer
   // editor, save-location, country menu…) — one implementation of overlay + box +
   // dismiss so each caller only builds its own content. Returns {overlay, box, close}.
@@ -2821,6 +2829,15 @@
   // After a fetch, pop a single dialog listing each source that failed and why.
   // De-duped against the immediately-previous set so the same error (e.g. a
   // missing eBird key) doesn't nag on every location click.
+  // Open the "Manage data sources…" window on its source LIST. Shared by the
+  // Settings button and the missing-key fetch-error dialog.
+  function openSourcesManager() {
+    closeDropdowns();
+    srcDetailId = null;   // always open on the source LIST
+    renderSourcesTable();
+    document.getElementById("sources-modal").style.display = "flex";
+    navOpen("sources", function () { document.getElementById("sources-modal").style.display = "none"; });
+  }
   var lastFetchErrSig = "";
   function reportFetchErrors(failed) {
     var arr = (failed || []).filter(Boolean);
@@ -2829,10 +2846,14 @@
     if (sig === lastFetchErrSig) return;
     lastFetchErrSig = sig;
     // If any of them failed only because a free API key isn't set, nudge the user
-    // toward registering one (fresher, more up-to-date data than GBIF's copy).
-    var msg = t("fetch.errTitle");
-    if (splitFailed(arr).needKey.length) msg += "\n\n" + t("fetch.errKeyHint");
-    modalAlert(msg, arr.map(function (f) { return f.name + " — " + (f.error || t("fetch.errUnknown")); }));
+    // toward registering one (fresher, more up-to-date data than GBIF's copy) and
+    // give them a button straight to the "Manage data sources…" window.
+    var msg = t("fetch.errTitle"), action = null;
+    if (splitFailed(arr).needKey.length) {
+      msg += "\n\n" + t("fetch.errKeyHint");
+      action = { label: t("sources.manage"), handler: openSourcesManager };
+    }
+    modalAlert(msg, arr.map(function (f) { return f.name + " — " + (f.error || t("fetch.errUnknown")); }), action);
   }
   // The observation sources, behind one interface. `country` (ISO-2) gates a
   // source to its own country — the national databases are only queried when the
@@ -9892,13 +9913,7 @@
 
     var sourcesOpenBtn = document.getElementById("sources-open");
     if (sourcesOpenBtn) {
-      sourcesOpenBtn.addEventListener("click", function () {
-        closeDropdowns();
-        srcDetailId = null;   // always open on the source LIST
-        renderSourcesTable();
-        document.getElementById("sources-modal").style.display = "flex";
-        navOpen("sources", function () { document.getElementById("sources-modal").style.display = "none"; });
-      });
+      sourcesOpenBtn.addEventListener("click", openSourcesManager);
       document.getElementById("sources-close").addEventListener("click", function () { navClose("sources"); });
       document.getElementById("sources-modal").addEventListener("click", function (e) { if (e.target === this) navClose("sources"); });
       document.getElementById("sources-reset").addEventListener("click", resetSources);

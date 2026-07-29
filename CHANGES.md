@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-29 — Missing-key error dialog links straight to Manage data sources (sw v749)
+
+- The "Some data sources failed:" dialog, when a source failed for a **missing free API key**, now
+  shows a **"Manage data sources…" button** that closes the dialog and opens that settings window
+  directly (on its source list). `uiDialog` gained an optional `action` button; the sources-manager
+  open logic was extracted into a shared `openSourcesManager()` (reused by the Settings button).
+
 ## 2026-07-29 — Settings opens with an app description + About at the top (sw v748)
 
 - The Settings panel now leads with a **short paragraph describing the app** and the **"About & how
