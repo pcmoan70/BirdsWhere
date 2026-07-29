@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-29 — Point sets share only via the per-list 🔗 icon (sw v735)
+
+- Removed the Points panel's top "Share points" button. **User point sets are now shared only
+  from the 🔗 share icon next to a saved list's name** (`sharePointList`), which now freezes each
+  point's on-screen colour (explicit, else the list colour) so the shared set looks the same and
+  imports as coloured triangles.
+- Renamed the detections "Share link" button to just **"Share"**, with a hover that explains it
+  shares the observations shown on the map.
+
 ## 2026-07-29 — Shared points keep their colour; drop the extra Share-link button (sw v734)
 
 - A shared point now carries its **on-screen colour** (explicit colour, else its list/tag colour),

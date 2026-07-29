@@ -9299,16 +9299,14 @@
       return mpCollRowHtml("d", s.name, n, '<span class="mp-sw-set">' + ico("folder") + "</span>", !!shownDetSets[s.name], t("dset.delete"));
     });
     var collSection = (collItems.length || dsItems.length) ? '<div class="mp-coll-list">' + collItems.join("") + dsItems.join("") + "</div>" : "";
-    var hasVisPoints = allShownUserPoints().length;
     panel.innerHTML =
       '<div class="mp-head mp-head-share">' +
-        (hasVisPoints ? '<button type="button" id="mp-share-map" class="demo-btn ico-btn" title="' + escapeHtml(tLabel("share.pointsBtn")) + '">' + ico("share") + '<span class="ico-label">' + escapeHtml(tLabel("share.pointsBtn")) + "</span></button>" : "") +
         '<button type="button" id="mp-import-share" class="demo-btn demo-btn-light ico-btn" title="' + escapeHtml(tLabel("share.importFile")) + '">' + ico("upload") + '<span class="ico-label">' + escapeHtml(tLabel("share.importFile")) + "</span></button>" +
         '<input type="file" id="share-file-input" accept=".mcshare,.txt,text/plain" style="display:none" />' +
       "</div>" +
       (Object.keys(detPlot).length ? '<div class="mp-head">' +
         '<button type="button" id="mp-save-det" class="demo-btn ico-btn">' + ico("save") + '<span class="ico-label" data-i18n="points.savePoints">' + escapeHtml(tLabel("points.savePoints")) + "</span></button>" +
-        '<button type="button" id="mp-share-det" class="demo-btn demo-btn-light ico-btn">' + ico("share") + '<span class="ico-label">' + escapeHtml(tLabel("share.link")) + "</span></button>" +
+        '<button type="button" id="mp-share-det" class="demo-btn demo-btn-light ico-btn" title="' + escapeHtml(t("share.detHover")) + '">' + ico("share") + '<span class="ico-label">' + escapeHtml(tLabel("share.shareBtn")) + "</span></button>" +
       "</div>" : "") +
       collSection +
       (mpHasUnsaved() ? '<div class="mp-unsaved">' + escapeHtml(t("points.unsaved", { n: mapPoints.length })) +
@@ -9321,8 +9319,6 @@
         "</div>" : "") +
       '<div class="mp-list">' + listHtml + "</div>";
     // Wire interactions
-    var shareMapBtn = panel.querySelector("#mp-share-map");
-    if (shareMapBtn) shareMapBtn.addEventListener("click", function (e) { e.stopPropagation(); shareVisiblePoints(); });
     var importShareBtn = panel.querySelector("#mp-import-share"), shareFileInput = panel.querySelector("#share-file-input");
     if (importShareBtn && shareFileInput) {
       importShareBtn.addEventListener("click", function (e) { e.stopPropagation(); shareFileInput.click(); });
@@ -11985,30 +11981,13 @@
       return o;
     });
   }
+  // Share a saved point list (the ONLY way to share user points — via the 🔗 icon
+  // next to the list). Each point carries its ON-SCREEN colour (explicit, else the
+  // list colour) so it looks the same for the recipient, drawn there as a triangle.
   function sharePointList(name) {
     var c = mpCollections.filter(function (x) { return x.name === name; })[0]; if (!c) return;
-    doShare({ v: 1, type: "points", name: name, points: packPoints(c.points) }, name);
-  }
-  // DEFAULT share: the user points currently IN VIEW on the screen (loose pins + the
-  // points of any shown saved lists inside the map's current bounds) as a points-only
-  // link — no detections. Each point carries its ON-SCREEN colour so it looks the same
-  // for the recipient (drawn as a triangle there). Pan/zoom to choose what you share.
-  function shareVisiblePoints() {
-    var b = map && map.getBounds(), packed = [];
-    function add(p, effColor) {
-      if (!p || !isFinite(+p.lat) || !isFinite(+p.lon)) return;
-      if (b && !b.contains([+p.lat, +p.lon])) return;
-      packed.push(Object.assign({}, p, { color: effColor }));   // freeze the displayed colour
-    }
-    (mapPoints || []).forEach(function (p) { add(p, p.color || mpColorFor(p)); });   // loose pins
-    (mpCollections || []).forEach(function (c) {
-      if (!shownColls[c.name]) return;
-      var col = collColor(c);
-      (c.points || []).forEach(function (p) { if (p && !p.spKey) add(p, p.color || col || mpColorFor(p)); });
-    });
-    var pts = packPoints(packed);
-    if (!pts.length) { setStatus(t("points.exportEmpty")); return; }
-    var name = t("points.title");
+    var col = collColor(c);
+    var pts = packPoints((c.points || []).map(function (p) { return Object.assign({}, p, { color: p.color || col || mpColorFor(p) }); }));
     doShare({ v: 1, type: "points", name: name, points: pts }, name);
   }
   // Per-source record-URL prefixes, so a link is stored as just its ID tail (the
