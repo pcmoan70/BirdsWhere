@@ -80,6 +80,11 @@ from the providers; nothing is stored.
 Everything is computed on-device in a Web Worker; results are cached per week/area so
 re-showing a week is instant.
 
+The same predicted probability is reused beyond these two views: it **orders the species lists**
+(the per-point Species List and the plotted-detections legend are both ranked by likelihood) and
+defines **"locally rare"** — a species at or below the *Rare species threshold* is flagged with the
+**◉** icon and can be filtered on, regardless of how often it has actually been reported.
+
 ---
 
 ## Location analysis (Migration mode)

@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-29 — Docs: note the model output also ranks lists + drives rarity (sw v755)
+
+- Help (`about.html`, "What the AI model does") and `README.md` now spell out that the model's
+  predicted probability is reused beyond the map views: it **orders the species lists** (per-point
+  Species List and the plotted-detections legend) and defines **"locally rare"** — a species at or
+  below the *Rare species threshold* gets the **◉** icon and filter, regardless of how often it has
+  actually been reported.
+
 ## 2026-07-29 — Observation details list mirrors the legend species selection (sw v754)
 
 - When a **legend species-selection** is active (isolating some species on the map), the observation
