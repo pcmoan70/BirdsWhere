@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-07-29 — Pick a colour when saving fetched points to a list (sw v738)
+
+- Saving fetched observations to a point-list (the Points panel "Save points" button and the
+  observation-list save) now pops an **OK dialog with a colour picker** before filing them, and
+  applies that one colour to the whole saved batch — so e.g. each year's saved observations can be
+  told apart on the map. Defaults to the last colour used (`mpLastColor`); Cancel aborts the save.
+- New generic `modalColorPick`/`uiDialog({color})` OK-Cancel colour dialog; `saveDetRowsToCollection`
+  takes an optional `color` applied to each new point. Single-point creation keeps its existing
+  inline swatch (unchanged). New i18n key `points.pickColor` across all 15 languages.
+
 ## 2026-07-29 — New points default to the last colour picked (sw v737)
 
 - When adding a point, the colour swatch now defaults to the **last colour you chose** (persisted

@@ -367,6 +367,20 @@
         input.type = "text"; input.className = "ui-modal-input"; input.value = opts.value || "";
         box.appendChild(input);
       }
+      var colorInput = null;
+      if (opts.color) {
+        var crow = document.createElement("label");
+        crow.className = "ui-modal-color";
+        colorInput = document.createElement("input");
+        colorInput.type = "color"; colorInput.value = opts.color;
+        crow.appendChild(colorInput);
+        box.appendChild(crow);
+      }
+      function result(ok) {
+        if (opts.color) return ok ? (colorInput.value || opts.color) : null;
+        if (opts.input) return ok ? input.value : null;
+        return ok;
+      }
       var btns = document.createElement("div");
       btns.className = "ui-modal-btns";
       var cancel = document.createElement("button");
@@ -379,18 +393,20 @@
       document.body.appendChild(ov);
       function close(val) { if (ov.parentNode) ov.parentNode.removeChild(ov); document.removeEventListener("keydown", onKey, true); resolve(val); }
       function onKey(e) {
-        if (e.key === "Escape") { e.preventDefault(); close(opts.input ? null : false); }
-        else if (e.key === "Enter") { e.preventDefault(); close(opts.input ? input.value : true); }
+        if (e.key === "Escape") { e.preventDefault(); close(result(false)); }
+        else if (e.key === "Enter") { e.preventDefault(); close(result(true)); }
       }
-      cancel.addEventListener("click", function () { close(opts.input ? null : false); });
-      ok.addEventListener("click", function () { close(opts.input ? input.value : true); });
-      ov.addEventListener("click", function (e) { if (e.target === ov) close(opts.input ? null : false); });
+      cancel.addEventListener("click", function () { close(result(false)); });
+      ok.addEventListener("click", function () { close(result(true)); });
+      ov.addEventListener("click", function (e) { if (e.target === ov) close(result(false)); });
       document.addEventListener("keydown", onKey, true);
       if (input) { input.focus(); input.select(); }
     });
   }
   function modalPrompt(message, value) { return uiDialog({ message: message, input: true, value: value }); }
   function modalConfirm(message) { return uiDialog({ message: message, input: false }); }
+  // OK/Cancel dialog with a colour swatch — resolves to the chosen hex, or null on cancel.
+  function modalColorPick(message, color) { return uiDialog({ message: message, color: color || "#3388ff" }); }
   function modalAlert(message, items) { return uiDialog({ message: message, items: items, input: false, alert: true }); }
   // Shared factory for the hand-built centred overlays (offline download, observer
   // editor, save-location, country menu…) — one implementation of overlay + box +
@@ -6686,7 +6702,7 @@
   // Save a set of detection rows as map points in a named point-list — the same
   // kind right-click creates. Existing list → append; a new name → create.
   // Batched into a single save (unlike per-point addPointToCollection).
-  function saveDetRowsToCollection(name, rows) {
+  function saveDetRowsToCollection(name, rows, color) {
     name = String(name || "").trim(); if (!name) return 0;
     var c = mpCollections.filter(function (x) { return x.name === name; })[0];
     if (!c) { c = { name: name, points: [] }; mpCollections.push(c); }
@@ -6701,6 +6717,7 @@
       if (d.lat == null || isNaN(+d.lat) || d.lon == null || isNaN(+d.lon)) return;
       var p = detPointFromRow(d), k = pkey(p);
       if (seen[k]) return;   // already in this list → skip
+      if (color) p.color = color;   // colour the whole saved batch alike (e.g. per year)
       seen[k] = 1; c.points.push(p); added++;
     });
     shownColls[c.name] = true;   // tick the list so the added points are visible
@@ -6708,8 +6725,14 @@
     return added;
   }
   function commitDetSave(name, rows) {
-    var n = saveDetRowsToCollection(name, rows);   // n = NEW points added after dedupe (0 = all already in the list)
-    setStatus(t("detlist.savedToList", { n: n, name: name }));
+    // Pick one colour for the whole saved batch (defaults to the last colour used),
+    // so different saves — e.g. one per year — can be told apart on the map.
+    modalColorPick(t("points.pickColor"), mpHex6(mpLastColor || "#3388ff")).then(function (chosen) {
+      if (chosen == null) return;   // cancelled
+      mpLastColor = chosen; try { window.GeoState.save({ mpLastColor: chosen }); } catch (e) {}
+      var n = saveDetRowsToCollection(name, rows, chosen);   // n = NEW points added after dedupe (0 = all already in the list)
+      setStatus(t("detlist.savedToList", { n: n, name: name }));
+    });
   }
   // Chooser: existing point-lists to append to, plus "New list…". Saves the given
   // rows. Reuses the per-record menu styling/dismissal.

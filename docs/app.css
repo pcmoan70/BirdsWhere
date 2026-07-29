@@ -1368,6 +1368,8 @@ button.dd-name:hover { text-decoration: underline; }
   width: 100%; box-sizing: border-box; margin-top: 12px; padding: 8px 10px; font-size: 0.95rem;
   border: 1px solid var(--border, #ccc); border-radius: 5px;
 }
+.ui-modal-color { display: flex; justify-content: center; margin-top: 12px; }
+.ui-modal-color input[type="color"] { width: 64px; height: 40px; padding: 0; border: 1px solid var(--border, #ccc); border-radius: 6px; cursor: pointer; background: none; }
 .ui-modal-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 /* Offline-area download dialog + list */
 .area-dl .area-dl-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 0.85rem; }
