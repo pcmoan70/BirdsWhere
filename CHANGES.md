@@ -1,5 +1,10 @@
 # Changes
 
+## 2026-07-29 — Share points: only those in the current map view (sw v733)
+
+- The Points panel's Share button now shares only the points that fall inside the map's current
+  viewport (bounds), so you pan/zoom to pick exactly what goes in the link.
+
 ## 2026-07-29 — Points sharing: visible-only default, additive import, triangle pins (sw v732)
 
 - The Points panel's **Share** button now shares only the **points visible on the map** (loose pins

@@ -11998,10 +11998,15 @@
     var name = mpActiveName || t("share.defaultName");
     doShare({ v: 1, type: "points", name: name, points: pts }, name);
   }
-  // DEFAULT share: every user point currently VISIBLE on the map (loose pins + the
-  // points of any shown saved lists) as a points-only link — no detections.
+  // DEFAULT share: the user points currently IN VIEW on the screen (loose pins + the
+  // points of any shown saved lists that fall inside the map's current bounds) as a
+  // points-only link — no detections. Pan/zoom to choose exactly what you share.
   function shareVisiblePoints() {
-    var pts = packPoints(allShownUserPoints());
+    var b = map && map.getBounds();
+    var inView = allShownUserPoints().filter(function (p) {
+      return p && isFinite(+p.lat) && isFinite(+p.lon) && (!b || b.contains([+p.lat, +p.lon]));
+    });
+    var pts = packPoints(inView);
     if (!pts.length) { setStatus(t("points.exportEmpty")); return; }
     var name = t("points.title");
     doShare({ v: 1, type: "points", name: name, points: pts }, name);

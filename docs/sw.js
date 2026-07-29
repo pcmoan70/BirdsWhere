@@ -21,12 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v732";
+var VERSION = "v733";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
-  "• Points: the Share button now shares only the points visible on the map.",
+  "• Points: the Share button now shares only the points in view on the screen.",
   "• Shared points import as triangles and add to your existing pins.",
   "• Share gives a pastable link again; too-long links offer a .mcshare file.",
   "• Sharing detections includes only the observations visible on the map."
