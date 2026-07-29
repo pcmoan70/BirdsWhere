@@ -12182,9 +12182,13 @@
   // `extras`. Rows come straight from the link, so NO source is fetched. Returns the
   // [lat,lon] list for fit-to-bounds.
   function plotSharedDetections(detections) {
-    // Shared dots can be historic; open the legend's recency window to "All" so the
-    // recipient's default (30 d) doesn't hide older records (as pinning historic does).
-    window.GeoState.save({ detRecencyDays: 0 });
+    // The recipient may have leftover legend filters — a species selection, an
+    // observer filter, a ★/rare/year/life mode, or a recency/date window — that would
+    // hide the imported dots and leave a wrong or empty legend. Clear them all so the
+    // shared detections show cleanly. (clearAllFilters also opens the recency window to
+    // "All", so historic shared dots aren't hidden by the recipient's default 30-day
+    // window, as pinning historic does.)
+    clearAllFilters();
     var agg = {}, extras = {}, ll = [];
     Object.keys(detections || {}).forEach(function (k) {
       var e = detections[k]; if (!e || !e.rows || !e.rows.length) return;

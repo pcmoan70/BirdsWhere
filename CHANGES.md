@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-29 — Shared detections link: clear leftover filters so the legend shows them (sw v747)
+
+- Opening a shared **detections** link (or a whole-map share) now clears the recipient's leftover
+  legend filters before plotting the imported dots — `plotSharedDetections` calls `clearAllFilters()`
+  (species selection, ★/rare/year/life mode, observer filter, recency/date window) instead of only
+  resetting the recency window. Previously any of those could hide the imported detections, leaving a
+  wrong or empty legend. Point-list shares are unaffected (they don't touch the legend).
+
 ## 2026-07-29 — Streets is now the default base map (sw v746)
 
 - New users now start on the **Streets** (OpenStreetMap) base map instead of Light. The default
