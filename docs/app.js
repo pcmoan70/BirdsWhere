@@ -8848,6 +8848,13 @@
   // Rebuild every marker. Cheap enough for hundreds; if it ever becomes slow we
   // can switch to a per-point patch model.
   var mpPins = [];   // {m, p, editable} for every rendered pin — used to fan out overlaps
+  // A triangular marker (for shared points) in the given fill colour.
+  function mpTriangleIcon(fill) {
+    var c = /^[#a-zA-Z0-9(),.%\s]+$/.test(String(fill || "")) ? fill : "#888";   // colour only — no attribute breakout
+    var svg = '<svg width="20" height="18" viewBox="0 0 20 18" xmlns="http://www.w3.org/2000/svg">' +
+      '<polygon points="10,1.5 18.5,16.5 1.5,16.5" fill="' + c + '" stroke="#111" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+    return L.divIcon({ className: "mp-tri-icon", html: svg, iconSize: [20, 18], iconAnchor: [10, 11] });
+  }
   function renderMpPin(p, editable, color) {
     // A detection-saved pin (read-only, carries the species' colour) is drawn
     // like the plotted detection — species colour + ★ for interesting + a black
@@ -8871,10 +8878,12 @@
       if (p.rare) mpLayer.addLayer(L.circleMarker([p.lat, p.lon], { radius: 1.7, weight: 0, fillColor: "#111", fillOpacity: 1, interactive: false, renderer: detRenderer() }));
       return;
     }
-    var m = L.circleMarker([p.lat, p.lon], {
-      radius: 7, color: "#111", weight: 1, opacity: 0.9,
-      fillColor: p.color || color || mpColorFor(p), fillOpacity: editable ? 0.9 : 0.65   // explicit per-point colour wins over list/tag colour
-    });
+    var fill = p.color || color || mpColorFor(p);   // explicit per-point colour wins over list/tag colour
+    // Points that arrived via a shared link are drawn as TRIANGLES so they stand
+    // out from your own (circular) pins; everything else stays a circle.
+    var m = p.shared
+      ? L.marker([p.lat, p.lon], { icon: mpTriangleIcon(fill), keyboard: false })
+      : L.circleMarker([p.lat, p.lon], { radius: 7, color: "#111", weight: 1, opacity: 0.9, fillColor: fill, fillOpacity: editable ? 0.9 : 0.65 });
     m.bindTooltip(mpTipHtml(p), { direction: "top", className: p.spColor ? "det-hover-tip" : "area-tip" });
     var rec = { m: m, p: p, editable: editable };
     mpPins.push(rec);
@@ -9290,10 +9299,10 @@
       return mpCollRowHtml("d", s.name, n, '<span class="mp-sw-set">' + ico("folder") + "</span>", !!shownDetSets[s.name], t("dset.delete"));
     });
     var collSection = (collItems.length || dsItems.length) ? '<div class="mp-coll-list">' + collItems.join("") + dsItems.join("") + "</div>" : "";
-    var hasMapContent = Object.keys(detPlot).length || allShownUserPoints().length;
+    var hasVisPoints = allShownUserPoints().length;
     panel.innerHTML =
       '<div class="mp-head mp-head-share">' +
-        (hasMapContent ? '<button type="button" id="mp-share-map" class="demo-btn ico-btn" title="' + escapeHtml(tLabel("share.mapBtn")) + '">' + ico("share") + '<span class="ico-label">' + escapeHtml(tLabel("share.mapBtn")) + "</span></button>" : "") +
+        (hasVisPoints ? '<button type="button" id="mp-share-map" class="demo-btn ico-btn" title="' + escapeHtml(tLabel("share.pointsBtn")) + '">' + ico("share") + '<span class="ico-label">' + escapeHtml(tLabel("share.pointsBtn")) + "</span></button>" : "") +
         '<button type="button" id="mp-import-share" class="demo-btn demo-btn-light ico-btn" title="' + escapeHtml(tLabel("share.importFile")) + '">' + ico("upload") + '<span class="ico-label">' + escapeHtml(tLabel("share.importFile")) + "</span></button>" +
         '<input type="file" id="share-file-input" accept=".mcshare,.txt,text/plain" style="display:none" />' +
       "</div>" +
@@ -9314,7 +9323,7 @@
       '<div class="mp-list">' + listHtml + "</div>";
     // Wire interactions
     var shareMapBtn = panel.querySelector("#mp-share-map");
-    if (shareMapBtn) shareMapBtn.addEventListener("click", function (e) { e.stopPropagation(); shareMap(); });
+    if (shareMapBtn) shareMapBtn.addEventListener("click", function (e) { e.stopPropagation(); shareVisiblePoints(); });
     var importShareBtn = panel.querySelector("#mp-import-share"), shareFileInput = panel.querySelector("#share-file-input");
     if (importShareBtn && shareFileInput) {
       importShareBtn.addEventListener("click", function (e) { e.stopPropagation(); shareFileInput.click(); });
@@ -11989,6 +11998,14 @@
     var name = mpActiveName || t("share.defaultName");
     doShare({ v: 1, type: "points", name: name, points: pts }, name);
   }
+  // DEFAULT share: every user point currently VISIBLE on the map (loose pins + the
+  // points of any shown saved lists) as a points-only link — no detections.
+  function shareVisiblePoints() {
+    var pts = packPoints(allShownUserPoints());
+    if (!pts.length) { setStatus(t("points.exportEmpty")); return; }
+    var name = t("points.title");
+    doShare({ v: 1, type: "points", name: name, points: pts }, name);
+  }
   // Per-source record-URL prefixes, so a link is stored as just its ID tail (the
   // prefix is re-added on decode) — keeps the "verify" links compact.
   var SRC_URL_PREFIX = {
@@ -12063,17 +12080,6 @@
     (mpCollections || []).forEach(function (c) { if (shownColls[c.name]) (c.points || []).forEach(function (p) { if (p && !p.spKey) out.push(p); }); });
     return out;
   }
-  // Share the WHOLE map in one operation: the VISIBLE plotted detections + all user points.
-  function shareMap() {
-    var det = serializeVisibleDetPlot(), pts = allShownUserPoints();
-    var hasDet = det && Object.keys(det).length, hasPts = pts.length;
-    if (!hasDet && !hasPts) { setStatus(t("det.none")); return; }
-    var name = t("share.mapName");
-    var payload = { v: 3, t: "m", n: name };
-    if (hasDet) payload.d = compactDet(name, det);
-    if (hasPts) payload.p = packPoints(pts);
-    doShare(payload, name);
-  }
   // Reverse compactDet (v2) back into the { type:"det", name, detections } shape the
   // importer expects; other payloads (v1 / point / points) pass through unchanged.
   function expandShared(obj) {
@@ -12115,7 +12121,9 @@
   // Add a shared point-list collection (shown); returns { name, ll }.
   function importPointsColl(nm, pts) {
     var name = uniqueShareName(nm, function (x) { return mpCollections.some(function (c) { return c.name === x; }); });
-    mpCollections.push({ name: name, points: pts.map(function (p) { return Object.assign({}, p, { lat: +p.lat, lon: +p.lon }); }) });
+    // Added as a NEW shown collection alongside whatever's already on the map, and
+    // flagged `shared` so the pins render as triangles (see renderMpPin).
+    mpCollections.push({ name: name, points: pts.map(function (p) { return Object.assign({}, p, { lat: +p.lat, lon: +p.lon, shared: true }); }) });
     shownColls[name] = true;
     return { name: name, ll: pts.map(function (p) { return [+p.lat, +p.lon]; }) };
   }

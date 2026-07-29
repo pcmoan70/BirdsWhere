@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-29 — Points sharing: visible-only default, additive import, triangle pins (sw v732)
+
+- The Points panel's **Share** button now shares only the **points visible on the map** (loose pins
+  + shown lists), as a points-only link — not the plotted observations. (Detections have their own
+  "Share detections" button.) Removed the combined whole-map share button.
+- **Imported shared points are added** to whatever's already on the map (a new shown collection),
+  and are drawn as **triangles** so they stand out from your own circular pins.
+
 ## 2026-07-29 — Share: pastable link back + only visible; rare-first by-time list (sw v731)
 
 - **Share link** hands back the copyable string again by default. Only when the link would be

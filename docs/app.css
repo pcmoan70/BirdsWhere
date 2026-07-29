@@ -2415,6 +2415,10 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
 .area-del-icon { color: #fff; background: var(--danger, #c0392b); border: 2px solid #fff; border-radius: 50%;
   font-size: 15px; font-weight: 700; line-height: 20px; text-align: center; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.4); }
 .area-del-icon:hover { background: var(--danger-strong, #a93226); }
+/* Shared-point pin: a triangle (vs your own circular pins). Clear the default
+   div-icon white box + border so only the SVG shows. */
+.mp-tri-icon { background: transparent; border: none; }
+.mp-tri-icon svg { display: block; filter: drop-shadow(0 1px 1px rgba(0,0,0,.35)); }
 .obs-addmenu { position: fixed; z-index: 6000; background: var(--surface, #fff); border: 1px solid var(--border, #ccc); border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.18); padding: 4px; min-width: 150px; max-width: 240px; }
 .obs-addmenu-head { font-size: 0.72rem; font-weight: 700; color: var(--ink-muted, #888); padding: 3px 8px 5px; border-bottom: 1px solid var(--border, #eee); margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .obs-addmenu-item, .obs-addmenu-new, .obs-people-item { display: block; width: 100%; text-align: left; border: none; background: transparent; font: inherit; font-size: 0.85rem; padding: 5px 8px; border-radius: 5px; cursor: pointer; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

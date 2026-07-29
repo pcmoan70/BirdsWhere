@@ -21,15 +21,15 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v731";
+var VERSION = "v732";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• Points: the Share button now shares only the points visible on the map.",
+  "• Shared points import as triangles and add to your existing pins.",
   "• Share gives a pastable link again; too-long links offer a .mcshare file.",
-  "• Sharing now includes only the observations visible on the map.",
-  "• Detections list: by species → newest date; by time → rare species first.",
-  "• Export your map points as GeoJSON (Settings → Map points)."
+  "• Sharing detections includes only the observations visible on the map."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs
