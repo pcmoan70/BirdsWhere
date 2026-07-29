@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-29 — Translate the detections-list sort options (sw v759)
+
+- The new sort-menu labels (`detlist.sortName`, `sortName2`, `sortCount`, `sortRarity`) were
+  English-only in v758 (fallback). Added proper translations across all 15 languages; "By date"
+  already used the existing translated `detlist.byTime`.
+
 ## 2026-07-29 — Detections-list sort menu + clickable failed-source reason (sw v758)
 
 - **Detections list sort** — replaced the date/species toggle with a sort **dropdown**: *By date*
