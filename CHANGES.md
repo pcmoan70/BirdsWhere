@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-29 — Tighter colour dialog: count + "Save points" button (sw v739)
+
+- The "Colour for these points?" dialog is now **tighter** (narrower box, less padding), shows the
+  **number of points to be saved** ("Colour for {n} points to save?"), and its confirm button reads
+  **"Save points"** instead of "OK". `uiDialog` gained an `okLabel` override and a `ui-modal-tight`
+  layout class; `points.pickColor` now takes an `{n}` count across all 15 languages.
+
 ## 2026-07-29 — Pick a colour when saving fetched points to a list (sw v738)
 
 - Saving fetched observations to a point-list (the Points panel "Save points" button and the

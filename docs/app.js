@@ -350,7 +350,7 @@
       var ov = document.createElement("div");
       ov.className = "ui-modal-overlay";
       var box = document.createElement("div");
-      box.className = "ui-modal";
+      box.className = "ui-modal" + (opts.color ? " ui-modal-tight" : "");
       var msg = document.createElement("div");
       msg.className = "ui-modal-msg";
       msg.textContent = opts.message || "";
@@ -386,7 +386,7 @@
       var cancel = document.createElement("button");
       cancel.type = "button"; cancel.className = "demo-btn demo-btn-light"; cancel.textContent = t("btn.cancel");
       var ok = document.createElement("button");
-      ok.type = "button"; ok.className = "demo-btn"; ok.textContent = t("popup.ok");
+      ok.type = "button"; ok.className = "demo-btn"; ok.textContent = opts.okLabel || t("popup.ok");
       if (!opts.alert) btns.appendChild(cancel);   // alert = OK only (just dismiss)
       btns.appendChild(ok);
       box.appendChild(btns); ov.appendChild(box);
@@ -406,7 +406,7 @@
   function modalPrompt(message, value) { return uiDialog({ message: message, input: true, value: value }); }
   function modalConfirm(message) { return uiDialog({ message: message, input: false }); }
   // OK/Cancel dialog with a colour swatch — resolves to the chosen hex, or null on cancel.
-  function modalColorPick(message, color) { return uiDialog({ message: message, color: color || "#3388ff" }); }
+  function modalColorPick(message, color, okLabel) { return uiDialog({ message: message, color: color || "#3388ff", okLabel: okLabel }); }
   function modalAlert(message, items) { return uiDialog({ message: message, items: items, input: false, alert: true }); }
   // Shared factory for the hand-built centred overlays (offline download, observer
   // editor, save-location, country menu…) — one implementation of overlay + box +
@@ -6727,7 +6727,7 @@
   function commitDetSave(name, rows) {
     // Pick one colour for the whole saved batch (defaults to the last colour used),
     // so different saves — e.g. one per year — can be told apart on the map.
-    modalColorPick(t("points.pickColor"), mpHex6(mpLastColor || "#3388ff")).then(function (chosen) {
+    modalColorPick(t("points.pickColor", { n: (rows || []).length }), mpHex6(mpLastColor || "#3388ff"), t("points.savePoints")).then(function (chosen) {
       if (chosen == null) return;   // cancelled
       mpLastColor = chosen; try { window.GeoState.save({ mpLastColor: chosen }); } catch (e) {}
       var n = saveDetRowsToCollection(name, rows, chosen);   // n = NEW points added after dedupe (0 = all already in the list)

@@ -1370,6 +1370,11 @@ button.dd-name:hover { text-decoration: underline; }
 }
 .ui-modal-color { display: flex; justify-content: center; margin-top: 12px; }
 .ui-modal-color input[type="color"] { width: 64px; height: 40px; padding: 0; border: 1px solid var(--border, #ccc); border-radius: 6px; cursor: pointer; background: none; }
+/* Compact colour-pick dialog: swatch + Save close together, minimal padding. */
+.ui-modal-tight { padding: 14px 16px; width: min(300px, 90vw); }
+.ui-modal-tight .ui-modal-msg { margin: 0; }
+.ui-modal-tight .ui-modal-color { margin-top: 10px; }
+.ui-modal-tight .ui-modal-btns { margin-top: 10px; }
 .ui-modal-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 /* Offline-area download dialog + list */
 .area-dl .area-dl-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 0.85rem; }
