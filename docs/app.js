@@ -7384,15 +7384,17 @@
     return out;
   }
   function saveDetections() { window.GeoState.save({ mapDetections: capDetections(serializeDetPlot(), DET_CAP) }); }
-  // Like serializeDetPlot, but ONLY the observations currently VISIBLE on the map —
-  // i.e. passing the active recency / date-range, species (★/◉/🟠/🟡) and observer
-  // filters and any legend selection (collectVisibleDetections is the exact set of
-  // drawn dots). Used for sharing, so a share carries what you see, not everything
-  // ever plotted. List-injected rows are excluded (they travel with their collection).
+  // Like serializeDetPlot, but ONLY the dots showing on the SCREEN: passing the active
+  // recency / date-range, species (★/◉/🟠/🟡) and observer filters and any legend
+  // selection (collectVisibleDetections = the exact set of drawn dots) AND inside the
+  // current map viewport. Used for sharing, so a share carries exactly what's on screen,
+  // not everything ever plotted. List-injected rows are excluded (they travel with their
+  // collection). Pan/zoom to frame precisely what you share.
   function serializeVisibleDetPlot() {
-    var out = {};
+    var out = {}, b = map && map.getBounds();
     collectVisibleDetections(null, false).forEach(function (d) {
       if (d.listName) return;   // came from a shown saved list → shared via its points, not here
+      if (b && !b.contains([d.lat, d.lon])) return;   // only the dots showing on the screen (viewport)
       var e = out[d.key] || (out[d.key] = { key: d.key, name: d.name, color: d.color, cls: (detPlot[d.key] && detPlot[d.key].cls) || "", rows: [] });
       var r = { lat: d.lat, lon: d.lon };
       if (d.date) r.date = d.date;

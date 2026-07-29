@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-29 — Share only the detection dots on screen (viewport) (sw v736)
+
+- Sharing detections now includes only the dots inside the current map **viewport** (in addition
+  to the active filters/selection) — `serializeVisibleDetPlot` filters by `map.getBounds()`. Pan/
+  zoom to frame exactly what the link carries.
+
 ## 2026-07-29 — Point sets share only via the per-list 🔗 icon (sw v735)
 
 - Removed the Points panel's top "Share points" button. **User point sets are now shared only

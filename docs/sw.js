@@ -21,7 +21,7 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v735";
+var VERSION = "v736";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
@@ -29,7 +29,7 @@ var NOTES = [
   "• Share a point list only from the 🔗 icon next to its name (keeps its colour).",
   "• Shared points import as triangles and add to your existing pins.",
   "• Share gives a pastable link again; too-long links offer a .mcshare file.",
-  "• Sharing detections includes only the observations visible on the map."
+  "• Sharing detections includes only the dots showing on your screen."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs
