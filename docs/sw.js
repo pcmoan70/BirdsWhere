@@ -21,16 +21,16 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v757";
+var VERSION = "v758";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• Detections list has a sort menu: by date, name, 2nd-language name, count, or rarity.",
+  "• A source that failed/timed out is now red AND clickable — tap it to see why.",
   "• Historic fetches now include eBird's full archive via GBIF; recent stays on the fresh direct eBird feed.",
   "• Added GBIF bird datasets: naturgucker (Germany) and Birds of Ireland — more observations near those countries.",
-  "• Help now notes the AI model output also orders the species lists and drives the ◉ locally-rare flag/filter.",
-  "• The observation details list now mirrors your legend species selection (search still finds every species to add).",
-  "• Data sources list now shows a one-line description of each source (and “Laji.fi” is shortened to “Laji”)."
+  "• The observation details list now mirrors your legend species selection (search still finds every species to add)."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs

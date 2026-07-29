@@ -3254,16 +3254,34 @@
   }
   // The species-page loading line, set straight from a fetch's per-source counts
   // (works for a cached fetch too, where obsTrack never ran). Persistent.
-  function showSourceCounts(bySrc, dedupTotal, timedOut) {
-    var keys = Object.keys(bySrc || {}); if (!keys.length) return;
+  function showSourceCounts(bySrc, dedupTotal, timedOut, failed) {
+    bySrc = bySrc || {};
+    var keys = Object.keys(bySrc);
     var toSet = Object.create(null); (timedOut || []).forEach(function (n) { toSet[n] = 1; });
-    var html = t("sp.loaded", { n: keys.map(function (k) {
+    // A red source name (timed out, or a hard failure with a reason) is now CLICKABLE →
+    // tapping it opens the reason. Hard-fail reasons arrive in `failed` ([{name,error}]).
+    var failMap = Object.create(null); (failed || []).forEach(function (f) { if (f && f.name) failMap[f.name] = f.error || t("fetch.errUnknown"); });
+    function redSpan(name, reason, label) {
+      return '<span class="src-timeout src-fail" data-err="' + escapeHtml(name + " — " + reason) + '" title="' + escapeHtml(t("fetch.clickErr")) + '">' + label + "</span>";
+    }
+    var parts = keys.map(function (k) {
       var label = escapeHtml(k) + " (" + bySrc[k] + ")";
-      return toSet[k] ? '<span class="src-timeout" title="' + escapeHtml(t("sources.timedOut")) + '">' + label + "</span>" : label;   // timed out → red, partial
-    }).join(", ") });
-    if (dedupTotal != null) html += " · " + escapeHtml(t("sp.deduped", { n: dedupTotal }));   // unique kept after de-dup
+      if (failMap[k]) return redSpan(k, failMap[k], label);
+      if (toSet[k]) return redSpan(k, t("sources.timedOut"), label);   // timed out → red, partial
+      return label;
+    });
+    // Sources that failed outright (no records, so absent from bySrc) still get a red chip.
+    Object.keys(failMap).forEach(function (k) { if (!(k in bySrc)) parts.push(redSpan(k, failMap[k], escapeHtml(k))); });
+    if (!parts.length) return;
+    var html = t("sp.loaded", { n: parts.join(", ") });
+    if (dedupTotal != null && keys.length) html += " · " + escapeHtml(t("sp.deduped", { n: dedupTotal }));   // unique kept after de-dup
     var ld = document.getElementById("sp-loading");
-    if (ld) { ld.innerHTML = html; ld.style.display = ""; }
+    if (ld) {
+      ld.innerHTML = html; ld.style.display = "";
+      Array.prototype.forEach.call(ld.querySelectorAll(".src-fail"), function (s) {
+        s.addEventListener("click", function () { var e = this.getAttribute("data-err"); if (e) modalAlert(e); });
+      });
+    }
   }
   function hideSourceCounts() { var ld = document.getElementById("sp-loading"); if (ld) ld.style.display = "none"; }
   // The Species-at-location "📍 Map" button plots the observation fetch. It's
@@ -3284,7 +3302,7 @@
   // plot whatever has arrived without re-fetching.
   function applySightings(tbody, token, result, isFinal) {
     if (!tbody || tbody.dataset.sightingsToken !== token) return;
-    if (isFinal) showSourceCounts(result.bySrc, result.dedupTotal, result.timedOut);
+    if (isFinal) showSourceCounts(result.bySrc, result.dedupTotal, result.timedOut, result.failed);
     var agg = result.agg, extras = result.extras;
     tbody._sightingsAgg = agg;
     if (currentSpView) currentSpView._result = result;   // latest data for plotAllSightings (partial or final)
@@ -4534,7 +4552,7 @@
               '<button type="button" id="detlist-save" class="detlist-save-btn ico-btn">' + ico("save") + '<span class="ico-label" data-i18n="detlist.save">Save</span></button>' +
               '<button type="button" id="detlist-nav" class="detlist-save-btn ico-btn" data-i18n-title="nav.title" title="Navigate in Google Maps" aria-label="Navigate in Google Maps">' + ico("nav") + "</button>" +
               '<button type="button" id="detlist-coords" class="detlist-save-btn ico-btn" data-i18n-title="coords.copyBtn" title="Copy coordinates" aria-label="Copy coordinates">' + ico("copy") + "</button>" +
-              '<button type="button" id="detlist-sort" class="detlist-sort-toggle">By date</button>' +
+              '<select id="detlist-sort" class="detlist-sort-sel" aria-label="Sort"></select>' +
             '</div>' +
           '</div>' +
           '<div id="detlist-search-row">' +
@@ -6128,6 +6146,9 @@
     }
     return nm;
   }
+  // Just the 2nd-language name of a species key ("" if no 2nd language / no label) —
+  // used to sort the detections list by the second language.
+  function detName2(key) { var lbl = key && labelsByKey[key]; return (secondLang && lbl) ? (secondName(lbl) || "") : ""; }
   // Legend / list swatch: a coloured ★ for starred species, a coloured dot with a
   // black centre for locally-rare species, a star-with-centre-dot when both, else
   // a plain coloured dot.
@@ -6419,7 +6440,7 @@
     }
   }
   function toggleNearby() { if (nearbyIsOpen()) closeNearby(true); else openNearby(); }
-  var detListSort = "time";            // "time" (date sections) | "species" (per-species rows)
+  var detListSort = "date";            // "date" = date/observer sections; else per-species rows sorted by: name | name2 | count | rarity
   var detListOpenSp = {};              // species keys expanded in the by-species view
   var detListNear = null;              // location scope: a clicked dot's { lat, lon, meters } (null = whole map)
   var detListQuery = "";               // fuzzy species-name filter for the list
@@ -6828,8 +6849,16 @@
     var body = document.getElementById("detlist-body");
     if (!body) return;
     closeDetRowMenu();   // any open per-record menu is stale once the list re-renders
-    var sortBtn = document.getElementById("detlist-sort");   // single toggle: shows only the ACTIVE mode, title = what a tap switches to
-    if (sortBtn) { var sp = detListSort === "species"; sortBtn.textContent = sp ? t("detlist.bySpecies") : t("detlist.byTime"); sortBtn.title = sp ? t("detlist.byTime") : t("detlist.bySpecies"); }
+    // Sort selector: "By date" (date/observer sections) + per-species orderings.
+    // "By 2nd name" only appears when a second language is configured.
+    if (detListSort === "name2" && !secondLang) detListSort = "name";
+    var sortSel = document.getElementById("detlist-sort");
+    if (sortSel) {
+      var opts = [["date", "detlist.byTime"], ["name", "detlist.sortName"]];
+      if (secondLang) opts.push(["name2", "detlist.sortName2"]);
+      opts.push(["count", "detlist.sortCount"], ["rarity", "detlist.sortRarity"]);
+      sortSel.innerHTML = opts.map(function (o) { return '<option value="' + o[0] + '"' + (detListSort === o[0] ? " selected" : "") + ">" + escapeHtml(t(o[1])) + "</option>"; }).join("");
+    }
     recolorDetections();   // swatches reflect the latest family colours
     // Filter bar (time / species-mode / observer) at the top of the popup.
     var fw = document.getElementById("detlist-filters-wrap");
@@ -6885,15 +6914,24 @@
     var navBtn = document.getElementById("detlist-nav"); if (navBtn) navBtn.disabled = !rows.length;
     if (!rows.length) { body.innerHTML = '<div class="dl-empty">' + escapeHtml(emptyMsg) + "</div>"; return; }
     var html;
-    if (detListSort === "species") {
+    if (detListSort !== "date") {
       // One summary line per species (most-recent date + count); tap to expand
-      // that species' individual records (each linking to its source).
+      // that species' individual records (each linking to its source). The chosen
+      // sort key orders the species.
       var bySp = {}, spOrder = [];
       rows.forEach(function (d) { if (!bySp[d.key]) { bySp[d.key] = { name: d.name, color: d.color, items: [] }; spOrder.push(d.key); } bySp[d.key].items.push(d); });
-      // Newest-observed species first (by each species' most-recent date, descending),
-      // then name as a tiebreaker for species that share a last-seen date.
       spOrder.forEach(function (k) { bySp[k].last = bySp[k].items.reduce(function (acc, d) { return (d.date || "") > acc ? (d.date || "") : acc; }, ""); });
-      spOrder.sort(function (a, b) { return bySp[b].last.localeCompare(bySp[a].last) || bySp[a].name.localeCompare(bySp[b].name); });
+      var byNm = function (a, b) { return bySp[a].name.localeCompare(bySp[b].name); };
+      spOrder.sort(function (a, b) {
+        if (detListSort === "name") return byNm(a, b);
+        if (detListSort === "name2") return (detName2(a) || bySp[a].name).localeCompare(detName2(b) || bySp[b].name) || byNm(a, b);
+        if (detListSort === "count") return bySp[b].items.length - bySp[a].items.length || byNm(a, b);
+        if (detListSort === "rarity") {   // rarest first = lowest habitat probability
+          var pa = (a in detProb) ? detProb[a] : -1, pb = (b in detProb) ? detProb[b] : -1;
+          return pa - pb || byNm(a, b);
+        }
+        return bySp[b].last.localeCompare(bySp[a].last) || byNm(a, b);   // safety fallback: newest first
+      });
       html = spOrder.map(function (k) {
         var g = bySp[k];
         var last = g.last;
@@ -10104,7 +10142,7 @@
     document.getElementById("detlist-close").addEventListener("click", function () { navClose("detlist"); });
     document.getElementById("detlist-modal").addEventListener("click", function (e) { if (e.target === this) navClose("detlist"); });
     var sortToggle = document.getElementById("detlist-sort");
-    if (sortToggle) sortToggle.addEventListener("click", function () { detListSort = detListSort === "species" ? "time" : "species"; renderDetListModal(); });
+    if (sortToggle) sortToggle.addEventListener("change", function () { detListSort = this.value; renderDetListModal(); });
     var detlistSearch = document.getElementById("detlist-search");
     if (detlistSearch) detlistSearch.addEventListener("input", function () {
       detListQuery = this.value; renderDetListModal();   // the list filters instantly…

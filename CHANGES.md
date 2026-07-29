@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-07-29 — Detections-list sort menu + clickable failed-source reason (sw v758)
+
+- **Detections list sort** — replaced the date/species toggle with a sort **dropdown**: *By date*
+  (date/observer sections, the old default), *By name*, *By 2nd name* (only when a second language is
+  set), *By count*, *By rarity* (model probability, rarest first). The per-species view is sorted by
+  the chosen key. New `detName2()` helper + `detlist.sort*` strings; `detListSort` values changed
+  (`time`→`date`, `species`→the sort keys).
+- **Clickable failed-source reason** — on the species-list "Loaded: …" line, a source shown red
+  (timed out, or a hard failure) is now **clickable** and opens the reason (e.g. an HTTP error or
+  "timed out"). `showSourceCounts` takes the fetch's `failed` list and renders red sources as
+  `.src-fail` chips wired to a `modalAlert`. Answers "why did GBIF go red in Albania?".
+
 ## 2026-07-29 — eBird via GBIF for historic; direct eBird stays the recent feed (sw v757)
 
 - Added the **eBird Observation Dataset (EOD)** `4fa7b334-…` as a GBIF dataset flagged
