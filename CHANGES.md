@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-29 — Historic fetch: live observation count in the status line (sw v743)
+
+- While fetching historic records from GBIF, the status line now shows a **live-updating count of
+  observations fetched** ("Fetching GBIF — {done}/{total} months · {n} observations"), and the
+  progress bar is unchanged. The per-month `hist.progress` string (which already carried the count)
+  was being overwritten by the `onProg` callback's count-less "page X of Y" text; `onProg` now drives
+  **only the progress bar**, leaving the count-bearing line as the sole status text. (`hist.stagePages`
+  is now unused.)
+
 ## 2026-07-29 — Colour-save dialog: swatch beside the buttons (sw v742)
 
 - In the "Colour for N points to save?" dialog the swatch sat directly **above** Cancel / Save

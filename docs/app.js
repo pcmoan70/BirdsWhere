@@ -14272,11 +14272,13 @@
         var fill = document.getElementById("sp-hist-prog-fill");
         if (prog) prog.style.display = "";
         if (fill) { fill.classList.add("hist-progress-indet"); fill.style.width = ""; }
+        setStatus(t("hist.stageFetch"));   // indeterminate text until the first month lands
         augmentRowsWithSightings(lat, lon, hist.range, function (done, total) {
           if (!currentSpView || currentSpView.range !== histTok) return;
           var f = document.getElementById("sp-hist-prog-fill");
           if (f && total > 0) { f.classList.remove("hist-progress-indet"); f.style.width = Math.min(100, Math.round(done / total * 100)) + "%"; }
-          setStatus(total > 0 ? t("hist.stagePages", { done: done, total: total }) : t("hist.stageFetch"));
+          // onProg drives ONLY the bar; the status TEXT (with the live observation
+          // count) is set per month inside fetchHistoricSightingsAt via t("hist.progress").
         }).then(function () {
           if (!currentSpView || currentSpView.range !== histTok) return;   // a newer search owns the bar
           var p = document.getElementById("sp-hist-prog"); if (p) p.style.display = "none";
