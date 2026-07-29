@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-29 — Streets is now the default base map (sw v746)
+
+- New users now start on the **Streets** (OpenStreetMap) base map instead of Light. The default
+  fallback for the saved `basemap` setting changed from `"light"` to `"streets"` everywhere it's
+  read. Existing users keep whatever they've already selected; anyone can still switch under
+  **Map type**.
+
 ## 2026-07-29 — Detection list "Navigate" heads to the observations' average position (sw v745)
 
 - The detection list's **"Navigate in Google Maps"** button (`detlist-nav`) now navigates to the

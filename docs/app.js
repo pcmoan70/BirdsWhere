@@ -4899,7 +4899,7 @@
       zoomDelta: window.h3 ? H3_ZOOM_STEP : 1,
     });
 
-    setBasemap(window.GeoState.get("basemap", "light"));
+    setBasemap(window.GeoState.get("basemap", "streets"));
 
     // Whenever the map is resized (invalidateSize from any source), make sure
     // you can still zoom out to the whole world on the current screen.
@@ -5268,7 +5268,7 @@
     if (labelsOverlay) { try { map.removeLayer(labelsOverlay); } catch (e) {} labelsOverlay = null; }
     var mode = labelsMode();
     if (!map || mode === "off") return;
-    var bm = window.GeoState.get("basemap", "light");
+    var bm = window.GeoState.get("basemap", "streets");
     var style = (bm === "dark" || bm === "satellite") ? "dark_only_labels" : "light_only_labels";
     var opts = { attribution: "", subdomains: "abcd", maxZoom: MAX_ZOOM, maxNativeZoom: 20, noWrap: true, zIndex: 350 };
     var off = LABEL_LEVEL_OFFSET[mode] || 0;
@@ -5400,7 +5400,7 @@
     }).then(function () {
       if (aborted()) { return caches.delete("pinned-" + id).then(function () { return -1; }); }
       var areas = getOfflineAreas();
-      areas.push({ id: id, name: name, basemap: window.GeoState.get("basemap", "light"),
+      areas.push({ id: id, name: name, basemap: window.GeoState.get("basemap", "streets"),
                    bbox: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
                    zStart: zStart, zMax: zMax, tiles: ok, bytes: ok * OFFLINE_TILE_BYTES, createdAt: Date.now() });
       saveOfflineAreas(areas);
@@ -5628,7 +5628,7 @@
     if (!baseLayer) return;
     var cap = baseLayer._origMaxNative || MAX_ZOOM;
     if (!navigator.onLine || offlineTilesFailing) {
-      var here = coveringAreas(window.GeoState.get("basemap", "light"));
+      var here = coveringAreas(window.GeoState.get("basemap", "streets"));
       if (here.length) cap = here.reduce(function (m, a) { return Math.max(m, a.zMax || 0); }, 0);
     }
     if (baseLayer.options.maxNativeZoom !== cap) {
@@ -5646,7 +5646,7 @@
     if (navigator.onLine || offlinePromptBusy || !map || !window.caches) return;
     var covering = coveringAreas(null);
     if (!covering.length) return;
-    var curBase = window.GeoState.get("basemap", "light");
+    var curBase = window.GeoState.get("basemap", "streets");
     // The current basemap is downloaded here → its tiles upscale (handled by the
     // zoom cap); don't interrupt with a prompt. Only offer a switch when *only*
     // a different basemap covers this view.
@@ -5669,7 +5669,7 @@
         var a = getOfflineAreas().filter(function (x) { return x.id === this.getAttribute("data-id"); }.bind(this))[0];
         close();
         if (!a) return;
-        if (a.basemap && a.basemap !== window.GeoState.get("basemap", "light")) setBasemap(a.basemap);
+        if (a.basemap && a.basemap !== window.GeoState.get("basemap", "streets")) setBasemap(a.basemap);
         try { map.fitBounds([[a.bbox[1], a.bbox[0]], [a.bbox[3], a.bbox[2]]], { maxZoom: a.zMax }); } catch (e) {}
       });
     });
