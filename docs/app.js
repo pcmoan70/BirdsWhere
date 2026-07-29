@@ -12370,7 +12370,11 @@
       }
       var pop = mk.getPopup(); if (pop && pop.isOpen()) pop.update();   // re-layout for the added buttons
     }).catch(function () { /* reverse-geocode failed — leave the popup as-is */ });
-    mk.bindPopup(wrap, { closeButton: true, autoClose: true, autoPan: true, className: "choose-popup", offset: [0, -8] });
+    // maxHeight → Leaflet wraps the content in a scrollable box once it (with any
+    // expanded "🌍 Worldwide" / national-services list) would run past ~60% of the
+    // viewport, so the popup never overflows the screen. Re-evaluated on popup.update().
+    mk.bindPopup(wrap, { closeButton: true, autoClose: true, autoPan: true, className: "choose-popup", offset: [0, -8],
+      maxHeight: Math.max(220, Math.round((window.innerHeight || 640) * 0.6)) });
     mk.openPopup();
   }
 

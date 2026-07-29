@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-29 — Map-click popup scrolls instead of overflowing the screen (sw v750)
+
+- The left-click map popup (species list + country / worldwide resources) could grow past the
+  viewport when its national-services list is long or the "🌍 Worldwide" submenu is expanded. It now
+  gets a Leaflet `maxHeight` (~60% of the window), so Leaflet wraps the content in a **scrollable
+  box** once it would overflow. Re-evaluated on `popup.update()`, so expanding the submenu toggles
+  the scroll correctly.
+
 ## 2026-07-29 — Missing-key error dialog links straight to Manage data sources (sw v749)
 
 - The "Some data sources failed:" dialog, when a source failed for a **missing free API key**, now
