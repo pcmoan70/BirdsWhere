@@ -4758,9 +4758,21 @@
 
   // ---- Language & i18n -----------------------------------------------------
   function defaultLang() {
-    // English by default — most users start here; auto-detect only complicates
-    // first-impression QA. The language picker still saves their choice for
-    // next visit.
+    // First run (no saved choice): match the device's preferred language to a
+    // supported UI language, else fall back to English. The picker still saves any
+    // later choice, which then wins on every subsequent visit.
+    var supported = {};
+    window.GeoI18N.LANGS.forEach(function (L) { supported[L.code] = 1; });
+    var cands = [];
+    try {
+      if (navigator.languages && navigator.languages.length) cands = navigator.languages.slice();
+      else if (navigator.language) cands = [navigator.language];
+    } catch (e) {}
+    for (var i = 0; i < cands.length; i++) {
+      var base = String(cands[i] || "").toLowerCase().split("-")[0];
+      if (base === "nb" || base === "nn") base = "no";   // Norwegian Bokmål/Nynorsk → "no"
+      if (supported[base]) return base;
+    }
     return "en";
   }
 

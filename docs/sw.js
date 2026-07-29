@@ -21,16 +21,16 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v750";
+var VERSION = "v751";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• First run now picks up your device's language automatically (change it any time in Settings).",
   "• Map-click popup scrolls instead of overflowing the screen when its country/worldwide options expand.",
   "• The “data sources failed” dialog now has a button that opens the Manage data sources window directly.",
   "• Settings now opens with a short description of the app and the About link at the top.",
-  "• Opening a shared detections link now clears leftover legend filters so the imported dots always show.",
-  "• The Streets map is now the default base map (change it any time under Map type)."
+  "• Opening a shared detections link now clears leftover legend filters so the imported dots always show."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs

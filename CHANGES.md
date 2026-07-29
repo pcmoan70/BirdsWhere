@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-29 — First-run language follows the device (sw v751)
+
+- On first run (no saved language choice), the UI now defaults to the **device's preferred language**
+  (`navigator.languages`) when it's one of the 15 supported languages, else English — instead of
+  always English. Norwegian Bokmål/Nynorsk (`nb`/`nn`) map to `no`. The language picker still saves
+  any explicit choice, which then wins on later visits.
+
 ## 2026-07-29 — Map-click popup scrolls instead of overflowing the screen (sw v750)
 
 - The left-click map popup (species list + country / worldwide resources) could grow past the
