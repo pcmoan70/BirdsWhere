@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-29 — Restore the observer filter's "None" state (sw v741)
+
+- v740 over-corrected: making an empty selection mean "all" removed the useful **None** state
+  (clear all observers, then tick just a few). Restored — an empty `detObsFilter` Set is once again
+  "None" (show nothing), and the scope cycle is back to **All → None → each saved list → All**.
+- The genuine v740 fix is kept but narrowed: `reconcileObsFilter` now heals only a **non-empty**
+  remembered filter whose observers aren't among the currently-plotted data (→ reverts to All). The
+  intentional empty "None" is left alone, so building a few-observer selection works as before.
+
 ## 2026-07-29 — Fix: observer filter with no name chosen no longer blanks the map (sw v740)
 
 - The 👤 observer filter could get stuck in a state that hid every detection: an **empty selection**

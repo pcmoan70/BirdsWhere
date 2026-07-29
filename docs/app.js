@@ -5970,16 +5970,19 @@
   function detObsSplit(s) { return String(s || "").split(/\s*[|;]\s*/).map(function (x) { return x.trim(); }).filter(Boolean); }
   function detObsRealNames(s) { return detObsSplit(s).filter(function (n) { return !isObsTag(n); }); }   // single names, tags removed
   function setDetObsFilter(set) {
-    // An empty selection means "no observer chosen" → show ALL, not nothing. (A
-    // Set holding only "" is a real choice: the "(no observer)" bucket.)
-    detObsFilter = (set && set.size) ? set : null; detObsNames = []; detObsAllowNone = false;
+    // null = all observers; an empty Set = "None" (show nothing) — a deliberate,
+    // useful base state for then ticking just a few. A Set holding only "" is the
+    // "(no observer)" bucket.
+    detObsFilter = set || null; detObsNames = []; detObsAllowNone = false;
     if (detObsFilter) detObsFilter.forEach(function (n) { if (n) detObsNames.push(n); else detObsAllowNone = true; });
   }
-  // A remembered observer filter whose names aren't among the currently-plotted
-  // observers would silently blank the map (empty legend, no checkbox ticked).
-  // Heal it back to "all observers" so the points show. Returns true if changed.
+  // A remembered observer filter whose SELECTED names aren't among the currently-
+  // plotted observers would silently blank the map (empty legend, no checkbox
+  // ticked) — the "brought up a list, nothing shows" bug. Heal that back to "all".
+  // The explicit "None" (empty Set) is left alone: it's an intentional show-nothing
+  // base for building a few-observer selection.
   function reconcileObsFilter() {
-    if (!detObsFilter) return false;
+    if (!detObsFilter || !detObsFilter.size) return false;   // null = all, empty = intentional None → leave both
     if (!Object.keys(detPlot).length) return false;   // nothing plotted → keep the filter (clearing the map keeps filters; a fetch may be incoming)
     var ob = detAllObservers(), present = detObsAllowNone && ob.hasNone;
     for (var i = 0; !present && i < detObsNames.length; i++) if (ob.names.indexOf(detObsNames[i]) >= 0) present = true;
@@ -7837,17 +7840,18 @@
     for (var i = 0; i < lists.length; i++) if (sameNameSet(detObsFilter, lists[i].observers)) return lists[i].name;
     return t("det.obsCustom");
   }
-  // Step the observer scope: All (null) → list0 → list1 → … → All. A custom
-  // checkbox selection resets to All on the next step. (There's no "None" step —
-  // an empty selection means "all", so it would just duplicate All.)
+  // Step the observer scope: All (null) → None (empty) → list0 → list1 → … → All.
+  // A custom checkbox selection resets to All on the next step.
   function cycleObsFilter() {
-    var lists = getObserverLists(), n = 1 + lists.length, cur = 0;
+    var lists = getObserverLists(), n = 2 + lists.length, cur = 0;
     if (detObsFilter) {
-      cur = -1; for (var i = 0; i < lists.length; i++) if (sameNameSet(detObsFilter, lists[i].observers)) { cur = 1 + i; break; }
+      if (detObsFilter.size === 0) cur = 1;
+      else { cur = -1; for (var i = 0; i < lists.length; i++) if (sameNameSet(detObsFilter, lists[i].observers)) { cur = 2 + i; break; } }
     }
     var next = cur < 0 ? 0 : (cur + 1) % n;
     if (next === 0) setDetObsFilter(null);
-    else setDetObsFilter(new Set(lists[next - 1].observers));
+    else if (next === 1) setDetObsFilter(new Set());
+    else setDetObsFilter(new Set(lists[next - 2].observers));
     saveLegendState(); rebuildDetLayers(); updateDetLegend();
   }
   // True if the current filter Set contains exactly the names in `arr`.

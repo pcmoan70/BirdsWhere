@@ -21,12 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v740";
+var VERSION = "v741";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
-  "• Fix: an observer filter with no name chosen (or a remembered one that no longer matches) now shows all, not an empty map.",
+  "• Observer filter: the “None” state is back (clear all, then tick a few); a remembered filter that no longer matches any plotted observer reverts to All.",
   "• Saving fetched observations to a list asks for one colour for the whole batch (shows the count).",
   "• New points default to the last colour you picked — colour a whole year's points alike.",
   "• Share a point list only from the 🔗 icon next to its name (keeps its colour)."
