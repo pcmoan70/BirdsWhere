@@ -32,6 +32,14 @@ window.AppSources = (function () {
     // BSPB's common-bird monitoring scheme (Bulgaria) — the largest general-bird
     // BSPB occurrence dataset openly on GBIF (~246k, all birds); gated to BG.
     { key: "0c5f7cb7-1973-4f0e-994f-dfc69fcabc0e", name: "SmartBirds / BSPB (BG)", url: "https://smartbirds.org/", country: "BG" },
+    // NABU|naturgucker — Germany's big citizen-science nature portal and by far the
+    // largest openly-published German bird source (~15.6M bird records, ~1.4M in
+    // 2024–25, actively updated). Fills Germany, which has no direct source. Gated
+    // to DE (its data is overwhelmingly German; ornitho.de is not on GBIF).
+    { key: "6ac3f774-d9fb-4796-b3e9-92bf6c81c084", name: "naturgucker (DE)", url: "https://naturgucker.de/", country: "DE" },
+    // Birds of Ireland (National Biodiversity Data Centre) — Ireland's general bird
+    // occurrence dataset (~293k, ongoing); Ireland has no other portal here. Gated to IE.
+    { key: "81b551f9-3e4f-47b4-952e-56e870c1b363", name: "Birds of Ireland (IE)", url: "https://www.biodiversityireland.ie/", country: "IE" },
     { key: "6ff8b3b0-ef0f-4f79-a310-5a5615c6aa0b", name: "Birda", url: "https://birda.org/" }
   ];
   var GBIF_DS_COUNTRY = {}; DEFAULT_GBIF_DATASETS.forEach(function (d) { if (d.country) GBIF_DS_COUNTRY[d.key] = d.country; });

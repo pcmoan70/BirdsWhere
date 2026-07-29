@@ -1,5 +1,20 @@
 # Changes
 
+## 2026-07-29 — Add GBIF bird datasets: naturgucker (DE) + Birds of Ireland (sw v756)
+
+Surveyed the largest openly-published bird occurrence datasets on GBIF per European country
+(`taxonKey=212`, human observations, 2018+, faceted by dataset). Findings:
+
+- **eBird Observation Dataset** dominates almost every country but is deliberately **not** added: it
+  is global (each dataset = one request on *every* fetch worldwide), duplicates our direct eBird
+  source, and GBIF's copy lags eBird's live API.
+- **naturgucker (DE)** `6ac3f774-…` and **Birds of Ireland (IE)** `81b551f9-…` added — both are
+  actively updated (naturgucker ~15.6M bird records, ~1.4M in 2024–25; Birds of Ireland ~293k). They
+  fill Germany (no direct source) and Ireland (no other portal), and are **country-gated** so they
+  only cost a request near their own country.
+- Skipped **Waarnemingen.be birds** and **Oiseaux des Jardins (FR)**: their GBIF republishes are
+  stale (stop ~2018 / ~2022) and those regions are already covered live by Observation.org + eBird.
+
 ## 2026-07-29 — Docs: note the model output also ranks lists + drives rarity (sw v755)
 
 - Help (`about.html`, "What the AI model does") and `README.md` now spell out that the model's
