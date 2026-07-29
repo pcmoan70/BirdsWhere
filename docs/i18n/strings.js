@@ -440,6 +440,7 @@ window.GeoI18N = (function () {
       "detlist.sortName2": "By 2nd name",
       "detlist.sortCount": "By count",
       "detlist.sortRarity": "By rarity",
+      "detlist.sumIndiv": "Total individuals counted",
       "detlist.noDate": "No date",
       "detlist.noAccess": "Source not available — no access (needs an API key)",
       "detlist.empty": "No detections match the current legend filters.",

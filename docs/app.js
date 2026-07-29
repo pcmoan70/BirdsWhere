@@ -6920,12 +6920,21 @@
       // sort key orders the species.
       var bySp = {}, spOrder = [];
       rows.forEach(function (d) { if (!bySp[d.key]) { bySp[d.key] = { name: d.name, color: d.color, items: [] }; spOrder.push(d.key); } bySp[d.key].items.push(d); });
-      spOrder.forEach(function (k) { bySp[k].last = bySp[k].items.reduce(function (acc, d) { return (d.date || "") > acc ? (d.date || "") : acc; }, ""); });
+      // Per species: most-recent date + summed individual count (a record with no
+      // count value counts as 1). "By count" orders on that summed total.
+      spOrder.forEach(function (k) {
+        var g = bySp[k], last = "", sum = 0;
+        g.items.forEach(function (d) {
+          if ((d.date || "") > last) last = d.date || "";
+          var n = parseInt(d.count, 10); sum += (isFinite(n) && n > 0) ? n : 1;
+        });
+        g.last = last; g.sum = sum;
+      });
       var byNm = function (a, b) { return bySp[a].name.localeCompare(bySp[b].name); };
       spOrder.sort(function (a, b) {
         if (detListSort === "name") return byNm(a, b);
         if (detListSort === "name2") return (detName2(a) || bySp[a].name).localeCompare(detName2(b) || bySp[b].name) || byNm(a, b);
-        if (detListSort === "count") return bySp[b].items.length - bySp[a].items.length || byNm(a, b);
+        if (detListSort === "count") return bySp[b].sum - bySp[a].sum || byNm(a, b);
         if (detListSort === "rarity") {   // rarest first = lowest habitat probability
           var pa = (a in detProb) ? detProb[a] : -1, pb = (b in detProb) ? detProb[b] : -1;
           return pa - pb || byNm(a, b);
@@ -6940,7 +6949,7 @@
           detSwatch(g.color || "#888", isInteresting(k), detIsRare(k), k) +
           '<span class="dl-sp">' + escapeHtml(detListName(k, g.name)) + "</span>" +
           '<span class="dl-meta">' + escapeHtml(fmtDate(last)) + "</span>" +
-          '<span class="dl-ct">' + g.items.length + "</span>" +
+          '<span class="dl-ct"' + (detListSort === "count" ? ' title="' + escapeHtml(t("detlist.sumIndiv")) + '"' : "") + ">" + (detListSort === "count" ? g.sum : g.items.length) + "</span>" +
           '<span class="dl-caret">' + (open ? "▾" : "▸") + "</span></button>";
         var sub = open ? '<div class="dl-sp-body">' + g.items.slice().sort(function (a, b) { return (b.date || "").localeCompare(a.date || ""); }).map(function (d) { return detRowHtml(d, true); }).join("") + "</div>" : "";
         return '<div class="dl-sp-group">' + head + sub + "</div>";

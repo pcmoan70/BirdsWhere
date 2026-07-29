@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-29 — "By count" sorts by summed individuals (sw v760)
+
+- Detections list **"By count"** now orders species by the **sum of individual counts** across their
+  records (a record with no count = 1), not the number of records. The per-species badge shows that
+  summed total while this sort is active.
+- (No change needed for the eBird window: the recent fetch already uses direct eBird for the last 30
+  days — eBird's API hard-cap — and GBIF datasets fill back to ~90 days; older = Historic mode's EOD.)
+
 ## 2026-07-29 — Translate the detections-list sort options (sw v759)
 
 - The new sort-menu labels (`detlist.sortName`, `sortName2`, `sortCount`, `sortRarity`) were
