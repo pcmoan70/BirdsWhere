@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-29 — Detection list "Navigate" heads to the observations' average position (sw v745)
+
+- The detection list's **"Navigate in Google Maps"** button (`detlist-nav`) now navigates to the
+  **average (centroid) position of the observations currently listed** — a single Google Maps
+  destination — instead of routing through each dot / the clicked spot the list was fetched from.
+  The average is taken over `detListLastRows`, so it honours the list's active filtering (date /
+  observer / ★rare/year/life mode / search).
+
 ## 2026-07-29 — "Some data sources failed" nudges you to register a free API key (sw v744)
 
 - When the failure dialog ("Some data sources failed:") includes a source that failed **only because

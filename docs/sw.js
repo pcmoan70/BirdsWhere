@@ -21,15 +21,15 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v744";
+var VERSION = "v745";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• Detection list “Navigate in Google Maps” now heads to the average position of the filtered observations, not the fetch spot.",
   "• “Some data sources failed” now nudges you to register a free API key in Manage data sources for fresher data.",
   "• Historic (GBIF) fetch shows a live count of observations fetched next to the progress bar.",
-  "• Observer filter: the “None” state is back (clear all, then tick a few); a remembered filter that no longer matches any plotted observer reverts to All.",
-  "• Saving fetched observations to a list asks for one colour for the whole batch (shows the count)."
+  "• Observer filter: the “None” state is back (clear all, then tick a few); a remembered filter that no longer matches any plotted observer reverts to All."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs

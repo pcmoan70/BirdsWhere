@@ -10092,9 +10092,15 @@
     var detlistNav = document.getElementById("detlist-nav");
     if (detlistNav) detlistNav.addEventListener("click", function (e) {
       e.stopPropagation();
-      // Navigate to the detection location(s) in Google Maps (directions), NOT the
-      // My-Maps KML import — a clicked spot's co-located dots collapse to one stop.
-      navigatePoints((detListLastRows || []).map(function (d) { return { lat: d.lat, lon: d.lon }; }));
+      // Navigate to the AVERAGE position of the observations CURRENTLY LISTED here
+      // (detListLastRows already reflects the active filters — date / observer /
+      // ★rare/year/life / search) as a single Google Maps destination — where the
+      // birds actually are, not the clicked spot the list was fetched from.
+      var rows = (detListLastRows || []).filter(function (d) { return isFinite(+d.lat) && isFinite(+d.lon); });
+      if (!rows.length) { setStatus(t("nav.empty")); return; }
+      var la = 0, lo = 0;
+      rows.forEach(function (d) { la += +d.lat; lo += +d.lon; });
+      navigatePoints([{ lat: la / rows.length, lon: lo / rows.length }]);
     });
     var detlistCoords = document.getElementById("detlist-coords");
     if (detlistCoords) detlistCoords.addEventListener("click", function (e) {
