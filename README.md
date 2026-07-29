@@ -8,11 +8,12 @@ running client-side via [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials
 There is **no server and no backend of our own** — the neural network runs on your
 device, and live observations are pulled straight from third-party APIs in your browser.
 
-The model predicts occurrence probabilities for **12,012 species** (birds, mammals,
-amphibians and insects) from `(latitude, longitude, week 1–48)`. On top of it the app
-overlays recent real-world observations, a full field-logging workflow, offline maps and
-cross-device sync. Observation search additionally covers **plants and fungi**, which have
-no habitat model (observation-only).
+The AI model **predicts** occurrence probabilities for **12,012 species** (birds, mammals,
+amphibians and insects) from `(latitude, longitude, week 1–48)` — i.e. how likely each species is
+to be present at a place and time of year, **not** what anyone has actually seen. On top of that
+prediction the app overlays **real observations** pulled live from third-party databases, plus a
+full field-logging workflow, offline maps and cross-device sync. Observation search additionally
+covers **plants and fungi**, which have no habitat model (observation-only).
 
 > Predictions are model estimates, not ground truth; BirdWeather detections are AI acoustic
 > identifications, not human-verified.
@@ -381,6 +382,26 @@ memory only; no background sync).
 - Settings additionally cover base map & resolution, map-data cache size, second-name and
   scientific-name display, the rare-species threshold, max map points, hotspot minimum species,
   and country sampling resolution.
+
+---
+
+## Your data & privacy
+
+Everything you create — saved **points**, **lists / trips**, **field checklists** (and attached
+photos), **stored locations**, your ★/year/life/hidden species, observer lists and all **settings**
+— is kept **only on your device** (localStorage + IndexedDB). There is **no account and no server of
+ours**; nothing is uploaded on its own.
+
+Your data leaves the device only when **you** act:
+
+- a **🔗 share link** or **Share map** — packs the points / detections you pick into a URL you hand out;
+- an **export** — CSV, KML/KMZ, GeoJSON or PDF, or the full backup file;
+- the optional one-tap **Google Drive backup**, into your *own* Drive's private app folder.
+
+Separately, simply using the app sends the **map coordinates you are viewing** to the third-party
+observation databases (GBIF, eBird, iNaturalist…) and the map / place-name provider, so they can
+return sightings and names — but never anything you have saved. The AI model itself runs fully
+on-device: computing a prediction sends your location nowhere.
 
 ---
 

@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-07-29 — Help: clearer AI-model explanation + data-privacy section (sw v752)
+
+- Rewrote the in-app Help (`about.html`, English) opening as **"What the AI model does"** — it now
+  states plainly that the model *predicts* how likely each species is at a place/time of year and
+  does **not** report actual sightings (those are a separate live-observation layer overlaid on top).
+- Added a **"Your data stays on your device"** section: all points, lists, checklists, stored
+  locations, species flags, observer lists and settings live only in the browser (no account, no
+  server of ours); data leaves only when the user shares a link/map, exports a file, or uses the
+  optional Google Drive backup. Clarified that observation lookups do send the viewed map
+  coordinates to third-party databases, but nothing the user has saved.
+- Mirrored both points in `README.md` (intro wording + a new "Your data & privacy" section).
+
 ## 2026-07-29 — First-run language follows the device (sw v751)
 
 - On first run (no saved language choice), the UI now defaults to the **device's preferred language**

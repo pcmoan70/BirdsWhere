@@ -874,8 +874,9 @@ window.GeoI18N = (function () {
       "footer.lastchange": "Last change: {t}",
       "about.title": "ℹ︎ About the model & how values are computed",
       "about.html":
-        "<h4>The habitat model</h4>" +
-        "<p>This tool runs the <a href=\"https://github.com/birdnet-team/geomodel\" target=\"_blank\" rel=\"noopener\">BirdNET Geomodel</a> — a spatiotemporal neural network — entirely in your browser via ONNX Runtime Web. From a <b>latitude</b>, <b>longitude</b> and <b>week of year</b> (1–48; the year is split into 48 weeks of about 7.6 days), it predicts an <b>occurrence probability</b> (0–100%) for each of 12,012 species across birds, mammals, amphibians and insects. The probability reflects how likely a species is to be present there at that time of year, learned from global occurrence records and environmental variables. It is a modelled estimate — not an observation count or a guarantee.</p>" +
+        "<h4>What the AI model does</h4>" +
+        "<p>The app is built around an <b>AI model</b> — the <a href=\"https://github.com/birdnet-team/geomodel\" target=\"_blank\" rel=\"noopener\">BirdNET Geomodel</a>, a spatiotemporal neural network. It answers one question: <i>how likely is each species to be present at a given place and time of year?</i> Importantly, it does <b>not</b> report what anyone has actually seen — it is a learned <b>prediction</b> of where a species <i>could</i> be. Real sightings are a <b>separate layer</b> the app pulls live from observation databases and overlays on top (see the Species List and “Plotted detections”), so you can compare where a species <i>should</i> be with where it <i>has</i> been reported.</p>" +
+        "<p>Given a <b>latitude</b>, <b>longitude</b> and <b>week of year</b> (1–48; the year is split into 48 weeks of about 7.6 days), the model returns an <b>occurrence probability</b> (0–100%) for each of 12,012 species across birds, mammals, amphibians and insects, learned from global occurrence records and environmental variables. The whole network runs in your browser via ONNX Runtime Web — downloaded once (~7 MB) and computed entirely on your own device. Every probability is a modelled estimate, not an observation count or a guarantee.</p>" +
         "<h4>Map views (the “Mode” dropdown)</h4>" +
         "<ul>" +
         "<li><b>📍 Recent</b> — click anywhere on the map to get a ranked Species List for that point in the selected week: predicted probability, an optional second-language name (a Scientific-names column can be toggled on), and a comparison column (see below). Recent observation counts from the enabled sources are merged in and clickable (GBIF + iNaturalist + BirdWeather need no key; eBird / Artportalen / Artsobservasjoner / Laji.fi need their own free key).</li>" +
@@ -948,7 +949,7 @@ window.GeoI18N = (function () {
         "<li><b>Probability range</b> — lower &amp; upper bounds (defaults 5–100 %) that filter the Species List and Richness counts.</li>" +
         "</ul>" +
         "<h4>Technology</h4>" +
-        "<p>The AI model runs <b>entirely in your web browser</b> — there is no server and your location is never sent anywhere. The neural network is downloaded once (~7 MB) and all predictions are computed on your own device. Built with:</p>" +
+        "<p>The AI model runs <b>entirely in your web browser</b> — there is no server of ours, and computing a prediction never sends your location away (the observation lookups you trigger do query third-party databases — see “Your data stays on your device”). The neural network is downloaded once (~7 MB) and all predictions are computed on your own device. Built with:</p>" +
         "<ul>" +
         "<li><b>ONNX Runtime Web</b> (WebAssembly) — runs the neural network in the browser.</li>" +
         "<li><b>Web Workers</b> — inference runs off the main thread so the interface stays responsive.</li>" +
@@ -956,6 +957,9 @@ window.GeoI18N = (function () {
         "<li><b>Leaflet</b> with OpenStreetMap / CARTO tiles — the interactive map.</li>" +
         "<li><b>Plain HTML, CSS and JavaScript</b> — no framework and no build step; served as a static site (GitHub Pages).</li>" +
         "</ul>" +
+        "<h4>Your data stays on your device</h4>" +
+        "<p>Everything you create — saved <b>points</b> and <b>lists / trips</b>, <b>field checklists</b> (and any attached photos), <b>stored locations</b>, your ★ / year-list / life-list / hidden species, observer lists, and all your <b>settings</b> — is kept <b>only on this device</b>, in the browser's own storage. There is <b>no account and no server of ours</b>; none of it is uploaded anywhere on its own.</p>" +
+        "<p>Your data leaves the device only when <b>you</b> choose to send it: a <b>🔗 share link</b> or <b>Share map</b> (which packs the points / detections you pick into a URL you hand out), an <b>export</b> (CSV, KML/KMZ, GeoJSON or PDF), or the optional one-tap <b>Google Drive backup</b> into your <i>own</i> Drive's private app folder. Separately, simply using the app sends the <b>map coordinates you are viewing</b> to the third-party observation databases (GBIF, eBird, iNaturalist…) and the map / place-name provider so they can return sightings and names — but never anything you have saved.</p>" +
         "<h4>Project &amp; feedback</h4>" +
         "<p>This tool is free to use, and feedback is welcome at <button type=\"button\" class=\"feedback-open\" data-i18n=\"feedback.send\">✉ Send feedback</button>.</p>" +
         "<p class=\"about-note\">Predictions are model estimates, not ground truth. Model weights © the BirdNET team, licensed CC BY-SA 4.0; map tiles © OpenStreetMap contributors, © CARTO.</p>",
