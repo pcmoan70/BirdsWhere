@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-29 — Shared points keep their colour; drop the extra Share-link button (sw v734)
+
+- A shared point now carries its **on-screen colour** (explicit colour, else its list/tag colour),
+  so it looks the same for the recipient — shown as a triangle in that colour. `packPoints` now
+  includes `color`.
+- Removed the redundant "🔗 Share link" button from the unsaved-points banner — the panel's
+  **Share** button (in-view points) covers it.
+
 ## 2026-07-29 — Share points: only those in the current map view (sw v733)
 
 - The Points panel's Share button now shares only the points that fall inside the map's current

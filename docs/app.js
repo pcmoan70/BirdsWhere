@@ -9312,8 +9312,7 @@
       "</div>" : "") +
       collSection +
       (mpHasUnsaved() ? '<div class="mp-unsaved">' + escapeHtml(t("points.unsaved", { n: mapPoints.length })) +
-        ' <button type="button" id="mp-saveas" class="mp-saveas-btn">' + escapeHtml(t("points.saveAsList")) + "</button>" +
-        ' <button type="button" id="mp-share-pts" class="mp-saveas-btn">🔗 ' + escapeHtml(t("share.link")) + "</button></div>" : "") +
+        ' <button type="button" id="mp-saveas" class="mp-saveas-btn">' + escapeHtml(t("points.saveAsList")) + "</button></div>" : "") +
       (chipsHtml ? '<div class="mp-chips">' + chipsHtml + "</div>" : "") +
       (unionPts.length > 1 ?
         '<div class="mp-sort"><span class="mp-sort-lbl">⇅</span>' +
@@ -9335,8 +9334,6 @@
         rd.readAsText(f); e.target.value = "";
       });
     }
-    var sharePtsBtn = panel.querySelector("#mp-share-pts");
-    if (sharePtsBtn) sharePtsBtn.addEventListener("click", function (e) { e.stopPropagation(); shareWorkingPoints(); });
     var saveAsBtn = panel.querySelector("#mp-saveas");
     if (saveAsBtn) saveAsBtn.addEventListener("click", function () {
       modalPrompt(t("points.saveAsPrompt"), "").then(function (n) {
@@ -11982,6 +11979,7 @@
       if (p.noteHtml) o.noteHtml = true;
       if (p.spKey) o.spKey = p.spKey;
       if (p.spColor) o.spColor = p.spColor;
+      if (p.color) o.color = p.color;   // keep the point's on-screen colour so a share looks the same
       if (p.date) o.date = p.date;
       if (p.count != null && p.count !== "") o.count = p.count;
       return o;
@@ -11991,22 +11989,24 @@
     var c = mpCollections.filter(function (x) { return x.name === name; })[0]; if (!c) return;
     doShare({ v: 1, type: "points", name: name, points: packPoints(c.points) }, name);
   }
-  // Share the loose working map points (user-placed pins not yet saved as a list).
-  function shareWorkingPoints() {
-    var pts = packPoints(mapPoints);
-    if (!pts.length) { setStatus(t("nav.empty")); return; }
-    var name = mpActiveName || t("share.defaultName");
-    doShare({ v: 1, type: "points", name: name, points: pts }, name);
-  }
   // DEFAULT share: the user points currently IN VIEW on the screen (loose pins + the
-  // points of any shown saved lists that fall inside the map's current bounds) as a
-  // points-only link — no detections. Pan/zoom to choose exactly what you share.
+  // points of any shown saved lists inside the map's current bounds) as a points-only
+  // link — no detections. Each point carries its ON-SCREEN colour so it looks the same
+  // for the recipient (drawn as a triangle there). Pan/zoom to choose what you share.
   function shareVisiblePoints() {
-    var b = map && map.getBounds();
-    var inView = allShownUserPoints().filter(function (p) {
-      return p && isFinite(+p.lat) && isFinite(+p.lon) && (!b || b.contains([+p.lat, +p.lon]));
+    var b = map && map.getBounds(), packed = [];
+    function add(p, effColor) {
+      if (!p || !isFinite(+p.lat) || !isFinite(+p.lon)) return;
+      if (b && !b.contains([+p.lat, +p.lon])) return;
+      packed.push(Object.assign({}, p, { color: effColor }));   // freeze the displayed colour
+    }
+    (mapPoints || []).forEach(function (p) { add(p, p.color || mpColorFor(p)); });   // loose pins
+    (mpCollections || []).forEach(function (c) {
+      if (!shownColls[c.name]) return;
+      var col = collColor(c);
+      (c.points || []).forEach(function (p) { if (p && !p.spKey) add(p, p.color || col || mpColorFor(p)); });
     });
-    var pts = packPoints(inView);
+    var pts = packPoints(packed);
     if (!pts.length) { setStatus(t("points.exportEmpty")); return; }
     var name = t("points.title");
     doShare({ v: 1, type: "points", name: name, points: pts }, name);
