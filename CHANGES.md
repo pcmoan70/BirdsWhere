@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-29 — "Some data sources failed" nudges you to register a free API key (sw v744)
+
+- When the failure dialog ("Some data sources failed:") includes a source that failed **only because
+  its free API key isn't set**, it now appends a hint: *"…register one in 'Manage data sources…' for
+  more up-to-date data."* Uses the existing `splitFailed().needKey` detection; new i18n key
+  `fetch.errKeyHint` across all 15 languages (each pointing at the localized "Manage data sources…"
+  label). No hint is shown for purely non-key failures.
+
 ## 2026-07-29 — Historic fetch: live observation count in the status line (sw v743)
 
 - While fetching historic records from GBIF, the status line now shows a **live-updating count of

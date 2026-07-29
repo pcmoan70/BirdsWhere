@@ -2828,7 +2828,11 @@
     var sig = arr.map(function (f) { return f.name + ":" + f.error; }).sort().join("|");
     if (sig === lastFetchErrSig) return;
     lastFetchErrSig = sig;
-    modalAlert(t("fetch.errTitle"), arr.map(function (f) { return f.name + " — " + (f.error || t("fetch.errUnknown")); }));
+    // If any of them failed only because a free API key isn't set, nudge the user
+    // toward registering one (fresher, more up-to-date data than GBIF's copy).
+    var msg = t("fetch.errTitle");
+    if (splitFailed(arr).needKey.length) msg += "\n\n" + t("fetch.errKeyHint");
+    modalAlert(msg, arr.map(function (f) { return f.name + " — " + (f.error || t("fetch.errUnknown")); }));
   }
   // The observation sources, behind one interface. `country` (ISO-2) gates a
   // source to its own country — the national databases are only queried when the
