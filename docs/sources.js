@@ -40,6 +40,12 @@ window.AppSources = (function () {
     // Birds of Ireland (National Biodiversity Data Centre) — Ireland's general bird
     // occurrence dataset (~293k, ongoing); Ireland has no other portal here. Gated to IE.
     { key: "81b551f9-3e4f-47b4-952e-56e870c1b363", name: "Birds of Ireland (IE)", url: "https://www.biodiversityireland.ie/", country: "IE" },
+    // SABAP2 — Southern African Bird Atlas Project 2. The #1 fresh bird source in South
+    // Africa (ahead of eBird there; ~25.7M total, ~3.5M in 2024–25), key-free. Gated to ZA.
+    { key: "906e6978-e292-4a8b-9c39-adf6bb0f3323", name: "SABAP2 (ZA)", url: "https://sabap2.birdmap.africa/", country: "ZA" },
+    // Birdata — BirdLife Australia's national bird atlas/surveys (~23M total, ~1.5M in
+    // 2024–25), key-free; complements eBird for Australia. Gated to AU.
+    { key: "4bf1cca8-832c-4891-9e17-7e7a65b7cc81", name: "Birdata / BirdLife Australia (AU)", url: "https://birdata.birdlife.org.au/", country: "AU" },
     // eBird Observation Dataset (EOD) — by far the largest bird source on GBIF, global.
     // HISTORIC-ONLY: it's queried only for a Historic date-range fetch, not the recent
     // fetch — GBIF's copy lags eBird's live API by months, so the direct eBird source

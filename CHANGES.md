@@ -1,5 +1,18 @@
 # Changes
 
+## 2026-07-30 — Observer-click chooser + more GBIF datasets (sw v764)
+
+- **Observer name → chooser.** Clicking an observer name (in the detections list or the 👤 legend
+  checklist) now opens a small menu with two actions: **"Show only this observer"** (sets the observer
+  filter to that person → map + list + legend update) and **"Add to a list"** (the previous
+  add-to-observer-list flow). New `observerClickMenu`; `obs.filterOnly` / `obs.addToListAct` strings.
+- **More GBIF bird datasets** (from a global survey of fresh, high-volume citizen-science sources):
+  **SABAP2 (ZA)** `906e6978-…` — the #1 fresh bird source in South Africa (~3.5M in 2024–25, ahead of
+  eBird there), and **Birdata / BirdLife Australia (AU)** `4bf1cca8-…` — the national bird atlas
+  (~1.5M in 2024–25). Both key-free, country-gated. (Considered but deferred: **Pl@ntNet** — a great
+  global *plants* source, but it's plant-only + global, so it'd need per-group dataset gating to avoid
+  a wasted request in bird/mammal modes.)
+
 ## 2026-07-30 — Update banner is opt-in; "Reload to update" button in Settings (sw v763)
 
 - **The "New version available" reload banner no longer appears by default.** When a newer version

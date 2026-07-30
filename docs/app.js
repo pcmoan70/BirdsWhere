@@ -7002,7 +7002,7 @@
     Array.prototype.forEach.call(body.querySelectorAll(".dl-obs-add"), function (s) {
       s.addEventListener("click", function (e) {
         e.preventDefault(); e.stopPropagation();
-        observerAddToList(this.getAttribute("data-obs"), this);
+        observerClickMenu(this.getAttribute("data-obs"), this);
       });
     });
     function detRowData(b) {
@@ -7841,6 +7841,27 @@
     if (names.length <= 1) showAddToListMenu(names[0] || String(obsString || "").trim(), anchor);
     else showObserverPeopleMenu(names, anchor);
   }
+  // Clicking an observer name opens a small chooser: filter the map/list to that
+  // observer, or add them to an observer list (the previous behaviour).
+  function observerClickMenu(obsString, anchor) {
+    var names = detObsRealNames(obsString);
+    var r = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;   // capture before the menu replaces the anchor
+    var menu = openAnchoredMenu("obs-addmenu");
+    var label = names.length ? names.join(", ") : String(obsString || "").trim();
+    menu.innerHTML = '<div class="obs-addmenu-head">' + escapeHtml(label) + "</div>" +
+      '<button type="button" class="obs-addmenu-item obs-act-filter">' + escapeHtml(t("obs.filterOnly")) + "</button>" +
+      '<button type="button" class="obs-addmenu-item obs-act-add">' + escapeHtml(t("obs.addToListAct")) + "</button>";
+    positionAnchoredMenu(menu, r.left, r.bottom + 2);
+    menu.querySelector(".obs-act-filter").addEventListener("click", function (e) {
+      e.stopPropagation(); closeAnchoredMenu();
+      setDetObsFilter(names.length ? new Set(names) : null);   // show only this observer's records
+      saveLegendState(); rebuildDetLayers(); updateDetLegend(); renderDetListModal();
+    });
+    menu.querySelector(".obs-act-add").addEventListener("click", function (e) {
+      e.stopPropagation(); closeAnchoredMenu();
+      observerAddToList(obsString, r);   // rect works as an anchor for the follow-up menu
+    });
+  }
   function detAllObservers() {
     var set = Object.create(null), hasNone = false;
     Object.keys(detPlot).forEach(function (k) {
@@ -8305,7 +8326,7 @@
     });
     var canHoverObs = !window.matchMedia || window.matchMedia("(hover: hover)").matches;
     el.querySelectorAll(".det-obs-name.det-obs-addable").forEach(function (nm) {
-      nm.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); showAddToListMenu(this.getAttribute("data-obs"), this); });
+      nm.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); observerClickMenu(this.getAttribute("data-obs"), this); });
       if (canHoverObs) {
         nm.addEventListener("mouseenter", function () { focusDetObs(this.getAttribute("data-obs")); });
         nm.addEventListener("mouseleave", unfocusDetObs);
