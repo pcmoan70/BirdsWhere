@@ -1,5 +1,19 @@
 # Changes
 
+## 2026-07-30 — Optional TinyURL shortening for share links (sw v774)
+
+- New Settings → Lists & sharing toggle **"Shorten share links (TinyURL)"** (default **off**). When on,
+  `doShare` builds the link in the **hash** form (`#s=`, never sent to the host so no ~8 kB 414 limit),
+  shortens it via TinyURL's keyless API (`shortenUrl`), and shares the resulting `tinyurl.com/…` link —
+  which has **no fragment**, so it survives share targets that strip `#`. Recipients still import via the
+  existing `#s=` path. Applies to links **under ~14 kB** (`TINY_MAX`); larger → the `.mcshare` file. If
+  shortening fails/offline it falls back to the plain query link. Off keeps the original behaviour
+  (plain `?s=` link + `.mcshare`), nothing sent to a shortener.
+- **Privacy:** the setting's hint warns that the shared data payload is sent to TinyURL — a third party —
+  and may be exposed to unknown parties. New `ctrl.shareTiny` / `ctrl.shareTinyHint` / `share.shortening`.
+- Verified: GitHub Pages/Fastly 414s query strings ≳8 kB; TinyURL preserves the URL fragment on redirect
+  (so the hash-form approach works, incl. a 13 kB hash).
+
 ## 2026-07-30 — A map click disarms the per-area delete (red ×) mode (sw v773)
 
 - When the legend's red × is armed (each fetched-area outline shows a red × to delete it), a click on

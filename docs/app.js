@@ -4286,6 +4286,10 @@
                 icoBtn("natdb-open", "globe", "natdb.manage", "Manage national databases…") +
               '</div>' +
               '<div class="settings-section" data-i18n="settings.secListsShare">Lists &amp; sharing</div>' +
+              '<div class="ctrl-group">' +
+                '<label class="ctrl-check"><input type="checkbox" id="share-tiny-toggle"> <span data-i18n="ctrl.shareTiny">Shorten share links (TinyURL)</span></label>' +
+                '<p class="cu-hint" data-i18n="ctrl.shareTinyHint">Turns share links into short tinyurl.com links (easier to paste / QR), for links under 14 kB. ⚠ The shared data is sent to TinyURL — a third party — so it may be exposed to unknown parties. Off (default): plain link + .mcshare file, nothing leaves via a shortener.</p>' +
+              '</div>' +
               '<div class="ctrl-group" id="points-kml-wrap">' +
                 '<label data-i18n="ctrl.exportPoints">Map points</label>' +
                 '<div class="kml-btn-row">' +
@@ -10353,6 +10357,11 @@
       var f = pointsFmt();
       if (f === "kmz") exportPointsKmz(); else if (f === "geojson") exportPointsGeoJson(); else exportPointsKml();
     });
+    var shareTinyCb = document.getElementById("share-tiny-toggle");
+    if (shareTinyCb) {
+      shareTinyCb.checked = !!window.GeoState.get("shareTinyUrl", false);
+      shareTinyCb.addEventListener("change", function () { window.GeoState.save({ shareTinyUrl: !!this.checked }); });
+    }
     var kmlFile = document.getElementById("points-kml-file");
     document.getElementById("points-kml-import").addEventListener("click", function () { kmlFile.click(); });
     kmlFile.addEventListener("change", function (e) {
@@ -12231,28 +12240,48 @@
   // 414, so a ?s= link past this can't be opened. Under it we hand back the plain
   // pastable string; over it we say so and OFFER the .mcshare file instead.
   var SHARE_URL_MAX = 8100;
+  var TINY_MAX = 14000;   // shorten only links under ~14 kB (bigger → the .mcshare file)
+  // Shorten a URL via TinyURL's keyless api-create. Resolves to the short URL, or null
+  // on offline / failure. NOTE: this sends the URL (incl. the shared data payload) to a
+  // third party — see the "Shorten share links" setting's warning.
+  function shortenUrl(url) {
+    if (navigator.onLine === false || typeof fetch !== "function") return Promise.resolve(null);
+    var api = "https://tinyurl.com/api-create.php?url=" + encodeURIComponent(url);
+    var ctrl = null, to = null;
+    try { ctrl = new AbortController(); to = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, 10000); } catch (e) {}
+    return fetch(api, ctrl ? { signal: ctrl.signal } : undefined)
+      .then(function (r) { return r && r.ok ? r.text() : null; })
+      .then(function (txt) { if (to) clearTimeout(to); txt = (txt || "").trim(); return /^https?:\/\/\S+$/.test(txt) ? txt : null; })
+      .catch(function () { if (to) clearTimeout(to); return null; });
+  }
   function doShare(obj, title) {
     function warn() { uiDialog({ message: t("share.failed"), alert: true }); }
     encodeShare(obj).then(function (enc) {
-      // Data lives in a QUERY param, not the hash (share targets strip the #fragment).
       // base64url is query-safe, so no extra encoding is needed.
-      var url = location.origin + location.pathname + "?s=" + enc;
-      // Verify the link BEFORE handing it over: parse ?s= back out of the URL and
-      // decode it — if the URL doesn't carry the data intact or it doesn't
-      // reconstruct a valid payload, warn instead of sharing a broken link.
-      var got = ""; try { got = new URLSearchParams(new URL(url).search).get("s") || ""; } catch (e) {}
+      var queryUrl = location.origin + location.pathname + "?s=" + enc;
+      // Verify the link BEFORE handing it over: parse ?s= back out and decode — if the
+      // URL doesn't carry the data intact or it doesn't reconstruct, warn instead.
+      var got = ""; try { got = new URLSearchParams(new URL(queryUrl).search).get("s") || ""; } catch (e) {}
       if (got !== enc) { warn(); return; }
       decodeShare(enc).then(function (payload) {
         if (!payload || (!payload.type && !payload.t)) { warn(); return; }
-        if (url.length > SHARE_URL_MAX) {
-          // Too long to open as a link — tell the user and offer to save the file.
-          modalConfirm(t("share.tooBigOfferFile")).then(function (ok) { if (ok) shareAsFile(enc, title); });
+        // Default (query link): pasteable under the host's ~8 kB limit, else the file.
+        // The #fragment isn't used here because some share targets strip it.
+        function shareQueryOrFile() {
+          if (queryUrl.length > SHARE_URL_MAX) modalConfirm(t("share.tooBigOfferFile")).then(function (ok) { if (ok) shareAsFile(enc, title); });
+          else offerShareUrl(queryUrl);
+        }
+        // TinyURL mode (opt-in): shorten a HASH link (#s=, never sent to the host so no
+        // 8 kB limit) — the resulting tinyurl has NO fragment, so it survives any share
+        // target. Falls back to the plain query link if shortening fails.
+        if (window.GeoState.get("shareTinyUrl", false)) {
+          var hashUrl = location.origin + location.pathname + "#s=" + enc;
+          if (hashUrl.length > TINY_MAX) { modalConfirm(t("share.tooBigOfferFile")).then(function (ok) { if (ok) shareAsFile(enc, title); }); return; }
+          setStatus(t("share.shortening"));
+          shortenUrl(hashUrl).then(function (short) { if (short) offerShareUrl(short); else shareQueryOrFile(); });
           return;
         }
-        // Copy the FULL link to the clipboard and show it in a copyable dialog — the
-        // reliable way to send it (the native share sheet dropped long URLs on some
-        // devices). Paste it into any message/app.
-        offerShareUrl(url);
+        shareQueryOrFile();
       }, warn);
     }).catch(warn);
   }
