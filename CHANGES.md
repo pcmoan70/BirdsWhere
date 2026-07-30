@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-30 — Help: explicit "no data leaves without your action" statement (sw v762)
+
+- Added an up-front line to the Help "Your data stays on your device" section: **no user data ever
+  leaves the app without an explicit action from you** (exporting lists/settings, or creating a share
+  link); nothing is sent automatically or in the background.
+
 ## 2026-07-30 — Collapsed species rows always show total individuals (sw v761)
 
 - In the detections list's per-species view (any sort other than "By date"), the **collapsed species

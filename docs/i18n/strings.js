@@ -973,6 +973,7 @@ window.GeoI18N = (function () {
         "<li><b>Plain HTML, CSS and JavaScript</b> — no framework and no build step; served as a static site (GitHub Pages).</li>" +
         "</ul>" +
         "<h4>Your data stays on your device</h4>" +
+        "<p><b>No user data ever leaves the app without an explicit action from you</b> — such as exporting your lists and settings, or creating a share link. Nothing is sent automatically or in the background.</p>" +
         "<p>Everything you create — saved <b>points</b> and <b>lists / trips</b>, <b>field checklists</b> (and any attached photos), <b>stored locations</b>, your ★ / year-list / life-list / hidden species, observer lists, and all your <b>settings</b> — is kept <b>only on this device</b>, in the browser's own storage. There is <b>no account and no server of ours</b>; none of it is uploaded anywhere on its own.</p>" +
         "<p>Your data leaves the device only when <b>you</b> choose to send it: a <b>🔗 share link</b> or <b>Share map</b> (which packs the points / detections you pick into a URL you hand out), an <b>export</b> (CSV, KML/KMZ, GeoJSON or PDF), or the optional one-tap <b>Google Drive backup</b> into your <i>own</i> Drive's private app folder. Separately, simply using the app sends the <b>map coordinates you are viewing</b> to the third-party observation databases (GBIF, eBird, iNaturalist…) and the map / place-name provider so they can return sightings and names — but never anything you have saved.</p>" +
         "<h4>Project &amp; feedback</h4>" +
