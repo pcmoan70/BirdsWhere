@@ -2917,7 +2917,7 @@
   }
   function obsSources() {
     var list = [
-      { name: "GBIF", country: null, enabled: function () { return !isSourceOff("gbif"); }, run: function (c) { return AppFetch.fetchGbifAll(c.lat, c.lon, c.dateBack(gbifDays()) + "," + c.d2, c.rkm, c.cc, c.signal, null, null, function (done, total) { obsSub["GBIF"] = { done: done, total: total }; obsRender(); }).then(AppNormalize.normGbif); } }
+      { name: "GBIF", country: null, enabled: function () { return !isSourceOff("gbif"); }, run: function (c) { return AppFetch.fetchGbifAll(c.lat, c.lon, c.dateBack(gbifDays()) + "," + c.d2, c.rkm, c.cc, c.signal, null, null, function (done, total, names) { obsSub["GBIF"] = { done: done, total: total, names: names }; obsRender(); }).then(AppNormalize.normGbif); } }
     ];
     directSources().forEach(function (s) {
       // eBird and BirdWeather are bird-only feeds (eBird is birds-only; BirdWeather
@@ -3240,8 +3240,11 @@
     var parts = cur.map(function (it) {
       var nm = escapeHtml(it.name);
       if (it.done) return '<span class="obs-done">' + nm + " ✓ (" + it.count + ")</span>";
-      var sub = obsSub[it.name];   // e.g. GBIF[2/3] — datasets completed / total
-      if (sub && sub.total) nm += "[" + sub.done + "/" + sub.total + "]";
+      var sub = obsSub[it.name];   // e.g. GBIF[2/4](Pl@ntNet|Artsobservasjoner)
+      if (sub && sub.total) {
+        nm += "[" + sub.done + "/" + sub.total + "]";
+        if (sub.names && sub.names.length) nm += "(" + sub.names.map(escapeHtml).join("|") + ")";   // datasets currently in-flight
+      }
       return it.name === hiName ? '<span class="obs-knk">' + nm + "</span>" : '<span class="obs-pend">' + nm + "</span>";
     });
     obsLine(t("sp.plottingFrac", { n: parts.join('<span class="obs-sep"> · </span>') }));

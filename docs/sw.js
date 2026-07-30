@@ -21,16 +21,16 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v766";
+var VERSION = "v767";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• The GBIF loading line now names the datasets being fetched, e.g. GBIF[2/4](Pl@ntNet|Artsobservasjoner).",
   "• Pl@ntNet plant/fungi observations now load in the Plants, Fungi and All groups (skipped in bird/mammal modes).",
   "• Tap an observer name to filter to that observer or add them to a list; a multi-observer record lists each one first.",
   "• Added GBIF bird datasets: SABAP2 (South Africa) and Birdata / BirdLife Australia.",
-  "• Updates no longer pop up a banner by default — a “Reload to update” button lights up at the top of Settings; reload whenever you like (re-enable the banner in Settings).",
-  "• Detections list has a sort menu: by date, name, 2nd-language name, count, or rarity."
+  "• Updates no longer pop up a banner by default — a “Reload to update” button lights up at the top of Settings; reload whenever you like (re-enable the banner in Settings)."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs

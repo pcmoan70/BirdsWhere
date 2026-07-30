@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-30 — GBIF loading line names the datasets in flight (sw v767)
+
+- The observation loading line's GBIF progress now shows **which datasets are being fetched**, e.g.
+  `GBIF[2/4](Pl@ntNet|Artsobservasjoner)` — the names in parentheses are the queries still in flight.
+  `fetchGbifAll` reports the active dataset names via the `onDataset(done, total, names)` callback
+  (each task tagged with `dsName`); `obsRender` appends them after `[done/total]`.
+
 ## 2026-07-30 — Pl@ntNet (plants/fungi) + per-group GBIF dataset gating (sw v766)
 
 - Added **per-group gating** for GBIF datasets: a dataset with a `groups` field is only queried when

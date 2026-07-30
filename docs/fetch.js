@@ -227,15 +227,21 @@ window.AppFetch = (function () {
       var dcc = d.country || GBIF_DS_COUNTRY[d.key];
       if (dcc && !countryMatch(lat, lon, dcc, rkm, cc)) return;
       var url = base + gbifTaxaFor(d) + "&datasetKey=" + encodeURIComponent(d.key);
-      tasks.push(function () { return pull(url); });
+      var task = function () { return pull(url); };
+      task.dsName = d.name || "";   // for the "GBIF[2/4](name|name)" progress readout
+      tasks.push(task);
     });
-    // Report per-dataset completion (GBIF[done/total]) as each query settles.
-    var totalDs = tasks.length, doneDs = 0;
+    // Report per-dataset progress: done/total PLUS the names currently in-flight, so
+    // the app can show e.g. GBIF[2/4](Pl@ntNet|Artsobservasjoner).
+    var totalDs = tasks.length, doneDs = 0, active = [];
     if (onDataset) {
-      onDataset(0, totalDs);
+      var reportDs = function () { try { onDataset(doneDs, totalDs, active.slice()); } catch (e) {} };
+      reportDs();
       tasks = tasks.map(function (task) {
+        var nm = task.dsName || "";
         return function () {
-          var fin = function () { doneDs++; onDataset(doneDs, totalDs); };
+          if (nm) active.push(nm); reportDs();
+          var fin = function () { doneDs++; var i = active.indexOf(nm); if (i >= 0) active.splice(i, 1); reportDs(); };
           return Promise.resolve(task()).then(function (r) { fin(); return r; }, function (e) { fin(); throw e; });
         };
       });
