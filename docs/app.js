@@ -11985,6 +11985,10 @@
     // tapping a plotted detection (or just a few pixels off it); its own popup owns
     // the tap.
     if (clickNearDetection(e.latlng)) return;
+    // While the per-area delete (red ×) mode is armed, an empty-map click just disarms it
+    // — hides the red ×'s on the fetched-area outlines. (Clicking a × itself deletes that
+    // area and never reaches here.)
+    if (detAreaDeleteMode) { exitAreaDeleteMode(); try { updateDetLegend(); } catch (e2) {} return; }
     // A genuine empty-map click always tidies up: close any open popup / menu / dropdown
     // (incl. the Points panel) and minimise the legend, in EVERY mode. If a popup or menu
     // WAS showing, that's all this click does — so the click that dismisses a popup can't

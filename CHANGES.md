@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-30 — A map click disarms the per-area delete (red ×) mode (sw v773)
+
+- When the legend's red × is armed (each fetched-area outline shows a red × to delete it), a click on
+  the **empty map** now disarms it — the red ×'s disappear (`onMapClick` calls `exitAreaDeleteMode` +
+  `updateDetLegend` when `detAreaDeleteMode`). Clicking a × still deletes that one area.
+
 ## 2026-07-30 — Route: on-map numbered stops (removable) + Save route (sw v772)
 
 - Route stops are now drawn on the map as **numbered pins** (`renderRoutePoints` in a `routeLayer`);
