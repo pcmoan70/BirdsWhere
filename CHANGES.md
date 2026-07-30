@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-07-30 — Pl@ntNet (plants/fungi) + per-group GBIF dataset gating (sw v766)
+
+- Added **per-group gating** for GBIF datasets: a dataset with a `groups` field is only queried when
+  the active species group is **"all"** or one of them (`gbifGroupSkip`), and it can carry its own
+  `taxa` filter used in "all" mode (`gbifTaxaFor`). The active group is injected into `AppFetch` via
+  `gbifGroup`. The taxon filter is now appended per-dataset in `fetchGbifAll` + `gbifCount`.
+- Added **Pl@ntNet** `7a3679ef-…` — global plant (+ some fungi) identifications (~2.6M, fresh). It's
+  fetched only in the **Plants, Fungi and All** groups (skipped in bird/mammal/etc. modes so it never
+  costs a wasted request there); in "All" it uses its own Plantae(6)+Fungi(5) filter so it still
+  returns flora. Datasets without `groups`/`taxa` are unaffected.
+
 ## 2026-07-30 — Multi-observer records list each observer before the chooser (sw v765)
 
 - Clicking an observer name on a record with **several observers** now first lists **each individual

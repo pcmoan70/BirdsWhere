@@ -4079,6 +4079,7 @@
       countryMatch: AppGeo.countryMatch,
       inatLocale: inatLocale,
       gbifTaxonParam: gbifTaxonParam,
+      gbifGroup: function () { return speciesGroup; },   // active species group → per-group dataset gating
       inatIconicTaxa: inatIconicTaxa,
     });
     // Hydrate saved trips from IndexedDB (and migrate any still in the localStorage

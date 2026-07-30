@@ -28,6 +28,7 @@ window.AppFetch = (function () {
   var countryMatch = function () { return false; };     // does the search reach a given country?
   var inatLocale = function () { return "en"; };        // iNat common-name locale
   var gbifTaxonParam = function () { return "&taxonKey=212"; };  // class taxonKey(s) for the active group (default = Aves)
+  var gbifGroup = function () { return "all"; };                // active species group id (for per-group dataset gating)
   var inatIconicTaxa = function () { return "Aves"; };          // iNat iconic_taxa for the active group ("" = no filter)
   function init(deps) {
     deps = deps || {};
@@ -38,7 +39,21 @@ window.AppFetch = (function () {
     if (deps.countryMatch) countryMatch = deps.countryMatch;
     if (deps.inatLocale) inatLocale = deps.inatLocale;
     if (deps.gbifTaxonParam) gbifTaxonParam = deps.gbifTaxonParam;
+    if (deps.gbifGroup) gbifGroup = deps.gbifGroup;
     if (deps.inatIconicTaxa) inatIconicTaxa = deps.inatIconicTaxa;
+  }
+  // A dataset restricted to certain species groups (d.groups) is only queried when
+  // the active group is "all" or one of them. Returns true = skip this dataset.
+  function gbifGroupSkip(d) {
+    if (!d.groups || !d.groups.length) return false;
+    var g = gbifGroup();
+    return g !== "all" && d.groups.indexOf(g) < 0;
+  }
+  // The taxon filter for a dataset. Normally the active group's filter — but in "all"
+  // mode a group-restricted dataset (e.g. Pl@ntNet, plants+fungi) uses its OWN filter
+  // (d.taxa) so it still returns its taxa instead of the animal-only "all" filter.
+  function gbifTaxaFor(d) {
+    return (gbifGroup() === "all" && d && d.taxa) ? d.taxa : gbifTaxonParam();
   }
 
   // GBIF's FinBIF republish dataset; the direct Laji.fi source supersedes it.
@@ -144,8 +159,10 @@ window.AppFetch = (function () {
   // onDataset(done, total) (optional) reports how many of the per-dataset queries
   // have finished — surfaced in the app's "Loading observations…" line as GBIF[d/t].
   async function fetchGbifAll(lat, lon, range, rkm, cc, signal, onProgress, extra, onDataset, historic) {
+    // Taxon filter is appended per-dataset (gbifTaxaFor) so a group-restricted dataset
+    // can override it; everything else is shared in `base`.
     var base = "https://api.gbif.org/v1/occurrence/search?hasCoordinate=true&limit=300&geometry=" +
-      encodeURIComponent(gbifGeometry(lat, lon, rkm)) + "&eventDate=" + encodeURIComponent(range) + GBIF_FILTER + gbifTaxonParam() + (extra || "");   // `extra` e.g. "&month=5&month=6" (historic month filter)
+      encodeURIComponent(gbifGeometry(lat, lon, rkm)) + "&eventDate=" + encodeURIComponent(range) + GBIF_FILTER + (extra || "");   // `extra` e.g. "&month=5&month=6" (historic month filter)
     // Page progress (estimate): each query learns its page count from `count` on
     // its first page; `done` ticks up per fetched page. Reported to onProgress so
     // a caller can draw a page-based progress bar.
@@ -199,6 +216,9 @@ window.AppFetch = (function () {
       // Historic-only datasets (e.g. eBird EOD — GBIF's copy lags eBird's live API)
       // are queried ONLY for a Historic date-range fetch, never the recent feed.
       if (d.historicOnly && !historic) return;
+      // Group-restricted datasets (e.g. Pl@ntNet → plants/fungi) only when the active
+      // group is "all" or one of theirs.
+      if (gbifGroupSkip(d)) return;
       // The FinBIF GBIF dataset is a delayed republish of Laji.fi — skip it when
       // the direct Laji.fi source is active (fresher, better links).
       if (d.key === LAJI_GBIF_KEY && lajiDirectActive()) return;
@@ -206,7 +226,7 @@ window.AppFetch = (function () {
       // country — `country` tag for discovered ones, GBIF_DS_COUNTRY for defaults.
       var dcc = d.country || GBIF_DS_COUNTRY[d.key];
       if (dcc && !countryMatch(lat, lon, dcc, rkm, cc)) return;
-      var url = base + "&datasetKey=" + encodeURIComponent(d.key);
+      var url = base + gbifTaxaFor(d) + "&datasetKey=" + encodeURIComponent(d.key);
       tasks.push(function () { return pull(url); });
     });
     // Report per-dataset completion (GBIF[done/total]) as each query settles.
@@ -240,16 +260,17 @@ window.AppFetch = (function () {
   // completeness check consistent with what is actually fetched.
   async function gbifCount(lat, lon, range, rkm, cc, signal, extra) {
     var base = "https://api.gbif.org/v1/occurrence/search?hasCoordinate=true&limit=0&geometry=" +
-      encodeURIComponent(gbifGeometry(lat, lon, rkm)) + "&eventDate=" + encodeURIComponent(range) + GBIF_FILTER + gbifTaxonParam() + (extra || "");
+      encodeURIComponent(gbifGeometry(lat, lon, rkm)) + "&eventDate=" + encodeURIComponent(range) + GBIF_FILTER + (extra || "");
     var dsets = gbifDatasets(), total = 0;
     for (var i = 0; i < dsets.length; i++) {
       var d = dsets[i];
       if (!d || !d.key || isGbifOff(d.key)) continue;
+      if (gbifGroupSkip(d)) continue;
       if (d.key === LAJI_GBIF_KEY && lajiDirectActive()) continue;
       var dcc = d.country || GBIF_DS_COUNTRY[d.key];
       if (dcc && !countryMatch(lat, lon, dcc, rkm, cc)) continue;
       if (signal && signal.aborted) break;
-      var j = await gbifPage(base + "&datasetKey=" + encodeURIComponent(d.key), signal);
+      var j = await gbifPage(base + gbifTaxaFor(d) + "&datasetKey=" + encodeURIComponent(d.key), signal);
       total += j ? (+j.count || 0) : 0;
     }
     return total;

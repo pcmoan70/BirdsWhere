@@ -52,6 +52,10 @@ window.AppSources = (function () {
     // (a free key, last ~30 days) stays the fresh recent feed, while EOD gives deep
     // key-free historic coverage everywhere. Not country-gated (global).
     { key: "4fa7b334-ce0d-4e88-aaae-2e0c138d049e", name: "eBird (GBIF · historic)", url: "https://ebird.org/", historicOnly: true },
+    // Pl@ntNet — global plant (+ some fungi) identifications, ~2.6M records, fresh. Only
+    // queried when the active group is Plants, Fungi or All (groups gate); in "All" it
+    // uses its own Plantae(6)+Fungi(5) filter so it still returns flora there. Global.
+    { key: "7a3679ef-5582-4aaa-81f0-8c2545cafc81", name: "Pl@ntNet", url: "https://plantnet.org/", groups: ["plantae", "fungi"], taxa: "&taxonKey=6&taxonKey=5" },
     { key: "6ff8b3b0-ef0f-4f79-a310-5a5615c6aa0b", name: "Birda", url: "https://birda.org/" }
   ];
   var GBIF_DS_COUNTRY = {}; DEFAULT_GBIF_DATASETS.forEach(function (d) { if (d.country) GBIF_DS_COUNTRY[d.key] = d.country; });
