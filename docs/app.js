@@ -4155,6 +4155,7 @@
             '<div id="settings-panel" class="dd-panel settings-panel" style="display:none">' +
               '<p class="settings-intro" data-i18n="settings.appIntro">BirdsWhere shows where species live, migrate, and are being seen right now — the BirdNET habitat model runs entirely in your browser, overlaid with live observations from eBird, GBIF, iNaturalist and national databases.</p>' +
               '<button type="button" id="about-open" class="settings-about" data-i18n="ctrl.about">About &amp; how it works</button>' +
+              '<button type="button" id="settings-update" class="settings-update" style="display:none"></button>' +
               '<div class="settings-section" data-i18n="settings.secView">View</div>' +
               '<div class="ctrl-group">' +
                 '<label for="group-select" data-i18n="ctrl.group">Species group</label>' +
@@ -4331,6 +4332,10 @@
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label class="ctrl-check"><input type="checkbox" id="show-sci-toggle" checked> <span data-i18n="ctrl.showsci">Scientific names</span></label>' +
+              '</div>' +
+              '<div class="ctrl-group">' +
+                '<label class="ctrl-check"><input type="checkbox" id="update-banner-toggle"> <span data-i18n="ctrl.updateBanner">Auto-show update banner</span></label>' +
+                '<p class="cu-hint" data-i18n="ctrl.updateBannerHint">Off (default): new versions never pop up — the “Reload to update” button at the top of Settings lights up instead, and you reload whenever you like. On: a banner appears when an update is ready.</p>' +
               '</div>' +
               '<div class="app-qr"><img src="qr-app.svg" alt="" width="140" height="140" /><span class="app-qr-cap" data-i18n="settings.qrShare">Scan to open / share this app</span></div>' +
               '<div class="settings-section" data-i18n="settings.secWhatsNew">What’s new</div>' +
@@ -9927,6 +9932,42 @@
       window.GeoState.save({ showSci: showSci });
       applyShowSci();
     });
+
+    // ---- App-update UI (non-intrusive by default) --------------------------
+    // The service worker never auto-reloads. By default NO banner pops up: the
+    // "Reload to update" button below (top of Settings) lights up when a newer
+    // version is waiting, and the user reloads at their own will. Opting into the
+    // toggle restores the classic auto banner. (window.SWUpdate is set up by
+    // sw-register.js; absent if service workers aren't supported.)
+    (function () {
+      var SW = window.SWUpdate;
+      var upBtn = document.getElementById("settings-update");
+      var bannerCb = document.getElementById("update-banner-toggle");
+      var bannerOn = !!window.GeoState.get("updateBanner", false);
+      if (bannerCb) bannerCb.checked = bannerOn;
+      if (!SW) { if (upBtn) upBtn.style.display = "none"; return; }   // no SW support → nothing to show
+      SW.bannerEnabled = bannerOn;
+      function refreshUpdateBtn() {
+        if (!upBtn) return;
+        if (SW.pending) {
+          upBtn.style.display = "";
+          upBtn.textContent = "↻ " + t("settings.updateReady", { v: SW.version || "" });
+          upBtn.disabled = false;
+        } else { upBtn.style.display = "none"; }
+      }
+      SW.onchange = refreshUpdateBtn;
+      refreshUpdateBtn();
+      if (bannerOn && SW.pending) SW.showBanner();   // opted in + already waiting → show it now
+      if (upBtn) upBtn.addEventListener("click", function () {
+        upBtn.disabled = true; upBtn.textContent = t("settings.updateApplying");
+        SW.apply();   // skipWaiting → controllerchange reloads the page
+      });
+      if (bannerCb) bannerCb.addEventListener("change", function () {
+        bannerOn = !!this.checked; SW.bannerEnabled = bannerOn;
+        window.GeoState.save({ updateBanner: bannerOn });
+        if (bannerOn && SW.pending) SW.showBanner();
+      });
+    })();
 
     // National-database list: edit / block / delete per row, plus add / reset. Each
     // row carries its cc+url+label in data-*, so actions persist immediately

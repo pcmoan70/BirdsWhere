@@ -3,10 +3,21 @@
 // (script-src without 'unsafe-inline') — the main XSS defence-in-depth.
 //
 // The SW never skipWaiting on install (the app must stay on its local cached code
-// until the user chooses to update). So when a new version has installed and is
-// waiting, we show a small "Update available — Reload" banner; tapping it messages
-// the waiting worker to skipWaiting, and controllerchange then reloads the page.
+// until the user chooses to update). When a new version has installed and is
+// WAITING, we do NOT pop anything up by default — instead we expose the pending
+// update on `window.SWUpdate` so the app can light up a "Reload to update" button
+// in Settings; the user reloads at their own will. The old auto "Update available"
+// banner is opt-in (Settings → auto-show update banner; SWUpdate.bannerEnabled).
 if ("serviceWorker" in navigator) {
+  // Shared state for the app (Settings button reads this; app.js sets bannerEnabled
+  // + onchange). apply() activates the waiting worker → controllerchange reloads.
+  var SWUpdate = window.SWUpdate = {
+    pending: false, version: "", notes: "", worker: null,
+    bannerEnabled: false,   // app.js sets from the user setting (default: no auto banner)
+    onchange: null,         // app.js hooks this to refresh the Settings update button
+    showBanner: function () {},
+    apply: function () { var w = SWUpdate.worker; if (w) { try { w.postMessage({ type: "skipWaiting" }); } catch (e) {} } }
+  };
   window.addEventListener("load", function () {
     var reloaded = false;
     navigator.serviceWorker.addEventListener("controllerchange", function () {
@@ -14,8 +25,7 @@ if ("serviceWorker" in navigator) {
     });
 
     // Ask a specific worker over a MessageChannel (sw.js replies on the port) for its
-    // VERSION and NOTES — used to show the incoming version + a short changelog in the
-    // banner. Resolves to {} on any failure so the banner still shows.
+    // VERSION and NOTES. Resolves to {} on any failure.
     function workerInfo(worker) {
       return new Promise(function (resolve) {
         if (!worker) { resolve({}); return; }
@@ -42,11 +52,10 @@ if ("serviceWorker" in navigator) {
       go.style.cssText = "background:#2f6f4f;color:#fff;border:none;border-radius:7px;padding:6px 14px;font:inherit;font-weight:600;cursor:pointer;flex:0 0 auto;";
       var x = document.createElement("button"); x.textContent = "×"; x.setAttribute("aria-label", "Dismiss");
       x.style.cssText = "background:transparent;color:#fff;border:none;font-size:20px;line-height:1;cursor:pointer;padding:0 2px;flex:0 0 auto;";
-      go.addEventListener("click", function () { go.disabled = true; msg.dataset.updating = "1"; msg.textContent = "Updating…"; try { worker.postMessage({ type: "skipWaiting" }); } catch (e) {} });
+      go.addEventListener("click", function () { go.disabled = true; msg.dataset.updating = "1"; msg.textContent = "Updating…"; SWUpdate.apply(); });
       x.addEventListener("click", function () { if (bar.parentNode) bar.parentNode.removeChild(bar); });
       row.appendChild(msg); row.appendChild(go); row.appendChild(x);
       bar.appendChild(row);
-      // A short changelog (from the waiting worker's NOTES) under the banner.
       var notes = document.createElement("div");
       notes.style.cssText = "font-size:12px;line-height:1.4;color:#c7d2d0;white-space:pre-line;display:none;max-height:38vh;overflow:auto;";
       bar.appendChild(notes);
@@ -56,31 +65,39 @@ if ("serviceWorker" in navigator) {
       });
       document.body.appendChild(bar);
     }
+    SWUpdate.showBanner = function () { if (SWUpdate.worker) showUpdateBar(SWUpdate.worker); };
+
+    // A new version has installed and is WAITING. Record it + tell the app (so the
+    // Settings "Reload to update" button activates). Only pop the banner when the
+    // user has explicitly opted in — otherwise nothing intrudes; they reload at will.
+    function notifyWaiting(worker) {
+      if (!worker) return;
+      SWUpdate.worker = worker; SWUpdate.pending = true;
+      try { if (SWUpdate.onchange) SWUpdate.onchange(SWUpdate); } catch (e) {}
+      workerInfo(worker).then(function (d) {
+        if (d && d.version) SWUpdate.version = d.version;
+        if (d && d.notes) SWUpdate.notes = d.notes;
+        try { if (SWUpdate.onchange) SWUpdate.onchange(SWUpdate); } catch (e) {}
+        if (SWUpdate.bannerEnabled) showUpdateBar(worker);
+      });
+      if (SWUpdate.bannerEnabled) showUpdateBar(worker);
+    }
 
     // updateViaCache:"none" → the browser always fetches sw.js straight from the
-    // network on an update check (never from its HTTP cache), so a new deploy is
-    // noticed promptly even inside GitHub Pages' ~10-minute cache window.
+    // network on an update check, so a new deploy is noticed promptly.
     navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(function (reg) {
-      // Show the banner whenever a worker is sitting "waiting" (an update that has
-      // installed but not taken over). Safe to call repeatedly — showUpdateBar
-      // no-ops if the bar is already up.
       function maybeShow() {
-        if (reg.waiting && navigator.serviceWorker.controller) showUpdateBar(reg.waiting);
+        if (reg.waiting && navigator.serviceWorker.controller) notifyWaiting(reg.waiting);
       }
       maybeShow();   // an update installed on a previous visit and is already waiting
-      // A new update installing now → show the banner once it reaches "installed".
       reg.addEventListener("updatefound", function () {
         var nw = reg.installing; if (!nw) return;
         nw.addEventListener("statechange", function () {
-          if (nw.state === "installed" && navigator.serviceWorker.controller) showUpdateBar(nw);
+          if (nw.state === "installed" && navigator.serviceWorker.controller) notifyWaiting(nw);
         });
       });
-      // Desktop browsers keep a tab open for a long time, so the automatic on-load
-      // update check may never run again — the new-version banner would never appear
-      // (works on mobile only because the app is reopened often). Actively re-check:
-      // immediately, whenever the tab regains focus / becomes visible, and on a slow
-      // interval as a backstop. Each check re-evaluates the waiting worker too, in
-      // case an update landed without firing updatefound in this session.
+      // Desktop tabs stay open for a long time, so re-check for updates: immediately,
+      // on focus/visibility, and on a slow interval as a backstop.
       var checking = false;
       function checkForUpdate() {
         if (checking) return; checking = true;

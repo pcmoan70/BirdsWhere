@@ -1,5 +1,18 @@
 # Changes
 
+## 2026-07-30 — Update banner is opt-in; "Reload to update" button in Settings (sw v763)
+
+- **The "New version available" reload banner no longer appears by default.** When a newer version
+  has installed and is waiting, a green **"Reload to update to vNNN" button lights up at the top of
+  Settings** — the user reloads at their own will; nothing pops up or force-reloads.
+- A **Settings toggle "Auto-show update banner"** (default off) restores the previous behaviour: when
+  on, the old banner appears on an available update.
+- `sw-register.js` refactored: it no longer auto-shows the banner; it records the waiting worker on
+  `window.SWUpdate` ({pending, version, notes, apply(), showBanner(), bannerEnabled, onchange}) and
+  notifies the app. `apply()` = skipWaiting → controllerchange reload (unchanged reload path). The SW
+  still never skipWaiting on install. **Bumping `VERSION` on every deploy is still required** so the
+  update is detected and the button/toggle activates.
+
 ## 2026-07-30 — Help: explicit "no data leaves without your action" statement (sw v762)
 
 - Added an up-front line to the Help "Your data stays on your device" section: **no user data ever

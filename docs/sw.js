@@ -21,16 +21,16 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v762";
+var VERSION = "v763";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• Updates no longer pop up a banner by default — a “Reload to update” button lights up at the top of Settings; reload whenever you like (re-enable the banner in Settings).",
   "• Detections list has a sort menu: by date, name, 2nd-language name, count, or rarity.",
   "• A source that failed/timed out is now red AND clickable — tap it to see why.",
   "• Historic fetches now include eBird's full archive via GBIF; recent stays on the fresh direct eBird feed.",
-  "• Added GBIF bird datasets: naturgucker (Germany) and Birds of Ireland — more observations near those countries.",
-  "• The observation details list now mirrors your legend species selection (search still finds every species to add)."
+  "• Added GBIF bird datasets: naturgucker (Germany) and Birds of Ireland."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs
