@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-31 — Legend clear/arm × uses the centred geometric × too (sw v781)
+
+- The legend's red **clear/arm ×** (`.det-clear`, which becomes a white × in a red circle when the
+  per-area delete mode is armed) now uses the geometric `X_MARK_SVG` + flex centering, matching the
+  map delete markers — so the × is dead-centre in both states.
+
 ## 2026-07-31 — Red delete-circle map markers: geometric × (dead-centre) (sw v780)
 
 - The white × in the red delete circles (fetched-area `.area-del-icon` and offline-area `.offline-x`)

@@ -2618,7 +2618,8 @@ a.dl-row:hover, .dl-row-menu:hover { background: var(--surface-2, rgba(0,0,0,.05
 .dl-sp-body .dl-row:first-child { border-top: none; }
 /* Keep the box narrow (it would otherwise size to the widest option, e.g.
    "★ Starred only"); the open list still shows full labels. */
-.det-clear { border: none; background: transparent; cursor: pointer; color: var(--danger, #c0392b); font: inherit; font-size: 1.2rem; line-height: 1; padding: 2px 7px; }
+.det-clear { border: none; background: transparent; cursor: pointer; color: var(--danger, #c0392b); font: inherit; padding: 3px 6px; display: inline-flex; align-items: center; justify-content: center; }
+.det-clear svg { width: 15px; height: 15px; display: block; }
 .det-clear:hover { color: var(--danger-strong, #a93226); }
 /* Black × = clear the species SELECTION only (keep the dots); red × removes all. */
 .det-clear-sel { border: none; background: transparent; cursor: pointer; color: var(--ink, #1a1a1a); font: inherit; font-size: 1.2rem; line-height: 1; padding: 2px 7px; }
