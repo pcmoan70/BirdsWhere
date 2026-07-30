@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-30 — A selected point carries into Historic mode (sw v776)
+
+- Selecting a point on the map and then switching to **Historic** no longer clears it — the mode
+  switch now captures the selected point and re-places it as the historic point (pin + Fetch enabled),
+  so you can Fetch straight away without re-selecting. (`modeEl` change handler carries `marker`'s
+  latlng into `placeHistoricPoint`.)
+
 ## 2026-07-30 — Centre the × in the red area-delete circle (sw v775)
 
 - The red ×-to-delete markers on fetched-area rectangles now centre the × cleanly (`.area-del-icon`

@@ -9990,6 +9990,7 @@
     var modeEl = document.getElementById("mode-select");
     modeEl.addEventListener("change", function () {
       stopAnimation();
+      var carryPt = marker ? marker.getLatLng() : null;   // a selected point carries into Historic (see below)
       spListGen++;   // invalidate any in-flight species-list render so it can't fire a (recent) fetch after the switch
       currentMode = modeEl.value;
       window.GeoState.save({ mode: currentMode });
@@ -10012,6 +10013,9 @@
       hideHistArea();    // drop the historic placed point + Fetch state
       if (cachedRender) clearOverlay();
       if (marker) { map.removeLayer(marker); marker = null; }
+      // Keep an already-selected point when switching INTO Historic — place it as the
+      // historic point (pin + Fetch enabled) so it needn't be re-selected.
+      if (currentMode === "historic" && carryPt) placeHistoricPoint(carryPt.lat, carryPt.lng);
       updateLegend();
       setStatus(modeHint());   // show mode-appropriate guidance until an action overrides it
       if (currentMode === "range" || currentMode === "richness") triggerRender();
