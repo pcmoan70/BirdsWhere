@@ -9387,13 +9387,39 @@
   // Right-click / long-press menu: the location & map-feature actions (Add point,
   // Save location, Share link, Copy coordinates) — moved here from the left-click
   // point popup so that popup stays focused on species/country resources.
+  // Ground elevation for a point via the keyless Open-Meteo elevation API. Resolves
+  // to metres, or null when offline / the lookup fails (→ shown as "Alt: NA").
+  var altCache = Object.create(null);
+  function fetchAltitude(lat, lon) {
+    var key = (+lat).toFixed(4) + "," + (+lon).toFixed(4);
+    if (key in altCache) return Promise.resolve(altCache[key]);   // cached hits only (never cache a failure)
+    if (navigator.onLine === false || typeof fetch !== "function") return Promise.resolve(null);
+    var url = "https://api.open-meteo.com/v1/elevation?latitude=" + (+lat).toFixed(5) + "&longitude=" + wrapLon(+lon).toFixed(5);
+    var ctrl = null, to = null;
+    try { ctrl = new AbortController(); to = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, 8000); } catch (e) {}
+    return fetch(url, ctrl ? { signal: ctrl.signal } : undefined)
+      .then(function (r) { return r && r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (to) clearTimeout(to);
+        var m = j && j.elevation && j.elevation.length ? +j.elevation[0] : null;
+        if (m != null && isFinite(m)) { altCache[key] = m; return m; }
+        return null;
+      })
+      .catch(function () { if (to) clearTimeout(to); return null; });
+  }
   function showMapContextMenu(lat, lon) {
     var wrap = document.createElement("div");
     wrap.className = "map-choose";
     wrap.appendChild(makePopupBtn("➕ " + t("points.add"), "", function () { map.closePopup(); openPointEditor({ lat: lat, lon: lon, name: "", tags: [], note: "" }); }));
     wrap.appendChild(makePopupBtn("📍 " + t("loc.save"), "demo-btn-light", function () { map.closePopup(); registerLocationPrompt(lat, lon); }));
     wrap.appendChild(makePopupBtn("🔗 " + t("share.link"), "demo-btn-light", function () { map.closePopup(); offerShareUrl(pointShareUrl(lat, lon)); }));
-    wrap.appendChild(makePopupBtn("📋 " + coordsText(lat, lon), "demo-btn-light", function () { map.closePopup(); copyCoords(lat, lon); }));
+    // Coordinates + ground altitude (filled in async; "Alt: NA" when offline / lookup fails).
+    var coordsBase = "📋 " + coordsText(lat, lon);
+    var coordsBtn = makePopupBtn(coordsBase + " · " + t("alt.loading"), "demo-btn-light", function () { map.closePopup(); copyCoords(lat, lon); });
+    wrap.appendChild(coordsBtn);
+    fetchAltitude(lat, lon).then(function (m) {
+      coordsBtn.textContent = coordsBase + " · " + (m == null ? t("alt.na") : t("alt.value", { m: Math.round(m) }));
+    });
     wrap.appendChild(makePopupBtn("🧭 " + t("nav.here"), "demo-btn-light", function () { map.closePopup(); navigatePoints([{ lat: lat, lon: lon }]); }));
     L.popup({ className: "choose-popup", closeButton: true, autoClose: true, autoPan: true, offset: [0, -2] })
       .setLatLng([lat, lon]).setContent(wrap).openOn(map);

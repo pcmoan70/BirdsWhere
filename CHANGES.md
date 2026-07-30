@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-30 — Ground altitude in the right-click map menu (sw v768)
+
+- Right-clicking (long-pressing) the map now shows the **ground altitude** next to the coordinates,
+  e.g. `📋 41.20, 2.15 · Alt: 342 m`. Fetched from the keyless **Open-Meteo elevation API**
+  (`fetchAltitude`, small in-memory cache, 8 s timeout). **Offline / failed lookup → "Alt: NA"**
+  (`navigator.onLine` guard; failures never cached so it retries when back online). Allowed by the
+  existing CSP (`connect-src 'self' https:`). New `alt.loading` / `alt.value` / `alt.na` strings.
+
 ## 2026-07-30 — GBIF loading line names the datasets in flight (sw v767)
 
 - The observation loading line's GBIF progress now shows **which datasets are being fetched**, e.g.
