@@ -1,5 +1,22 @@
 # Changes
 
+## 2026-07-30 — Per-observation model probabilities (rarity) with a toggle (sw v779)
+
+Rewrote the plotted-detections probability machinery (`computeDetProbs`). Instead of one inference
+over a grid of the whole plotted area at *today's* week, **each observation gets its own model
+probability** `P(species, week-of-its-date, its 25 km cell)`:
+
+- **Location** snapped to a `LOC_GRID_DELTA = 25` km grid (lon adjusted by latitude); **week** = the
+  model week of the observation's date (or current week if undated). Values are **cached** by
+  `idx|week|cell` and computed with one batched raw inference per unique cell — repeats collapse.
+- Per species: **MIN** over its observations drives legend + list order (rarest first; non-model
+  species sink to the bottom); **MAX** drives the ◉ locally-rare flag (unchanged intent — flagged only
+  if even the best-placed sighting is unlikely).
+- **Detection list "By rarity"** now shows the rarest **observation** on top: species ordered by their
+  min, expanded rows and by-date/observer groups sorted by per-observation probability.
+- **Toggle** `probPerObs` (Settings → Fetching & detections, default **on**). **Off** = one lookup at
+  the **middle of the fetched rectangle** + the **middle of the date range** (all obs share it).
+
 ## 2026-07-30 — Share file extension is now .share (sw v778)
 
 - The share file is now `birdswhere_share-<date>.share` (was `.mcshare`). The import picker still

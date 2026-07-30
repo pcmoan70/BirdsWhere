@@ -4267,6 +4267,10 @@
                 '<p class="cu-hint" data-i18n="ctrl.rarepcthint">A plotted species is “rare locally” when its detection count is at most this % of the commonest plotted species. Rare dots get a black centre; filter them with the legend’s ◉ Rare.</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
+                '<label class="ctrl-check"><input type="checkbox" id="prob-perobs-toggle" checked> <span data-i18n="ctrl.probPerObs">Per-observation probabilities</span></label>' +
+                '<p class="cu-hint" data-i18n="ctrl.probPerObsHint">On (default): each observation\'s model probability uses its own location (25 km grid) and the week of its date — so the legend/list order and the ◉ rare flag reflect where & when things were actually seen (values are cached). Off: the whole set uses one lookup at the middle of the fetched area and the middle of the date range.</p>' +
+              '</div>' +
+              '<div class="ctrl-group">' +
                 '<label for="hotspot-min" data-i18n="ctrl.hotspotmin">Hotspot min. species</label>' +
                 '<select id="hotspot-min">' +
                   '<option value="0" data-i18n="opt.off">Off</option><option value="25">25+</option><option value="50">50+</option><option value="100">100+</option><option value="200">200+</option>' +
@@ -6344,7 +6348,7 @@
           if (Math.abs(r.lat - near.lat) > dLat || Math.abs(r.lon - near.lon) > dLon) return;   // bbox reject (cheap)
           if (map.distance(center, L.latLng(r.lat, r.lon)) > near.meters) return;
         }
-        out.push({ key: k, name: nm, color: e.color, lat: r.lat, lon: r.lon, date: r.date || "", src: r.src || "", origin: r.origin || "", url: r.url || "", place: r.place || "", count: (r.count != null ? r.count : ""), act: r.act || "", note: r.note || "", observer: r.observer || "", listName: r._listName || "", mpId: r._mpId || "" });
+        out.push({ key: k, name: nm, color: e.color, lat: r.lat, lon: r.lon, date: r.date || "", src: r.src || "", origin: r.origin || "", url: r.url || "", place: r.place || "", count: (r.count != null ? r.count : ""), act: r.act || "", note: r.note || "", observer: r.observer || "", listName: r._listName || "", mpId: r._mpId || "", prob: (r._prob != null ? r._prob : -1) });
       });
     });
     return out;
@@ -6959,8 +6963,8 @@
         if (detListSort === "name") return byNm(a, b);
         if (detListSort === "name2") return (detName2(a) || bySp[a].name).localeCompare(detName2(b) || bySp[b].name) || byNm(a, b);
         if (detListSort === "count") return bySp[b].sum - bySp[a].sum || byNm(a, b);
-        if (detListSort === "rarity") {   // rarest first = lowest habitat probability
-          var pa = (a in detProb) ? detProb[a] : -1, pb = (b in detProb) ? detProb[b] : -1;
+        if (detListSort === "rarity") {   // rarest species first = its lowest per-obs probability; unknown last
+          var pa = (a in detProb && detProb[a] >= 0) ? detProb[a] : Infinity, pb = (b in detProb && detProb[b] >= 0) ? detProb[b] : Infinity;
           return pa - pb || byNm(a, b);
         }
         return bySp[b].last.localeCompare(bySp[a].last) || byNm(a, b);   // safety fallback: newest first
@@ -6975,7 +6979,10 @@
           '<span class="dl-meta">' + escapeHtml(fmtDate(last)) + "</span>" +
           '<span class="dl-ct" title="' + escapeHtml(t("detlist.sumIndiv")) + '">' + g.sum + "</span>" +   // collapsed species row → total individuals
           '<span class="dl-caret">' + (open ? "▾" : "▸") + "</span></button>";
-        var sub = open ? '<div class="dl-sp-body">' + g.items.slice().sort(function (a, b) { return (b.date || "").localeCompare(a.date || ""); }).map(function (d) { return detRowHtml(d, true); }).join("") + "</div>" : "";
+        var subSort = (detListSort === "rarity")
+          ? function (a, b) { var pa = (a.prob >= 0) ? a.prob : Infinity, pb = (b.prob >= 0) ? b.prob : Infinity; return (pa - pb) || (b.date || "").localeCompare(a.date || ""); }   // rarest obs first
+          : function (a, b) { return (b.date || "").localeCompare(a.date || ""); };   // newest first
+        var sub = open ? '<div class="dl-sp-body">' + g.items.slice().sort(subSort).map(function (d) { return detRowHtml(d, true); }).join("") + "</div>" : "";
         return '<div class="dl-sp-group">' + head + sub + "</div>";
       }).join("");
     } else {
@@ -6994,10 +7001,10 @@
         obs.sort(function (a, b) { if (!a !== !b) return a ? -1 : 1; return a.localeCompare(b); });   // named observers first, blank last
         var dateLbl = escapeHtml(fmtDate(dt) || t("detlist.noDate"));
         return obs.map(function (o) {
-          // Within a date/observer group: rarest first (lowest habitat probability),
-          // common species at the bottom — matching the legend's order; name breaks ties.
+          // Within a date/observer group: rarest OBSERVATION first (lowest per-obs
+          // habitat probability), commonest at the bottom; unknown (non-model) last.
           var items = byObs[o].slice().sort(function (a, b) {
-            var pa = (a.key in detProb) ? detProb[a.key] : -1, pb = (b.key in detProb) ? detProb[b.key] : -1;
+            var pa = (a.prob >= 0) ? a.prob : Infinity, pb = (b.prob >= 0) ? b.prob : Infinity;
             return (pa - pb) || a.name.localeCompare(b.name);
           });
           // BirdWeather groups by station name (not an observer) → not clickable.
@@ -8068,44 +8075,93 @@
   // dots are fetched. For each plotted MODEL species we then read the grid's
   // per-species MIN (drives the legend order — the least-likely-anywhere species
   // float to the top) and MAX (drives the ◉ rare cue, i.e. its best habitat here).
-  var DET_PROB_GRID = 10;
+  // ---- Per-observation habitat probability -------------------------------------
+  // Each observation gets a model probability P(species, week-of-its-date, its
+  // 25×25 km cell). Values are cached (idx|week|cell) so re-renders are instant and
+  // repeated obs collapse to one inference. A toggle (probPerObs, default on) swaps
+  // this for a single lookup at the MIDDLE of the fetched rectangle + the MIDDLE of
+  // the date range. Per species we keep the MIN over its observations (legend/list
+  // order — lowest = rarest first) and the MAX (drives the ◉ "locally rare" flag).
+  var LOC_GRID_DELTA = 25;   // km — observation → grid-cell size (fewer inferences + cache key)
+  var obsProbCache = Object.create(null);   // "idx|week|cell" -> model prob (deterministic; kept across renders)
+  function probPerObs() { return window.GeoState.get("probPerObs", true) !== false; }
+  function snapCell(lat, lon) {
+    var dLat = LOC_GRID_DELTA / 111.32, iy = Math.round(lat / dLat), glat = iy * dLat;
+    var cv = Math.cos(glat * Math.PI / 180); if (Math.abs(cv) < 1e-6) cv = 1e-6;
+    var dLon = LOC_GRID_DELTA / (111.32 * Math.abs(cv)), ix = Math.round(lon / dLon);
+    return { lat: glat, lon: ix * dLon, key: iy + ":" + ix };
+  }
+  function obsWeekOf(r) { return (r && r.date) ? weekOfDate(r.date) : weekOfToday(); }
   function computeDetProbs(sig) {
     var keys = Object.keys(detPlot);
-    var minLat = 90, maxLat = -90, minLon = 180, maxLon = -180, any = false;
-    keys.forEach(function (k) {
-      (detPlot[k].rows || []).forEach(function (r) {
-        if (r.lat == null || r.lon == null || !isFinite(+r.lat) || !isFinite(+r.lon)) return;
-        any = true; var la = +r.lat, lo = +r.lon;
-        if (la < minLat) minLat = la; if (la > maxLat) maxLat = la;
-        if (lo < minLon) minLon = lo; if (lo > maxLon) maxLon = lo;
-      });
-    });
-    if (!any) { keys.forEach(function (k) { detProb[k] = -1; detProbMax[k] = -1; }); detProbSig = sig; detProbBusy = false; return; }
-    if (maxLat - minLat < 0.01) { maxLat += 0.005; minLat -= 0.005; }   // avoid a zero-size box
-    if (maxLon - minLon < 0.01) { maxLon += 0.005; minLon -= 0.005; }
-    var N = DET_PROB_GRID, week = weekOfToday(), inputs = new Float32Array(N * N * 3), c = 0;
-    for (var iy = 0; iy < N; iy++) {
-      var la = minLat + (iy + 0.5) / N * (maxLat - minLat);
-      for (var ix = 0; ix < N; ix++) {
-        var lo = minLon + (ix + 0.5) / N * (maxLon - minLon);
-        inputs[c * 3] = la; inputs[c * 3 + 1] = lo; inputs[c * 3 + 2] = week; c++;
-      }
-    }
-    runInference(inputs, N * N, { task: "raw" }).then(function (out) {
-      var cells = N * N, nSpecies = out.length / cells;
+    var idxOf = Object.create(null);
+    keys.forEach(function (k) { var lbl = labelsByKey[detPlot[k].key || k]; idxOf[k] = (lbl && lbl.index != null) ? lbl.index : -1; });
+    function valid(r) { return r && r.lat != null && r.lon != null && isFinite(+r.lat) && isFinite(+r.lon); }
+    keys.forEach(function (k) { (detPlot[k].rows || []).forEach(function (r) { r._prob = -1; }); });   // default: unknown
+    function finish() {
       keys.forEach(function (k) {
-        var e = detPlot[k], lbl = labelsByKey[e.key || k];
-        if (!lbl || lbl.index == null) { detProb[k] = -1; detProbMax[k] = -1; return; }
-        var idx = lbl.index, mn = Infinity, mx = -Infinity;
-        for (var cell = 0; cell < cells; cell++) { var v = out[cell * nSpecies + idx]; if (v < mn) mn = v; if (v > mx) mx = v; }
-        detProb[k] = (mn === Infinity) ? -1 : mn;      // legend order
-        detProbMax[k] = (mx === -Infinity) ? -1 : mx;  // ◉ rare
+        var mn = Infinity, mx = -Infinity;
+        (detPlot[k].rows || []).forEach(function (r) { var p = r._prob; if (isFinite(p) && p >= 0) { if (p < mn) mn = p; if (p > mx) mx = p; } });
+        detProb[k] = (mn === Infinity) ? -1 : mn;       // legend / list order (rarest = lowest)
+        detProbMax[k] = (mx === -Infinity) ? -1 : mx;   // ◉ rare
       });
       detProbSig = sig; detProbBusy = false;
-      // These values decide ◉ rare (detIsRare), which styles the DOTS as well as the
-      // legend — so redraw both, not just the legend.
-      if (detPlotSig() === sig) { rebuildDetLayers(); updateDetLegend(); }
-    }, function () { detProbBusy = false; });   // hard failure → leave detProbSig so it retries
+      if (detPlotSig() === sig) {
+        rebuildDetLayers(); updateDetLegend();
+        var dm = document.getElementById("detlist-modal");
+        if (dm && dm.style.display === "flex" && typeof renderDetListModal === "function") renderDetListModal();   // refresh the open list's per-obs rarity
+      }
+    }
+    // bbox + date span over the model-species observations
+    var any = false, La = 90, Lb = -90, Oa = 180, Ob = -180, dMin = "", dMax = "";
+    keys.forEach(function (k) {
+      if (idxOf[k] < 0) return;
+      (detPlot[k].rows || []).forEach(function (r) {
+        if (!valid(r)) return; any = true;
+        var la = +r.lat, lo = +r.lon; if (la < La) La = la; if (la > Lb) Lb = la; if (lo < Oa) Oa = lo; if (lo > Ob) Ob = lo;
+        var d = String(r.date || "").slice(0, 10); if (d) { if (!dMin || d < dMin) dMin = d; if (!dMax || d > dMax) dMax = d; }
+      });
+    });
+    if (!any) { finish(); return; }
+
+    if (!probPerObs()) {
+      // MID mode: one lookup at the rectangle centre + the mid date-range week.
+      var mLat = (La + Lb) / 2, mLon = (Oa + Ob) / 2, mWk;
+      if (dMin && dMax) { var mid = new Date((Date.parse(dMin) + Date.parse(dMax)) / 2); mWk = isNaN(mid.getTime()) ? weekOfToday() : weekOfDate(mid); }
+      else mWk = weekOfToday();
+      runInference(new Float32Array([mLat, mLon, mWk]), 1, { task: "raw" }).then(function (out) {
+        keys.forEach(function (k) { var idx = idxOf[k]; if (idx < 0) return; var p = out[idx]; (detPlot[k].rows || []).forEach(function (r) { if (valid(r)) r._prob = p; }); });
+        finish();
+      }, function () { detProbBusy = false; });
+      return;
+    }
+
+    // PER-OBS mode: each row → its 25 km cell + its date's week, cached.
+    var need = Object.create(null), meta = [];
+    keys.forEach(function (k) {
+      var idx = idxOf[k]; if (idx < 0) return;
+      (detPlot[k].rows || []).forEach(function (r) {
+        if (!valid(r)) return;
+        var wk = obsWeekOf(r), cell = snapCell(+r.lat, +r.lon), nk = wk + "|" + cell.key, ck = idx + "|" + nk;
+        if (ck in obsProbCache) { r._prob = obsProbCache[ck]; return; }
+        var s = need[nk] || (need[nk] = { lat: cell.lat, lon: cell.lon, week: wk, idxs: Object.create(null) });
+        s.idxs[idx] = 1; meta.push({ r: r, ck: ck });
+      });
+    });
+    var cells = Object.keys(need);
+    if (!cells.length) { finish(); return; }
+    var CHUNK = 128, ci = 0;
+    (function nextChunk() {
+      if (ci >= cells.length) { meta.forEach(function (m) { if (m.ck in obsProbCache) m.r._prob = obsProbCache[m.ck]; }); finish(); return; }
+      var batch = cells.slice(ci, ci + CHUNK); ci += CHUNK;
+      var inputs = new Float32Array(batch.length * 3);
+      batch.forEach(function (nk, i) { var s = need[nk]; inputs[i * 3] = s.lat; inputs[i * 3 + 1] = s.lon; inputs[i * 3 + 2] = s.week; });
+      runInference(inputs, batch.length, { task: "raw" }).then(function (out) {
+        var nSp = out.length / batch.length;
+        batch.forEach(function (nk, i) { var s = need[nk], base = i * nSp; Object.keys(s.idxs).forEach(function (idxStr) { var idx = +idxStr; obsProbCache[idx + "|" + nk] = out[base + idx]; }); });
+        nextChunk();
+      }, function () { detProbBusy = false; });
+    })();
   }
   function maybeComputeDetProbs() {
     if (!worker || detProbBusy) return;
@@ -8140,10 +8196,10 @@
     var detNameByKey = Object.create(null);
     keys.forEach(function (k) { detNameByKey[k] = detName(detPlot[k]); });   // compute once, not per comparison
     // Order by habitat-model probability, LOWEST → HIGHEST (a species' value is the
-    // highest probability among its observations). Ties / not-yet-computed fall back
-    // to the localised name so the order is still stable.
+    // MIN probability among its observations = its rarest sighting). Non-model /
+    // not-yet-computed species (no probability) sink to the bottom; name breaks ties.
     keys.sort(function (a, b) {
-      var pa = (a in detProb) ? detProb[a] : -1, pb = (b in detProb) ? detProb[b] : -1;
+      var pa = (a in detProb && detProb[a] >= 0) ? detProb[a] : Infinity, pb = (b in detProb && detProb[b] >= 0) ? detProb[b] : Infinity;
       if (pa !== pb) return pa - pb;
       return detNameByKey[a].localeCompare(detNameByKey[b]);
     });
@@ -10194,6 +10250,16 @@
     }
     function relayerDet() { rebuildDetLayers(); updateDetLegend(); }
     wireNumSetting("rare-pct", rarePct, 1, 100, 10, function (v) { window.GeoState.save({ rarePct: v }); }, relayerDet);
+    var probCb = document.getElementById("prob-perobs-toggle");
+    if (probCb) {
+      probCb.checked = probPerObs();
+      probCb.addEventListener("change", function () {
+        window.GeoState.save({ probPerObs: !!this.checked });
+        detProbSig = "";   // basis changed → force a full recompute
+        if (typeof renderDetListModal === "function") renderDetListModal();
+        relayerDet();
+      });
+    }
     wireNumSetting("max-points", detMaxPoints, 50, 100000, 5000, function (v) { window.GeoState.save({ maxMapPoints: v }); }, relayerDet);
     wireNumSetting("nearby-count", nearbyCount, 1, 500, 25, function (v) { window.GeoState.save({ nearbyCount: v }); }, function () { if (nearbyIsOpen()) renderNearby(); });
     var nearbyPtsEl = document.getElementById("nearby-points-toggle");

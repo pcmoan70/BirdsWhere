@@ -810,6 +810,8 @@ window.GeoI18N = (function () {
       "ctrl.hotspotmin": "Hotspot min. species",
       "ctrl.rarepct": "Rare species threshold (%)",
       "ctrl.rarepcthint": "A species seen here is “rare here” when the habitat model gives it at most this probability at the spot — how often it was reported does not matter. Rare dots get a black centre and rare rows a ◉ in the species list; filter them with the legend’s ◉ Rare or the list’s ⚑ header.",
+      "ctrl.probPerObs": "Per-observation probabilities",
+      "ctrl.probPerObsHint": "On (default): each observation's model probability uses its own location (25 km grid) and the week of its date — so the legend/list order and the ◉ rare flag reflect where & when things were actually seen (values are cached). Off: the whole set uses one lookup at the middle of the fetched area and the middle of the date range.",
       "ctrl.maxpoints": "Max points on map",
       "ctrl.nearby": "Close by",
       "ctrl.nearbycount": "Close by — rows shown",
