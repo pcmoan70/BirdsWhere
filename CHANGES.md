@@ -1,5 +1,10 @@
 # Changes
 
+## 2026-07-30 — Centre the × in the red area-delete circle (sw v775)
+
+- The red ×-to-delete markers on fetched-area rectangles now centre the × cleanly (`.area-del-icon`
+  uses flex centering + `box-sizing: border-box` instead of `line-height`, which left it slightly off).
+
 ## 2026-07-30 — Optional TinyURL shortening for share links (sw v774)
 
 - New Settings → Lists & sharing toggle **"Shorten share links (TinyURL)"** (default **off**). When on,
