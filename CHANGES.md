@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-30 — Share file extension is now .share (sw v778)
+
+- The share file is now `birdswhere_share-<date>.share` (was `.mcshare`). The import picker still
+  **accepts old `.mcshare` files** too (`accept=".share,.mcshare,…"`), and import parses by content
+  regardless of extension. Updated the wording in `share.tooBigOfferFile` (all languages) and the
+  TinyURL setting hint.
+
 ## 2026-07-30 — Rename the shared .mcshare file to birdswhere_share-* (sw v777)
 
 - The too-big-to-paste share file is now named **`birdswhere_share-<date>.mcshare`** instead of

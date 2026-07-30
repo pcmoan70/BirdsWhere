@@ -4288,7 +4288,7 @@
               '<div class="settings-section" data-i18n="settings.secListsShare">Lists &amp; sharing</div>' +
               '<div class="ctrl-group">' +
                 '<label class="ctrl-check"><input type="checkbox" id="share-tiny-toggle"> <span data-i18n="ctrl.shareTiny">Shorten share links (TinyURL)</span></label>' +
-                '<p class="cu-hint" data-i18n="ctrl.shareTinyHint">Turns share links into short tinyurl.com links (easier to paste / QR), for links under 14 kB. ⚠ The shared data is sent to TinyURL — a third party — so it may be exposed to unknown parties. Off (default): plain link + .mcshare file, nothing leaves via a shortener.</p>' +
+                '<p class="cu-hint" data-i18n="ctrl.shareTinyHint">Turns share links into short tinyurl.com links (easier to paste / QR), for links under 14 kB. ⚠ The shared data is sent to TinyURL — a third party — so it may be exposed to unknown parties. Off (default): plain link + .share file, nothing leaves via a shortener.</p>' +
               '</div>' +
               '<div class="ctrl-group" id="points-kml-wrap">' +
                 '<label data-i18n="ctrl.exportPoints">Map points</label>' +
@@ -9556,7 +9556,7 @@
     panel.innerHTML =
       '<div class="mp-head mp-head-share">' +
         '<button type="button" id="mp-import-share" class="demo-btn demo-btn-light ico-btn" title="' + escapeHtml(tLabel("share.importFile")) + '">' + ico("upload") + '<span class="ico-label">' + escapeHtml(tLabel("share.importFile")) + "</span></button>" +
-        '<input type="file" id="share-file-input" accept=".mcshare,.txt,text/plain" style="display:none" />' +
+        '<input type="file" id="share-file-input" accept=".share,.mcshare,.txt,text/plain" style="display:none" />' +
       "</div>" +
       (Object.keys(detPlot).length ? '<div class="mp-head">' +
         '<button type="button" id="mp-save-det" class="demo-btn ico-btn">' + ico("save") + '<span class="ico-label" data-i18n="points.savePoints">' + escapeHtml(tLabel("points.savePoints")) + "</span></button>" +
@@ -12218,7 +12218,7 @@
   // file (native share sheet if available, else download). The recipient opens it
   // with "Import shared file" in the Points panel.
   function shareAsFile(enc, title) {
-    var fname = "birdswhere_share-" + fmtDateFile(new Date()) + ".mcshare";
+    var fname = "birdswhere_share-" + fmtDateFile(new Date()) + ".share";
     try {
       var file = new File([enc], fname, { type: "text/plain" });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -12242,9 +12242,9 @@
   }
   // Hosts (GitHub Pages / their CDN) reject request URLs longer than ~8 KB with a
   // 414, so a ?s= link past this can't be opened. Under it we hand back the plain
-  // pastable string; over it we say so and OFFER the .mcshare file instead.
+  // pastable string; over it we say so and OFFER the .share file instead.
   var SHARE_URL_MAX = 8100;
-  var TINY_MAX = 14000;   // shorten only links under ~14 kB (bigger → the .mcshare file)
+  var TINY_MAX = 14000;   // shorten only links under ~14 kB (bigger → the .share file)
   // Shorten a URL via TinyURL's keyless api-create. Resolves to the short URL, or null
   // on offline / failure. NOTE: this sends the URL (incl. the shared data payload) to a
   // third party — see the "Shorten share links" setting's warning.
