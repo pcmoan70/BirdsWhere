@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-30 — Fix: altitude text overflowed the map-menu button (sw v769)
+
+- The coords+altitude label (`📋 … · Alt: 342 m`) overflowed the fixed-width right-click menu button
+  because `.demo-btn` is `white-space: nowrap`. `.map-choose .demo-btn` now wraps
+  (`white-space: normal; overflow-wrap: anywhere`), so the label stays inside the button.
+
 ## 2026-07-30 — Ground altitude in the right-click map menu (sw v768)
 
 - Right-clicking (long-pressing) the map now shows the **ground altitude** next to the coordinates,
