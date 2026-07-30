@@ -1461,7 +1461,14 @@ button.dd-name:hover { text-decoration: underline; }
 #route-chip .route-chip-lbl .btn-ico { width: 16px; height: 16px; color: var(--brand); }
 #route-chip .route-go { border: 1px solid var(--brand); background: var(--brand); color: #fff; border-radius: 999px; padding: 4px 14px; font: inherit; font-size: 0.78rem; font-weight: 600; cursor: pointer; }
 #route-chip .route-go:hover { background: var(--brand-strong); }
+#route-chip .route-save { border: 1px solid var(--brand); background: var(--surface); color: var(--brand-deep); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 0.78rem; font-weight: 600; cursor: pointer; }
+#route-chip .route-save:hover { background: var(--surface-2); }
 #route-chip .route-clear { border: none; background: transparent; color: var(--ink-muted, #777); font-size: 1.2rem; line-height: 1; cursor: pointer; padding: 0 4px; }
+/* Numbered route stop pins on the map + their remove popup. */
+.route-pin-icon { background: none; border: none; }
+.route-pin { width: 24px; height: 24px; border-radius: 50%; background: var(--brand); color: #fff; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); font: 700 12px/22px system-ui, sans-serif; text-align: center; }
+.route-pop .route-pop-name { font-weight: 600; margin-bottom: 6px; }
+.route-pop .demo-btn { width: 100%; }
 .mp-unsaved { margin: 0 6px 6px; padding: 4px 8px; font-size: 0.72rem; line-height: 1.3; border-radius: 4px; color: #8a5a00; background: #fff6e0; border: 1px solid #f0d68a; }
 .mp-saveas-btn { display: inline-block; margin-top: 4px; padding: 4px 10px; font: inherit; font-size: 0.74rem; font-weight: 700; cursor: pointer; border: 1px solid #d9a441; border-radius: 5px; background: #fff; color: #8a5a00; }
 .mp-saveas-btn:active { background: #fff0cf; }

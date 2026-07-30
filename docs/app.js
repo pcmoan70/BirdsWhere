@@ -5271,7 +5271,7 @@
     loadDetections();      // restore any "Show in map" detection points
     restoreFetchedAreas(); // ...and their fetched-area outlines (per-area red × needs them)
     loadMapPoints();       // user-added pins + saved named lists (from localStorage)
-    loadRoute(); updateRouteChip();   // restore the route basket + its pill
+    loadRoute(); updateRouteChip(); renderRoutePoints();   // restore the route basket, its pill + on-map stops
     ensureMpLayer();
     renderMapPoints();
     map.on("contextmenu", onMapContextMenu);   // right-click / long-press → add point dialog
@@ -8903,10 +8903,51 @@
   function addToRoute(lat, lon, name) {
     if (!isFinite(+lat) || !isFinite(+lon)) return;
     routePoints.push({ lat: +lat, lon: +lon, name: name || "" });
-    saveRoute(); updateRouteChip();
+    saveRoute(); updateRouteChip(); renderRoutePoints();
     setStatus(t("route.added", { n: routePoints.length }));
   }
-  function clearRoute() { routePoints = []; saveRoute(); updateRouteChip(); }
+  function clearRoute() { routePoints = []; saveRoute(); updateRouteChip(); renderRoutePoints(); }
+  // Each route stop is drawn on the map as a numbered pin; tapping one offers to
+  // remove it from the route.
+  var routeLayer = null;
+  function renderRoutePoints() {
+    if (!map) return;
+    if (!routeLayer) routeLayer = L.layerGroup().addTo(map);
+    routeLayer.clearLayers();
+    routePoints.forEach(function (p, i) {
+      var icon = L.divIcon({ className: "route-pin-icon", html: '<div class="route-pin">' + (i + 1) + "</div>", iconSize: [26, 26], iconAnchor: [13, 13] });
+      var m = L.marker([p.lat, p.lon], { icon: icon, keyboard: false, zIndexOffset: 800 });
+      var pop = document.createElement("div"); pop.className = "route-pop";
+      var ttl = document.createElement("div"); ttl.className = "route-pop-name";
+      ttl.textContent = (i + 1) + ". " + (p.name || t("route.stop", { n: i + 1 }));
+      var del = makePopupBtn("🗑 " + t("route.remove"), "demo-btn-light", function () { map.closePopup(); removeFromRoute(i); });
+      pop.appendChild(ttl); pop.appendChild(del);
+      m.bindPopup(pop, { className: "route-pop-popup" });
+      routeLayer.addLayer(m);
+    });
+  }
+  function removeFromRoute(i) {
+    if (i < 0 || i >= routePoints.length) return;
+    routePoints.splice(i, 1);
+    saveRoute(); updateRouteChip(); renderRoutePoints();
+    setStatus(routePoints.length ? t("route.added", { n: routePoints.length }) : t("route.cleared"));
+  }
+  // Save the current route's stops (in order) as a named point list, so it's kept
+  // and can be re-shown / shared / navigated later from the Points panel.
+  function saveRouteAsList() {
+    if (!routePoints.length) { setStatus(t("nav.empty")); return; }
+    modalPrompt(t("route.savePrompt"), "").then(function (nm) {
+      nm = (nm || "").trim(); if (!nm) return;
+      var c = mpCollections.filter(function (x) { return x.name === nm; })[0];
+      if (!c) { c = { name: nm, points: [] }; mpCollections.push(c); }
+      routePoints.forEach(function (p, i) {
+        c.points.push({ id: mpUid(), lat: p.lat, lon: p.lon, name: p.name || t("route.stop", { n: i + 1 }), source: "route", createdAt: new Date().toISOString() });
+      });
+      shownColls[nm] = true;
+      saveMapPoints(); saveShownState(); renderMapPoints(); refreshMpPanel();
+      setStatus(t("route.saved", { name: nm, n: routePoints.length }));
+    });
+  }
   function navigateRoute() {
     if (!routePoints.length) { setStatus(t("nav.empty")); return; }
     var stops = routePoints.slice(0, GMAP_MAX_STOPS);   // add-order is the user's intended order — don't reshuffle
@@ -8924,8 +8965,10 @@
     routeChipEl.innerHTML =
       '<span class="route-chip-lbl">' + ico("nav") + "<span>" + escapeHtml(t("route.count", { n: routePoints.length })) + "</span></span>" +
       '<button type="button" class="route-go">' + escapeHtml(t("route.go")) + "</button>" +
+      '<button type="button" class="route-save">' + escapeHtml(t("route.save")) + "</button>" +
       '<button type="button" class="route-clear" aria-label="' + escapeHtml(t("route.clear")) + '" title="' + escapeHtml(t("route.clear")) + '">×</button>';
     routeChipEl.querySelector(".route-go").addEventListener("click", navigateRoute);
+    routeChipEl.querySelector(".route-save").addEventListener("click", saveRouteAsList);
     routeChipEl.querySelector(".route-clear").addEventListener("click", clearRoute);
   }
   // ---- Whole-list overlay: a coloured KML of pins for Google My Maps ----------

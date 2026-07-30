@@ -21,16 +21,16 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v771";
+var VERSION = "v772";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• Route stops now show as numbered pins on the map (tap one to remove it), and the route bar has a Save route button.",
   "• Right-click the map to see the ground altitude next to the coordinates (Alt: NA when offline).",
   "• The GBIF loading line now names the datasets being fetched, e.g. GBIF[2/4](Pl@ntNet|Artsobservasjoner).",
   "• Pl@ntNet plant/fungi observations now load in the Plants, Fungi and All groups (skipped in bird/mammal modes).",
-  "• Added GBIF bird datasets: SABAP2 (South Africa) and Birdata / BirdLife Australia.",
-  "• Updates no longer pop up a banner by default — a “Reload to update” button lights up at the top of Settings; reload whenever you like (re-enable the banner in Settings)."
+  "• Added GBIF bird datasets: SABAP2 (South Africa) and Birdata / BirdLife Australia."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs

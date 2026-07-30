@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-07-30 — Route: on-map numbered stops (removable) + Save route (sw v772)
+
+- Route stops are now drawn on the map as **numbered pins** (`renderRoutePoints` in a `routeLayer`);
+  tapping a pin opens a popup with **🗑 Remove from route** (`removeFromRoute`). Rendered on add /
+  remove / clear and restored on load.
+- The bottom **route bar** gained a **"Save route"** button — `saveRouteAsList` prompts for a name and
+  saves the ordered stops as a point list (shown, and available to re-share/navigate from the Points
+  panel). New `route.save` / `route.remove` / `route.stop` / `route.savePrompt` / `route.saved` /
+  `route.cleared` strings.
+
 ## 2026-07-30 — Point editor: label the route button "Add to route" (sw v771)
 
 - In the Add/Edit-point editor (from the map's right-click "Add point"), the bare **"＋"** route
