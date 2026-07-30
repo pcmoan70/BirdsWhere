@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-30 — A map click also minimises the Search-place box (sw v770)
+
+- An empty-map click now also closes the floating **"Search place"** box (added `closePlaceSearch` to
+  `dismissTransientUI`, and it counts in `isPopupOrMenuOpen` so the dismissing click is consumed) —
+  matching how a click already tidies popups/menus/dropdowns and minimises the legend.
+
 ## 2026-07-30 — Fix: altitude text overflowed the map-menu button (sw v769)
 
 - The coords+altitude label (`📋 … · Alt: 342 m`) overflowed the fixed-width right-click menu button

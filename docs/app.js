@@ -1290,10 +1290,20 @@
   // header dropdowns, anchored row menus, the stored-locations preview and the three
   // legend filter subwindows. Modals cover the map and self-close on a backdrop click,
   // so they're left to their own handlers.
+  // Minimise the floating "Search place" box (self-contained so it can be called from
+  // anywhere — the panel/button live inside the map-control setup scope).
+  function closePlaceSearch() {
+    var p = document.querySelector(".place-search-panel");
+    if (!p || !p.style || p.style.display === "none") return;
+    p.style.display = "none";
+    var btn = document.querySelector(".place-search-btn"); if (btn) btn.classList.remove("is-open");
+    var res = document.getElementById("place-results"); if (res) res.style.display = "none";
+  }
   function dismissTransientUI() {
     try { closeMapPopups(); } catch (e) {}
     try { closeDropdowns(); } catch (e) {}   // header dropdowns + the Points (point-set) panel
     try { closeContextMenus(); } catch (e) {}
+    try { closePlaceSearch(); } catch (e) {}   // minimise the place-search box too
     try { hideStoredLocations(); } catch (e) {}
     var legendChanged = false;
     if (detDaysPanelOpen || detModePanelOpen || detObsPanelOpen) { detDaysPanelOpen = detModePanelOpen = detObsPanelOpen = false; legendChanged = true; }
@@ -1308,6 +1318,7 @@
     if (spiderLayer) return true;   // a fanned-out cluster is showing
     if (detDaysPanelOpen || detModePanelOpen || detObsPanelOpen) return true;
     if (_anchMenuEl) return true;   // an anchored row menu is up
+    var ps = document.querySelector(".place-search-panel"); if (ps && ps.style && ps.style.display !== "none") return true;   // the Search-place box is open
     var ids = ["hidden-panel", "checklists-panel", "settings-panel", "mp-panel", "stored-loc-panel"];
     for (var i = 0; i < ids.length; i++) { var p = document.getElementById(ids[i]); if (p && p.style && p.style.display !== "none") return true; }
     return false;
