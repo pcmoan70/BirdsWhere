@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-31 — Red delete-circle map markers: geometric × (dead-centre) (sw v780)
+
+- The white × in the red delete circles (fetched-area `.area-del-icon` and offline-area `.offline-x`)
+  is now a **geometric SVG ×** (`X_MARK_SVG`) instead of the `×` glyph, whose baseline made it look
+  slightly high even with flex centering. Now perfectly centred.
+
 ## 2026-07-30 — Per-observation model probabilities (rarity) with a toggle (sw v779)
 
 Rewrote the plotted-detections probability machinery (`computeDetProbs`). Instead of one inference

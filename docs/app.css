@@ -2440,6 +2440,7 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
   box-sizing: border-box; display: flex; align-items: center; justify-content: center;
   font-size: 15px; font-weight: 700; line-height: 1; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.4); }
 .area-del-icon:hover { background: var(--danger-strong, #a93226); }
+.area-del-icon svg, .offline-x svg { display: block; }   /* the geometric × sits dead-centre via the flex parent */
 /* Shared-point pin: a triangle (vs your own circular pins). Clear the default
    div-icon white box + border so only the SVG shows. */
 .mp-tri-icon { background: transparent; border: none; }

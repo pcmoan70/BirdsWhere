@@ -721,6 +721,9 @@
     }).catch(function () {});
   }
   var marker = null;
+  // A geometric × (two crossing lines) for the red delete-circle map markers —
+  // perfectly centred, unlike the "×" glyph whose baseline sits off-centre.
+  var X_MARK_SVG = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"><path d="M7 7 L17 17 M17 7 L7 17"/></svg>';
   // Drop (or move) the single location pin so the map always shows which point
   // the Species List / Migration page is computed for. No-op if it's already
   // there, so click-driven renders don't flicker the marker.
@@ -2304,7 +2307,7 @@
   function addAreaDelMarker(area) {
     if (!map || !L.marker) return;
     if (!areaDelLayer) areaDelLayer = L.layerGroup().addTo(map);
-    var icon = L.divIcon({ className: "area-del-icon", html: "×", iconSize: [24, 24], iconAnchor: [12, 12] });
+    var icon = L.divIcon({ className: "area-del-icon", html: X_MARK_SVG, iconSize: [24, 24], iconAnchor: [12, 12] });
     var mk = L.marker(area.bounds.getNorthEast(), { icon: icon, keyboard: false, zIndexOffset: 2000, title: t("det.delArea") });
     mk.on("click", function (e) { if (L.DomEvent) L.DomEvent.stop(e); mapClickGuardUntil = Date.now() + 250; deleteFetchedArea(area.id); });
     area.delMarker = mk;
@@ -5680,7 +5683,7 @@
       rect.addTo(offlineFramesLayer);
       if (offlineEditing) {
         var del = L.marker([a.bbox[3], a.bbox[2]], {   // NE corner (N lat, E lon)
-          icon: L.divIcon({ className: "offline-x", html: "×", iconSize: [22, 22], iconAnchor: [11, 11] }),
+          icon: L.divIcon({ className: "offline-x", html: X_MARK_SVG, iconSize: [22, 22], iconAnchor: [11, 11] }),
           interactive: true, keyboard: false, title: t("offline.delete"),
         });
         del.on("click", (function (area) {
