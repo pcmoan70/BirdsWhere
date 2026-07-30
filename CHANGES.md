@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-30 — Multi-observer records list each observer before the chooser (sw v765)
+
+- Clicking an observer name on a record with **several observers** now first lists **each individual
+  observer**; picking one opens that observer's **filter / add-to-list** chooser. A single-observer
+  record opens the chooser directly. Refactored into `observerActionMenu` (per-observer filter/add) +
+  `observerClickMenu` (single → chooser, multi → people list). Removed the now-unused
+  `observerAddToList` and `showObserverPeopleMenu`.
+
 ## 2026-07-30 — Observer-click chooser + more GBIF datasets (sw v764)
 
 - **Observer name → chooser.** Clicking an observer name (in the detections list or the 👤 legend

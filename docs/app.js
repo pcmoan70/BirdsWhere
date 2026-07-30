@@ -7822,44 +7822,37 @@
       });
     });
   }
-  // When an observation carries several observers, first show the individual
-  // names; picking one drills into that observer's add-to-list menu.
-  function showObserverPeopleMenu(names, anchor) {
+  // Per-observer chooser: filter the map/list to just this observer, or add them to
+  // an observer list (the previous behaviour).
+  function observerActionMenu(name, anchor) {
     var r = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;
     var menu = openAnchoredMenu("obs-addmenu");
-    menu.innerHTML = '<div class="obs-addmenu-head">' + escapeHtml(t("obs.people")) + "</div>" +
-      names.map(function (n) { return '<button type="button" class="obs-people-item" data-obs="' + escapeHtml(n) + '">' + escapeHtml(n) + "</button>"; }).join("");
-    positionAnchoredMenu(menu, r.left, r.bottom + 2);
-    menu.querySelectorAll(".obs-people-item").forEach(function (b) {
-      b.addEventListener("click", function (e) { e.stopPropagation(); showAddToListMenu(this.getAttribute("data-obs"), this); });
-    });
-  }
-  // Entry point from any displayed observer string (legend or detlist): one
-  // observer opens the add-to-list menu directly; several open a picker first.
-  function observerAddToList(obsString, anchor) {
-    var names = detObsRealNames(obsString);
-    if (names.length <= 1) showAddToListMenu(names[0] || String(obsString || "").trim(), anchor);
-    else showObserverPeopleMenu(names, anchor);
-  }
-  // Clicking an observer name opens a small chooser: filter the map/list to that
-  // observer, or add them to an observer list (the previous behaviour).
-  function observerClickMenu(obsString, anchor) {
-    var names = detObsRealNames(obsString);
-    var r = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;   // capture before the menu replaces the anchor
-    var menu = openAnchoredMenu("obs-addmenu");
-    var label = names.length ? names.join(", ") : String(obsString || "").trim();
-    menu.innerHTML = '<div class="obs-addmenu-head">' + escapeHtml(label) + "</div>" +
+    menu.innerHTML = '<div class="obs-addmenu-head">' + escapeHtml(name) + "</div>" +
       '<button type="button" class="obs-addmenu-item obs-act-filter">' + escapeHtml(t("obs.filterOnly")) + "</button>" +
       '<button type="button" class="obs-addmenu-item obs-act-add">' + escapeHtml(t("obs.addToListAct")) + "</button>";
     positionAnchoredMenu(menu, r.left, r.bottom + 2);
     menu.querySelector(".obs-act-filter").addEventListener("click", function (e) {
       e.stopPropagation(); closeAnchoredMenu();
-      setDetObsFilter(names.length ? new Set(names) : null);   // show only this observer's records
+      setDetObsFilter(name ? new Set([name]) : null);   // show only this observer's records
       saveLegendState(); rebuildDetLayers(); updateDetLegend(); renderDetListModal();
     });
     menu.querySelector(".obs-act-add").addEventListener("click", function (e) {
       e.stopPropagation(); closeAnchoredMenu();
-      observerAddToList(obsString, r);   // rect works as an anchor for the follow-up menu
+      showAddToListMenu(name, r);
+    });
+  }
+  // Clicking an observer name: a single observer opens its chooser directly; a record
+  // with SEVERAL observers first lists each individual, then that one's filter/add chooser.
+  function observerClickMenu(obsString, anchor) {
+    var names = detObsRealNames(obsString);
+    if (names.length <= 1) { observerActionMenu(names[0] || String(obsString || "").trim(), anchor); return; }
+    var r = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;   // capture before the menu replaces the anchor
+    var menu = openAnchoredMenu("obs-addmenu");
+    menu.innerHTML = '<div class="obs-addmenu-head">' + escapeHtml(t("obs.people")) + "</div>" +
+      names.map(function (n) { return '<button type="button" class="obs-people-item" data-obs="' + escapeHtml(n) + '">' + escapeHtml(n) + "</button>"; }).join("");
+    positionAnchoredMenu(menu, r.left, r.bottom + 2);
+    menu.querySelectorAll(".obs-people-item").forEach(function (b) {
+      b.addEventListener("click", function (e) { e.stopPropagation(); observerActionMenu(this.getAttribute("data-obs"), r); });
     });
   }
   function detAllObservers() {
