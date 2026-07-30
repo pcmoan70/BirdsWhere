@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-30 — Point editor: label the route button "Add to route" (sw v771)
+
+- In the Add/Edit-point editor (from the map's right-click "Add point"), the bare **"＋"** route
+  button now shows its full label **"＋ Add to route"** (it already had that as a tooltip via
+  `route.add`) so its purpose is clear.
+
 ## 2026-07-30 — A map click also minimises the Search-place box (sw v770)
 
 - An empty-map click now also closes the floating **"Search place"** box (added `closePlaceSearch` to
