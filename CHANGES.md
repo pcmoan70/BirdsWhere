@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-30 — Rename the shared .mcshare file to birdswhere_share-* (sw v777)
+
+- The too-big-to-paste share file is now named **`birdswhere_share-<date>.mcshare`** instead of
+  `migration-share-<date>.mcshare` (display filename only; the `.mcshare` extension and import are
+  unchanged).
+
 ## 2026-07-30 — A selected point carries into Historic mode (sw v776)
 
 - Selecting a point on the map and then switching to **Historic** no longer clears it — the mode

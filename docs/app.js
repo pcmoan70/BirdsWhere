@@ -12218,7 +12218,7 @@
   // file (native share sheet if available, else download). The recipient opens it
   // with "Import shared file" in the Points panel.
   function shareAsFile(enc, title) {
-    var fname = "migration-share-" + fmtDateFile(new Date()) + ".mcshare";
+    var fname = "birdswhere_share-" + fmtDateFile(new Date()) + ".mcshare";
     try {
       var file = new File([enc], fname, { type: "text/plain" });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
