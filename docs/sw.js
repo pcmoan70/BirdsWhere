@@ -21,15 +21,15 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v792";
+var VERSION = "v793";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• Historic fetch now fills the species list live: counts appear month by month as each batch lands, so you see progress beyond the bar.",
   "• Keyboard on PC: Tab between point fields, Enter = the green button, Delete removes an existing point; ↑/↓ move a green highlight in popup menus, Enter picks it.",
   "• Rarity is now per observation: each sighting's model probability uses its own place (25 km grid) & week; legend/list order by rarest. Toggle in Settings.",
   "• New setting: shorten share links with TinyURL (easier to paste/QR) — note it sends the shared data to a third party.",
-  "• Route stops now show as numbered pins on the map (tap one to remove it), and the route bar has a Save route button.",
   "• Right-click the map to see the ground altitude next to the coordinates (Alt: NA when offline)."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets

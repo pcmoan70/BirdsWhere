@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-07-31 — Historic fetch fills the species list progressively (sw v793)
+
+- During a **Historic** fetch the species-list detection counts now update **per month batch**
+  instead of only at the end, so the list grows as data arrives (matching the map dots, which
+  already plotted month by month).
+- `fetchHistoricSightingsAt` gained an `onPartial` callback: after each month's batch (when it
+  added records) it re-aggregates everything gathered so far and pushes it through
+  `applySightings(..., false)` — the same progressive-fill path the recent (multi-source) fetch
+  already uses. `augmentRowsWithSightings` now passes `onPartial` to the historic branch too.
+- No new strings; the stale-guard token in `applySightings` drops updates from a superseded search.
+
 ## 2026-07-31 — Range/Migration from an observation use its week + mark the detection (sw v792)
 
 - Opening **Species Range / Distribution** from an observation now sets the **week** to the

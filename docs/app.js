@@ -2085,6 +2085,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v793", date: "2026-07-31", text: "Historic fetches now fill the species list progressively: as each month's batch of records lands, the detection counts appear in the list (and dots on the map) — so you see real progress instead of just a moving bar." },
     { v: "v779", date: "2026-07-30", text: "Rarity is now per observation: each sighting's model probability uses its own location (25 km grid) and the week of its date — so the legend/list order and the ◉ rare flag reflect where & when things were actually seen (cached). Toggle it in Settings → Fetching & detections (off = one lookup at the middle of the fetched area + the middle of the date range)." },
     { v: "v774", date: "2026-07-30", text: "Optional TinyURL shortening for share links (Settings → Lists & sharing): turns a share into a short tinyurl.com link — easier to paste or QR. Note it sends the shared data to a third party." },
     { v: "v772", date: "2026-07-30", text: "Building a route: each stop shows as a numbered pin on the map (tap one to remove it), and the route bar at the bottom gains a Save route button (keeps the stops as a named point list)." },
@@ -3160,7 +3161,7 @@
     } catch (e) { /* a failed top-up just leaves GBIF's copy for that month */ }
     return [];
   }
-  function fetchHistoricSightingsAt(lat, lon, range, onProg) {
+  function fetchHistoricSightingsAt(lat, lon, range, onProg, onPartial) {
     var rkm = recentRadiusKm();
     var months = histMonthsParam();   // "" = all months, else "&month=5&month=6"
     var fetchGroup = speciesGroup;   // group at fetch-start (see fetchAllSightingsAt)
@@ -3182,19 +3183,33 @@
           var i = nextChunk++; if (i >= chunks.length) return;
           var r = chunks[i];
           var raw = await AppFetch.fetchGbifHistoric(lat, lon, r[0], r[1], rkm, cc, sig, null, months);
+          var before = allRecs.length;
           // Dedup by GBIF key across batches (a record can straddle a month boundary).
           (raw || []).forEach(function (o) { if (o && o.key != null) { if (seen[o.key]) return; seen[o.key] = 1; } allRecs.push(o); });
+          var grew = allRecs.length > before;
           if (!(sig && sig.aborted)) { try { plotHistoricRecs(AppNormalize.normGbif(raw), fetchGroup); } catch (e) {} }   // fill the map month by month
           // Direct-API top-up for the newest months (fresher than GBIF's republish).
           if (nordicSrc && r[1] >= recentCutoff && !(sig && sig.aborted)) {
             var dn = await fetchNordicHistoric(nordicSrc, lat, lon, rkm, r[0], r[1], sig);
             if (dn && dn.length) {
-              directNorm.push.apply(directNorm, dn);
+              directNorm.push.apply(directNorm, dn); grew = true;
               if (!(sig && sig.aborted)) { try { plotHistoricRecs(dn, fetchGroup); } catch (e) {} }
             }
           }
           monthsDone++;
           if (onProg) { try { onProg(monthsDone, chunks.length); } catch (e) {} }
+          // Fill the species-list counts progressively too (not just the map + bar):
+          // re-aggregate everything gathered so far and push it as a partial result so
+          // the detection list grows month by month. Only when this batch added rows.
+          if (onPartial && grew && !(sig && sig.aborted)) {
+            try {
+              var pg = AppNormalize.normGbif(allRecs);
+              var pRecs = directNorm.length ? pg.concat(directNorm) : pg;
+              var pOut = AppAggregate.aggregateRecords(pRecs, fetchGroup);
+              pOut.group = fetchGroup;
+              onPartial(pOut);
+            } catch (e) {}
+          }
           try { setStatus(t("hist.progress", { done: monthsDone, total: chunks.length, n: allRecs.length + directNorm.length })); } catch (e) {}
         }
       }
@@ -3371,8 +3386,8 @@
     var tbody = document.getElementById("sp-tbody");
     if (tbody) tbody.dataset.sightingsToken = token;   // supersede if another click arrives
     hideSourceCounts();   // clear any prior location's "Loaded: …" line before this fetch
-    var onPartial = function (partial) { applySightings(tbody, token, partial, false); };   // live-fill rows as each source returns
-    var fetchP = histRange ? fetchHistoricSightingsAt(lat, lon, histRange, onProg) : fetchAllSightingsAt(lat, lon, onPartial);
+    var onPartial = function (partial) { applySightings(tbody, token, partial, false); };   // live-fill rows as each source returns (recent) / each month batch (historic)
+    var fetchP = histRange ? fetchHistoricSightingsAt(lat, lon, histRange, onProg, onPartial) : fetchAllSightingsAt(lat, lon, onPartial);
     return fetchP.then(function (result) {
       applySightings(tbody, token, result, true);
       if (!tbody || tbody.dataset.sightingsToken !== token) return;
