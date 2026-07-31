@@ -9538,16 +9538,21 @@
   function showMapContextMenu(lat, lon) {
     var wrap = document.createElement("div");
     wrap.className = "map-choose";
+    // Header: coordinates on line 1, ground altitude on line 2 (filled in async;
+    // "Alt: NA" offline / on failure). Clicking it copies the lat/lon ONLY.
+    var head = document.createElement("button");
+    head.type = "button"; head.className = "map-choose-head";
+    head.innerHTML = '<span class="mc-coords">📋 ' + escapeHtml(coordsText(lat, lon)) + '</span>' +
+      '<span class="mc-alt">' + escapeHtml(t("alt.loading")) + "</span>";
+    head.addEventListener("click", function () { map.closePopup(); copyCoords(lat, lon); });
+    wrap.appendChild(head);
+    fetchAltitude(lat, lon).then(function (m) {
+      var altEl = head.querySelector(".mc-alt");
+      if (altEl) altEl.textContent = (m == null ? t("alt.na") : t("alt.value", { m: Math.round(m) }));
+    });
     wrap.appendChild(makePopupBtn("➕ " + t("points.add"), "", function () { map.closePopup(); openPointEditor({ lat: lat, lon: lon, name: "", tags: [], note: "" }); }));
     wrap.appendChild(makePopupBtn("📍 " + t("loc.save"), "demo-btn-light", function () { map.closePopup(); registerLocationPrompt(lat, lon); }));
     wrap.appendChild(makePopupBtn("🔗 " + t("share.link"), "demo-btn-light", function () { map.closePopup(); offerShareUrl(pointShareUrl(lat, lon)); }));
-    // Coordinates + ground altitude (filled in async; "Alt: NA" when offline / lookup fails).
-    var coordsBase = "📋 " + coordsText(lat, lon);
-    var coordsBtn = makePopupBtn(coordsBase + " · " + t("alt.loading"), "demo-btn-light", function () { map.closePopup(); copyCoords(lat, lon); });
-    wrap.appendChild(coordsBtn);
-    fetchAltitude(lat, lon).then(function (m) {
-      coordsBtn.textContent = coordsBase + " · " + (m == null ? t("alt.na") : t("alt.value", { m: Math.round(m) }));
-    });
     wrap.appendChild(makePopupBtn("🧭 " + t("nav.here"), "demo-btn-light", function () { map.closePopup(); navigatePoints([{ lat: lat, lon: lon }]); }));
     L.popup({ className: "choose-popup", closeButton: true, autoClose: true, autoPan: true, offset: [0, -2] })
       .setLatLng([lat, lon]).setContent(wrap).openOn(map);

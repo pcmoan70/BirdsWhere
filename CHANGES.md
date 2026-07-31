@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-31 — Map right-click popup: coords/altitude header on top (sw v787)
+
+- The right-click map popup now leads with a **header**: **coordinates on line 1, altitude on line 2**
+  (`.map-choose-head`), above the action buttons. Clicking the header **copies the lat/lon only**
+  (altitude is display-only). Altitude still fills in async / shows "Alt: NA" when offline.
+
 ## 2026-07-31 — Point editor actions on one tight row; route button "+Route" (sw v786)
 
 - In the point editor (right-click an existing point), the **Save · +Route · Delete** buttons now sit
