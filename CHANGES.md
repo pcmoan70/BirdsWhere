@@ -1,5 +1,10 @@
 # Changes
 
+## 2026-07-31 — Translate the "+Route" button (sw v788)
+
+- `route.addShort` (the compact route button in the point editor) is now translated in all 15
+  languages (short forms, e.g. de "+Route", sv "+Rutt", fr "+Trajet", it "+Percorso", pl/cs "+Trasa").
+
 ## 2026-07-31 — Map right-click popup: coords/altitude header on top (sw v787)
 
 - The right-click map popup now leads with a **header**: **coordinates on line 1, altitude on line 2**
