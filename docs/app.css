@@ -1563,7 +1563,7 @@ button.dd-name:hover { text-decoration: underline; }
 /* Indented label+input sub-row inside a ctrl-group (e.g. Fetch-on-open "last N days"). */
 .settings-panel .ctrl-subrow { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding-left: 4px; }
 .settings-panel .ctrl-subrow label { margin: 0; }
-.settings-panel .ctrl-subrow input { width: 5em; flex: 0 0 auto; }
+.settings-panel .ctrl-subrow input { width: 4em; flex: 0 0 auto; box-sizing: border-box; }
 /* Export/Import KML sit side by side, each half width. */
 .kml-btn-row { display: flex; gap: 8px; }
 .kml-btn-row > .demo-btn { flex: 1 1 0; min-width: 0; }

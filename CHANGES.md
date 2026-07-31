@@ -1,5 +1,10 @@
 # Changes
 
+## 2026-07-31 — Narrow the "Last days to fetch" input (sw v798)
+
+- The Fetch-on-open **"Last days to fetch"** number field is now ~4 digits wide (`4em`,
+  `box-sizing: border-box`) instead of stretching, matching the small numeric value.
+
 ## 2026-07-31 — Fetch-on-open: ⟳ column header + own "last N days" (sw v797)
 
 - The ⟳ "load on open" control is now **always shown** in the Stored-locations panel, as a
