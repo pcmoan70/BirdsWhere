@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-07-31 — Translate the last English-only UI strings (sw v794)
+
+- 32 keys that had only an English entry (so non-English UIs showed English — e.g. Norwegian
+  Settings showing "Per-observation probabilities") are now translated into all 14 non-English
+  language blocks: `ctrl.probPerObs(+Hint)`, `ctrl.shareTiny(+Hint)`, `ctrl.updateBanner(+Hint)`,
+  the `route.*` set (save/cleared/remove/stop/savePrompt/saved), `alt.*` (loading/value/na),
+  `share.noneVisible`, `share.shortening`, `settings.updateReady`, `settings.updateApplying`,
+  `obs.filterOnly`, `obs.addToListAct`, `detlist.sumIndiv`, `fetch.clickErr`, `bc.detWeek`, and
+  the `srcshort.*` source descriptions.
+- Verified via a key-diff script: 0 keys now missing from any of the 14 real language blocks.
+
 ## 2026-07-31 — Historic fetch fills the species list progressively (sw v793)
 
 - During a **Historic** fetch the species-list detection counts now update **per month batch**
