@@ -4257,6 +4257,12 @@
                   '<option value="more" data-i18n="labels.more">More</option>' +
                 '</select>' +
               '</div>' +
+              '<div class="ctrl-group">' +
+                '<label for="hotspot-min" data-i18n="ctrl.hotspotmin">Hotspot min. species</label>' +
+                '<select id="hotspot-min">' +
+                  '<option value="0" data-i18n="opt.off">Off</option><option value="25">25+</option><option value="50">50+</option><option value="100">100+</option><option value="200">200+</option>' +
+                '</select>' +
+              '</div>' +
               '<div class="ctrl-group" id="barchart-threshold-wrap" style="display:none">' +
                 '<label data-i18n="ctrl.bcthreshold">Probability range</label>' +
                 '<div id="prob-range">' +
@@ -4327,12 +4333,6 @@
               '<div class="ctrl-group">' +
                 '<label class="ctrl-check"><input type="checkbox" id="prob-perobs-toggle" checked> <span data-i18n="ctrl.probPerObs">Per-observation probabilities</span></label>' +
                 '<p class="cu-hint" data-i18n="ctrl.probPerObsHint">On (default): each observation\'s model probability uses its own location (25 km grid) and the week of its date — so the legend/list order and the ◉ rare flag reflect where & when things were actually seen (values are cached). Off: the whole set uses one lookup at the middle of the fetched area and the middle of the date range.</p>' +
-              '</div>' +
-              '<div class="ctrl-group">' +
-                '<label for="hotspot-min" data-i18n="ctrl.hotspotmin">Hotspot min. species</label>' +
-                '<select id="hotspot-min">' +
-                  '<option value="0" data-i18n="opt.off">Off</option><option value="25">25+</option><option value="50">50+</option><option value="100">100+</option><option value="200">200+</option>' +
-                '</select>' +
               '</div>' +
               '<div class="settings-section" data-i18n="settings.secData">Data sources</div>' +
               '<div class="ctrl-group" id="sources-wrap">' +

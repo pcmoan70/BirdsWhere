@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-07-31 — Settings grouped with horizontal dividers (sw v800)
+
+- Each functional group in Settings now opens with a **full-width horizontal rule**, so the
+  groups (View · Fetching & detections · Data sources · Lists & sharing · Storage & offline ·
+  Display & language · What's new) read as clearly separated blocks. `.settings-section` now
+  uses a `border-top` divider (the `:first-child` rule was dead — the intro `<p>` precedes the
+  first section — so the "View" header is targeted via `:first-of-type`).
+- **Hotspot min. species** moved from *Fetching & detections* to **View**, next to Map type /
+  Place labels, since it governs the eBird hotspots map overlay (id unchanged → no wiring change).
+
 ## 2026-07-31 — Actually narrow the "Last days to fetch" input (sw v799)
 
 - The v798 width fix was overridden by `.settings-panel input[type="number"] { width:100% }`
