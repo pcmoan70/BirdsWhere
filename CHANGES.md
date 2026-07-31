@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-31 — Narrower Settings menu (sw v803)
+
+- Compacted the manage/action buttons inside Settings (`.settings-panel .demo-btn` padding
+  `7px 16px` → `6px 9px`; `.ico-btn` gap `8px` → `6px`). Their `white-space:nowrap` labels set
+  the panel's min width, so trimming the button whitespace lets the menu be narrower.
+- Lowered the panel `min-width` 280 → 240 px and horizontal padding 12 → 10 px.
+
 ## 2026-07-31 — General "Download — last N days" window (sw v802)
 
 - New Settings field **"Download — last N days"** (`downloadDays`, in Fetching & detections)

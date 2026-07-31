@@ -1547,13 +1547,18 @@ button.dd-name:hover { text-decoration: underline; }
 
 /* ===== Settings dropdown (Week, Language, 2nd name, Compare, Species group, About) ===== */
 #settings-panel.settings-panel {
-  min-width: 280px;
+  min-width: 240px;
   max-width: min(94vw, 420px);   /* wider than other dropdowns so URLs fit */
   max-height: min(80vh, 560px);
-  padding: 10px 12px;
+  padding: 10px 10px;
   left: 0;           /* drops down from the header bird icon (upper-left) */
   right: auto;
 }
+/* Compact the manage/action buttons inside Settings: their nowrap label + wide
+   padding + icon gap set the panel's min width, so trimming the whitespace lets
+   the menu be narrower. */
+.settings-panel .demo-btn { padding: 6px 9px; }
+.settings-panel .ico-btn { gap: 6px; }
 .settings-panel .ctrl-group {
   display: flex;
   flex-direction: column;
