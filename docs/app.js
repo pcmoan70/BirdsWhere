@@ -6701,9 +6701,33 @@
     setTimeout(function () { if (_anchMenuEl === el) document.addEventListener("click", _anchMenuOutside, true); }, 0);
     return el;
   }
+  // Keyboard navigation for a popup list of <button>s (PC): ↑/↓ move a green "active"
+  // highlight, Enter clicks it, Escape closes. Moving the MOUSE clears the highlight,
+  // so mouse hovering/clicking works exactly as before. Safe to call once per menu.
+  function enableMenuKeys(el, onClose) {
+    if (!el || el._kbNav) return; el._kbNav = 1;
+    function btns() { return Array.prototype.slice.call(el.querySelectorAll("button:not([disabled])")); }
+    var idx = -1;
+    function setActive(i) {
+      var b = btns(); b.forEach(function (x) { x.classList.remove("kb-active"); });
+      idx = (i >= 0 && i < b.length) ? i : -1;
+      if (idx >= 0) { b[idx].classList.add("kb-active"); try { b[idx].scrollIntoView({ block: "nearest" }); } catch (e) {} }
+    }
+    el.addEventListener("keydown", function (e) {
+      var b = btns(); if (!b.length) return;
+      if (e.key === "ArrowDown") { e.preventDefault(); setActive(idx < 0 ? 0 : (idx + 1) % b.length); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); setActive(idx < 0 ? b.length - 1 : (idx - 1 + b.length) % b.length); }
+      else if (e.key === "Enter" && idx >= 0 && b[idx]) { e.preventDefault(); b[idx].click(); }
+      else if (e.key === "Escape") { e.preventDefault(); if (onClose) onClose(); }
+    });
+    el.addEventListener("mousemove", function () { if (idx >= 0) setActive(-1); });   // mouse takes over
+    el.setAttribute("tabindex", "-1");
+    try { el.focus({ preventScroll: true }); } catch (e) { try { el.focus(); } catch (e2) {} }
+  }
   function positionAnchoredMenu(el, left, top) {
     el.style.left = Math.max(6, Math.min(left, window.innerWidth - el.offsetWidth - 8)) + "px";
     el.style.top = Math.max(6, Math.min(top, window.innerHeight - el.offsetHeight - 8)) + "px";
+    enableMenuKeys(el, closeAnchoredMenu);
   }
   function closeDetRowMenu() { closeAnchoredMenu(); }   // alias kept for its many call sites
   // A toggle row in the species menu's "actions" section. The leading icon shows
@@ -9463,6 +9487,19 @@
   }
   function wireEditorPopup(p, isEdit) {
     wireMpColorRow();
+    // Keyboard (PC): a NEW point focuses the name field so you can type/Tab straight
+    // away; an EXISTING point stays unfocused so [Delete] deletes it right away (Tab
+    // into a field to edit). Enter in a text field triggers Save (the green button);
+    // Escape closes. Mouse behaviour is unchanged.
+    var nameInp = document.getElementById("mp-name"); if (nameInp && !isEdit) { try { nameInp.focus(); } catch (e) {} }
+    function editorKey(e) {
+      var tag = e.target && e.target.tagName, inField = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+      if (e.key === "Enter" && tag === "INPUT") { e.preventDefault(); var s = document.getElementById("mp-save"); if (s) s.click(); }
+      else if (e.key === "Delete" && !inField && isEdit) { e.preventDefault(); var d = document.getElementById("mp-del"); if (d) d.click(); }
+      else if (e.key === "Escape") { e.preventDefault(); if (map) map.closePopup(); }
+    }
+    document.addEventListener("keydown", editorKey, true);
+    if (map) map.once("popupclose", function () { document.removeEventListener("keydown", editorKey, true); });
     var cc = document.querySelector(".mp-coords-copy");
     if (cc) cc.addEventListener("click", function () { copyCoords(this.getAttribute("data-lat"), this.getAttribute("data-lon")); });
     var rt = document.getElementById("mp-route");
@@ -9556,6 +9593,7 @@
     wrap.appendChild(makePopupBtn("🧭 " + t("nav.here"), "demo-btn-light", function () { map.closePopup(); navigatePoints([{ lat: lat, lon: lon }]); }));
     L.popup({ className: "choose-popup", closeButton: true, autoClose: true, autoPan: true, offset: [0, -2] })
       .setLatLng([lat, lon]).setContent(wrap).openOn(map);
+    enableMenuKeys(wrap, function () { map.closePopup(); });   // PC: ↑/↓ + Enter through the actions
   }
 
   // ---- Points dropdown panel ----

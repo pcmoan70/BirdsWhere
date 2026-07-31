@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-07-31 — Keyboard navigation on PC (sw v789)
+
+- **Point editor:** a new point focuses the name field (type/Tab straight away); an existing point
+  stays unfocused so **[Delete]** removes it immediately. **Enter** in a text field triggers **Save**
+  (the green button); **Esc** closes. (Document-level keydown while the editor popup is open, removed
+  on `popupclose`.)
+- **Popup menus** (map right-click popup + all anchored menus — observer chooser, add-to-list, save-to-
+  list, etc.): **↑/↓** move a **green "active" highlight**, **Enter** clicks it, **Esc** closes. New
+  reusable `enableMenuKeys`; a **green** `.kb-active` highlight. Moving the **mouse clears the
+  highlight**, so hovering/clicking works exactly as before.
+
 ## 2026-07-31 — Translate the "+Route" button (sw v788)
 
 - `route.addShort` (the compact route button in the point editor) is now translated in all 15
