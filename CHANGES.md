@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-31 — What's-new list shows the version + refreshed entries (sw v784)
+
+- The Settings **"What's new"** list now shows the **version number alongside the date** (`vNNN · date`)
+  when an entry has one — `WHATS_NEW` entries gained an optional `v` field. Also refreshed the top of
+  the list (it was stale at 2026-07-28) with the recent major features and their versions.
+
 ## 2026-07-31 — Sharing a list/set only carries what's on screen (sw v783)
 
 - The per-list/set 🔗 shares now include **only the points/records inside the current map viewport**,

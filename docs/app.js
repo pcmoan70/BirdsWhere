@@ -2075,6 +2075,16 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v779", date: "2026-07-30", text: "Rarity is now per observation: each sighting's model probability uses its own location (25 km grid) and the week of its date — so the legend/list order and the ◉ rare flag reflect where & when things were actually seen (cached). Toggle it in Settings → Fetching & detections (off = one lookup at the middle of the fetched area + the middle of the date range)." },
+    { v: "v774", date: "2026-07-30", text: "Optional TinyURL shortening for share links (Settings → Lists & sharing): turns a share into a short tinyurl.com link — easier to paste or QR. Note it sends the shared data to a third party." },
+    { v: "v772", date: "2026-07-30", text: "Building a route: each stop shows as a numbered pin on the map (tap one to remove it), and the route bar at the bottom gains a Save route button (keeps the stops as a named point list)." },
+    { v: "v768", date: "2026-07-30", text: "Right-click (or long-press) the map to see the ground altitude next to the coordinates (Alt: NA when offline)." },
+    { v: "v766", date: "2026-07-30", text: "Pl@ntNet plant & fungi observations now load in the Plants, Fungi and All species groups (skipped in bird/mammal modes, so no wasted queries)." },
+    { v: "v763", date: "2026-07-30", text: "Updates no longer pop up a banner by default — instead a green “Reload to update” button lights up at the top of Settings and you reload whenever you like. Re-enable the automatic banner in Settings." },
+    { v: "v758", date: "2026-07-29", text: "The detections list has a sort menu: by date, name, 2nd-language name, count, or rarity. A source that failed or timed out is shown red and is clickable — tap it to see why." },
+    { v: "v757", date: "2026-07-29", text: "Historic fetches now include eBird's full archive via GBIF; the recent feed stays on the fresher direct eBird source." },
+    { v: "v756", date: "2026-07-29", text: "New GBIF bird datasets: naturgucker (Germany), Birds of Ireland, SABAP2 (South Africa) and Birdata / BirdLife Australia — more key-free observations near those countries." },
+    { v: "v752", date: "2026-07-29", text: "Help now explains more clearly what the AI model does, and that your data stays on your device unless you explicitly share or export it." },
     { date: "2026-07-28", text: "Received shared maps now build up exactly like data you fetch yourself: the detections go through the same pipeline, so the bottom-left legend and the co-located list (tap a dot) show every species and every date at a location — nothing is re-fetched, the data comes from the link. In the detections list (☰), a record from a source you can't access (e.g. eBird with no key set) shows a 🔒 with the source struck through." },
     { date: "2026-07-28", text: "Location & map actions moved to the right-click menu: right-click (or long-press on touch) anywhere on the map for ➕ Add point, 📍 Save location, 🔗 Share link and 📋 Copy coordinates. The normal left-click popup is now just species & country resources. And a click on empty map closes any open popup or filter window." },
     { date: "2026-07-28", text: "National & regional bird sites for the map popups now all live in one place — Settings → National databases — with a curated set per country across Europe, North & Central America and Oceania. Click a point on the map to see that country’s portals (plus its Blogs and BirdLife page), plus a continental submenu — “🌍 Europe & Worldwide”, “Americas & Worldwide” or “Oceania & Worldwide” depending on where you clicked — holding the region’s and the global sites (eBird, Observation.org, iNaturalist, GBIF, Avibase, xeno-canto…). Each entry has two icons: × deletes it, and 👁/🚫 blocks it (keeps it listed but hides it from the popups). Add your own with + Add." },
@@ -2111,7 +2121,8 @@
   function renderWhatsNew() {
     var el = document.getElementById("whatsnew-list"); if (!el) return;
     el.innerHTML = WHATS_NEW.slice(0, 10).map(function (e) {
-      return '<div class="wn-item"><span class="wn-date">' + escapeHtml(e.date) + '</span><span class="wn-text">' + escapeHtml(e.text) + "</span></div>";
+      var head = (e.v ? escapeHtml(e.v) + " · " : "") + escapeHtml(e.date);
+      return '<div class="wn-item"><span class="wn-date">' + head + '</span><span class="wn-text">' + escapeHtml(e.text) + "</span></div>";
     }).join("");
   }
   // Birdingplaces.eu "find a birdingplace" map, centred on the point via the
