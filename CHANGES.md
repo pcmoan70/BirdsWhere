@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-31 — Actually narrow the "Last days to fetch" input (sw v799)
+
+- The v798 width fix was overridden by `.settings-panel input[type="number"] { width:100% }`
+  (equal specificity, defined later). Bumped the selector to
+  `.settings-panel .ctrl-subrow input[type="number"]` (specificity 0,3,1) so the ~4-digit
+  width (`4.5em`, `flex: 0 0 4.5em`) actually applies — the box no longer stretches.
+
 ## 2026-07-31 — Narrow the "Last days to fetch" input (sw v798)
 
 - The Fetch-on-open **"Last days to fetch"** number field is now ~4 digits wide (`4em`,
