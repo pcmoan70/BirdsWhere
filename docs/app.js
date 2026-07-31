@@ -9430,7 +9430,7 @@
       listSel +
       '<div class="mp-actions">' +
         '<button type="button" id="mp-save" class="demo-btn">' + esc(t("points.save")) + '</button>' +
-        '<button type="button" id="mp-route" class="demo-btn demo-btn-light">' + esc(t("route.add")) + '</button>' +
+        '<button type="button" id="mp-route" class="demo-btn demo-btn-light" title="' + esc(t("route.add")) + '">' + esc(t("route.addShort")) + '</button>' +
         (isEdit ? '<button type="button" id="mp-del" class="demo-btn demo-btn-light">' + esc(t("btn.delete")) + '</button>' : "") +
       '</div>' +
     '</div>';

@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-07-31 — Point editor actions on one tight row; route button "+Route" (sw v786)
+
+- In the point editor (right-click an existing point), the **Save · +Route · Delete** buttons now sit
+  on **one no-wrap row**, tightened to fit. The route button is shortened to **"+Route"**
+  (`route.addShort`; full "＋ Add to route" kept as its tooltip and in the detections row-menu).
+
 ## 2026-07-31 — Reliable startup version + What's-new bold header (sw v785)
 
 - **Startup popup version:** `requestAppVersion` now asks the active service worker over a

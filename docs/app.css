@@ -1516,8 +1516,8 @@ button.dd-name:hover { text-decoration: underline; }
 /* colour row + coordinates pill share one line (wrap on very narrow popups) */
 .mp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 10px; }
 .mp-row .mp-color-row { flex: 1 1 120px; }
-.mp-actions { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; margin-top: 1px; }
-.mp-actions .demo-btn { font-size: 0.82rem; padding: 4px 9px; }
+.mp-actions { display: flex; flex-wrap: nowrap; gap: 5px; justify-content: flex-end; margin-top: 1px; }
+.mp-actions .demo-btn { font-size: 0.82rem; padding: 4px 8px; white-space: nowrap; }
 .mp-actions .ico-btn { display: inline-flex; align-items: center; gap: 4px; }
 .leaflet-popup-content-wrapper.mp-popup, .mp-popup .leaflet-popup-content-wrapper { padding: 4px 0; }
 .dd-csv {

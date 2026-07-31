@@ -254,6 +254,7 @@ window.GeoI18N = (function () {
       "nav.kml": "Saved {n} points as KML — in the Google My Maps tab, Create a new map → Import this file to drop the pins.",
       "nav.shared": "Shared {n} points — open them in Google Earth (or save to Drive).",
       "route.add": "＋ Add to route",
+      "route.addShort": "+Route",
       "route.count": "Route ({n})",
       "route.go": "Navigate",
       "route.save": "Save route",
