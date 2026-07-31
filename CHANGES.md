@@ -1,5 +1,19 @@
 # Changes
 
+## 2026-07-31 — Fetch-on-open: ⟳ column header + own "last N days" (sw v797)
+
+- The ⟳ "load on open" control is now **always shown** in the Stored-locations panel, as a
+  **column header above the checkbox column** (not a per-row icon). Muted when the master
+  toggle is off; the hint then points to the Settings toggle (`loc.loadOnOpenOff`).
+- New **"Last days to fetch"** setting (`fetchOnOpenDays`, default 30) shown under the toggle
+  **only while it's on**. Threaded through `fetchAllSightingsAt(…, daysOverride)` → the fetch
+  context's `c.days`, overriding GBIF's `gbifDays()` and each direct source's own window (eBird
+  still clamped to its 30-day API cap). The day window is now part of the cache key
+  (`sightCK(…, days)`), so an on-open window is cached separately from a manual fetch — no
+  collision; default (no override) keys are unchanged.
+- New i18n keys `ctrl.fetchOnOpenDays`, `loc.loadOnOpenOff` (15 languages);
+  `ctrl.fetchOnOpenHint` reworded (tense-neutral). Help/README updated.
+
 ## 2026-07-31 — "Fetch on open" for stored locations (sw v796)
 
 - New Settings toggle **Fetch on open** (`fetchOnOpen`, under "Reuse downloads"): on a *plain*

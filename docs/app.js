@@ -2085,7 +2085,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
-    { v: "v796", date: "2026-07-31", text: "Fetch on open: a new Settings toggle (under “Reuse downloads”) that, on each plain app open, automatically fetches and plots the observations for the stored locations you choose. Turn it on, then press-and-hold the 🔍 search button to open Stored locations — a ⟳ “load on open” column appears; tick the spots you want loaded. It reuses the same download cache, so within the reuse window it loads instantly with no network, and only refetches when the cache goes stale. Skipped when the app is opened via a shared or ?here link." },
+    { v: "v796", date: "2026-07-31", text: "Fetch on open: a new Settings toggle (under “Reuse downloads”) that, on each plain app open, automatically fetches and plots the observations for the stored locations you choose — over its own “last N days to fetch” window shown when the toggle is on. Press-and-hold the 🔍 search button to open Stored locations: tick the spots under the ⟳ column (its header sits above the checkboxes). It reuses the same download cache, so within the reuse window it loads instantly with no network, and only refetches when the cache goes stale. Skipped when the app is opened via a shared or ?here link." },
     { v: "v795", date: "2026-07-31", text: "Month filter for plotted observations: open the detections list (☰), tap the days button to reveal the time window, and toggle the month chips (Jan–Dec) to slice the shown dots/list to those months — independent of the day window, ideal for narrowing a fetched historic range. In Historic mode the month toggles above the date range now also filter the already-plotted observations live (no re-fetch). Both controls share one selection; the × in the filter bar clears it." },
     { v: "v793", date: "2026-07-31", text: "Historic fetches now fill the species list progressively: as each month's batch of records lands, the detection counts appear in the list (and dots on the map) — so you see real progress instead of just a moving bar." },
     { v: "v779", date: "2026-07-30", text: "Rarity is now per observation: each sighting's model probability uses its own location (25 km grid) and the week of its date — so the legend/list order and the ◉ rare flag reflect where & when things were actually seen (cached). Toggle it in Settings → Fetching & detections (off = one lookup at the middle of the fetched area + the middle of the date range)." },
@@ -2942,7 +2942,7 @@
     return Promise.resolve(null);   // keyed source with no known probe
   }
   function runDirectSource(s, c) {
-    var days = (+s.days > 0) ? +s.days : 90;
+    var days = c.days || ((+s.days > 0) ? +s.days : 90);   // c.days = Fetch-on-open override, else the source's own window
     var d1 = c.dateBack(days);   // start date = today − days (per source)
     var sig = c.signal;          // per-source abort signal (fetch timeout)
     if (s.id === "ebird") return AppFetch.fetchEbirdAll(c.lat, c.lon, c.tok, c.rkm, s.url, Math.min(30, days), sig).then(AppNormalize.normEbird);
@@ -2955,7 +2955,7 @@
   }
   function obsSources() {
     var list = [
-      { name: "GBIF", country: null, enabled: function () { return !isSourceOff("gbif"); }, run: function (c) { return AppFetch.fetchGbifAll(c.lat, c.lon, c.dateBack(gbifDays()) + "," + c.d2, c.rkm, c.cc, c.signal, null, null, function (done, total, names) { obsSub["GBIF"] = { done: done, total: total, names: names }; obsRender(); }).then(AppNormalize.normGbif); } }
+      { name: "GBIF", country: null, enabled: function () { return !isSourceOff("gbif"); }, run: function (c) { return AppFetch.fetchGbifAll(c.lat, c.lon, c.dateBack(c.days || gbifDays()) + "," + c.d2, c.rkm, c.cc, c.signal, null, null, function (done, total, names) { obsSub["GBIF"] = { done: done, total: total, names: names }; obsRender(); }).then(AppNormalize.normGbif); } }
     ];
     directSources().forEach(function (s) {
       // eBird and BirdWeather are bird-only feeds (eBird is birds-only; BirdWeather
@@ -2990,11 +2990,14 @@
   // TTL'd cache (sightTtlMin), so a fresh copy is served from cache without any
   // network until it expires.
   function fetchOnOpen() { return !!window.GeoState.get("fetchOnOpen", false); }
+  // The day window the on-open fetch uses (its own, separate from each source's
+  // default). Default 30 days.
+  function fetchOnOpenDays() { var v = +window.GeoState.get("fetchOnOpenDays", 30); return isFinite(v) && v > 0 ? v : 30; }
   // Bump when the aggregation/matching logic changes so results cached by the
   // previous code are ignored and the next fetch re-aggregates.
   var SIGHT_CACHE_VER = 3;   // bumped: dedup key gained the date field (aggregate.js)
   var persistedSightings = {};           // ck -> { ts, sig, ver, out }, loaded once at boot
-  function sightCK(lat, lon, rkm, group) { return lat.toFixed(2) + "," + lon.toFixed(2) + ":" + rkm + ":" + group; }
+  function sightCK(lat, lon, rkm, group, days) { return lat.toFixed(2) + "," + lon.toFixed(2) + ":" + rkm + ":" + group + (days > 0 ? ":d" + days : ""); }
   // Signature of the settings that change what a fetch returns; a mismatch means a
   // cached copy is stale for the current config and must not be reused.
   function sightConfigSig() {
@@ -3024,10 +3027,11 @@
   // partial:true}) — so the species list can fill in progressively and "pin to
   // map" can plot what has arrived. Only wired on a fresh fetch; a cache hit is
   // already complete. The final promise still resolves with the full result.
-  function fetchAllSightingsAt(lat, lon, onPartial, radiusOverride) {
+  function fetchAllSightingsAt(lat, lon, onPartial, radiusOverride, daysOverride) {
     var rkm = (radiusOverride > 0) ? radiusOverride : recentRadiusKm();
+    var days = (daysOverride > 0) ? daysOverride : 0;   // >0 overrides each source's own day window (used by Fetch-on-open)
     var fetchGroup = speciesGroup;   // group at fetch-start — aggregate/plot use THIS, not a value the user may switch mid-fetch
-    var ck = sightCK(lat, lon, rkm, fetchGroup);   // group-keyed: switching group refetches that class set
+    var ck = sightCK(lat, lon, rkm, fetchGroup, days);   // group- + days-keyed: a different window is a different cache entry
     if (allSightingsCache[ck]) return allSightingsCache[ck];
     // Reuse a previously-downloaded result for this exact location (same radius,
     // group + source config) that is still fresh — no network, no refetch on reopen.
@@ -3044,7 +3048,7 @@
     // country-specific sources + GBIF datasets by it — accurate worldwide, with
     // the bounding boxes kept as the border/offline fallback (see countryMatch).
     var pr = AppGeo.countryCode(lat, lon).catch(function () { return ""; }).then(function (cc) {
-      var c = { lat: lat, lon: lon, d2: d2, rkm: rkm, cc: cc, tok: ebirdKey(),
+      var c = { lat: lat, lon: lon, d2: d2, rkm: rkm, cc: cc, tok: ebirdKey(), days: days,
         dateBack: function (n) { var d = new Date(); d.setDate(d.getDate() - n); return fmtD(d); } };
       obsNewBatch();   // this fetch's sources own the loading line (supersede any older in-flight batch)
       // Records + per-source counts accumulate as sources resolve; emitPartial()
@@ -4290,7 +4294,11 @@
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label class="ctrl-check"><input type="checkbox" id="fetchonopen-toggle"> <span data-i18n="ctrl.fetchOnOpen">Fetch on open</span></label>' +
-                '<p class="cu-hint" data-i18n="ctrl.fetchOnOpenHint">When the app opens, automatically fetch and plot observations for the stored locations you tick “load on open” (a ⟳ column appears in the 🔍-hold Stored locations panel while this is on). Reuses the cache above, so within that window it loads instantly with no network; only refetches when the cache is stale. Skipped when the app is opened via a shared or ?here link.</p>' +
+                '<p class="cu-hint" data-i18n="ctrl.fetchOnOpenHint">When on, opening the app automatically fetches and plots observations for the stored locations you tick “load on open” — the ⟳ column in the Stored locations panel (press-and-hold 🔍). Reuses the cache above, so within that window it loads instantly with no network; only refetches when the cache is stale. Skipped when the app is opened via a shared or ?here link.</p>' +
+                '<div id="fetchonopen-days-wrap" class="ctrl-subrow" style="display:none">' +
+                  '<label for="fetchonopen-days" data-i18n="ctrl.fetchOnOpenDays">Last days to fetch</label>' +
+                  '<input id="fetchonopen-days" type="number" min="1" max="365" step="1" />' +
+                '</div>' +
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label for="max-points" data-i18n="ctrl.maxpoints">Max points on map</label>' +
@@ -10425,16 +10433,21 @@
     wireNumSetting("fetch-timeout", fetchTimeoutSec, 0, 600, 0, setFetchTimeoutSec, null);
     wireNumSetting("sight-ttl", sightTtlMin, 0, 10080, 0, function (v) { window.GeoState.save({ sightTtlMin: v }); }, null);
     var fooEl = document.getElementById("fetchonopen-toggle");
+    var fooDaysWrap = document.getElementById("fetchonopen-days-wrap");
+    function syncFooDays() { if (fooDaysWrap) fooDaysWrap.style.display = (fooEl && fooEl.checked) ? "" : "none"; }
     if (fooEl) {
       fooEl.checked = fetchOnOpen();
+      syncFooDays();   // the "last N days" row only shows while the toggle is on
       fooEl.addEventListener("change", function () {
         window.GeoState.save({ fetchOnOpen: this.checked });
+        syncFooDays();
         // If the Stored-locations panel is open, re-render so the ⟳ "load on open"
-        // column shows/hides immediately.
+        // column reflects the new state immediately.
         var slp = document.getElementById("stored-loc-panel");
         if (slp && slp.style.display === "block" && storedLocAnchor) showStoredLocations(storedLocAnchor);
       });
     }
+    wireNumSetting("fetchonopen-days", fetchOnOpenDays, 1, 365, 30, function (v) { window.GeoState.save({ fetchOnOpenDays: v }); }, null);
 
     // Historic-observations date range (defaults: last 5 years), persisted.
     var hfEl = document.getElementById("hist-from"), htEl = document.getElementById("hist-to");
@@ -12326,18 +12339,24 @@
     }
     var locs = getStoredLocations();
     var nOn = locs.filter(function (l) { return l.on !== false; }).length;
-    var showOpen = fetchOnOpen();   // the ⟳ "load on open" column only appears while the feature is enabled
+    // The ⟳ "load on open" tick column is ALWAYS shown; the master "Fetch on open"
+    // setting only governs whether the ticked spots are actually fetched at boot.
+    // When it's off, the hint points the user to the setting.
+    var fooOn = fetchOnOpen();
     panel.innerHTML = '<div class="slp-head">' + escapeHtml(t("loc.stored")) +
         (locs.length ? '<button type="button" class="slp-allbtn" data-all="' + (nOn < locs.length ? "1" : "0") + '">' + escapeHtml(nOn < locs.length ? t("loc.selAll") : t("loc.selNone")) + "</button>" : "") + "</div>" +
-      (showOpen && locs.length ? '<div class="slp-openhint">' + escapeHtml(t("loc.loadOnOpenHint")) + "</div>" : "") +
+      // Column header: the ⟳ sits ABOVE the "load on open" checkbox column (muted
+      // when the master Fetch-on-open setting is off).
+      (locs.length ? '<div class="slp-colhead"><span class="slp-ch-open' + (fooOn ? "" : " off") + '" title="' + escapeHtml(t("loc.loadOnOpen")) + '">⟳</span></div>' : "") +
       (locs.length ? locs.map(function (l, i) {
         return '<div class="slp-row">' +
-          (showOpen ? '<label class="slp-open-lbl" title="' + escapeHtml(t("loc.loadOnOpen")) + '">⟳<input type="checkbox" class="slp-open" data-i="' + i + '"' + (l.openFetch ? " checked" : "") + " /></label>" : "") +
+          '<input type="checkbox" class="slp-open" data-i="' + i + '"' + (l.openFetch ? " checked" : "") + ' title="' + escapeHtml(t("loc.loadOnOpen")) + '" />' +
           '<input type="checkbox" class="slp-on" data-i="' + i + '"' + (l.on !== false ? " checked" : "") + ' title="' + escapeHtml(t("loc.include")) + '" />' +
           '<button type="button" class="slp-go" data-i="' + i + '">📍 ' + escapeHtml(l.name) + "</button>" +
           '<input type="number" class="slp-radius" data-i="' + i + '" min="1" max="200" step="1" value="' + (l.radius || recentRadiusKm()) + '" title="' + escapeHtml(t("loc.radius")) + '" /><span class="slp-km">km</span>' +
           '<button type="button" class="slp-del" data-i="' + i + '" aria-label="' + escapeHtml(t("btn.delete")) + '">×</button></div>';
       }).join("") : '<div class="slp-empty">' + escapeHtml(t("loc.none")) + "</div>") +
+      (locs.length ? '<div class="slp-openhint">' + escapeHtml(fooOn ? t("loc.loadOnOpenHint") : t("loc.loadOnOpenOff")) + "</div>" : "") +
       (locs.length ? '<div class="slp-foot"><button type="button" class="slp-fetch">' + escapeHtml(t("loc.fetch")) + "</button></div>" : "");
     var br = anchorEl.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
     panel.style.left = Math.round(br.right - wr.left + 6) + "px";
@@ -12383,9 +12402,9 @@
   function fetchOnOpenLocations() {
     if (!fetchOnOpen()) return;
     var locs = getStoredLocations().filter(function (l) { return l.openFetch; });
-    if (locs.length) fetchSelectedStoredLocations(locs, true);
+    if (locs.length) fetchSelectedStoredLocations(locs, true, fetchOnOpenDays());   // its own N-day window
   }
-  function fetchSelectedStoredLocations(locsOverride, silent) {
+  function fetchSelectedStoredLocations(locsOverride, silent, daysOverride) {
     if (storedFetchBusy) return;
     var locs = locsOverride || getStoredLocations().filter(function (l) { return l.on !== false; });
     if (!locs.length) { if (!silent) setStatus(t("loc.noneSelected")); return; }
@@ -12405,7 +12424,7 @@
       var l = locs[i++];
       var label = t("loc.fetching", { name: l.name, i: i, n: locs.length });
       setStatus(label); if (!silent) photoDbg(label);   // banner too (the status bar is often hidden on mobile); quiet on auto open
-      fetchAllSightingsAt(l.lat, l.lon, null, l.radius || recentRadiusKm())
+      fetchAllSightingsAt(l.lat, l.lon, null, l.radius || recentRadiusKm(), daysOverride)
         .then(function (result) {
           if (!silent) photoDbg("✓ " + l.name + ": " + ((result && result.dedupTotal) || 0) + " obs");
           try { plotSightingsResult(result); } catch (e) {}
