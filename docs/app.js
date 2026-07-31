@@ -145,7 +145,11 @@
     if (hint) hint.style.display = hasModel ? "none" : "";
   }
   function groupTaxaList() {
-    if (speciesGroup === "all") return [GROUP_TAXA.aves, GROUP_TAXA.mammalia, GROUP_TAXA.amphibia, GROUP_TAXA.insecta];
+    // "All" now spans every supported kingdom (animals + plants + fungi) so a
+    // cached All fetch is a true superset — All → any single group can be derived
+    // by filtering instead of refetching. (Heavier: it shares the sources' paging
+    // budget across more taxa, so a dense spot can truncate sooner.)
+    if (speciesGroup === "all") return [GROUP_TAXA.aves, GROUP_TAXA.mammalia, GROUP_TAXA.amphibia, GROUP_TAXA.insecta, GROUP_TAXA.plantae, GROUP_TAXA.fungi];
     return [GROUP_TAXA[speciesGroup] || GROUP_TAXA.aves];
   }
   function gbifTaxonParam() { return groupTaxaList().map(function (g) { return "&taxonKey=" + g.gbif; }).join(""); }   // GBIF ORs repeated taxonKey
@@ -2085,6 +2089,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v804", date: "2026-08-01", text: "“All groups” now fetches every kingdom — birds, mammals, amphibians, insects AND plants & fungi — so it's a true superset. Switching from All to any single group (e.g. Fungi) now reuses that already-downloaded data and filters instantly instead of re-fetching. Plants/Fungi observation mode also works properly now (their records were previously dropped). Trade-off: an “All” fetch is heavier and, in a very dense spot, a group may be slightly under-sampled versus fetching it on its own." },
     { v: "v796", date: "2026-07-31", text: "Fetch on open: a new Settings toggle (under “Reuse downloads”) that, on each plain app open, automatically fetches and plots the observations for the stored locations you choose — over its own “last N days to fetch” window shown when the toggle is on. Press-and-hold the 🔍 search button to open Stored locations: tick the spots under the ⟳ column (its header sits above the checkboxes). It reuses the same download cache, so within the reuse window it loads instantly with no network, and only refetches when the cache goes stale. Skipped when the app is opened via a shared or ?here link." },
     { v: "v795", date: "2026-07-31", text: "Month filter for plotted observations: open the detections list (☰), tap the days button to reveal the time window, and toggle the month chips (Jan–Dec) to slice the shown dots/list to those months — independent of the day window, ideal for narrowing a fetched historic range. In Historic mode the month toggles above the date range now also filter the already-plotted observations live (no re-fetch). Both controls share one selection; the × in the filter bar clears it." },
     { v: "v793", date: "2026-07-31", text: "Historic fetches now fill the species list progressively: as each month's batch of records lands, the detection counts appear in the list (and dots on the map) — so you see real progress instead of just a moving bar." },
@@ -2999,7 +3004,7 @@
   function downloadDays() { var v = +window.GeoState.get("downloadDays", 0); return isFinite(v) && v > 0 ? v : 0; }
   // Bump when the aggregation/matching logic changes so results cached by the
   // previous code are ignored and the next fetch re-aggregates.
-  var SIGHT_CACHE_VER = 3;   // bumped: dedup key gained the date field (aggregate.js)
+  var SIGHT_CACHE_VER = 4;   // bumped: group-aware kingdom filter — "All" now keeps plants & fungi (aggregate.js)
   var persistedSightings = {};           // ck -> { ts, sig, ver, out }, loaded once at boot
   function sightCK(lat, lon, rkm, group, days) { return lat.toFixed(2) + "," + lon.toFixed(2) + ":" + rkm + ":" + group + (days > 0 ? ":d" + days : ""); }
   // Signature of the settings that change what a fetch returns; a mismatch means a
@@ -3026,6 +3031,24 @@
       AppIDB.put("sightingsCache", persistedSightings).catch(function () {});
     } catch (e) {}
   }
+  // Derive a single-group result from a cached "All" aggregate by keeping only the
+  // species/extras of that group's class (animals) or kingdom (plants/fungi) — the
+  // no-network equivalent of aggregateRecords(records, group). "All" is fetched
+  // across every kingdom, so it is a true superset of any single group. bySrc is
+  // recomputed from the kept rows (post-dedup, so approximate vs a raw fetch).
+  function filterAggByGroup(out, group) {
+    var agg = Object.create(null), extras = Object.create(null), total = 0, bySrc = Object.create(null);
+    function addSrc(rows) { for (var i = 0; i < (rows || []).length; i++) { var s = rows[i] && rows[i].src; if (s) bySrc[s] = (bySrc[s] || 0) + 1; } }
+    Object.keys(out.agg || {}).forEach(function (k) {
+      var cls = String((taxByCode[k] || {}).class_name || "").toLowerCase();
+      if (cls === group && out.agg[k].rows && out.agg[k].rows.length) { agg[k] = out.agg[k]; total += out.agg[k].count; addSrc(out.agg[k].rows); }
+    });
+    Object.keys(out.extras || {}).forEach(function (k) {
+      var cls = String(out.extras[k].cls || "").toLowerCase();
+      if (cls === group && out.extras[k].rows && out.extras[k].rows.length) { extras[k] = out.extras[k]; total += out.extras[k].count; addSrc(out.extras[k].rows); }
+    });
+    return { agg: agg, extras: extras, dedupTotal: total, bySrc: bySrc, group: group, failed: (out.failed || []).slice(), timedOut: (out.timedOut || []).slice(), derivedFromAll: true };
+  }
   // onPartial (optional) is called after EACH source resolves with a cumulative
   // aggregation of everything in so far ({agg, extras, bySrc, failed, timedOut,
   // partial:true}) — so the species list can fill in progressively and "pin to
@@ -3046,6 +3069,17 @@
       var cachedPr = Promise.resolve(pf.out);
       allSightingsCache[ck] = cachedPr;
       return cachedPr;
+    }
+    // Subset reuse: for a specific group, if a still-fresh "All" fetch for the SAME
+    // spot / radius / day-window is cached, derive this group by filtering All's
+    // aggregate — no network. (Skipped for "all" itself and when no All cache exists.)
+    if (fetchGroup !== "all") {
+      var pa = persistedSightings[sightCK(lat, lon, rkm, "all", days)];
+      if (pa && pa.out && pa.ver === SIGHT_CACHE_VER && pa.sig === sightConfigSig() && (ttl === 0 || (Date.now() - (pa.ts || 0)) < ttl)) {
+        var derivedPr = Promise.resolve(filterAggByGroup(pa.out, fetchGroup));
+        allSightingsCache[ck] = derivedPr;
+        return derivedPr;
+      }
     }
     var fmtD = function (d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); };
     var d2 = fmtD(new Date());   // today; each source's start is today − its own "days" (c.dateBack)

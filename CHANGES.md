@@ -1,5 +1,21 @@
 # Changes
 
+## 2026-08-01 — "All" spans every kingdom + group-subset cache reuse (sw v804)
+
+- **"All groups" now fetches plants & fungi too** (`groupTaxaList("all")` += plantae, fungi), so a
+  cached "All" result is a true superset of every single group.
+- **`aggregateRecords` kingdom filter is now group-aware** (was unconditional): animal groups keep
+  their class and drop non-animals (unchanged); **Plants/Fungi keep that kingdom (fixes a latent bug
+  that dropped all their records)**; "All" keeps animals + plants + fungi.
+- **Group-subset reuse:** `fetchAllSightingsAt`, when asked for a specific group, derives it from a
+  still-fresh cached "All" result via `filterAggByGroup(out, group)` (filter agg by model class /
+  extras by cls, recompute bySrc + dedupTotal) — **no network**. So All → Birds/Mammals/…/Fungi
+  filters instantly.
+- `SIGHT_CACHE_VER` 3 → 4 (aggregation changed → old caches ignored).
+- **Trade-offs (surfaced):** an "All" fetch is heavier and shares the sources' paging budget across
+  more taxa, so in a very dense spot a group can be under-sampled vs a dedicated fetch. Reuse is
+  broader→narrower only. Historic range/month subset reuse follows in a separate change.
+
 ## 2026-07-31 — Narrower Settings menu (sw v803)
 
 - Compacted the manage/action buttons inside Settings (`.settings-panel .demo-btn` padding

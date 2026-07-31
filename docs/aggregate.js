@@ -173,12 +173,16 @@ window.AppAggregate = (function () {
       if (r.observer) nativeKeys[dedupKey(r)] = 1;
       nativeNoObs[dedupKeyNoObs(r)] = 1;   // built for ALL native records (matches a GBIF republish that dropped the observer)
     });
-    // Keep only the active species group's class. "all" keeps every class (the
-    // sources are already taxon-filtered to the supported groups); a specific
-    // group keeps just its class so mammals / amphibians / insects come through.
+    // Keep only the active species group's taxa. A specific ANIMAL group keeps just
+    // its class (and drops non-animals); the PLANTS / FUNGI groups keep just that
+    // kingdom; "all" keeps every supported kingdom (animals + plants + fungi — the
+    // sources are already taxon-filtered to those, so All is a true superset).
     var GROUP_CLASS = { aves: "Aves", mammalia: "Mammalia", amphibia: "Amphibia", insecta: "Insecta" };
+    var GROUP_KINGDOM = { plantae: /^plant/i, fungi: /^fung/i };
+    var NON_ANIMAL_RE = /^(plant|fung|chromist|protozo|bacteri|archae)/i;
     var grp = groupOverride || getSpeciesGroup();   // override = the group captured when the fetch STARTED (avoids a mid-fetch group-switch mismatch)
-    var wantClass = grp === "all" ? null : (GROUP_CLASS[grp] || null);   // unknown/future group → keep all (name-match decides), never silently show birds
+    var wantClass = GROUP_CLASS[grp] || null;       // set only for the 4 animal groups
+    var wantKingdom = GROUP_KINGDOM[grp] || null;   // set only for plantae / fungi
     (records || []).forEach(function (r) {
       if (!r || !r.sciName) return;
       var snLower = r.sciName.toLowerCase();
@@ -187,13 +191,22 @@ window.AppAggregate = (function () {
       if (r.src === "GBIF") {
         if (r.observer ? nativeKeys[dedupKey(r)] : nativeNoObs[dedupKeyNoObs(r)]) return;
       }
-      // Drop any record with a known class OTHER than the active group's class
-      // (so e.g. mammals mode keeps Mammalia and drops the rest); skipped for
-      // "all" (wantClass null). The kingdom check additionally drops non-animals
-      // whose class field is blank. Records with an unknown class are kept (the
-      // name match decides).
-      if (wantClass && r.cls && r.cls !== wantClass) return;
-      if (r.kingdom && /^(plant|fung|chromist|protozo|bacteri|archae)/i.test(r.kingdom)) return;
+      // Group filter (records with an unknown class/kingdom are kept — the name
+      // match decides):
+      var rKingdom = String(r.kingdom || ""), rCls = String(r.cls || "");
+      if (wantKingdom) {
+        // Plants / Fungi: keep only that kingdom (by kingdom, or the kingdom-derived
+        // class since some sources leave kingdom blank).
+        if (!(wantKingdom.test(rKingdom) || wantKingdom.test(rCls))) return;
+      } else if (wantClass) {
+        // A specific animal group: keep only its class, and drop non-animals.
+        if (rCls && rCls !== wantClass) return;
+        if (NON_ANIMAL_RE.test(rKingdom)) return;
+      } else if (grp === "all") {
+        // All: keep animals + plants + fungi; drop only the other kingdoms
+        // (chromists / protozoa / bacteria / archaea) that a source might slip in.
+        if (/^(chromist|protozo|bacteri|archae)/i.test(rKingdom)) return;
+      }
       var row = { lat: r.lat, lon: r.lon, date: r.date || "", src: r.src, origin: r.origin || "", url: r.url || "", place: r.place || "", count: (r.count != null ? r.count : ""), act: r.act || "", note: r.note || "", observer: r.observer || "" };
       // Match a model species by code (eBird) first, then exact scientific name,
       // then the species epithet (catches old-genus synonyms like "Sylvia

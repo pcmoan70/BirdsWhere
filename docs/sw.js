@@ -21,16 +21,16 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v803";
+var VERSION = "v804";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• “All groups” now also fetches plants & fungi, so switching from All to Birds/Mammals/…/Fungi reuses that data (filters instantly, no re-fetch). Plants/Fungi observation mode now works properly too. (All fetches are a bit heavier as a result.)",
   "• Settings are grouped by function (View · Fetching & detections · Data sources · Lists & sharing · Storage & offline · Display & language) with a horizontal divider between each group.",
   "• New “Download — last N days” setting sets how far back a normal fetch reaches (every source; 0 = each source's own default). Fetch on open keeps its own separate window.",
   "• Fetch on open: turn it on in Settings, then tick locations under the ⟳ column in the Stored-locations panel. On each open the app auto-fetches + plots those spots' observations, reusing the download cache so it's instant within the reuse window.",
-  "• Month filter: in the detections list (☰) time window, tap month chips (Jan–Dec) to slice the shown observations to those months — great for a fetched historic range. Toggling months in Historic mode now filters the plotted dots live, no re-fetch.",
-  "• Settings, routes, altitude and source labels are now fully translated in all 15 languages (no more stray English like “Per-observation probabilities”)."
+  "• Month filter: in the detections list (☰) time window, tap month chips (Jan–Dec) to slice the shown observations to those months — great for a fetched historic range. Toggling months in Historic mode now filters the plotted dots live, no re-fetch."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs
