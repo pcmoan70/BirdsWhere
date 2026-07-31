@@ -219,8 +219,11 @@ Tap a row to isolate/select it; press-and-hold isolates on the map.
 
 The control line opens three mutually-exclusive **filter subwindows**:
 
-- **Time** — presets in a grid (days 1–6, weeks 1–6, months 1–3), an **all/∞** chip, and a
-  **From–To** date range.
+- **Time** — presets in a grid (days 1–6, weeks 1–6, months 1–3), an **all/∞** chip, a
+  **From–To** date range, and a **month-of-year** chip row (Jan–Dec) that slices the shown
+  observations to particular months — handy for narrowing a fetched Historic range without
+  re-fetching (in Historic mode the month toggles above the date picker filter the plotted
+  dots live too).
 - **Species** — **– All · ★ Starred · ◉ Rare · 🟠 Not on this year's list · 🟡 Not on your life list**.
 - **👤 Observers** — a checklist of observers with a scope button that cycles **All → None →
   each saved observer list**, plus an editor (**✎**).

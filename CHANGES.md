@@ -1,5 +1,21 @@
 # Changes
 
+## 2026-07-31 — Month-of-year filter for plotted observations (sw v795)
+
+- New month filter (`detMonths`, GeoState) applied inside `detDatePasses` — the single
+  time predicate every plotted detection passes through — so it slices the **map dots, the
+  detections list and the legend counts** together. Empty = all months; ANDs with the existing
+  recency-day / date-range window.
+- **Detections list (☰):** the time-window popover now has a Jan–Dec chip grid
+  (`det-month-chip`) under the day presets. Tapping a month toggles it; the filter bar's days
+  button turns "on" and shows an `N M` label when a months-only slice is active.
+- **Historic mode:** the month toggles above the date range now double as a **live display
+  filter** — once observations are plotted, toggling a month re-slices the shown dots/list
+  without re-fetching (they still constrain the next fetch). Both controls share the same
+  selection (`buildHistMonths` seeds from and writes to `detMonths`).
+- `detHasFilter`, `clearAllFilters` (the × clears months too) and `detDaysLabel` updated.
+  Reuses the existing `hist.months` label + `histMonthShort` names — no new i18n keys.
+
 ## 2026-07-31 — Translate the last English-only UI strings (sw v794)
 
 - 32 keys that had only an English entry (so non-English UIs showed English — e.g. Norwegian

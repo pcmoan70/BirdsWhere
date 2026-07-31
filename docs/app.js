@@ -2085,6 +2085,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v795", date: "2026-07-31", text: "Month filter for plotted observations: open the detections list (☰), tap the days button to reveal the time window, and toggle the month chips (Jan–Dec) to slice the shown dots/list to those months — independent of the day window, ideal for narrowing a fetched historic range. In Historic mode the month toggles above the date range now also filter the already-plotted observations live (no re-fetch). Both controls share one selection; the × in the filter bar clears it." },
     { v: "v793", date: "2026-07-31", text: "Historic fetches now fill the species list progressively: as each month's batch of records lands, the detection counts appear in the list (and dots on the map) — so you see real progress instead of just a moving bar." },
     { v: "v779", date: "2026-07-30", text: "Rarity is now per observation: each sighting's model probability uses its own location (25 km grid) and the week of its date — so the legend/list order and the ◉ rare flag reflect where & when things were actually seen (cached). Toggle it in Settings → Fetching & detections (off = one lookup at the middle of the fetched area + the middle of the date range)." },
     { v: "v774", date: "2026-07-30", text: "Optional TinyURL shortening for share links (Settings → Lists & sharing): turns a share into a short tinyurl.com link — easier to paste or QR. Note it sends the shared data to a third party." },
@@ -6248,9 +6249,21 @@
     var r = window.GeoState.get("detDateRange", null);
     return (r && (r.from || r.to)) ? { from: r.from || "", to: r.to || "" } : null;
   }
-  // The single time predicate every plotted detection passes through: a set date
-  // range if one is active, else the rolling recency window.
+  // Month-of-year filter (1–12) layered ON TOP of the recency/range window, so a
+  // fetched historic range can be sliced to particular months (e.g. only the
+  // spring passage) WITHOUT re-fetching. Empty = every month. Applies everywhere
+  // detDatePasses gates: the map dots, the detections list and the legend counts.
+  function detMonths() { var m = window.GeoState.get("detMonths", null); return (m && m.length) ? m : []; }
+  function detMonthPasses(dateStr) {
+    var mf = detMonths(); if (!mf.length) return true;
+    var d = String(dateStr || ""); if (d.length < 7) return false;   // no month → excluded while filtering
+    return mf.indexOf(+d.slice(5, 7)) >= 0;
+  }
+  // The single time predicate every plotted detection passes through: the month
+  // filter (if any), then a set date range if one is active, else the rolling
+  // recency window.
   function detDatePasses(dateStr) {
+    if (!detMonthPasses(dateStr)) return false;
     var rg = detDateRange();
     if (rg) {
       var d = String(dateStr || "").slice(0, 10);
@@ -7561,7 +7574,7 @@
   // recency days / date range.) Drives the black × (clear all) in both the legend
   // and the detections-list filter bar.
   function detHasFilter() {
-    return detSelectionActive() || detStarFilter || detRareFilter || detYearFilter || detLifeFilter || !!detObsFilter || (detRecencyDays() !== 0) || !!detDateRange();
+    return detSelectionActive() || detStarFilter || detRareFilter || detYearFilter || detLifeFilter || !!detObsFilter || (detRecencyDays() !== 0) || !!detDateRange() || detMonths().length > 0;
   }
   // Reset every legend filter at once (the black ×): the species selection, the
   // ★/◉/🟡 mode filter, the observer filter, and the recency (days) window → All.
@@ -7571,7 +7584,7 @@
     detStarFilter = false; detRareFilter = false; detYearFilter = false; detLifeFilter = false;
     detObsPanelOpen = false; detDaysPanelOpen = false; detModePanelOpen = false;
     setDetObsFilter(null);                                                   // observer → all
-    window.GeoState.save({ detRecencyDays: 0, detDateRange: null });        // days + range → All
+    window.GeoState.save({ detRecencyDays: 0, detDateRange: null, detMonths: [] });   // days + range + months → All
     saveLegendState(); rebuildDetLayers(); updateDetLegend();
     var dm = document.getElementById("detlist-modal");
     if (dm && dm.style.display === "flex" && typeof renderDetListModal === "function") renderDetListModal();
@@ -8006,9 +8019,18 @@
       '<label>' + escapeHtml(t("det.dateFrom")) + '<input type="date" class="det-date-from" value="' + escapeHtml(rg ? rg.from : "") + '" /></label>' +
       '<label>' + escapeHtml(t("det.dateTo")) + '<input type="date" class="det-date-to" value="' + escapeHtml(rg ? rg.to : "") + '" /></label>' +
       "</div>";
+    // Month-of-year toggles: slice the plotted observations to particular months
+    // (independent of the day window above). Empty = all months.
+    var msel = detMonths(), monthCells = "";
+    for (var mm = 1; mm <= 12; mm++) {
+      monthCells += '<button type="button" class="det-month-chip' + (msel.indexOf(mm) >= 0 ? " on" : "") +
+        '" data-month="' + mm + '">' + escapeHtml(histMonthShort(mm)) + "</button>";
+    }
+    var monthRow = '<div class="det-panel-head det-months-head">' + escapeHtml(t("hist.months")) + "</div>" +
+      '<div class="det-months-grid">' + monthCells + "</div>";
     return '<div class="det-days-panel">' +
       '<div class="det-panel-head">' + escapeHtml(t("det.recency")) + "</div>" +
-      '<div class="det-days-grid">' + cells + "</div>" + rangeRow + "</div>";
+      '<div class="det-days-grid">' + cells + "</div>" + rangeRow + monthRow + "</div>";
   }
   // Species subwindow: one row per mode (all / starred / rare / needs-this-year),
   // each a symbol + explanatory text. Radio-style — the active mode is highlighted.
@@ -8032,7 +8054,7 @@
   function detDaysLabel() {
     if (detDateRange()) return "⇆";
     var d = detRecencyDays();
-    if (!d) return "∞";
+    if (!d) return detMonths().length ? detMonths().length + "M" : "∞";   // months-only slice → "3M"; else no window
     var map = { 1: "1d", 2: "2d", 3: "3d", 4: "4d", 5: "5d", 6: "6d",
       7: "1w", 14: "2w", 21: "3w", 28: "4w", 35: "5w", 42: "6w",
       30: "1m", 60: "2m", 90: "3m", 120: "4m", 150: "5m", 180: "6m" };
@@ -8403,7 +8425,7 @@
   // all filters" × appears (mirrors the legend's black ×).
   function detFilterBarHtml() {
     var daysLbl = detDaysLabel();
-    var daysOn = detRecencyDays() !== 0 || !!detDateRange();
+    var daysOn = detRecencyDays() !== 0 || !!detDateRange() || detMonths().length > 0;
     var modeOn = detStarFilter || detRareFilter || detYearFilter || detLifeFilter;
     var modeLbl = detStarFilter ? "★" : detRareFilter ? "◉" : detYearFilter ? "🟠" : detLifeFilter ? "🟡" : "–";
     var modeTip = detStarFilter ? t("det.starred") : detRareFilter ? t("det.rare") : detYearFilter ? t("det.needsYear", { year: curYear() }) : detLifeFilter ? t("det.needsLife") : t("det.allSpecies");
@@ -8431,6 +8453,14 @@
         e.stopPropagation();
         var from = (el.querySelector(".det-date-from") || {}).value || "", to = (el.querySelector(".det-date-to") || {}).value || "";
         window.GeoState.save({ detDateRange: (from || to) ? { from: from, to: to } : null }); refresh();
+      });
+    });
+    el.querySelectorAll(".det-month-chip").forEach(function (chip) {
+      chip.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var m = +this.getAttribute("data-month"), cur = detMonths().slice(), i = cur.indexOf(m);
+        if (i >= 0) cur.splice(i, 1); else cur.push(m);
+        window.GeoState.save({ detMonths: cur }); refresh();
       });
     });
     var modeTog = el.querySelector(".det-mode-tog");
@@ -14529,6 +14559,7 @@
   }
   function buildHistMonths() {
     var el = document.getElementById("hist-months"); if (!el) return;
+    histMonths = detMonths().slice();   // reflect the shared month filter (kept in sync with the detections list)
     var html = "";
     for (var m = 1; m <= 12; m++) {
       html += '<button type="button" class="hist-month' + (histMonths.indexOf(m) >= 0 ? " active" : "") + '" data-month="' + m + '">' + escapeHtml(histMonthShort(m)) + "</button>";
@@ -14540,6 +14571,15 @@
         if (i >= 0) { histMonths.splice(i, 1); this.classList.remove("active"); }
         else { histMonths.push(m); this.classList.add("active"); }
         updateHistMonthsSel();
+        // Months also drive the shared display filter: if historic observations are
+        // already plotted, toggling a month re-slices the shown dots/list/legend
+        // live (no re-fetch). It still constrains the NEXT fetch as before.
+        window.GeoState.save({ detMonths: histMonths.slice() });
+        if (currentSpView && currentSpView.mode === "historic" && Object.keys(detPlot).length) {
+          rebuildDetLayers(); updateDetLegend();
+          var dm = document.getElementById("detlist-modal");
+          if (dm && dm.style.display === "flex") renderDetListModal();
+        }
       });
     });
     updateHistMonthsSel();

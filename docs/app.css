@@ -2436,6 +2436,13 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
 .det-days-range { display: flex; gap: 8px; margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--border, #eee); }
 .det-days-range label { display: flex; flex-direction: column; gap: 2px; font-size: 0.68rem; font-weight: 600; color: var(--ink-muted, #777); }
 .det-days-range input[type="date"] { font: inherit; font-size: 0.72rem; padding: 2px 4px; border: 1px solid var(--border, #ccc); border-radius: 5px; background: var(--surface, #fff); color: inherit; }
+/* Month-of-year toggles: a 6×2 grid of pill chips (same look as the day chips). */
+.det-months-head { margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--border, #eee); }
+.det-months-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+.det-month-chip { min-width: 0; border: 1px solid var(--border); background: var(--surface); color: var(--ink);
+  font: inherit; font-size: 0.72rem; font-weight: 600; padding: 3px 0; text-align: center; border-radius: 999px; cursor: pointer; }
+.det-month-chip:hover { border-color: var(--brand); }
+.det-month-chip.on { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-strong); }
 /* Species subwindow: one symbol + text row per mode, radio-style highlight. */
 .det-mode-row { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: transparent; cursor: pointer;
   font: inherit; font-size: 0.8rem; color: var(--ink); padding: 4px 5px; border-radius: 5px; text-align: left; }
