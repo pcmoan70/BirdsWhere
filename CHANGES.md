@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-31 — Range/Migration from an observation use its week + mark the detection (sw v792)
+
+- Opening **Species Range / Distribution** from an observation now sets the **week** to the
+  observation's week (`setWeekFromDate`), so the map shows the distribution for **when it was seen**.
+- Opening **Species Migration** now **marks the detection week** on the timeline — a **blue** frame
+  (`.bc-det`, `detWeek` threaded through `renderAnalysis` → `analysisCtx` → `renderTimelineTab`) — while
+  the **current week** keeps its existing **black** frame. New `bc.detWeek` string; Help note added.
+
 ## 2026-07-31 — Macaulay Library link narrowed to the observation's season (sw v791)
 
 - The species menu's **Macaulay Library** link now appends a **`beginMonth`/`endMonth`** month range

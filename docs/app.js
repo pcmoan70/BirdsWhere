@@ -6811,8 +6811,8 @@
     // 2) Information — learn about the species (model species only).
     if (lbl) {
       head("menu.secInfo");
-      el.appendChild(drmBtn(t("menu.apprange"), function () { closeDetRowMenu(); showSpeciesRange(key); }));
-      el.appendChild(drmBtn(t("menu.appmig"), function () { closeDetRowMenu(); showSpeciesMigration(key); }));
+      el.appendChild(drmBtn(t("menu.apprange"), function () { closeDetRowMenu(); showSpeciesRange(key, d && d.date); }));
+      el.appendChild(drmBtn(t("menu.appmig"), function () { closeDetRowMenu(); showSpeciesMigration(key, d && d.date); }));
       el.appendChild(drmBtn(t("menu.recent"), function () {
         closeDetRowMenu();
         var la = hasLoc ? +d.lat : (marker ? marker.getLatLng().lat : map.getCenter().lat);
@@ -11375,8 +11375,17 @@
 
   // Show the app's own range map for a species: switch to Species Range mode,
   // close any full-screen panel, and select the species (which renders it).
-  function showSpeciesRange(key) {
+  // Set the week dropdown to the model week of an observation's date (so opening its
+  // range/migration lands on the week it was seen). No-op without a valid date.
+  function setWeekFromDate(dateStr) {
+    if (!dateStr) return;
+    var wk = weekOfDate(dateStr); if (!wk || wk < 1 || wk > 48) return;
+    var ws = document.getElementById("week-select"); if (ws) ws.value = wk;
+    window.GeoState.save({ week: wk });
+  }
+  function showSpeciesRange(key, dateStr) {
     if (!labelsByKey[key]) return;
+    setWeekFromDate(dateStr);   // the map shows the distribution for the observation's week
     var modeEl = document.getElementById("mode-select");
     if (modeEl.value !== "range") { modeEl.value = "range"; modeEl.dispatchEvent(new Event("change", { bubbles: true })); }
     var ep = document.getElementById("entry-page"); if (ep) ep.style.display = "none";
@@ -11396,16 +11405,17 @@
   // "Migration": this one species' weekly probability through the year at a
   // single point — i.e. the Migration (barchart) mode's Timeline tab, run at
   // the relevant point and filtered to just this species.
-  function showSpeciesMigration(key) {
+  function showSpeciesMigration(key, dateStr) {
     var lbl = labelsByKey[key];
     if (!lbl) return;
+    var detWeek = dateStr ? (weekOfDate(dateStr) || 0) : 0;   // mark the detection week on the timeline
     var pt = migrationPoint();
     var modeEl = document.getElementById("mode-select");
     if (modeEl.value !== "barchart") { modeEl.value = "barchart"; modeEl.dispatchEvent(new Event("change", { bubbles: true })); }
     analysisTab = "timeline";
     window.GeoState.save({ analysisTab: analysisTab });
     document.getElementById("an-filter").value = speciesName(lbl);
-    renderAnalysis(pt.lat, pt.lon);
+    renderAnalysis(pt.lat, pt.lon, detWeek);
   }
 
   function selectSpecies(key) {
@@ -14840,7 +14850,7 @@
   // Runs ONE 48-week prediction at the clicked point; all four tabs derive
   // from the cached result. Re-clicking recomputes; tab/filter/sort changes
   // re-render from cache without new inference.
-  async function renderAnalysis(lat, lon) {
+  async function renderAnalysis(lat, lon, detWeek) {
     var nSpecies = labels.length;
     setPointMarker(lat, lon);   // show the pin for the point this analysis is about
     saveSession({ mode: "barchart", page: "migration", lat: lat, lon: lon });
@@ -14852,7 +14862,7 @@
       var inputs = new Float32Array(48 * 3);
       for (var w = 0; w < 48; w++) { inputs[w * 3] = lat; inputs[w * 3 + 1] = lon; inputs[w * 3 + 2] = w + 1; }
       var allProbs = await runInference(inputs, 48); // 48 * nSpecies, week-major
-      analysisData = { lat: lat, lon: lon, allProbs: allProbs, nSpecies: nSpecies };
+      analysisData = { lat: lat, lon: lon, allProbs: allProbs, nSpecies: nSpecies, detWeek: (+detWeek || 0) };
       var bc = document.getElementById("barchart-panel");
       bc.classList.add("as-page");   // full-screen page with a back button, like the species list
       bc.style.display = "block";
@@ -14871,6 +14881,7 @@
       nSpecies: analysisData.nSpecies,
       labels: labels,
       week: +document.getElementById("week-select").value,
+      detWeek: (analysisData && analysisData.detWeek) || 0,   // the observation's week (marked on the timeline)
       thresholdFrac: +document.getElementById("prob-min").value / 100,
       thresholdMax: +document.getElementById("prob-max").value / 100,
       filterText: document.getElementById("an-filter").value.trim(),
@@ -14949,7 +14960,8 @@
         var pct = norm * 100;
         var monthClass = (w3 % 4 === 0) ? " bc-month-start" : "";
         var curClass = (w3 === wkIdx) ? " bc-cur" : "";
-        html += '<div class="bc-bar' + monthClass + curClass + '" style="height:' + pct.toFixed(1) + '%;background:' + probHueColor(norm) + '" title="' + (w3 + 1) + ": " + (prob * 100).toFixed(1) + '%"></div>';
+        var detClass = (ctx.detWeek && w3 === ctx.detWeek - 1) ? " bc-det" : "";   // the observation's week
+        html += '<div class="bc-bar' + monthClass + curClass + detClass + '" style="height:' + pct.toFixed(1) + '%;background:' + probHueColor(norm) + '" title="' + (w3 + 1) + ": " + (prob * 100).toFixed(1) + '%' + (detClass ? " · " + escapeHtml(t("bc.detWeek")) : "") + '"></div>';
       }
       html += '</div><div class="bc-months">';
       for (var m = 0; m < 12; m++) html += "<span>" + escapeHtml(MONTH_LABELS[m]) + "</span>";

@@ -2197,6 +2197,9 @@ table.chk-table .chk-text { min-width: 100px; }
 
 /* Timeline: ring the current-week bar (its fill stays on the red->green scale) */
 .bc-bar.bc-cur { outline: 2px solid #111; outline-offset: -1px; opacity: 1 !important; z-index: 2; }
+/* The observation's week (when the migration timeline is opened from a sighting):
+   a blue frame, distinct from the black current-week frame. */
+.bc-bar.bc-det { outline: 2px solid #1f78ff; outline-offset: -1px; opacity: 1 !important; z-index: 3; }
 
 /* Performance note modal (shown on page load) */
 #perf-modal {
