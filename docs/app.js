@@ -2089,6 +2089,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v805", date: "2026-08-01", text: "Historic fetches now reuse what you already downloaded: if you narrow the date range, or pick a subset of months, that falls within a range you already fetched at the same spot, the app filters the cached observations instead of hitting the network again (a brief “Reused cached observations” note confirms it). To narrow the dots shown on the map, use the month chips / date range in the detections list (☰)." },
     { v: "v804", date: "2026-08-01", text: "“All groups” now fetches every kingdom — birds, mammals, amphibians, insects AND plants & fungi — so it's a true superset. Switching from All to any single group (e.g. Fungi) now reuses that already-downloaded data and filters instantly instead of re-fetching. Plants/Fungi observation mode also works properly now (their records were previously dropped). Trade-off: an “All” fetch is heavier and, in a very dense spot, a group may be slightly under-sampled versus fetching it on its own." },
     { v: "v796", date: "2026-07-31", text: "Fetch on open: a new Settings toggle (under “Reuse downloads”) that, on each plain app open, automatically fetches and plots the observations for the stored locations you choose — over its own “last N days to fetch” window shown when the toggle is on. Press-and-hold the 🔍 search button to open Stored locations: tick the spots under the ⟳ column (its header sits above the checkboxes). It reuses the same download cache, so within the reuse window it loads instantly with no network, and only refetches when the cache goes stale. Skipped when the app is opened via a shared or ?here link." },
     { v: "v795", date: "2026-07-31", text: "Month filter for plotted observations: open the detections list (☰), tap the days button to reveal the time window, and toggle the month chips (Jan–Dec) to slice the shown dots/list to those months — independent of the day window, ideal for narrowing a fetched historic range. In Historic mode the month toggles above the date range now also filter the already-plotted observations live (no re-fetch). Both controls share one selection; the × in the filter bar clears it." },
@@ -2388,6 +2389,10 @@
   // family index into it via AppAggregate.init({...}) during init().
   var allSightingsCache = {};   // "lat,lon" rounded -> Promise<aggregated map>
   var histSightingsCache = {};  // "lat,lon:rkm:range" -> Promise<aggregated map> for Historic observations
+  // Broadest COMPLETED historic result per location/radius/group, kept across fetches
+  // (NOT wiped like histSightingsCache) so a narrower date range or month subset that
+  // it covers can be served by filtering it — no re-fetch. { from, to, months[], out }.
+  var histAggCache = {};
   // GBIF datasets fetched on their OWN (each with its own page budget) in
   // addition to the general query, so a busy dataset isn't lost to the page cap.
   // eBird & iNaturalist are fetched via their native APIs instead (fresher, and
@@ -3173,10 +3178,12 @@
   // Plot a batch of NORMALIZED records onto the map as they arrive (accumulating —
   // plotDetections dedups by row), so the map fills in month by month during a
   // historic fetch (behind the species list). No-op when the historic view is gone.
-  function plotHistoricRecs(recsM, grp) {
-    if (!recsM || !recsM.length || typeof plotDetections !== "function") return;
+  // Plot the species/extras of an already-aggregated historic result onto the map
+  // (one coloured layer per species). Shared by the live per-month plotting and the
+  // cache-reuse path (which has an aggregate but no raw records).
+  function plotHistoricAgg(outM, grp) {
+    if (typeof plotDetections !== "function") return;
     if (!(currentSpView && currentSpView.mode === "historic")) return;
-    var outM = AppAggregate.aggregateRecords(recsM, grp);
     var inGrp = function (cls) { return grp === "all" || (cls && String(cls).toLowerCase() === grp); };
     var entries = [];
     Object.keys(outM.agg || {}).forEach(function (key) {
@@ -3192,6 +3199,42 @@
     if (isFinite(+currentSpView.lat) && isFinite(+currentSpView.lon)) rememberFetchedArea(+currentSpView.lat, +currentSpView.lon);
     entries.forEach(function (e) { plotDetections(e.key, e.name, e.rows, false, true, e.cls); });   // defer=true → rebuild once below
     rebuildDetLayers(); updateDetLegend();
+  }
+  function plotHistoricRecs(recsM, grp) {
+    if (!recsM || !recsM.length || typeof plotDetections !== "function") return;
+    plotHistoricAgg(AppAggregate.aggregateRecords(recsM, grp), grp);
+  }
+  // Does a cached historic result cover a requested range + month-of-year subset?
+  // (Broader→narrower only: the cached range must span the request, and either the
+  // cache was all-months or the requested months are a subset of the cached ones.)
+  function histCovers(c, from, to, reqMonths) {
+    if (!c || !(c.from <= from && c.to >= to)) return false;
+    if (!c.months || !c.months.length) return true;           // cached = all months → covers any subset
+    if (!reqMonths || !reqMonths.length) return false;        // request = all months but cache is only some → not covered
+    return reqMonths.every(function (m) { return c.months.indexOf(m) >= 0; });
+  }
+  // Filter an aggregated historic result to a narrower date range + month subset,
+  // recomputing each species' count / latest / per-source tally from its kept rows.
+  function filterHistAgg(out, from, to, reqMonths) {
+    var mset = (reqMonths && reqMonths.length) ? reqMonths : null;
+    function keep(r) {
+      var d = String(r.date || "").slice(0, 10);
+      if (from || to) { if (!d) return false; if (from && d < from) return false; if (to && d > to) return false; }
+      if (mset) { if (d.length < 7) return false; if (mset.indexOf(+d.slice(5, 7)) < 0) return false; }
+      return true;
+    }
+    function maxTs(rows) { var m = 0; for (var i = 0; i < rows.length; i++) { var t = Date.parse(rows[i].date); if (!isNaN(t) && t > m) m = t; } return m; }
+    var agg = Object.create(null), extras = Object.create(null), total = 0, bySrc = Object.create(null);
+    function addSrc(rows) { for (var i = 0; i < rows.length; i++) { var s = rows[i].src; if (s) bySrc[s] = (bySrc[s] || 0) + 1; } }
+    Object.keys(out.agg || {}).forEach(function (k) {
+      var rows = (out.agg[k].rows || []).filter(keep);
+      if (rows.length) { agg[k] = { count: rows.length, latestTs: maxTs(rows), rows: rows }; total += rows.length; addSrc(rows); }
+    });
+    Object.keys(out.extras || {}).forEach(function (k) {
+      var e = out.extras[k], rows = (e.rows || []).filter(keep);
+      if (rows.length) { extras[k] = { sci: e.sci, name: e.name, cls: e.cls, count: rows.length, latestTs: maxTs(rows), rows: rows }; total += rows.length; addSrc(rows); }
+    });
+    return { agg: agg, extras: extras, dedupTotal: total, bySrc: bySrc, group: out.group, failed: [], timedOut: [] };
   }
   // GBIF's republish of the Nordic databases lags by weeks, so for the NEWEST months
   // of a historic range we top up from the source's OWN API (fresher): Norway →
@@ -3220,6 +3263,20 @@
     if (histSightingsCache[ck]) return histSightingsCache[ck];
     var sig = histAbort ? histAbort.signal : null;
     var rp = String(range).split(","), from = rp[0], to = rp[1] || rp[0];
+    var reqMonths = histMonths.slice();
+    var histKey = lat.toFixed(2) + "," + lon.toFixed(2) + ":" + rkm + ":" + fetchGroup;
+    // Subset reuse: a broader completed fetch that COVERS this range + months serves
+    // it by filtering — no network. Plot the filtered rows the same way a fresh fetch
+    // would (accumulating), and fill the species-list counts from the filtered result.
+    var covering = histAggCache[histKey];
+    if (covering && histCovers(covering, from, to, reqMonths)) {
+      var filtered = filterHistAgg(covering.out, from, to, reqMonths);
+      var prC = Promise.resolve(filtered);
+      histSightingsCache[ck] = prC;
+      try { plotHistoricAgg(filtered, fetchGroup); saveDetections(); } catch (e) {}
+      try { setStatus(t("hist.reused", { n: filtered.dedupTotal })); } catch (e) {}
+      return prC;
+    }
     var pr = AppGeo.countryCode(lat, lon).catch(function () { return ""; }).then(function (cc) {
       var chunks = histMonthChunks(from, to);
       var allRecs = [], seen = Object.create(null), directNorm = [], monthsDone = 0, nextChunk = 0;
@@ -3277,6 +3334,13 @@
         var out = AppAggregate.aggregateRecords(recs, fetchGroup);   // sets out.dedupTotal
         out.bySrc = { GBIF: gbifRecs.length }; if (nordicSrc && directNorm.length) out.bySrc[nordicSrc.name] = directNorm.length;
         out.group = fetchGroup; out.failed = []; out.timedOut = [];
+        // Cache this COMPLETE result (not aborted, has data) as the broadest for this
+        // spot/radius/group so a later covered subset filters it instead of refetching.
+        if (out.dedupTotal > 0 && !(sig && sig.aborted)) {
+          histAggCache[histKey] = { from: from, to: to, months: reqMonths, out: out };
+          var hk = Object.keys(histAggCache);
+          if (hk.length > 4) delete histAggCache[hk[0]];   // keep the cache small (a few locations)
+        }
         return out;
       });
     });

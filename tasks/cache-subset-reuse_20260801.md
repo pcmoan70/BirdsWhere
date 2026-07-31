@@ -24,13 +24,21 @@ and reuse subsets for historic range/month narrowing.
       lat,lon,rkm,days), return filterAggByGroup(all.out, group) — no network.
 - [x] Bumped SIGHT_CACHE_VER 3→4 (aggregation logic changed).
 
-## Part 2 — historic range/month subset reuse
-- [ ] Keep `histAggCache[lat,lon:rkm:group] = {from,to,months,out}` (NOT wiped each fetch).
-- [ ] `filterHistAgg(out, from, to, months)`: filter each species' rows by date range + month-of-year,
-      recompute counts/latestTs/bySrc; drop empty species.
-- [ ] `fetchHistoricSightingsAt`: if a cached entry COVERS the request (from≤req.from, to≥req.to,
-      months⊇req.months or cached all-months), return filterHistAgg(...) + plot the filtered rows —
-      no network. Else fetch, then store the broadest scope.
+## Part 2 — historic range/month subset reuse  ✅ DONE (v805)
+- [x] `histAggCache[lat,lon:rkm:group] = {from,to,months,out}` (NOT wiped; capped ~4; stored only
+      on a COMPLETE, non-aborted, non-empty fetch).
+- [x] `filterHistAgg(out, from, to, months)`: filter each species' rows by date range + month-of-year,
+      recompute count/latestTs/bySrc; drop empty species.
+- [x] `histCovers(cached, from, to, reqMonths)`: broader→narrower containment check.
+- [x] `plotHistoricAgg(out, grp)` factored out of plotHistoricRecs so reuse can plot from an
+      aggregate (no raw records).
+- [x] `fetchHistoricSightingsAt`: covered request → filter + plot (accumulate, same as fresh) + return,
+      no network. Key insight: a fresh narrower fetch ALSO accumulates dots (doesn't clear), so reuse
+      matches existing behaviour — no risky display-filter coupling needed.
+- [x] New i18n `hist.reused` (15 langs).
+
+NOTE: reuse plots by accumulation (matches fresh-fetch behaviour). To NARROW the shown dots to the
+subset, use the detlist month chips / date-range display filters (already shipped).
 
 ## Caveats to surface
 - Truncation: "All" now shares GBIF/iNat paging budget across 6 kingdoms → a class can be

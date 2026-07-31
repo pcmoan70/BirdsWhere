@@ -1,5 +1,20 @@
 # Changes
 
+## 2026-08-01 — Historic date-range / month subset cache reuse (sw v805)
+
+- New `histAggCache[lat,lon:rkm:group] = {from, to, months[], out}` keeps the broadest COMPLETED
+  historic result per spot/radius/group (not wiped between fetches; capped ~4; stored only when the
+  fetch finished un-aborted with data).
+- `fetchHistoricSightingsAt`: when a new request's date range **and** month-of-year set fall inside a
+  cached one (`histCovers`), it filters the cached aggregate (`filterHistAgg` — filter each species'
+  rows by date + month, recompute count/latest/bySrc) and returns it **with no network**, showing a
+  "Reused cached observations" status.
+- `plotHistoricAgg(out, grp)` factored out of `plotHistoricRecs` so the reuse path can plot from an
+  aggregate (it has no raw records). Reuse plots by accumulation — the same as a fresh narrower fetch,
+  which also accumulates rather than clearing — so there's no change to map behaviour. To *narrow* the
+  dots shown, the detlist month-chip / date-range display filters (already shipped) do that.
+- New i18n `hist.reused` (15 languages).
+
 ## 2026-08-01 — "All" spans every kingdom + group-subset cache reuse (sw v804)
 
 - **"All groups" now fetches plants & fungi too** (`groupTaxaList("all")` += plantae, fungi), so a
