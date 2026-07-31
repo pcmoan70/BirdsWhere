@@ -420,7 +420,7 @@ window.GeoI18N = (function () {
       "obs.editTitle": "Observer lists",
       "obs.addToList": "Add to list…",
       "obs.filterOnly": "🔎 Show only this observer",
-      "obs.addToListAct": "＋ Add to a list",
+      "obs.addToListAct": "＋ Add to observer list",
       "obs.people": "Observers",
       "obs.noLists": "No lists yet — create one.",
       "obs.noneToAdd": "Everyone is already in this list.",

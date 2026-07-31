@@ -1,5 +1,10 @@
 # Changes
 
+## 2026-07-31 — Observer chooser: "Add to observer list" wording (sw v782)
+
+- The observer-name chooser's add option now reads **"＋ Add to observer list"** (was "Add to a
+  list") — `obs.addToListAct`.
+
 ## 2026-07-31 — Legend clear/arm × uses the centred geometric × too (sw v781)
 
 - The legend's red **clear/arm ×** (`.det-clear`, which becomes a white × in a red circle when the
