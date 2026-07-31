@@ -12373,13 +12373,19 @@
       return o;
     });
   }
+  // Is a coordinate inside the current map viewport (what's on screen)? A share only
+  // carries what's visible — pan/zoom to frame exactly what you want to send.
+  function inMapView(lat, lon) { var b = map && map.getBounds(); return !isFinite(+lat) || !isFinite(+lon) ? false : (!b || b.contains([+lat, +lon])); }
   // Share a saved point list (the ONLY way to share user points — via the 🔗 icon
   // next to the list). Each point carries its ON-SCREEN colour (explicit, else the
   // list colour) so it looks the same for the recipient, drawn there as a triangle.
+  // Only the points currently ON SCREEN are shared, not the whole list.
   function sharePointList(name) {
     var c = mpCollections.filter(function (x) { return x.name === name; })[0]; if (!c) return;
     var col = collColor(c);
-    var pts = packPoints((c.points || []).map(function (p) { return Object.assign({}, p, { color: p.color || col || mpColorFor(p) }); }));
+    var vis = (c.points || []).filter(function (p) { return p && inMapView(p.lat, p.lon); });
+    if (!vis.length) { setStatus(t("share.noneVisible")); return; }
+    var pts = packPoints(vis.map(function (p) { return Object.assign({}, p, { color: p.color || col || mpColorFor(p) }); }));
     doShare({ v: 1, type: "points", name: name, points: pts }, name);
   }
   // Per-source record-URL prefixes, so a link is stored as just its ID tail (the
@@ -12438,7 +12444,14 @@
   }
   function shareDetSet(name) {
     var s = detSets().filter(function (x) { return x.name === name; })[0]; if (!s) return;
-    doShare(compactDet(name, s.detections), name);
+    // Only the records currently ON SCREEN, not the whole saved set.
+    var dets = {};
+    Object.keys(s.detections || {}).forEach(function (k) {
+      var e = s.detections[k], rows = (e.rows || []).filter(function (r) { return inMapView(r.lat, r.lon); });
+      if (rows.length) dets[k] = { key: e.key, name: e.name, color: e.color, cls: e.cls || "", rows: rows };
+    });
+    if (!Object.keys(dets).length) { setStatus(t("share.noneVisible")); return; }
+    doShare(compactDet(name, dets), name);
   }
   // Share the detections currently loaded from data sources (the live plot), no
   // need to save them as a trip first.

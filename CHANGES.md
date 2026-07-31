@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-07-31 — Sharing a list/set only carries what's on screen (sw v783)
+
+- The per-list/set 🔗 shares now include **only the points/records inside the current map viewport**,
+  not the whole list/set — matching the live-detections "Share" (which already used
+  `serializeVisibleDetPlot`). `sharePointList` filters points via `inMapView`; `shareDetSet` filters
+  each species' rows to the viewport; both show `share.noneVisible` if nothing is on screen. Pan/zoom
+  to frame exactly what you send.
+
 ## 2026-07-31 — Observer chooser: "Add to observer list" wording (sw v782)
 
 - The observer-name chooser's add option now reads **"＋ Add to observer list"** (was "Add to a

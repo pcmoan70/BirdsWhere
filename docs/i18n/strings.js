@@ -236,6 +236,7 @@ window.GeoI18N = (function () {
       "coords.copied": "Copied {coords}",
       "coords.copyManual": "Copy these coordinates:",
       "share.detName": "Loaded detections",
+      "share.noneVisible": "Nothing to share in view — pan/zoom so what you want to share is on screen.",
       "share.copied": "Link copied",
       "share.shortening": "Shortening link…",
       "ctrl.shareTiny": "Shorten share links (TinyURL)",
