@@ -269,6 +269,9 @@ clears everything). A **⚠** appears when the *Max points on map* draw cap is h
 - **Stored locations** — from a point's *Location ▸ → 📍 Save location*, name a spot and give it
   a radius. Press-and-hold the **locate** control to recall them, fly to any one, and tick
   several to **Fetch observations** from all of them (each within its own radius) onto the map.
+  Enable **Fetch on open** (Settings) to add a **⟳ "load on open"** tick column here: the app
+  then auto-fetches + plots those spots' observations on every plain open, reusing the download
+  cache (so it's instant within the reuse window; skipped for shared / `?here` links).
 - **Detection sets** — named snapshots of a whole plot (dots, dates, observers, sources, stars)
   that appear as **🗂 tick-to-show overlay rows** in the Points panel; they sync across devices
   and are shareable as a link/file. (Deleting one removes it on every device via a tombstone.)

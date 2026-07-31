@@ -21,15 +21,15 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v795";
+var VERSION = "v796";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• Fetch on open: turn it on in Settings, then tick locations “load on open” (⟳ column in the Stored-locations panel). On each open the app auto-fetches + plots those spots' observations, reusing the download cache so it's instant within the reuse window.",
   "• Month filter: in the detections list (☰) time window, tap month chips (Jan–Dec) to slice the shown observations to those months — great for a fetched historic range. Toggling months in Historic mode now filters the plotted dots live, no re-fetch.",
   "• Settings, routes, altitude and source labels are now fully translated in all 15 languages (no more stray English like “Per-observation probabilities”).",
   "• Historic fetch now fills the species list live: counts appear month by month as each batch lands, so you see progress beyond the bar.",
-  "• Keyboard on PC: Tab between point fields, Enter = the green button, Delete removes an existing point; ↑/↓ move a green highlight in popup menus, Enter picks it.",
   "• Right-click the map to see the ground altitude next to the coordinates (Alt: NA when offline)."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets

@@ -2085,6 +2085,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v796", date: "2026-07-31", text: "Fetch on open: a new Settings toggle (under “Reuse downloads”) that, on each plain app open, automatically fetches and plots the observations for the stored locations you choose. Turn it on, then press-and-hold the 🔍 search button to open Stored locations — a ⟳ “load on open” column appears; tick the spots you want loaded. It reuses the same download cache, so within the reuse window it loads instantly with no network, and only refetches when the cache goes stale. Skipped when the app is opened via a shared or ?here link." },
     { v: "v795", date: "2026-07-31", text: "Month filter for plotted observations: open the detections list (☰), tap the days button to reveal the time window, and toggle the month chips (Jan–Dec) to slice the shown dots/list to those months — independent of the day window, ideal for narrowing a fetched historic range. In Historic mode the month toggles above the date range now also filter the already-plotted observations live (no re-fetch). Both controls share one selection; the × in the filter bar clears it." },
     { v: "v793", date: "2026-07-31", text: "Historic fetches now fill the species list progressively: as each month's batch of records lands, the detection counts appear in the list (and dots on the map) — so you see real progress instead of just a moving bar." },
     { v: "v779", date: "2026-07-30", text: "Rarity is now per observation: each sighting's model probability uses its own location (25 km grid) and the week of its date — so the legend/list order and the ◉ rare flag reflect where & when things were actually seen (cached). Toggle it in Settings → Fetching & detections (off = one lookup at the middle of the fetched area + the middle of the date range)." },
@@ -2984,6 +2985,11 @@
   // User-set in Settings (minutes); default 30 min. 0 = always reuse (never expire).
   function sightTtlMin() { var v = +window.GeoState.get("sightTtlMin", 30); return isFinite(v) && v >= 0 ? v : 30; }
   function sightTtlMs() { return sightTtlMin() * 60000; }
+  // "Fetch on open": on a plain app open, auto-fetch the stored locations ticked
+  // "load on open" and plot their observations — reusing the same persisted,
+  // TTL'd cache (sightTtlMin), so a fresh copy is served from cache without any
+  // network until it expires.
+  function fetchOnOpen() { return !!window.GeoState.get("fetchOnOpen", false); }
   // Bump when the aggregation/matching logic changes so results cached by the
   // previous code are ignored and the next fetch re-aggregates.
   var SIGHT_CACHE_VER = 3;   // bumped: dedup key gained the date field (aggregate.js)
@@ -4283,6 +4289,10 @@
                 '<p class="cu-hint" data-i18n="ctrl.sightTtlHint">Reopening the app reuses a location’s already-downloaded observations for this many minutes instead of re-fetching. 0 = reuse indefinitely (only refetch on a new place or a changed radius/group/source).</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
+                '<label class="ctrl-check"><input type="checkbox" id="fetchonopen-toggle"> <span data-i18n="ctrl.fetchOnOpen">Fetch on open</span></label>' +
+                '<p class="cu-hint" data-i18n="ctrl.fetchOnOpenHint">When the app opens, automatically fetch and plot observations for the stored locations you tick “load on open” (a ⟳ column appears in the 🔍-hold Stored locations panel while this is on). Reuses the cache above, so within that window it loads instantly with no network; only refetches when the cache is stale. Skipped when the app is opened via a shared or ?here link.</p>' +
+              '</div>' +
+              '<div class="ctrl-group">' +
                 '<label for="max-points" data-i18n="ctrl.maxpoints">Max points on map</label>' +
                 '<input id="max-points" type="number" min="50" max="100000" step="50" />' +
                 '<p class="cu-hint" data-i18n="ctrl.maxpointshint">Caps how many detection dots are drawn at once for speed. When more are plotted, only the newest this-many are shown on the map (the rest stay in the Detections list).</p>' +
@@ -4718,11 +4728,16 @@
       showPerfModal();
       initOfflineIndicator();
       initInstall();
-      var hasHere = false; try { hasHere = new URLSearchParams(location.search).has("here"); } catch (e) {}
+      var hasHere = false, plainOpen = true;
+      try { var qp = new URLSearchParams(location.search); hasHere = qp.has("here"); plainOpen = !(qp.has("here") || qp.has("lat") || qp.has("lon") || qp.has("s")); } catch (e) {}
       if (!hasHere) restoreSession();   // return to the view we left (reload-safe)
       maybeUrlAutoLocate();     // ?here=1 → geolocate + open species list
       maybeOpenSharedPoint();   // ?lat=&lon= → a shared location: go there, drop the pin
       maybeImportShared();      // ?s=… → import a shared point / list / detection set
+      // "Fetch on open": auto-fetch the ticked stored locations on a plain open
+      // (not a shared / ?here link, which have their own view). Delayed so the
+      // initial render settles first; the fetch reuses the persisted TTL cache.
+      if (plainOpen && fetchOnOpen()) setTimeout(fetchOnOpenLocations, 1200);
       // Start Google Drive sync last, after all init-time GeoState writes, so
       // its open-time pull isn't fooled into thinking local is newer.
       if (window.GDriveSync) window.GDriveSync.init();
@@ -10409,6 +10424,17 @@
 
     wireNumSetting("fetch-timeout", fetchTimeoutSec, 0, 600, 0, setFetchTimeoutSec, null);
     wireNumSetting("sight-ttl", sightTtlMin, 0, 10080, 0, function (v) { window.GeoState.save({ sightTtlMin: v }); }, null);
+    var fooEl = document.getElementById("fetchonopen-toggle");
+    if (fooEl) {
+      fooEl.checked = fetchOnOpen();
+      fooEl.addEventListener("change", function () {
+        window.GeoState.save({ fetchOnOpen: this.checked });
+        // If the Stored-locations panel is open, re-render so the ⟳ "load on open"
+        // column shows/hides immediately.
+        var slp = document.getElementById("stored-loc-panel");
+        if (slp && slp.style.display === "block" && storedLocAnchor) showStoredLocations(storedLocAnchor);
+      });
+    }
 
     // Historic-observations date range (defaults: last 5 years), persisted.
     var hfEl = document.getElementById("hist-from"), htEl = document.getElementById("hist-to");
@@ -12274,6 +12300,7 @@
   // SELECTED stored location, so the user sees which areas are active. Cleared
   // and redrawn as selection / radius changes; empty when nothing is selected.
   var storedLocFramesLayer = null;
+  var storedLocAnchor = null;   // the 🔍 button the Stored-locations panel hangs off (for self re-render)
   function renderStoredLocFrames() {
     if (!map || !L.rectangle) return;
     if (!storedLocFramesLayer) storedLocFramesLayer = L.layerGroup().addTo(map);
@@ -12291,6 +12318,7 @@
   // Pop up the stored-locations list anchored to the crosshair control.
   function showStoredLocations(anchorEl) {
     var wrap = document.getElementById("demo-map-wrap"); if (!wrap || !anchorEl) return;
+    storedLocAnchor = anchorEl;   // remembered so the panel can re-render itself (e.g. when "Fetch on open" toggles)
     var panel = document.getElementById("stored-loc-panel");
     if (!panel) {
       panel = L.DomUtil.create("div", "stored-loc-panel", wrap); panel.id = "stored-loc-panel";
@@ -12298,10 +12326,13 @@
     }
     var locs = getStoredLocations();
     var nOn = locs.filter(function (l) { return l.on !== false; }).length;
+    var showOpen = fetchOnOpen();   // the ⟳ "load on open" column only appears while the feature is enabled
     panel.innerHTML = '<div class="slp-head">' + escapeHtml(t("loc.stored")) +
         (locs.length ? '<button type="button" class="slp-allbtn" data-all="' + (nOn < locs.length ? "1" : "0") + '">' + escapeHtml(nOn < locs.length ? t("loc.selAll") : t("loc.selNone")) + "</button>" : "") + "</div>" +
+      (showOpen && locs.length ? '<div class="slp-openhint">' + escapeHtml(t("loc.loadOnOpenHint")) + "</div>" : "") +
       (locs.length ? locs.map(function (l, i) {
         return '<div class="slp-row">' +
+          (showOpen ? '<label class="slp-open-lbl" title="' + escapeHtml(t("loc.loadOnOpen")) + '">⟳<input type="checkbox" class="slp-open" data-i="' + i + '"' + (l.openFetch ? " checked" : "") + " /></label>" : "") +
           '<input type="checkbox" class="slp-on" data-i="' + i + '"' + (l.on !== false ? " checked" : "") + ' title="' + escapeHtml(t("loc.include")) + '" />' +
           '<button type="button" class="slp-go" data-i="' + i + '">📍 ' + escapeHtml(l.name) + "</button>" +
           '<input type="number" class="slp-radius" data-i="' + i + '" min="1" max="200" step="1" value="' + (l.radius || recentRadiusKm()) + '" title="' + escapeHtml(t("loc.radius")) + '" /><span class="slp-km">km</span>' +
@@ -12324,6 +12355,9 @@
     panel.querySelectorAll(".slp-on").forEach(function (cb) {
       cb.addEventListener("change", function () { updateStoredLocation(+this.getAttribute("data-i"), { on: this.checked }); showStoredLocations(anchorEl); });
     });
+    panel.querySelectorAll(".slp-open").forEach(function (cb) {
+      cb.addEventListener("change", function () { updateStoredLocation(+this.getAttribute("data-i"), { openFetch: this.checked }); });
+    });
     panel.querySelectorAll(".slp-radius").forEach(function (inp) {
       inp.addEventListener("change", function () { updateStoredLocation(+this.getAttribute("data-i"), { radius: Math.max(1, Math.min(200, parseInt(this.value, 10) || recentRadiusKm())) }); });
     });
@@ -12343,10 +12377,18 @@
   // radius, and plot them (accumulating on the map). Sequential with a small gap
   // between locations — kind to the source APIs (which also self-rate-limit).
   var storedFetchBusy = false;
-  function fetchSelectedStoredLocations() {
+  // On a plain app open, plot the stored locations ticked "load on open". Uses the
+  // same sequential fetch (which serves fresh copies straight from the persisted
+  // cache — no network until sightTtlMin expires). Silent: no "none selected" nag.
+  function fetchOnOpenLocations() {
+    if (!fetchOnOpen()) return;
+    var locs = getStoredLocations().filter(function (l) { return l.openFetch; });
+    if (locs.length) fetchSelectedStoredLocations(locs, true);
+  }
+  function fetchSelectedStoredLocations(locsOverride, silent) {
     if (storedFetchBusy) return;
-    var locs = getStoredLocations().filter(function (l) { return l.on !== false; });
-    if (!locs.length) { setStatus(t("loc.noneSelected")); return; }
+    var locs = locsOverride || getStoredLocations().filter(function (l) { return l.on !== false; });
+    if (!locs.length) { if (!silent) setStatus(t("loc.noneSelected")); return; }
     locs.forEach(function (l) { rememberFetchedArea(l.lat, l.lon, l.radius || recentRadiusKm()); });   // remember each fetched area's outline (persists until detections cleared)
     storedFetchBusy = true;
     var i = 0;
@@ -12362,13 +12404,13 @@
       }
       var l = locs[i++];
       var label = t("loc.fetching", { name: l.name, i: i, n: locs.length });
-      setStatus(label); photoDbg(label);   // banner too (the status bar is often hidden on mobile)
+      setStatus(label); if (!silent) photoDbg(label);   // banner too (the status bar is often hidden on mobile); quiet on auto open
       fetchAllSightingsAt(l.lat, l.lon, null, l.radius || recentRadiusKm())
         .then(function (result) {
-          photoDbg("✓ " + l.name + ": " + ((result && result.dedupTotal) || 0) + " obs");
+          if (!silent) photoDbg("✓ " + l.name + ": " + ((result && result.dedupTotal) || 0) + " obs");
           try { plotSightingsResult(result); } catch (e) {}
           setTimeout(next, 500);
-        }, function () { photoDbg("✗ " + l.name); setTimeout(next, 500); });   // ~0.5s gap between locations
+        }, function () { if (!silent) photoDbg("✗ " + l.name); setTimeout(next, 500); });   // ~0.5s gap between locations
     })();
   }
 

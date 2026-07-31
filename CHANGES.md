@@ -1,5 +1,21 @@
 # Changes
 
+## 2026-07-31 — "Fetch on open" for stored locations (sw v796)
+
+- New Settings toggle **Fetch on open** (`fetchOnOpen`, under "Reuse downloads"): on a *plain*
+  app open (not a shared / `?here` link), auto-fetch + plot the observations for the stored
+  locations flagged to load on open. Fires ~1.2 s after boot, non-blocking.
+- New per-location flag `openFetch`, edited via a **⟳ "load on open" tick-box column** that
+  appears in the Stored-locations panel (🔍-hold) only while the master toggle is on.
+- **Reuses the existing persisted, TTL'd sightings cache** (`persistedSightings` / the "Reuse
+  downloads (min)" setting) — so within that window the on-open load is served from cache with
+  no network; it only refetches when stale. No new cache or TTL was added.
+- Implemented by parameterising the existing `fetchSelectedStoredLocations(locsOverride, silent)`
+  (sequential, cache-served, plots each result) + a thin `fetchOnOpenLocations()` wrapper; the
+  boot hook computes `plainOpen` from the URL params. Debug banner suppressed in silent mode.
+- 4 new i18n keys (`ctrl.fetchOnOpen(+Hint)`, `loc.loadOnOpen(+Hint)`) translated into all 15
+  languages. Help, README, What's-new updated.
+
 ## 2026-07-31 — Month-of-year filter for plotted observations (sw v795)
 
 - New month filter (`detMonths`, GeoState) applied inside `detDatePasses` — the single

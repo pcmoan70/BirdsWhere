@@ -152,6 +152,10 @@ input:focus-visible {
 .stored-loc-panel .slp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-muted, #777); padding: 2px 4px 6px; }
 .stored-loc-panel .slp-allbtn { font: inherit; font-size: 0.66rem; font-weight: 700; text-transform: none; letter-spacing: 0; padding: 2px 8px; border: 1px solid var(--border, #ccc); border-radius: 999px; background: var(--surface, #fff); color: var(--brand-strong, #0b3a3a); cursor: pointer; }
 .stored-loc-panel .slp-on { flex: 0 0 auto; width: 16px; height: 16px; margin: 0; }
+/* "Load on open" (⟳) column — shown only while Fetch-on-open is enabled. */
+.stored-loc-panel .slp-openhint { padding: 0 4px 6px; font-size: 0.66rem; color: var(--ink-muted, #888); line-height: 1.3; }
+.stored-loc-panel .slp-open-lbl { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 1px; font-size: 0.8rem; color: var(--brand-strong, #0b3a3a); cursor: pointer; }
+.stored-loc-panel .slp-open { width: 16px; height: 16px; margin: 0; }
 .stored-loc-panel .slp-radius { flex: 0 0 auto; width: 44px; box-sizing: border-box; padding: 3px 4px; font: inherit; font-size: 0.78rem; text-align: right; border: 1px solid var(--border, #ccc); border-radius: 4px; background: var(--surface, #fff); color: var(--ink, inherit); }
 .stored-loc-panel .slp-km { flex: 0 0 auto; font-size: 0.68rem; color: var(--ink-muted, #777); }
 .stored-loc-panel .slp-foot { padding: 6px 2px 2px; margin-top: 4px; border-top: 1px solid var(--border, #eee); }
