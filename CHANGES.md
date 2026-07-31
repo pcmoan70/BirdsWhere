@@ -1,5 +1,10 @@
 # Changes
 
+## 2026-07-31 — Keyboard-active item shows a bold frame (sw v790)
+
+- The keyboard-navigation "active" highlight (`.kb-active`) is now a **bold green frame** (outline)
+  around the button, keeping its own fill/label readable, instead of a solid green fill.
+
 ## 2026-07-31 — Keyboard navigation on PC (sw v789)
 
 - **Point editor:** a new point focuses the name field (type/Tab straight away); an existing point

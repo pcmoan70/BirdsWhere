@@ -342,8 +342,9 @@ input:focus-visible {
 
 /* Map-click chooser popup: stack the "Species list" / "Checklist" choices
    vertically rather than side by side. */
-/* Keyboard-navigation highlight (↑/↓ through a popup list): the active item is green. */
-.kb-active, button.kb-active { background: var(--brand, #2e8b74) !important; color: #fff !important; border-color: var(--brand, #2e8b74) !important; }
+/* Keyboard-navigation highlight (↑/↓ through a popup list): the active item gets a
+   bold green frame (the button keeps its own fill/label so it stays readable). */
+.kb-active, button.kb-active { outline: 3px solid var(--brand, #2e8b74) !important; outline-offset: 1px !important; border-color: var(--brand, #2e8b74) !important; position: relative; z-index: 1; }
 .map-choose { display: flex; flex-direction: column; gap: 6px; min-width: 160px; }
 .map-choose .demo-btn { width: 100%; white-space: normal; line-height: 1.3; overflow-wrap: anywhere; }
 /* Coordinates + altitude header at the top of the map right-click popup. Click = copy lat/lon. */
