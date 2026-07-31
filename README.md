@@ -295,8 +295,9 @@ clears everything). A **⚠** appears when the *Max points on map* draw cap is h
 Right-click / long-press / tap any species name for:
 
 - **Information** — Distribution map (a Wikipedia range image), **Wikipedia**, **BirdLife
-  DataZone** (birds), **Macaulay Library** photos, **Xeno-canto** audio, **NBN Atlas (UK)**,
-  **EuroBirdPortal** (birds, deep-linked to the species).
+  DataZone** (birds), **Macaulay Library** photos/audio (narrowed to the observation's season — a
+  ±1-month `beginMonth`/`endMonth` window — so images match the time of year), **Xeno-canto** audio,
+  **NBN Atlas (UK)**, **EuroBirdPortal** (birds, deep-linked to the species).
 - **Lists & actions** — state-showing **toggles**: **Interesting** (★), **Year list**, **Life
   list** (each coloured when the species is in that set, greyed when not), and **Hidden**, which
   toggles both ways (**red** = this click hides the species, **green** = this click brings it

@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-07-31 — Macaulay Library link narrowed to the observation's season (sw v791)
+
+- The species menu's **Macaulay Library** link now appends a **`beginMonth`/`endMonth`** month range
+  (the observation's month ±1, clamped so it never wraps the year) so the photos/audio match the time
+  of year the bird was seen — e.g. `…?taxonCode=retpip&beginMonth=6&endMonth=7`. No date → the current
+  month's window. Documented in Help (about.html) + README.
+
 ## 2026-07-31 — Keyboard-active item shows a bold frame (sw v790)
 
 - The keyboard-navigation "active" highlight (`.kb-active`) is now a **bold green frame** (outline)

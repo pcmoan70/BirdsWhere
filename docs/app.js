@@ -1413,12 +1413,22 @@
   }
 
   // Macaulay Library media catalog: eBird taxon code for birds (label keys are
-  // eBird codes), else a free-text search by scientific name.
-  function macaulayUrl(key, sci) {
+  // eBird codes), else a free-text search by scientific name. When a date is known
+  // (the observation's), it narrows the catalog to that SEASON — a ±1-month window
+  // (beginMonth/endMonth) — so the photos/audio match the time of year the bird was
+  // seen (e.g. breeding vs winter plumage). No date → the current month's window.
+  function macaulayMonthRange(dateStr) {
+    var d = dateStr ? new Date(dateStr) : new Date(), m;
+    m = (d && !isNaN(d.getTime())) ? d.getMonth() + 1 : (new Date()).getMonth() + 1;
+    var b = Math.max(1, m - 1), e = Math.min(12, m + 1);   // clamp so the range never wraps the year
+    return "&beginMonth=" + b + "&endMonth=" + e;
+  }
+  function macaulayUrl(key, sci, dateStr) {
+    var range = macaulayMonthRange(dateStr);
     if (/^[a-z]/i.test(key) && !/^\d+$/.test(key)) {
-      return "https://search.macaulaylibrary.org/catalog?taxonCode=" + encodeURIComponent(key);
+      return "https://search.macaulaylibrary.org/catalog?taxonCode=" + encodeURIComponent(key) + range;
     }
-    return "https://search.macaulaylibrary.org/catalog?q=" + encodeURIComponent(sci);
+    return "https://search.macaulaylibrary.org/catalog?q=" + encodeURIComponent(sci) + range;
   }
 
   // Xeno-canto audio recordings — search by scientific name (graceful for any
@@ -6812,7 +6822,7 @@
       el.appendChild(drmBtn(t("menu.distmap"), function () { closeDetRowMenu(); showDistMap(name, sci, key); }));
       el.appendChild(drmBtn(t("menu.wiki"), function () { closeDetRowMenu(); openWikipedia(sci); }));
       if (isBirdKey(key)) el.appendChild(drmBtn(t("menu.birdlife"), function () { closeDetRowMenu(); openBirdLife((lbl && lbl.common) || name, sci); }));
-      el.appendChild(drmBtn(t("menu.macaulay"), function () { closeDetRowMenu(); openExternal(macaulayUrl(key, sci)); }));
+      el.appendChild(drmBtn(t("menu.macaulay"), function () { closeDetRowMenu(); openExternal(macaulayUrl(key, sci, d && d.date)); }));
       el.appendChild(drmBtn(t("menu.xeno"), function () { closeDetRowMenu(); openExternal(xenoCantoUrl(sci)); }));
       el.appendChild(drmBtn(t("menu.nbn"), function () { closeDetRowMenu(); openExternal(nbnUrl(sci)); }));
       if (isBirdKey(key)) el.appendChild(drmBtn(t("menu.ebp"), function () { closeDetRowMenu(); openExternal(ebpUrl(sci)); }));
