@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-07-31 — Reliable startup version + What's-new bold header (sw v785)
+
+- **Startup popup version:** `requestAppVersion` now asks the active service worker over a
+  **MessageChannel** (sw.js replies on the port) with a few **retries** if the worker is slow — so the
+  running version reliably appears in the startup popup (and the Settings "Reload to update" button
+  already shows the incoming version from `sw-register`).
+- **What's new:** each entry's **`vNNN · date` is now a bold header above** the descriptive text
+  (`.wn-item` stacks; `.wn-head` bold) instead of an inline prefix.
+
 ## 2026-07-31 — What's-new list shows the version + refreshed entries (sw v784)
 
 - The Settings **"What's new"** list now shows the **version number alongside the date** (`vNNN · date`)

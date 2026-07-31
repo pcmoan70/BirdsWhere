@@ -2122,7 +2122,7 @@
     var el = document.getElementById("whatsnew-list"); if (!el) return;
     el.innerHTML = WHATS_NEW.slice(0, 10).map(function (e) {
       var head = (e.v ? escapeHtml(e.v) + " · " : "") + escapeHtml(e.date);
-      return '<div class="wn-item"><span class="wn-date">' + head + '</span><span class="wn-text">' + escapeHtml(e.text) + "</span></div>";
+      return '<div class="wn-item"><div class="wn-head">' + head + '</div><div class="wn-text">' + escapeHtml(e.text) + "</div></div>";
     }).join("");
   }
   // Birdingplaces.eu "find a birdingplace" map, centred on the point via the
@@ -9927,15 +9927,22 @@
   // The running code version (from the active service worker) + last-change time,
   // shown together in the startup popup.
   var appVersion = "";
-  function requestAppVersion() {
+  function requestAppVersion(tries) {
+    tries = tries || 0;
     try {
       if (!navigator.serviceWorker) return;
-      navigator.serviceWorker.addEventListener("message", function (e) {
-        if (e.data && e.data.type === "version") { appVersion = e.data.version || ""; updatePerfMeta(); }
-      });
-      var ask = function (w) { if (w) try { w.postMessage({ type: "getVersion" }); } catch (e) {} };
-      if (navigator.serviceWorker.controller) ask(navigator.serviceWorker.controller);
-      else navigator.serviceWorker.ready.then(function (reg) { ask(reg.active); }).catch(function () {});
+      // Ask over a MessageChannel (sw.js replies on the port) — more reliable than a
+      // broadcast message. Retry a couple of times in case the worker isn't ready yet.
+      function ask(w) {
+        if (!w) return;
+        var ch = new MessageChannel();
+        ch.port1.onmessage = function (e) { if (e.data && e.data.version) { appVersion = e.data.version; updatePerfMeta(); } };
+        try { w.postMessage({ type: "getVersion" }, [ch.port2]); } catch (e) {}
+      }
+      var w = navigator.serviceWorker.controller;
+      if (w) ask(w);
+      else navigator.serviceWorker.ready.then(function (reg) { ask(reg.active || reg.waiting || reg.installing); }).catch(function () {});
+      if (!appVersion && tries < 4) setTimeout(function () { if (!appVersion) requestAppVersion(tries + 1); }, 800);   // populate even if the SW was slow to answer
     } catch (e) {}
   }
   function updatePerfMeta() {
