@@ -2955,7 +2955,7 @@
   }
   function obsSources() {
     var list = [
-      { name: "GBIF", country: null, enabled: function () { return !isSourceOff("gbif"); }, run: function (c) { return AppFetch.fetchGbifAll(c.lat, c.lon, c.dateBack(c.days || gbifDays()) + "," + c.d2, c.rkm, c.cc, c.signal, null, null, function (done, total, names) { obsSub["GBIF"] = { done: done, total: total, names: names }; obsRender(); }).then(AppNormalize.normGbif); } }
+      { name: "GBIF", country: null, enabled: function () { return !isSourceOff("gbif"); }, run: function (c) { var gd = c.days ? Math.min((window.AppSources && AppSources.GBIF_MAX_DAYS) || 92, c.days) : gbifDays(); return AppFetch.fetchGbifAll(c.lat, c.lon, c.dateBack(gd) + "," + c.d2, c.rkm, c.cc, c.signal, null, null, function (done, total, names) { obsSub["GBIF"] = { done: done, total: total, names: names }; obsRender(); }).then(AppNormalize.normGbif); } }
     ];
     directSources().forEach(function (s) {
       // eBird and BirdWeather are bird-only feeds (eBird is birds-only; BirdWeather
@@ -2990,9 +2990,13 @@
   // TTL'd cache (sightTtlMin), so a fresh copy is served from cache without any
   // network until it expires.
   function fetchOnOpen() { return !!window.GeoState.get("fetchOnOpen", false); }
-  // The day window the on-open fetch uses (its own, separate from each source's
-  // default). Default 30 days.
+  // The day window the on-open fetch uses (its own, separate from the general
+  // download window below). Default 30 days.
   function fetchOnOpenDays() { var v = +window.GeoState.get("fetchOnOpenDays", 30); return isFinite(v) && v > 0 ? v : 30; }
+  // General "download — last N days" window for a normal fetch: overrides every
+  // source's own default window. 0 = each source keeps its own (GBIF/iNat ~90,
+  // eBird 30, BirdWeather 7) — the pre-existing behaviour, so 0 changes nothing.
+  function downloadDays() { var v = +window.GeoState.get("downloadDays", 0); return isFinite(v) && v > 0 ? v : 0; }
   // Bump when the aggregation/matching logic changes so results cached by the
   // previous code are ignored and the next fetch re-aggregates.
   var SIGHT_CACHE_VER = 3;   // bumped: dedup key gained the date field (aggregate.js)
@@ -3029,7 +3033,9 @@
   // already complete. The final promise still resolves with the full result.
   function fetchAllSightingsAt(lat, lon, onPartial, radiusOverride, daysOverride) {
     var rkm = (radiusOverride > 0) ? radiusOverride : recentRadiusKm();
-    var days = (daysOverride > 0) ? daysOverride : 0;   // >0 overrides each source's own day window (used by Fetch-on-open)
+    // Day window: an explicit override (Fetch-on-open) wins; else the general
+    // "Download — last N days" setting; else 0 = each source's own default.
+    var days = (daysOverride > 0) ? daysOverride : downloadDays();
     var fetchGroup = speciesGroup;   // group at fetch-start — aggregate/plot use THIS, not a value the user may switch mid-fetch
     var ck = sightCK(lat, lon, rkm, fetchGroup, days);   // group- + days-keyed: a different window is a different cache entry
     if (allSightingsCache[ck]) return allSightingsCache[ck];
@@ -4294,6 +4300,11 @@
                 '<p class="cu-hint" data-i18n="ctrl.fetchTimeoutHint">A source still fetching after this many seconds is stopped; the observations it already loaded are kept and its label turns red. 0 = no timeout.</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
+                '<label for="download-days" data-i18n="ctrl.downloadDays">Download — last N days</label>' +
+                '<input id="download-days" type="number" min="0" max="92" step="1" />' +
+                '<p class="cu-hint" data-i18n="ctrl.downloadDaysHint">How far back a normal fetch downloads observations, applied to every source (eBird is always capped at 30 days by its API; GBIF at ~92). 0 = each source’s own default (GBIF/iNaturalist ~90 days, eBird 30, BirdWeather 7). Fetch on open has its own separate window.</p>' +
+              '</div>' +
+              '<div class="ctrl-group">' +
                 '<label for="sight-ttl" data-i18n="ctrl.sightTtl">Reuse downloads (min)</label>' +
                 '<input id="sight-ttl" type="number" min="0" max="10080" step="5" />' +
                 '<p class="cu-hint" data-i18n="ctrl.sightTtlHint">Reopening the app reuses a location’s already-downloaded observations for this many minutes instead of re-fetching. 0 = reuse indefinitely (only refetch on a new place or a changed radius/group/source).</p>' +
@@ -4303,7 +4314,7 @@
                 '<p class="cu-hint" data-i18n="ctrl.fetchOnOpenHint">When on, opening the app automatically fetches and plots observations for the stored locations you tick “load on open” — the ⟳ column in the Stored locations panel (press-and-hold 🔍). Reuses the cache above, so within that window it loads instantly with no network; only refetches when the cache is stale. Skipped when the app is opened via a shared or ?here link.</p>' +
                 '<div id="fetchonopen-days-wrap" class="ctrl-subrow" style="display:none">' +
                   '<label for="fetchonopen-days" data-i18n="ctrl.fetchOnOpenDays">Last days to fetch</label>' +
-                  '<input id="fetchonopen-days" type="number" min="1" max="365" step="1" />' +
+                  '<input id="fetchonopen-days" type="number" min="1" max="92" step="1" />' +
                 '</div>' +
               '</div>' +
               '<div class="ctrl-group">' +
@@ -10447,7 +10458,8 @@
         if (slp && slp.style.display === "block" && storedLocAnchor) showStoredLocations(storedLocAnchor);
       });
     }
-    wireNumSetting("fetchonopen-days", fetchOnOpenDays, 1, 365, 30, function (v) { window.GeoState.save({ fetchOnOpenDays: v }); }, null);
+    wireNumSetting("download-days", downloadDays, 0, 92, 0, function (v) { window.GeoState.save({ downloadDays: v }); }, null);
+    wireNumSetting("fetchonopen-days", fetchOnOpenDays, 1, 92, 30, function (v) { window.GeoState.save({ fetchOnOpenDays: v }); }, null);
 
     // Historic-observations date range (defaults: last 5 years), persisted.
     var hfEl = document.getElementById("hist-from"), htEl = document.getElementById("hist-to");

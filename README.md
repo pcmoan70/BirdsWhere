@@ -180,11 +180,13 @@ or gbif.org URL).
 box for Recent/Historic mode (previewed as a live dashed square), and sets the default radius
 of newly saved locations.
 
-**Fetching & detections** settings include a **Fetch timeout**, a **Reuse downloads (min)**
-window (reopening reuses a location's already-downloaded observations for N minutes rather than
-re-fetching; default 30, a cached location can even open offline), and a **cross-database
-de-duplication** toggle (show a sighting registered in two databases once instead of twice —
-off by default).
+**Fetching & detections** settings include a **Fetch timeout**, a **Download — last N days**
+window (how far back a normal fetch reaches, applied to every source — eBird stays capped at its
+30-day API limit, GBIF at ~92; `0` = each source's own default; Fetch on open keeps its own
+separate window), a **Reuse downloads (min)** window (reopening reuses a location's
+already-downloaded observations for N minutes rather than re-fetching; default 30, a cached
+location can even open offline), and a **cross-database de-duplication** toggle (show a sighting
+registered in two databases once instead of twice — off by default).
 
 ---
 

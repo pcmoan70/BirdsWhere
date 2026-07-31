@@ -1,5 +1,18 @@
 # Changes
 
+## 2026-07-31 — General "Download — last N days" window (sw v802)
+
+- New Settings field **"Download — last N days"** (`downloadDays`, in Fetching & detections)
+  that overrides every source's own day window for a normal fetch. **0 = each source's own
+  default** (GBIF/iNat ~90, eBird 30, BirdWeather 7), so the default changes nothing.
+- Threaded through `fetchAllSightingsAt`: the effective window is now
+  `daysOverride (Fetch-on-open) → downloadDays() → 0/per-source`. GBIF is safely capped at
+  `AppSources.GBIF_MAX_DAYS` (~92) when a window is set; eBird stays clamped to 30.
+- Fetch-on-open keeps its **own separate** `fetchOnOpenDays`; both number fields are now
+  capped at 92 (the GBIF recent limit; use Historic mode for longer). Field max lowered
+  from 365 → 92.
+- New i18n keys `ctrl.downloadDays(+Hint)` in 15 languages; Help + README updated.
+
 ## 2026-07-31 — Settings grouped with horizontal dividers (sw v800)
 
 - Each functional group in Settings now opens with a **full-width horizontal rule**, so the
