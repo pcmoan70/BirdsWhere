@@ -21,7 +21,7 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v805";
+var VERSION = "v806";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
@@ -29,7 +29,7 @@ var NOTES = [
   "• Smarter caching: switching from “All groups” to a single group filters the already-downloaded data instead of re-fetching, and narrowing a Historic date range or month subset within what you already fetched reuses it too. (“All” now spans plants & fungi as well, so it's a bit heavier.)",
   "• Settings are grouped by function (View · Fetching & detections · Data sources · Lists & sharing · Storage & offline · Display & language) with a horizontal divider between each group.",
   "• New “Download — last N days” setting sets how far back a normal fetch reaches (every source; 0 = each source's own default). Fetch on open keeps its own separate window.",
-  "• Fetch on open: turn it on in Settings, then tick locations under the ⟳ column in the Stored-locations panel. On each open the app auto-fetches + plots those spots' observations, reusing the download cache so it's instant within the reuse window.",
+  "• Fetch on open now showcases the result if you haven't touched the app: when the load finishes it fits all points in view and maximizes the legend so the top detections are named right away. If you've already started interacting, the points just fill in on the map in the background.",
   "• Month filter: in the detections list (☰) time window, tap month chips (Jan–Dec) to slice the shown observations to those months — great for a fetched historic range. Toggling months in Historic mode now filters the plotted dots live, no re-fetch."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets

@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-08-01 — Fetch-on-open showcases the result when idle (sw v806)
+
+- On a Fetch-on-open load, `plotSightingsResult` now plots in the **background** (no per-location
+  view fit, no surfacing the map) while `autoOpenPlotting` is set.
+- Interaction is tracked from boot via `armFetchOnOpen()` (capture-phase pointerdown / mousedown /
+  touchstart / wheel / keydown → `fooEngaged`), armed **before** the 1.2 s delay so an early tap counts.
+- At completion, if the user **hasn't** engaged and something was plotted: surface the map, **fit all
+  visible detection points** (`fitAllDetectionPoints`, area-box fallback), and **maximize the legend**
+  (`detLegendMini = false`). If they **have** engaged, nothing is disturbed — the dots just accumulate.
+- The manual "Fetch observations" button keeps its existing fit-to-areas behaviour.
+- Help note added (English).
+
 ## 2026-08-01 — Historic date-range / month subset cache reuse (sw v805)
 
 - New `histAggCache[lat,lon:rkm:group] = {from, to, months[], out}` keeps the broadest COMPLETED

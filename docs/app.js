@@ -2089,6 +2089,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v806", date: "2026-08-01", text: "Fetch on open is now smarter about your attention: if you don't touch the app while it loads your monitored locations, it fits all the points in view and maximizes the legend when done — so the names of the most interesting detections are right there. If you've already started using the app, the points just fill in quietly on the map in the background without moving your view." },
     { v: "v805", date: "2026-08-01", text: "Historic fetches now reuse what you already downloaded: if you narrow the date range, or pick a subset of months, that falls within a range you already fetched at the same spot, the app filters the cached observations instead of hitting the network again (a brief “Reused cached observations” note confirms it). To narrow the dots shown on the map, use the month chips / date range in the detections list (☰)." },
     { v: "v804", date: "2026-08-01", text: "“All groups” now fetches every kingdom — birds, mammals, amphibians, insects AND plants & fungi — so it's a true superset. Switching from All to any single group (e.g. Fungi) now reuses that already-downloaded data and filters instantly instead of re-fetching. Plants/Fungi observation mode also works properly now (their records were previously dropped). Trade-off: an “All” fetch is heavier and, in a very dense spot, a group may be slightly under-sampled versus fetching it on its own." },
     { v: "v796", date: "2026-07-31", text: "Fetch on open: a new Settings toggle (under “Reuse downloads”) that, on each plain app open, automatically fetches and plots the observations for the stored locations you choose — over its own “last N days to fetch” window shown when the toggle is on. Press-and-hold the 🔍 search button to open Stored locations: tick the spots under the ⟳ column (its header sits above the checkboxes). It reuses the same download cache, so within the reuse window it loads instantly with no network, and only refetches when the cache goes stale. Skipped when the app is opened via a shared or ?here link." },
@@ -4854,7 +4855,9 @@
       // "Fetch on open": auto-fetch the ticked stored locations on a plain open
       // (not a shared / ?here link, which have their own view). Delayed so the
       // initial render settles first; the fetch reuses the persisted TTL cache.
-      if (plainOpen && fetchOnOpen()) setTimeout(fetchOnOpenLocations, 1200);
+      // Arm interaction tracking NOW (before the delay) so an early tap counts as
+      // engaged and the load stays in the background.
+      if (plainOpen && fetchOnOpen()) { armFetchOnOpen(); setTimeout(fetchOnOpenLocations, 1200); }
       // Start Google Drive sync last, after all init-time GeoState writes, so
       // its open-time pull isn't fooled into thinking local is newer.
       if (window.GDriveSync) window.GDriveSync.init();
@@ -7628,11 +7631,14 @@
       rebuildDetLayers();                      // recolour existing dots if families were just learned
       updateDetLegend(); saveDetections();     // one batch update after the loop
       // Fit to the points just added (this location), not the whole accumulated set.
+      // During the Fetch-on-open load we plot in the BACKGROUND: no per-location view
+      // fit and no surfacing the map — the completion step decides whether to
+      // showcase (only if the user hasn't interacted yet).
       var bounds = L.latLngBounds([]);
       entries.forEach(function (e) { (e.rows || []).forEach(function (r) { if (r && isFinite(+r.lat) && isFinite(+r.lon)) bounds.extend([+r.lat, +r.lon]); }); });
-      if (bounds.isValid()) { try { map.fitBounds(bounds.pad(0.2)); } catch (e3) {} }
+      if (bounds.isValid() && !autoOpenPlotting) { try { map.fitBounds(bounds.pad(0.2)); } catch (e3) {} }
       // Surface the map so the user sees the plotted points.
-      document.getElementById("species-panel").style.display = "none";
+      if (!autoOpenPlotting) document.getElementById("species-panel").style.display = "none";
       if (map) map.invalidateSize();
       // Per-source breakdown (raw records each source returned) so it's clear
       // which databases actually contributed — e.g. whether eBird downloaded.
@@ -12506,28 +12512,73 @@
   // radius, and plot them (accumulating on the map). Sequential with a small gap
   // between locations — kind to the source APIs (which also self-rate-limit).
   var storedFetchBusy = false;
+  var autoOpenPlotting = false;   // true while a Fetch-on-open load runs → plotSightingsResult stays in the background
+  var fooEngaged = false;         // did the user interact during the load? (then don't hijack the view)
+  var fooEngageCleanup = null;    // removes the interaction listeners
+  // Arm interaction tracking for a Fetch-on-open run. Called at boot BEFORE the
+  // (delayed) fetch starts, so any genuine user input during the wait OR the load
+  // counts as "engaged" — in which case the load stays in the background instead of
+  // hijacking the view.
+  function armFetchOnOpen() {
+    fooEngaged = false;
+    var mark = function () { fooEngaged = true; };
+    var evs = ["pointerdown", "mousedown", "touchstart", "wheel", "keydown"];
+    evs.forEach(function (ev) { window.addEventListener(ev, mark, true); });
+    fooEngageCleanup = function () { evs.forEach(function (ev) { window.removeEventListener(ev, mark, true); }); fooEngageCleanup = null; };
+  }
   // On a plain app open, plot the stored locations ticked "load on open". Uses the
   // same sequential fetch (which serves fresh copies straight from the persisted
-  // cache — no network until sightTtlMin expires). Silent: no "none selected" nag.
+  // cache — no network until sightTtlMin expires). If the user never interacts we
+  // showcase the result (fit all points + maximize the legend); if they engage, the
+  // points just accumulate on the map in the background.
   function fetchOnOpenLocations() {
-    if (!fetchOnOpen()) return;
+    if (!fetchOnOpen()) { if (fooEngageCleanup) fooEngageCleanup(); return; }
     var locs = getStoredLocations().filter(function (l) { return l.openFetch; });
-    if (locs.length) fetchSelectedStoredLocations(locs, true, fetchOnOpenDays());   // its own N-day window
+    if (!locs.length) { if (fooEngageCleanup) fooEngageCleanup(); return; }
+    fetchSelectedStoredLocations(locs, true, fetchOnOpenDays(), true);   // its own N-day window; autoOpen = true
   }
-  function fetchSelectedStoredLocations(locsOverride, silent, daysOverride) {
-    if (storedFetchBusy) return;
+  // Fit the map to every currently-visible plotted detection point. Returns false
+  // (so the caller can fall back to the area boxes) if there are no visible points.
+  function fitAllDetectionPoints() {
+    if (!map) return false;
+    var pb = L.latLngBounds([]);
+    Object.keys(detPlot).forEach(function (k) {
+      (detPlot[k].rows || []).forEach(function (r) { if (isFinite(+r.lat) && isFinite(+r.lon) && detDatePasses(r.date)) pb.extend([+r.lat, +r.lon]); });
+    });
+    if (pb.isValid()) { try { map.fitBounds(pb.pad(0.2)); return true; } catch (e) {} }
+    return false;
+  }
+  function fetchSelectedStoredLocations(locsOverride, silent, daysOverride, autoOpen) {
+    if (storedFetchBusy) { if (autoOpen && fooEngageCleanup) fooEngageCleanup(); return; }
     var locs = locsOverride || getStoredLocations().filter(function (l) { return l.on !== false; });
-    if (!locs.length) { if (!silent) setStatus(t("loc.noneSelected")); return; }
+    if (!locs.length) { if (!silent) setStatus(t("loc.noneSelected")); if (autoOpen && fooEngageCleanup) fooEngageCleanup(); return; }
     locs.forEach(function (l) { rememberFetchedArea(l.lat, l.lon, l.radius || recentRadiusKm()); });   // remember each fetched area's outline (persists until detections cleared)
     storedFetchBusy = true;
+    autoOpenPlotting = !!autoOpen;   // suppress per-location view changes while auto-open loads
     var i = 0;
+    function fitToAreas() {
+      var b = L.latLngBounds([]);
+      locs.forEach(function (l) { var d = (l.radius || recentRadiusKm()) / 111; b.extend([l.lat - d, l.lon - d]); b.extend([l.lat + d, l.lon + d]); });
+      if (b.isValid()) { try { map.fitBounds(b.pad(0.1)); } catch (e) {} }
+    }
     (function next() {
       if (i >= locs.length) {
-        storedFetchBusy = false;
-        // Fit to every fetched location's area once done.
-        var b = L.latLngBounds([]);
-        locs.forEach(function (l) { var d = (l.radius || recentRadiusKm()) / 111; b.extend([l.lat - d, l.lon - d]); b.extend([l.lat + d, l.lon + d]); });
-        if (b.isValid()) { try { map.fitBounds(b.pad(0.1)); } catch (e) {} }
+        storedFetchBusy = false; autoOpenPlotting = false;
+        if (autoOpen) {
+          if (fooEngageCleanup) fooEngageCleanup();
+          // Only showcase if the user never interacted AND something got plotted —
+          // surface the map, fit ALL points in view, and maximize the legend so the
+          // most interesting detections' names are visible straight away.
+          if (!fooEngaged && Object.keys(detPlot).length) {
+            var sp = document.getElementById("species-panel"); if (sp) sp.style.display = "none";
+            if (map) map.invalidateSize();
+            if (!fitAllDetectionPoints()) fitToAreas();
+            detLegendMini = false; saveLegendState(); updateDetLegend();
+          }
+          setStatus(t("loc.fetchedAll", { n: locs.length }));
+          return;
+        }
+        fitToAreas();   // manual "Fetch observations": always fit to the fetched areas
         setStatus(t("loc.fetchedAll", { n: locs.length }));
         return;
       }
