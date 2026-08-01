@@ -1,5 +1,10 @@
 # Changes
 
+## 2026-08-01 — Shorter update button label (sw v807)
+
+- `settings.updateReady` shortened "Reload to update to {v}" → "Update to {v}" (all 15 languages);
+  the button still shows the ↻ prefix, so it reads "↻ Update to vNNN".
+
 ## 2026-08-01 — Fetch-on-open showcases the result when idle (sw v806)
 
 - On a Fetch-on-open load, `plotSightingsResult` now plots in the **background** (no per-location
