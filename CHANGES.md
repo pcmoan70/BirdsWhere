@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-08-02 — Remove Fågelkartan from Norway's national databases (sw v811)
+
+- Dropped the `NO` "Fågelkartan" entry (it pointed at the Swedish `fagelkartan.se/no/`); the
+  Swedish (`SE`) Fågelkartan entry is unchanged. Existing users can also remove it via
+  Settings → National databases.
+
 ## 2026-08-01 — Place-labels overlay no longer doubles up the map's names (sw v809)
 
 - The "Place labels" overlay printed CARTO's labels-only tiles ON TOP of `light_all`/`dark_all`,

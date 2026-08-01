@@ -1570,7 +1570,6 @@
     { cc: "NO", label: "Artsobservasjoner", url: "https://artsobservasjoner.no/" },
     { cc: "NO", label: "BirdLife Norge", url: "https://www.birdlife.no/" },
     { cc: "NO", label: "BirdLifeData", url: "https://birdlifedata.no/" },
-    { cc: "NO", label: "Fågelkartan", url: "https://fagelkartan.se/no/" },
     { cc: "PL", label: "ornitho.pl", url: "https://www.ornitho.pl/" },
     { cc: "PL", label: "eBird", url: "https://ebird.org/region/PL" },
     { cc: "PL", label: "OTOP", url: "https://otop.org.pl/" },
