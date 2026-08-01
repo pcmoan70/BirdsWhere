@@ -2090,6 +2090,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v809", date: "2026-08-01", text: "Place labels overlay fixed. On the Light and Dark basemaps it used to print a second set of place names on top of the map's own — now it switches the base to a labels-free version so the overlay is the only set of names (no more doubling up), and “More” pulls in the next zoom's denser names so it's genuinely more detailed than the plain map. Satellite works as before (it has no names of its own); Streets and Topographic keep their built-in names, since those tiles can't be stripped." },
     { v: "v806", date: "2026-08-01", text: "Fetch on open is now smarter about your attention: if you don't touch the app while it loads your monitored locations, it fits all the points in view and maximizes the legend when done — so the names of the most interesting detections are right there. If you've already started using the app, the points just fill in quietly on the map in the background without moving your view." },
     { v: "v805", date: "2026-08-01", text: "Historic fetches now reuse what you already downloaded: if you narrow the date range, or pick a subset of months, that falls within a range you already fetched at the same spot, the app filters the cached observations instead of hitting the network again (a brief “Reused cached observations” note confirms it). To narrow the dots shown on the map, use the month chips / date range in the detections list (☰)." },
     { v: "v804", date: "2026-08-01", text: "“All groups” now fetches every kingdom — birds, mammals, amphibians, insects AND plants & fungi — so it's a true superset. Switching from All to any single group (e.g. Fungi) now reuses that already-downloaded data and filters instantly instead of re-fetching. Plants/Fungi observation mode also works properly now (their records were previously dropped). Trade-off: an “All” fetch is heavier and, in a very dense spot, a group may be slightly under-sampled versus fetching it on its own." },
@@ -5497,12 +5498,27 @@
     else if (currentMode === "range") renderRangeMap();
   }
 
+  // Only these basemaps can carry the standalone labels overlay without doubling
+  // up: satellite has no names of its own, and CARTO light/dark have a labels-free
+  // variant we switch to when the overlay is on. streets (OSM) and topo
+  // (OpenTopoMap) bake their names in and have no labels-free tiles, so the overlay
+  // would just print a second, misaligned set of names over them — skip it there.
+  function labelsSupported(which) { return which === "light" || which === "dark" || which === "satellite"; }
+  // Base tile URL for a basemap, swapping CARTO light/dark to their _nolabels
+  // variant while the labels overlay is active (so the overlay is the ONLY set of
+  // place names — no duplication — and its density can exceed the baked-in labels).
+  function baseUrlFor(which) {
+    var labelsOn = labelsMode() !== "off";
+    if (labelsOn && which === "dark") return "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png";
+    if (labelsOn && which === "light") return "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png";
+    return (BASEMAPS[which] || BASEMAPS.dark).url;
+  }
   function setBasemap(which) {
     var cfg = BASEMAPS[which] || BASEMAPS.dark;
     if (baseLayer) map.removeLayer(baseLayer);
     // subdomains must not be undefined — Leaflet reads .length even when the
     // URL has no {s} placeholder (e.g. the Esri satellite layer).
-    baseLayer = L.tileLayer(cfg.url, { attribution: cfg.attribution, maxZoom: MAX_ZOOM, maxNativeZoom: cfg.maxNativeZoom || MAX_ZOOM, subdomains: cfg.subdomains || "abc", noWrap: true });
+    baseLayer = L.tileLayer(baseUrlFor(which), { attribution: cfg.attribution, maxZoom: MAX_ZOOM, maxNativeZoom: cfg.maxNativeZoom || MAX_ZOOM, subdomains: cfg.subdomains || "abc", noWrap: true });
     baseLayer._origMaxNative = cfg.maxNativeZoom || MAX_ZOOM;   // restore target when online / leaving an area
     // Tile fetches failing (even when navigator reports "online" — captive portal /
     // dead connection) → treat like offline so the zoom cap upscales cached tiles
@@ -5519,10 +5535,12 @@
     applyLabelsOverlay();   // re-pick label style (dark/light) for the new basemap
   }
   // ---- Extra place-name labels overlay --------------------------------------
-  // OPTIONAL Carto labels-only tiles over the basemap. The bases show their own
-  // place names for display, so this is off by default; it mainly helps satellite
-  // (which carries no names). "on" = native-zoom labels; "more" = the next zoom's
-  // (denser) labels pulled into this view (tileSize 128 + zoomOffset 1).
+  // OPTIONAL CARTO labels-only tiles over a labels-FREE base (satellite, or CARTO
+  // light/dark switched to their _nolabels variant — see baseUrlFor), so the
+  // overlay is the only set of names. "on" = native-zoom labels; "more" = the next
+  // zoom's (denser) labels pulled into this view (tileSize 128 + zoomOffset 1), so
+  // it shows more place names than the plain basemap. Off by default. Skipped on
+  // streets/topo, whose baked-in names can't be removed (would double up).
   var LABEL_LEVEL_OFFSET = { on: 0, more: 1 };   // zoom levels deeper than the view
   var labelsOverlay = null;
   function labelsMode() { return window.GeoState.get("mapLabels", "off"); }
@@ -5531,6 +5549,7 @@
     var mode = labelsMode();
     if (!map || mode === "off") return;
     var bm = window.GeoState.get("basemap", "streets");
+    if (!labelsSupported(bm)) return;   // streets/topo bake their names in — don't print a second set
     var style = (bm === "dark" || bm === "satellite") ? "dark_only_labels" : "light_only_labels";
     var opts = { attribution: "", subdomains: "abcd", maxZoom: MAX_ZOOM, maxNativeZoom: 20, noWrap: true, zIndex: 350 };
     var off = LABEL_LEVEL_OFFSET[mode] || 0;
@@ -5587,7 +5606,14 @@
       return o.layer && o.layer._base && map.hasLayer(o.layer);
     }).map(function (o) { return o.layer; });
   }
-  function offlineLayers() { return [baseLayer].concat(activeOverlayLayers()).filter(Boolean); }
+  function offlineLayers() {
+    var arr = [baseLayer].concat(activeOverlayLayers());
+    // With labels "on" the CARTO base is the labels-FREE variant, so the names come
+    // from the overlay — cache it too (it's aligned, 256px). "more" uses a zoom-offset
+    // trick whose tiles don't match the download grid, so it's left online-only.
+    if (labelsOverlay && labelsMode() === "on") arr.push(labelsOverlay);
+    return arr.filter(Boolean);
+  }
   // Generate the exact tile URL Leaflet would request for (x,y,z) — set the
   // layer's tileZoom so the base layer's getTileUrl uses z, not its live zoom.
   function layerTileUrl(layer, x, y, z) {
@@ -5680,7 +5706,7 @@
   // rebuild the exact tile URLs when re-downloading a purged area.
   function offlineLayerFor(basemap) {
     var cfg = BASEMAPS[basemap] || BASEMAPS.light || BASEMAPS[Object.keys(BASEMAPS)[0]];
-    return L.tileLayer(cfg.url, { maxZoom: MAX_ZOOM, maxNativeZoom: cfg.maxNativeZoom || MAX_ZOOM, subdomains: cfg.subdomains || "abc", noWrap: true });
+    return L.tileLayer(baseUrlFor(basemap), { maxZoom: MAX_ZOOM, maxNativeZoom: cfg.maxNativeZoom || MAX_ZOOM, subdomains: cfg.subdomains || "abc", noWrap: true });   // match the live base variant (CARTO _nolabels when labels are on)
   }
   // Re-fetch a recorded area's tiles back into its OWN pinned cache (same id), e.g.
   // after the browser evicted them. Rebuilds URLs from the stored bbox/zoom/basemap.
@@ -10795,7 +10821,7 @@
     var mapLabelsSel = document.getElementById("maplabels-select");
     if (mapLabelsSel) {
       mapLabelsSel.value = labelsMode();
-      mapLabelsSel.addEventListener("change", function () { window.GeoState.save({ mapLabels: this.value }); applyLabelsOverlay(); });
+      mapLabelsSel.addEventListener("change", function () { window.GeoState.save({ mapLabels: this.value }); setBasemap(window.GeoState.get("basemap", "streets")); });   // re-apply base (CARTO swaps to _nolabels) + overlay
     }
 
     document.getElementById("perf-modal-ok").addEventListener("click", hidePerfModal);

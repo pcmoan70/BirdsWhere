@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-08-01 — Place-labels overlay no longer doubles up the map's names (sw v809)
+
+- The "Place labels" overlay printed CARTO's labels-only tiles ON TOP of `light_all`/`dark_all`,
+  which already bake names in — so On duplicated them and couldn't be denser. Now, when labels are
+  on, the CARTO base switches to its **`_nolabels`** variant (`baseUrlFor`), so the overlay is the
+  **only** set of names. `More` (zoomOffset +1) is now genuinely denser than the plain map.
+- Skipped on **streets/topo** (`labelsSupported`): OSM/OpenTopoMap have no labels-free tiles, so the
+  overlay would just print a second, misaligned set — their built-in names are left as-is.
+- The label-mode change now re-applies the base (`setBasemap`) so the `_all`↔`_nolabels` swap
+  happens; `offlineLayers`/`offlineLayerFor` updated to cache/rebuild the matching variant (labels
+  overlay cached in the aligned "on" mode). Help text updated.
+
 ## 2026-08-01 — Refresh the map hint when the crosshair turns off (sw v808)
 
 - `setCrosshairState(0)` now resets the status line to `modeHint()`. Cycling the crosshair
