@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-08-01 — Refresh the map hint when the crosshair turns off (sw v808)
+
+- `setCrosshairState(0)` now resets the status line to `modeHint()`. Cycling the crosshair
+  off (grey) previously left the stale "GPS follow on" / "Read cursor on" text over the map;
+  it now shows the current mode's guidance again. (States 1/2 already updated it.)
+
 ## 2026-08-01 — Shorter update button label (sw v807)
 
 - `settings.updateReady` shortened "Reload to update to {v}" → "Update to {v}" (all 15 languages);

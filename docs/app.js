@@ -856,6 +856,7 @@
     if (btn) btn.classList.remove("cross-follow", "cross-read");
     if (s === 1) { startFollow(); if (btn) btn.classList.add("cross-follow"); setStatus(t("ctrl.followOn")); }
     else if (s === 2) { startReticle(); if (btn) btn.classList.add("cross-read"); setStatus(t("ctrl.reticleOn")); }
+    else setStatus(modeHint());   // off → refresh the guidance (don't leave the stale "GPS follow / read cursor on" text)
   }
   function cycleCrosshair() { setCrosshairState((crossState + 1) % 3); }
   var currentMode = "range";
