@@ -544,7 +544,7 @@ window.GeoI18N = (function () {
       "sp.plottingN": "Loading observations… {n} left",
       "sp.plottingFrac": "Loading observations… {n}",
       "sp.loaded": "Loaded: {n}",
-      "sp.deduped": "deduped: {n}",
+      "sp.deduped": "unique: {n}",
       "sp.plotted": "Plotted observations for {n} species.",
       "sp.plottedCapped": "Plotted the top {n} species by observation count.",
       "link.fatbirder": "Fatbirder",
