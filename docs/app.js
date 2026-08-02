@@ -2089,6 +2089,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v813", date: "2026-08-02", text: "Hover a species name (on desktop) for a small popup with its scientific name — shown when “Scientific names” is enabled in Settings — and, on a second line, its name in your chosen second language when that's set. Handy wherever the name shows without those columns (the legend, the detections list, menus)." },
     { v: "v809", date: "2026-08-01", text: "Place labels overlay fixed. On the Light and Dark basemaps it used to print a second set of place names on top of the map's own — now it switches the base to a labels-free version so the overlay is the only set of names (no more doubling up), and “More” pulls in the next zoom's denser names so it's genuinely more detailed than the plain map. Satellite works as before (it has no names of its own); Streets and Topographic keep their built-in names, since those tiles can't be stripped." },
     { v: "v806", date: "2026-08-01", text: "Fetch on open is now smarter about your attention: if you don't touch the app while it loads your monitored locations, it fits all the points in view and maximizes the legend when done — so the names of the most interesting detections are right there. If you've already started using the app, the points just fill in quietly on the map in the background without moving your view." },
     { v: "v805", date: "2026-08-01", text: "Historic fetches now reuse what you already downloaded: if you narrow the date range, or pick a subset of months, that falls within a range you already fetched at the same spot, the app filters the cached observations instead of hitting the network again (a brief “Reused cached observations” note confirms it). To narrow the dots shown on the map, use the month chips / date range in the detections list (☰)." },
@@ -11423,6 +11424,50 @@
       // Close the dropdown popovers when clicking outside a panel/toggle.
       if (!e.target.closest(".dd-panel") && !e.target.closest(".dd-toggle")) closeDropdowns();
     });
+
+    // Hover a species name (.sp-link, anywhere) → a small tight popup: the
+    // scientific name (when "Scientific names" is on) and, on a second line, the
+    // 2nd-language name (when a 2nd name is set). Hover-capable devices only, so
+    // taps on touch still just open the species menu.
+    var spTipEl = null;
+    function ensureSpTip() {
+      if (!spTipEl) { spTipEl = document.createElement("div"); spTipEl.className = "sp-hovertip"; spTipEl.style.display = "none"; document.body.appendChild(spTipEl); }
+      return spTipEl;
+    }
+    function hideSpTip() { if (spTipEl) spTipEl.style.display = "none"; }
+    function spTipHtml(link) {
+      var out = "", sci = link.getAttribute("data-sci") || "";
+      if (showSci && sci) out += '<span class="spt-sci">' + escapeHtml(sci) + "</span>";
+      if (secondLang) {
+        var key = link.getAttribute("data-key"), lbl = key && labelsByKey[key];
+        var n2 = lbl ? secondName(lbl) : "";
+        if (n2) out += '<span class="spt-n2">' + escapeHtml(n2) + "</span>";
+      }
+      return out;
+    }
+    if (!window.matchMedia || window.matchMedia("(hover: hover)").matches) {
+      document.addEventListener("mouseover", function (e) {
+        var link = e.target.closest ? e.target.closest(".sp-link") : null;
+        if (!link) return;
+        var html = spTipHtml(link);
+        if (!html) { hideSpTip(); return; }
+        var el = ensureSpTip(); el.innerHTML = html; el.style.display = "block";
+        var r = link.getBoundingClientRect();
+        var top = r.top - el.offsetHeight - 6; if (top < 4) top = r.bottom + 6;
+        var left = Math.min(r.left, window.innerWidth - el.offsetWidth - 6); if (left < 4) left = 4;
+        el.style.left = Math.round(left) + "px"; el.style.top = Math.round(top) + "px";
+      });
+      document.addEventListener("mouseout", function (e) {
+        if (!spTipEl || spTipEl.style.display === "none") return;
+        var link = e.target.closest ? e.target.closest(".sp-link") : null;
+        if (!link) return;
+        var to = e.relatedTarget;
+        if (to && to.closest && to.closest(".sp-link") === link) return;   // still inside the same name → keep it
+        hideSpTip();
+      });
+      window.addEventListener("scroll", hideSpTip, true);
+      document.addEventListener("mousedown", hideSpTip, true);
+    }
 
     var searchEl = document.getElementById("species-search");
     var resultsEl = document.getElementById("species-results");

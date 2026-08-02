@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-08-02 — Hover a species name → tight sci/2nd-name popup (sw v813)
+
+- Hovering any species name (`.sp-link`, anywhere) now shows a small tight popup: the **scientific
+  name** (italic) when "Scientific names" is on, and on a **second line** the **2nd-language name**
+  when a 2nd name is set. Independent of each other; no popup if neither applies.
+- Delegated `mouseover`/`mouseout` on `.sp-link`, hover-capable devices only (taps on touch still
+  just open the species menu). Reads `data-sci` + derives the 2nd name from `data-key`
+  (`labelsByKey` → `secondName`). New `.sp-hovertip` styles.
+
 ## 2026-08-02 — "2nd name" setting always available (sw v812)
 
 - The **2nd name** (second-language) control in Settings was only shown in Species List / Range
