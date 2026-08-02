@@ -4518,7 +4518,7 @@
                 '<label for="lang-select" data-i18n="ctrl.language">Language</label>' +
                 '<select id="lang-select"></select>' +
               '</div>' +
-              '<div class="ctrl-group" id="secondlang-wrap" style="display:none">' +
+              '<div class="ctrl-group" id="secondlang-wrap">' +
                 '<label for="secondlang-select" data-i18n="ctrl.secondlang">2nd name</label>' +
                 '<select id="secondlang-select"></select>' +
               '</div>' +
@@ -10128,11 +10128,11 @@
     var isRange = currentMode === "range";
     var isMap = currentMode === "range" || currentMode === "richness";
     document.getElementById("species-search-wrap").style.display = isRange ? "" : "none";
-    // Species List + Species Range both produce a per-point species list (which
-    // uses "Compare to" and the 2nd-name column), so show these in both.
+    // "Compare to" drives the species-list comparison column, so it's list/range only.
+    // The 2nd-name preference, by contrast, affects names app-wide (species lists AND
+    // the detections list / species menus), so it stays available in every mode.
     var listish = currentMode === "list" || currentMode === "range";
     document.getElementById("compare-wrap").style.display = listish ? "" : "none";
-    document.getElementById("secondlang-wrap").style.display = listish ? "" : "none";
     // The probability min–max slider (in Settings) applies to the Species List,
     // the checklist (derived from it), the analysis tabs and the field checklist.
     var probVisible = (currentMode === "range" || currentMode === "list" || currentMode === "barchart");

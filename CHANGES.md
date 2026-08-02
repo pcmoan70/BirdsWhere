@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-02 — "2nd name" setting always available (sw v812)
+
+- The **2nd name** (second-language) control in Settings was only shown in Species List / Range
+  modes (`updateModeVisibility` gated it on `listish`), so it "disappeared" in Historic / Migration /
+  Richness. It's a display preference used app-wide (species lists, the detections list sort, species
+  menus), so it's now always visible. "Compare to" stays list/range-only.
+
 ## 2026-08-02 — Remove Fågelkartan from Norway's national databases (sw v811)
 
 - Dropped the `NO` "Fågelkartan" entry (it pointed at the Swedish `fagelkartan.se/no/`); the
