@@ -2112,6 +2112,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v824", date: "2026-08-03", text: "Fetching a point now takes you straight to the observations on the map — no need to switch views. The List ⇄ Map button in the top bar is now a single icon showing where it'll take you (a list icon while you're on the map, a map icon while you're on the list). The status line above the map is also easier to read." },
     { v: "v823", date: "2026-08-03", text: "The species list has a new sortable Distance column: for every species it shows how far its nearest observation is from the point you clicked. Tap the column header to sort nearest-first. This replaces the separate “Close by” button on the map (now removed). The List ⇄ Map switch also moved to the far right of the top bar." },
     { v: "v820", date: "2026-08-03", text: "A List ⇄ Map switch now sits in the header (between the Points and fullscreen icons) whenever you've fetched a species list. Use it to flip between the list and the observations plotted on the map — including hopping back to the list from the map — instead of the old in-list “Map” button. The map-points icon is now a scatter of dots, and the Checklist button moved down next to the PDF/CSV download buttons at the foot of the list." },
     { v: "v818", date: "2026-08-03", text: "On a PC, hold Shift and hover over a control for a popover explaining what it does and how it works — now on the Locate/crosshair, Close by, Place search and offline-maps buttons, the legend's top row, and the detections list. Long explanations scroll (move onto the popover, keeping Shift down). Not shown on touch devices." },
@@ -3488,9 +3489,10 @@
   function updateSpMapBtn() {
     var r = currentSpView && currentSpView._result;
     var hasData = !!(r && (r.dedupTotal > 0 || (r.agg && Object.keys(r.agg).length) || (r.extras && Object.keys(r.extras).length)));
-    // The header List⇄Map switch: only allow "Map" once there's something to plot.
-    var mb = document.querySelector("#viewtoggle-wrap .vt-map");
-    if (mb && onListView()) mb.disabled = !hasData;
+    // The header switch: while on the list (icon = go to Map) only enable once
+    // there's something to plot.
+    var btn = document.getElementById("viewtoggle-btn");
+    if (btn && onListView()) btn.disabled = !hasData;
   }
   // Populate the per-point species-list rows with count + days-since-most-recent
   // from the cached all-species fetch. Cells stay blank for species without any
@@ -4369,12 +4371,7 @@
           // a list is available. Replaces the old in-list "📍 Map" button so you can
           // hop back and forth from the header.
           '<div class="ctrl-group" id="viewtoggle-wrap" style="display:none">' +
-            '<div class="view-seg" role="group">' +
-              '<button type="button" class="vt-btn vt-list" data-i18n-title="view.list" title="List" aria-label="List">' +
-                '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="8" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg></button>' +
-              '<button type="button" class="vt-btn vt-map" data-i18n-title="view.map" title="Map" aria-label="Map">' +
-                '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4z"/><path d="M9 4v13M15 6.5v13"/></svg></button>' +
-            '</div>' +
+            '<button type="button" id="viewtoggle-btn" class="hdr-icon-btn" title="" aria-label=""></button>' +
           '</div>' +
           '<div class="ctrl-group" id="fs-wrap" style="display:none">' +
             '<button type="button" id="hdr-fs-toggle" class="hdr-icon-btn fs-toggle-btn" aria-label="Fullscreen" title="Fullscreen"></button>' +
@@ -7732,15 +7729,17 @@
     var sp = document.getElementById("species-panel");
     return !!(sp && sp.style.display !== "none" && sp.classList.contains("as-page"));
   }
+  var VT_LIST_SVG = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="8" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="8" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>';
+  var VT_MAP_SVG = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4z"/><path d="M9 4v13M15 6.5v13"/></svg>';
   function updateViewToggle() {
     var wrap = document.getElementById("viewtoggle-wrap"); if (!wrap) return;
     var avail = viewToggleAvail();
     wrap.style.display = avail ? "" : "none";
     if (!avail) return;
-    var list = onListView();
-    var lb = wrap.querySelector(".vt-list"), mb = wrap.querySelector(".vt-map");
-    if (lb) lb.classList.toggle("on", list);
-    if (mb) mb.classList.toggle("on", !list);
+    var btn = document.getElementById("viewtoggle-btn"); if (!btn) return;
+    // Show the icon of the view you'd SWITCH TO (the opposite of the current view).
+    if (onListView()) { btn.innerHTML = VT_MAP_SVG; btn.title = t("view.map"); btn.setAttribute("aria-label", t("view.map")); }
+    else { btn.innerHTML = VT_LIST_SVG; btn.title = t("view.list"); btn.setAttribute("aria-label", t("view.list")); btn.disabled = false; }
   }
   function showListView() {
     if (!viewToggleAvail()) return;
@@ -11518,11 +11517,8 @@
       renderFieldChecklist(ll.lat, ll.lng);
     });
     document.getElementById("sp-pdf-btn").addEventListener("click", exportSpeciesPdf);
-    var vtWrap = document.getElementById("viewtoggle-wrap");
-    if (vtWrap) {
-      vtWrap.querySelector(".vt-list").addEventListener("click", function () { if (!onListView()) showListView(); });
-      vtWrap.querySelector(".vt-map").addEventListener("click", function () { if (onListView()) goToMapView(); });
-    }
+    var vtBtn = document.getElementById("viewtoggle-btn");
+    if (vtBtn) vtBtn.addEventListener("click", function () { if (onListView()) goToMapView(); else showListView(); });
 
     // Click a count cell in the per-point species list to open the recent-
     // sightings panel for that species (multi-source merge with Show in map).
@@ -15267,7 +15263,15 @@
           var p = document.getElementById("sp-hist-prog"); if (p) p.style.display = "none";
         });
       } else {
-        augmentRowsWithSightings(lat, lon);
+        var fetchGen = myGen;   // guard against a newer point / mode switch mid-fetch
+        augmentRowsWithSightings(lat, lon).then(function () {
+          if (spListGen !== fetchGen) return;   // a newer list render superseded this one
+          var res = currentSpView && currentSpView._result;
+          var hasData = !!(res && (res.dedupTotal > 0 || (res.agg && Object.keys(res.agg).length) || (res.extras && Object.keys(res.extras).length)));
+          // Load the fetched detections straight onto the map — unless the user has
+          // already left the list (toggled to map / changed mode).
+          if (hasData && currentMode === "list" && currentSpView && currentSpView.mode === "point" && onListView()) goToMapView();
+        });
       }
       lastSpeciesPdf = {
         name2Head: secondLang ? window.GeoI18N.langByCode(secondLang).name : "",

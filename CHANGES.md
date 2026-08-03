@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-08-03 — Fetch lands on the map · single-icon toggle · clearer status (sw v824)
+
+- **Fetching a point now loads the detections straight onto the map** (Species-List mode): when the
+  point fetch resolves with data, it auto-switches to the map view (`goToMapView`), guarded by the
+  list generation + still-on-list checks. Toggle to the list any time.
+- **List⇄Map switch is now a single icon** showing the view you'd switch TO — a list icon while the
+  map is shown, a map icon while the list is shown (was a two-segment control). Reuses `.hdr-icon-btn`
+  styling; disabled while on the list until there's data to plot.
+- **Status text above the map** is more legible (darker `--ink`, 0.84rem, taller min-height + more
+  bottom spacing) so it reads well over the map.
+
 ## 2026-08-03 — Distance column in the species list · toggle far-right · drop "Close by" (sw v823)
 
 - **Sortable "Dist" column** in the species list: for each species, the distance from the list's

@@ -273,10 +273,12 @@ input:focus-visible {
 
 /* Status bar */
 #demo-status {
-  font-size: 0.8rem;
-  color: var(--md-default-fg-color--light, #666);
-  min-height: 1.2em;
-  margin-bottom: 2px;
+  font-size: 0.84rem;
+  line-height: 1.35;
+  color: var(--ink, #2a2a2a);
+  min-height: 1.5em;
+  margin: 2px 0 5px;
+  padding: 0 2px;
 }
 
 /* Selected species name above the map (Range mode), clickable for the menu */
@@ -2015,16 +2017,10 @@ button.dd-name:hover { text-decoration: underline; }
 }
 .map-help-pop .map-help-title { font-weight: 700; color: var(--brand-strong, #0b3a3a); margin-bottom: 4px; }
 .map-help-pop .map-help-body { white-space: pre-wrap; }
-/* Header List ⇄ Map segmented switch (in the green top bar, left of Fullscreen). */
+/* Header List ⇄ Map switch (single icon button in the green top bar, far right,
+   showing the icon of the view you'd switch TO). */
 #site-header #viewtoggle-wrap { flex: 0 0 auto; margin-left: 6px; }   /* far right, just after #fs-wrap (which holds margin-left:auto) */
-.view-seg { display: inline-flex; align-items: stretch; height: 34px; box-sizing: border-box;
-  border: 1px solid rgba(255,255,255,0.28); border-radius: var(--radius-sm, 6px); overflow: hidden; }
-.view-seg .vt-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 100%;
-  padding: 0; border: none; background: rgba(255,255,255,0.10); color: #f3faf7; cursor: pointer; transition: background 0.15s; }
-.view-seg .vt-btn + .vt-btn { border-left: 1px solid rgba(255,255,255,0.28); }
-.view-seg .vt-btn.on { background: #fff; color: var(--brand-strong, #0b3a3a); }
-.view-seg .vt-btn:not(.on):not(:disabled):hover { background: rgba(255,255,255,0.22); }
-.view-seg .vt-btn:disabled { opacity: 0.45; cursor: default; }
+#site-header #viewtoggle-btn:disabled { opacity: 0.4; cursor: default; }
 
 #sp-menu {
   position: absolute;
