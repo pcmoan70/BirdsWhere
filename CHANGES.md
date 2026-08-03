@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-08-03 — Route lists: badge + direct Google Maps directions (sw v833)
+
+- **Points panel marks route lists**: `mpCollRowHtml` takes an `isRoute` flag (`isRouteColl(c)`) and
+  renders a small ➤ badge (`.mp-coll-route`) after the name plus an `.is-route` row class; the 🧭 button's
+  tooltip switches to "Navigate in Google Maps".
+- **The 🧭 on a route list opens directions directly**: the `mp-coll-nav` handler now routes a route list's
+  stops through Google Maps (`navigateStops`, extracted from `navigateRoute`) instead of the pin-overlay
+  KML (`sendPointsToGoogle`) used for ordinary lists / detection sets.
+
 ## 2026-08-03 — Saved routes reload as numbered, navigable routes (sw v832)
 
 - A saved point-list is now recognised as a **route** (`isRouteColl`: the new `c.route` flag set by

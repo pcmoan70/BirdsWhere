@@ -388,7 +388,9 @@ an **eBird Record Format CSV** ready for [ebird.org/import](https://ebird.org/im
 - **Route basket** — add points/species stops; a floating **Route (N) · Navigate** pill opens the
   whole ordered route in Google Maps. It survives reload. **Save route** keeps it as a named list in the
   Points panel; ticking that list again (or reopening the app with it shown) brings the numbered stops
-  and the Navigate bar back, so a saved route reloads ready to navigate.
+  and the Navigate bar back, so a saved route reloads ready to navigate. Saved routes are marked with a
+  **➤** badge in the Points panel, and their **🧭** button opens Google Maps directions through the stops
+  directly (ordinary point-lists instead export as pins for Google My Maps).
 - **Fullscreen** toggle, and a **Nearby places** picker.
 
 ---

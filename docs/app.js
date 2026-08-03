@@ -2135,6 +2135,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v833", date: "2026-08-03", text: "Route lists are now marked in the Points panel with a ➤ badge, and their 🧭 button opens Google Maps directions straight through the stops (in order) instead of exporting a pin file. Other point lists still export as pins for Google My Maps." },
     { v: "v832", date: "2026-08-03", text: "Saved routes reload as routes. Tick a saved route in the Points panel — or just reopen the app with one shown — and its stops reappear numbered on the map with the route bar at the bottom, ready to navigate in Google Maps. Saving a route from the route bar now hands it straight over to that saved-list form (no duplicate pins)." },
     { v: "v831", date: "2026-08-03", text: "Detections list (☰) header tidy-up: a ＋➤ “add to route/tour” button now sits next to Navigate (adds this spot to the route bar); the Save button shows a points-list icon; the copy-coordinates button moved in front of the place name; and the “Filter species” box is narrower, with the day / rarity+year-list / observer filters lined up beside it." },
     { v: "v828", date: "2026-08-03", text: "Shortcut links. Open the app with a URL like ?location=here;radius=5;show=list;sortby=time_recent to geolocate — or ?location=60.123,32.001 for fixed coordinates — and land straight on the species list, or the map (show=map) with dots dropping in. radius sets the search km; sortby is rarity_increasing (default, likeliest first), rarity_decreasing (rarest first) or time_recent (most recently seen first). Handy for a home-screen bookmark. See the README for examples." },
@@ -9636,14 +9637,17 @@
       setStatus(t("route.saved", { name: nm, n: saved }));
     });
   }
-  function navigateRoute() {
-    var route = activeRoute();
-    if (!route.length) { setStatus(t("nav.empty")); return; }
-    var stops = route.slice(0, GMAP_MAX_STOPS);   // add-order is the user's intended order — don't reshuffle
-    openExternal(gmapRoute(stops));
-    if (route.length > GMAP_MAX_STOPS) setStatus(t("nav.capped", { n: GMAP_MAX_STOPS, dropped: route.length - GMAP_MAX_STOPS }));
-    else setStatus(t("nav.opened", { n: stops.length }));
+  // Open an ordered list of stops as a Google Maps route (add-order = intended
+  // order — don't reshuffle). Shared by the route bar and the Points-panel route lists.
+  function navigateStops(stops) {
+    stops = (stops || []).filter(function (p) { return isFinite(+p.lat) && isFinite(+p.lon); });
+    if (!stops.length) { setStatus(t("nav.empty")); return; }
+    var use = stops.slice(0, GMAP_MAX_STOPS);
+    openExternal(gmapRoute(use));
+    if (stops.length > GMAP_MAX_STOPS) setStatus(t("nav.capped", { n: GMAP_MAX_STOPS, dropped: stops.length - GMAP_MAX_STOPS }));
+    else setStatus(t("nav.opened", { n: use.length }));
   }
+  function navigateRoute() { navigateStops(activeRoute()); }
   // The chip's × clears the live basket, or (for a reloaded saved route) hides it.
   function clearOrHideRoute() {
     if (routePoints.length) { clearRoute(); return; }
@@ -10244,26 +10248,30 @@
     // Saved lists + detection sets as tick-to-show overlays, each with a swatch:
     // a per-list colour for point-lists, a 🗂 for detection sets (their dots keep
     // their own per-species colours on the map).
-    function mpCollRowHtml(type, name, count, swatch, checked, delTip, isProt) {
+    function mpCollRowHtml(type, name, count, swatch, checked, delTip, isProt, isRoute) {
       // Protected point-lists show a 🔒 instead of the delete × (manage protection
       // in the lists-admin popup — press-and-hold the Points button).
       var del = isProt
         ? '<span class="mp-coll-lock" title="' + escapeHtml(t("lists.protect")) + '">' + ico("lock") + "</span>"
         : '<button type="button" class="mp-coll-del" data-type="' + type + '" data-name="' + escapeHtml(name) + '" aria-label="' + escapeHtml(delTip) + '" title="' + escapeHtml(delTip) + '">×</button>';
-      var navBtn = '<button type="button" class="mp-coll-nav ico-btn" data-type="' + type + '" data-name="' + escapeHtml(name) + '" title="' + escapeHtml(t("nav.send")) + '" aria-label="' + escapeHtml(t("nav.send")) + '">' + ico("nav") + "</button>";
+      // A route list is marked with a small ➤ badge; its 🧭 opens Google Maps
+      // directions directly (not the pin-overlay KML the other lists export).
+      var routeBadge = isRoute ? '<span class="mp-coll-route" title="' + escapeHtml(t("route.count", { n: count })) + '">' + ico("nav") + "</span>" : "";
+      var navTip = isRoute ? t("nav.title") : t("nav.send");
+      var navBtn = '<button type="button" class="mp-coll-nav ico-btn" data-type="' + type + '" data-name="' + escapeHtml(name) + '" title="' + escapeHtml(navTip) + '" aria-label="' + escapeHtml(navTip) + '">' + ico("nav") + "</button>";
       var shareBtn = '<button type="button" class="mp-coll-share ico-btn" data-type="' + type + '" data-name="' + escapeHtml(name) + '" title="' + escapeHtml(t("share.link")) + '" aria-label="' + escapeHtml(t("share.link")) + '">' + ico("share") + "</button>";
       // Edit (colour + tags for the whole list) — point-lists only.
       var editBtn = type === "p"
         ? '<button type="button" class="mp-coll-edit ico-btn" data-name="' + escapeHtml(name) + '" title="' + escapeHtml(t("points.editList")) + '" aria-label="' + escapeHtml(t("points.editList")) + '">' + ico("edit") + "</button>"
         : "";
-      return '<div class="mp-coll-row">' +
+      return '<div class="mp-coll-row' + (isRoute ? " is-route" : "") + '">' +
         '<label class="mp-coll-lbl"><input type="checkbox" class="mp-coll-cb" data-type="' + type + '" data-name="' + escapeHtml(name) + '"' + (checked ? " checked" : "") + ">" +
-          swatch + '<span class="mp-coll-name">' + escapeHtml(name) + ' <span class="mp-coll-n">(' + count + ")</span></span></label>" +
+          swatch + '<span class="mp-coll-name">' + escapeHtml(name) + ' <span class="mp-coll-n">(' + count + ")</span></span>" + routeBadge + "</label>" +
         navBtn + shareBtn + editBtn + del +
         "</div>";
     }
     var collItems = mpCollections.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (c) {
-      return mpCollRowHtml("p", c.name, (c.points && c.points.length) || 0, '<span class="mp-sw" style="background:' + collColor(c) + '"></span>', !!shownColls[c.name], t("points.deleteColl"), isCollProtected(c.name));
+      return mpCollRowHtml("p", c.name, (c.points && c.points.length) || 0, '<span class="mp-sw" style="background:' + collColor(c) + '"></span>', !!shownColls[c.name], t("points.deleteColl"), isCollProtected(c.name), isRouteColl(c));
     });
     var dsItems = detSets().slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (s) {
       var n = 0; Object.keys(s.detections || {}).forEach(function (k) { n += ((s.detections[k] || {}).rows || []).length; });
@@ -10367,6 +10375,9 @@
           });
         } else {
           var c = mpCollections.filter(function (x) { return x.name === name; })[0] || {};
+          // A route list → open Google Maps DIRECTIONS through its stops directly
+          // (not the pin-overlay KML the other lists export).
+          if (isRouteColl(c)) { navigateStops((c.points || []).map(function (p) { return { lat: p.lat, lon: p.lon }; })); return; }
           var col = mpHashColor(name);
           pts = (c.points || []).map(function (p) { return { lat: p.lat, lon: p.lon, name: p.name || "", desc: (p.note || ""), color: p.spColor || col, star: !!p.star, rare: !!p.rare }; });
         }

@@ -21,12 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v832";
+var VERSION = "v833";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
-  "• Saved routes reload properly: tick a saved route in the Points panel (or reopen the app with one shown) and its stops come back numbered on the map with the route bar at the bottom, ready to navigate. Saving a route now hands it straight over to that saved-list view.",
+  "• Saved routes reload properly: tick a saved route in the Points panel (or reopen the app with one shown) and its stops come back numbered on the map with the route bar at the bottom, ready to navigate. Route lists are marked with a ➤ badge, and their 🧭 button opens Google Maps directions through the stops directly (other lists still export as pins).",
   "• Tidier detections list (☰): the header now has a ＋➤ “add to route/tour” button next to Navigate, the Save button shows a points icon, and the copy-coordinates button sits in front of the place name. The “Filter species” box is narrower with the day / rarity / observer filters beside it on the same row.",
   "• New shortcut link: open the app with ?location=here;radius=5;show=list;sortby=time_recent to geolocate (or ?location=60.123,32.001 for fixed coordinates) and jump straight to the species list (or map) for that spot — with the sightings radius, view, and sort (rarity or most-recent) all set from the URL. See the README for examples.",
   "• You can now zoom in deeper and download offline maps at higher detail — the map's maximum detail level goes up to 19 (was ~17). In Offline maps, “Download max zoom” now offers a 19 · maximum option. Each zoom step now lands exactly on an H3 grid resolution, so the hexagon cells are always drawn at their natural on-screen size.",

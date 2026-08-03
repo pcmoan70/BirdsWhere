@@ -1458,6 +1458,9 @@ button.dd-name:hover { text-decoration: underline; }
    white-on-white. Everything else here sets its own colour; the name must too. */
 .mp-coll-name { flex: 1 1 auto; min-width: 0; color: var(--ink, #1a1a1a); }   /* list name sits to the right of the checkbox + colour swatch */
 .mp-coll-n { color: var(--ink-muted, #888); font-variant-numeric: tabular-nums; }
+/* Route lists get a small ➤ badge after the name so they read as navigable routes. */
+.mp-coll-route { flex: 0 0 auto; display: inline-flex; align-items: center; color: var(--brand); }
+.mp-coll-route .btn-ico { width: 14px; height: 14px; }
 .mp-coll-del { flex: 0 0 auto; border: 1px solid var(--border, #ccc); border-radius: var(--radius-xs, 4px); background: var(--surface, #fff); cursor: pointer; font-size: 0.95rem; line-height: 1; color: var(--muted, #999); }
 .mp-coll-del:hover:not([disabled]) { color: #c0392b; border-color: #c0392b; }
 .mp-coll-del[disabled] { opacity: 0.4; cursor: not-allowed; }
