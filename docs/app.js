@@ -2135,6 +2135,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v832", date: "2026-08-03", text: "Saved routes reload as routes. Tick a saved route in the Points panel — or just reopen the app with one shown — and its stops reappear numbered on the map with the route bar at the bottom, ready to navigate in Google Maps. Saving a route from the route bar now hands it straight over to that saved-list form (no duplicate pins)." },
     { v: "v831", date: "2026-08-03", text: "Detections list (☰) header tidy-up: a ＋➤ “add to route/tour” button now sits next to Navigate (adds this spot to the route bar); the Save button shows a points-list icon; the copy-coordinates button moved in front of the place name; and the “Filter species” box is narrower, with the day / rarity+year-list / observer filters lined up beside it." },
     { v: "v828", date: "2026-08-03", text: "Shortcut links. Open the app with a URL like ?location=here;radius=5;show=list;sortby=time_recent to geolocate — or ?location=60.123,32.001 for fixed coordinates — and land straight on the species list, or the map (show=map) with dots dropping in. radius sets the search km; sortby is rarity_increasing (default, likeliest first), rarity_decreasing (rarest first) or time_recent (most recently seen first). Handy for a home-screen bookmark. See the README for examples." },
     { v: "v827", date: "2026-08-03", text: "Zoom now lands exactly on the H3 grid. Each zoom step corresponds to one H3 resolution drawn at its natural on-screen size, so the hexagons no longer render slightly too big or too small between steps. The deepest zoom is H3 resolution 13 (≈ level 19), and offline downloads still reach detail level 19." },
@@ -9050,6 +9051,15 @@
   // A saved list's colour: an explicit list colour if set (via the list editor),
   // else the automatic name-hashed colour.
   function collColor(c) { return (c && c.color) || mpHashColor(c ? c.name : ""); }
+  // A saved point-list is a "route" if it was saved from the route bar (c.route), or
+  // — for lists saved before that flag existed — every point came from the route
+  // (source "route"). Shown route lists render as numbered stops + get the nav bar.
+  function isRouteColl(c) {
+    if (!c) return false;
+    if (c.route) return true;
+    var pts = c.points || [];
+    return pts.length > 0 && pts.every(function (p) { return p && p.source === "route"; });
+  }
   // Whole-list editor: set a colour + tags applied to every point in the list
   // (and rename it). Opened from the ✎ on a list row in the Points overview.
   function openCollEditModal(name) {
@@ -9565,21 +9575,36 @@
     setStatus(t("route.added", { n: routePoints.length }));
   }
   function clearRoute() { routePoints = []; saveRoute(); updateRouteChip(); renderRoutePoints(); }
-  // Each route stop is drawn on the map as a numbered pin; tapping one offers to
-  // remove it from the route.
+  // The stops of every SHOWN saved route list (ticked in the Points panel), in list
+  // then point order — used to display + navigate a reloaded saved route.
+  function shownRouteStops() {
+    var out = [];
+    mpCollections.forEach(function (c) {
+      if (!shownColls[c.name] || !isRouteColl(c)) return;
+      (c.points || []).forEach(function (p) { if (p && isFinite(+p.lat) && isFinite(+p.lon)) out.push({ lat: +p.lat, lon: +p.lon, name: p.name || "" }); });
+    });
+    return out;
+  }
+  // The route currently on the map + in the nav bar: the in-progress basket if it has
+  // stops, otherwise a reloaded saved route (its shown list). `fromBasket` says which,
+  // so the pins offer "remove stop" only while editing the live basket.
+  function activeRoute() { return routePoints.length ? routePoints : shownRouteStops(); }
+  // Each route stop is drawn on the map as a numbered pin; tapping one (in the live
+  // basket) offers to remove it from the route.
   var routeLayer = null;
   function renderRoutePoints() {
     if (!map) return;
     if (!routeLayer) routeLayer = L.layerGroup().addTo(map);
     routeLayer.clearLayers();
-    routePoints.forEach(function (p, i) {
+    var fromBasket = routePoints.length > 0;
+    activeRoute().forEach(function (p, i) {
       var icon = L.divIcon({ className: "route-pin-icon", html: '<div class="route-pin">' + (i + 1) + "</div>", iconSize: [26, 26], iconAnchor: [13, 13] });
       var m = L.marker([p.lat, p.lon], { icon: icon, keyboard: false, zIndexOffset: 800 });
       var pop = document.createElement("div"); pop.className = "route-pop";
       var ttl = document.createElement("div"); ttl.className = "route-pop-name";
       ttl.textContent = (i + 1) + ". " + (p.name || t("route.stop", { n: i + 1 }));
-      var del = makePopupBtn("🗑 " + t("route.remove"), "demo-btn-light", function () { map.closePopup(); removeFromRoute(i); });
-      pop.appendChild(ttl); pop.appendChild(del);
+      pop.appendChild(ttl);
+      if (fromBasket) pop.appendChild(makePopupBtn("🗑 " + t("route.remove"), "demo-btn-light", function () { map.closePopup(); removeFromRoute(i); }));
       m.bindPopup(pop, { className: "route-pop-popup" });
       routeLayer.addLayer(m);
     });
@@ -9596,38 +9621,53 @@
     if (!routePoints.length) { setStatus(t("nav.empty")); return; }
     modalPrompt(t("route.savePrompt"), "").then(function (nm) {
       nm = (nm || "").trim(); if (!nm) return;
+      var saved = routePoints.length;
       var c = mpCollections.filter(function (x) { return x.name === nm; })[0];
       if (!c) { c = { name: nm, points: [] }; mpCollections.push(c); }
+      c.route = true;   // mark it a route so reloading it restores numbered stops + the nav bar
       routePoints.forEach(function (p, i) {
         c.points.push({ id: mpUid(), lat: p.lat, lon: p.lon, name: p.name || t("route.stop", { n: i + 1 }), source: "route", createdAt: new Date().toISOString() });
       });
       shownColls[nm] = true;
+      // The route now lives on as this shown saved list — empty the live basket so the
+      // stops aren't drawn twice; the saved list keeps the numbered pins + nav bar.
+      routePoints = []; saveRoute();
       saveMapPoints(); saveShownState(); renderMapPoints(); refreshMpPanel();
-      setStatus(t("route.saved", { name: nm, n: routePoints.length }));
+      setStatus(t("route.saved", { name: nm, n: saved }));
     });
   }
   function navigateRoute() {
-    if (!routePoints.length) { setStatus(t("nav.empty")); return; }
-    var stops = routePoints.slice(0, GMAP_MAX_STOPS);   // add-order is the user's intended order — don't reshuffle
+    var route = activeRoute();
+    if (!route.length) { setStatus(t("nav.empty")); return; }
+    var stops = route.slice(0, GMAP_MAX_STOPS);   // add-order is the user's intended order — don't reshuffle
     openExternal(gmapRoute(stops));
-    if (routePoints.length > GMAP_MAX_STOPS) setStatus(t("nav.capped", { n: GMAP_MAX_STOPS, dropped: routePoints.length - GMAP_MAX_STOPS }));
+    if (route.length > GMAP_MAX_STOPS) setStatus(t("nav.capped", { n: GMAP_MAX_STOPS, dropped: route.length - GMAP_MAX_STOPS }));
     else setStatus(t("nav.opened", { n: stops.length }));
+  }
+  // The chip's × clears the live basket, or (for a reloaded saved route) hides it.
+  function clearOrHideRoute() {
+    if (routePoints.length) { clearRoute(); return; }
+    var changed = false;
+    mpCollections.forEach(function (c) { if (isRouteColl(c) && shownColls[c.name]) { delete shownColls[c.name]; changed = true; } });
+    if (changed) { saveShownState(); renderMapPoints(); }
   }
   // A floating pill (shown only while the basket has stops) with the count, a
   // Navigate button and a Clear ×.
   var routeChipEl = null;
   function updateRouteChip() {
     if (!routeChipEl) { routeChipEl = document.createElement("div"); routeChipEl.id = "route-chip"; document.body.appendChild(routeChipEl); }
-    if (!routePoints.length) { routeChipEl.style.display = "none"; return; }
+    var route = activeRoute(), fromBasket = routePoints.length > 0;
+    if (!route.length) { routeChipEl.style.display = "none"; return; }
     routeChipEl.style.display = "";
     routeChipEl.innerHTML =
-      '<span class="route-chip-lbl">' + ico("nav") + "<span>" + escapeHtml(t("route.count", { n: routePoints.length })) + "</span></span>" +
+      '<span class="route-chip-lbl">' + ico("nav") + "<span>" + escapeHtml(t("route.count", { n: route.length })) + "</span></span>" +
       '<button type="button" class="route-go">' + escapeHtml(t("route.go")) + "</button>" +
-      '<button type="button" class="route-save">' + escapeHtml(t("route.save")) + "</button>" +
+      // "Save route" only applies to the live basket; a reloaded saved route is already saved.
+      (fromBasket ? '<button type="button" class="route-save">' + escapeHtml(t("route.save")) + "</button>" : "") +
       '<button type="button" class="route-clear" aria-label="' + escapeHtml(t("route.clear")) + '" title="' + escapeHtml(t("route.clear")) + '">×</button>';
     routeChipEl.querySelector(".route-go").addEventListener("click", navigateRoute);
-    routeChipEl.querySelector(".route-save").addEventListener("click", saveRouteAsList);
-    routeChipEl.querySelector(".route-clear").addEventListener("click", clearRoute);
+    var sv = routeChipEl.querySelector(".route-save"); if (sv) sv.addEventListener("click", saveRouteAsList);
+    routeChipEl.querySelector(".route-clear").addEventListener("click", clearOrHideRoute);
   }
   // ---- Whole-list overlay: a coloured KML of pins for Google My Maps ----------
   // #RRGGBB → KML aabbggrr, so My Maps tints each pin the app's colour.
@@ -9840,8 +9880,10 @@
     // key) are plotted through the shared detection pipeline (syncListDetections),
     // so they obey the same legend filters and open the same popups as fetched
     // data. Manually-tagged points (no species key) keep their own pin + editor.
+    var routeShows = routePoints.length === 0;   // reloaded saved routes own the numbered-pin display only when the basket is empty
     mpCollections.forEach(function (c) {
       if (!shownColls[c.name]) return;
+      if (routeShows && isRouteColl(c)) return;   // drawn as numbered route stops (renderRoutePoints), not plain pins
       var col = collColor(c);
       (c.points || []).forEach(function (p) {
         if (!p || !isFinite(p.lat) || !isFinite(p.lon)) return;
@@ -9850,6 +9892,8 @@
       });
     });
     syncListDetections();     // merge shown lists' detection points into detPlot
+    renderRoutePoints();      // numbered stops for the basket, or a reloaded saved route
+    updateRouteChip();        // and its bottom nav bar
     refreshMpPanel();
     updateMpBadge();
   }

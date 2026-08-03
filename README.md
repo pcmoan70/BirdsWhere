@@ -386,7 +386,9 @@ an **eBird Record Format CSV** ready for [ebird.org/import](https://ebird.org/im
   re-centres on your live position as you move) → **read** (a fixed centre cursor: pan a plotted
   dot, map point or eBird hotspot under it to open it). Press-and-hold recalls **stored locations**.
 - **Route basket** — add points/species stops; a floating **Route (N) · Navigate** pill opens the
-  whole ordered route in Google Maps. It survives reload.
+  whole ordered route in Google Maps. It survives reload. **Save route** keeps it as a named list in the
+  Points panel; ticking that list again (or reopening the app with it shown) brings the numbered stops
+  and the Navigate bar back, so a saved route reloads ready to navigate.
 - **Fullscreen** toggle, and a **Nearby places** picker.
 
 ---

@@ -1,5 +1,19 @@
 # Changes
 
+## 2026-08-03 — Saved routes reload as numbered, navigable routes (sw v832)
+
+- A saved point-list is now recognised as a **route** (`isRouteColl`: the new `c.route` flag set by
+  `saveRouteAsList`, or — for older saves — every point's `source === "route"`).
+- **Reloading/showing a saved route restores the route UI**: `activeRoute()` = the live basket if it has
+  stops, else `shownRouteStops()` (the ticked route lists). `renderRoutePoints` draws numbered stops for
+  it and `updateRouteChip` shows the bottom nav bar; both are now refreshed from `renderMapPoints`, and a
+  shown route list is skipped in the plain-pin loop (drawn as numbered stops instead). So ticking a saved
+  route — or reopening the app with one shown — brings back the numbers + the navigate bar.
+- **Saving a route** (`saveRouteAsList`) marks the list `route: true` and **empties the live basket**, so
+  the stops live on as the shown saved list (no double-drawn pins). The route bar hides its "Save" button
+  for a reloaded saved route (already saved) and its × hides the shown route rather than clearing a basket.
+- `navigateRoute` routes `activeRoute()`, so Navigate works for a reloaded saved route too.
+
 ## 2026-08-03 — Detections list header/toolbar tidy-up (sw v831)
 
 - **Reverted** the per-record inline ➤/＋➤ buttons from v830 (too noisy on every species row).
