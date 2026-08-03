@@ -1,5 +1,20 @@
 # Changes
 
+## 2026-08-03 — Group-aware photo links (iNaturalist for all; Macaulay birds-only) (sw v815)
+
+- Species menu's external references are now chosen by group. New URL helpers `inatPhotosUrl`,
+  `powoUrl`, `adwUrl`.
+  - **iNaturalist photos** added for **every** species — the one photo source that works beyond
+    birds (mammals, plants, fungi, insects, amphibians).
+  - **Macaulay Library** now shows **only for birds** (was a near-useless `q=` search for others).
+  - **Kew POWO** added for **plants**; **Animal Diversity Web** for **mammals**; **Xeno-canto**
+    (audio) restricted to animals (dropped for plants/fungi).
+- The Information section now renders for **non-model species too** (plants/fungi extras): they
+  reach it via a sci name (derived from the `x:<sci>` key), so they finally get photo/reference
+  links. Model-only actions (range/migration/distribution map) stay gated to model species.
+- Class resolved via `detClassOf` (works for plotted extras) / `taxByCode`. 3 new i18n keys
+  (`menu.inat/adw/powo`) in 15 languages, reusing each locale's "Photos" descriptor. Help updated.
+
 ## 2026-08-03 — Fix Norwegian "kråke" folding into svartkråke (Corvus corone) (sw v814)
 
 - **Root cause (verified against the live APIs):** Artsobservasjoner records the Hooded Crow

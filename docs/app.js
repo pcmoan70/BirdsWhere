@@ -1441,6 +1441,19 @@
   function xenoCantoUrl(sci) {
     return "https://xeno-canto.org/explore?query=" + encodeURIComponent(String(sci || "").trim());
   }
+  // iNaturalist taxon page (photos for EVERY group — mammals, plants, fungi, …), by
+  // scientific name. The one photo link that works beyond birds.
+  function inatPhotosUrl(sci) {
+    return "https://www.inaturalist.org/taxa/search?q=" + encodeURIComponent(String(sci || "").trim());
+  }
+  // Kew — Plants of the World Online (authoritative plant photos + info).
+  function powoUrl(sci) {
+    return "https://powo.science.kew.org/results?q=" + encodeURIComponent(String(sci || "").trim());
+  }
+  // Animal Diversity Web (mammal photos + accounts), by scientific name.
+  function adwUrl(sci) {
+    return "https://animaldiversity.org/search/?q=" + encodeURIComponent(String(sci || "").trim());
+  }
   // NBN Atlas (UK) species search by scientific name.
   function nbnUrl(sci) { return "https://species.nbnatlas.org/search?q=" + encodeURIComponent(String(sci || "").trim()); }
   // EuroBirdPortal — animated week-by-week European distribution maps. It addresses
@@ -2089,6 +2102,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v815", date: "2026-08-03", text: "Better photo links per group in the species menu. iNaturalist photos are now offered for every species — the one source that covers mammals, plants and fungi, not just birds. Macaulay Library is shown for birds only (where it shines), with Kew's Plants of the World added for plants and Animal Diversity Web for mammals. Plants/fungi (which aren't in the AI model) now get these reference links too." },
     { v: "v813", date: "2026-08-02", text: "Hover a species name (on desktop) for a small popup with its scientific name — shown when “Scientific names” is enabled in Settings — and, on a second line, its name in your chosen second language when that's set. Handy wherever the name shows without those columns (the legend, the detections list, menus)." },
     { v: "v809", date: "2026-08-01", text: "Place labels overlay fixed. On the Light and Dark basemaps it used to print a second set of place names on top of the map's own — now it switches the base to a labels-free version so the overlay is the only set of names (no more doubling up), and “More” pulls in the next zoom's denser names so it's genuinely more detailed than the plain map. Satellite works as before (it has no names of its own); Streets and Topographic keep their built-in names, since those tiles can't be stripped." },
     { v: "v806", date: "2026-08-01", text: "Fetch on open is now smarter about your attention: if you don't touch the app while it loads your monitored locations, it fits all the points in view and maximizes the legend when done — so the names of the most interesting detections are right there. If you've already started using the app, the points just fill in quietly on the map in the background without moving your view." },
@@ -6976,8 +6990,16 @@
     el.innerHTML = "";
     var redraw = refresh || renderDetListModal;   // detection-list / stored-pin refresh
     var key = d.key, lbl = key && labelsByKey[key];
+    var isExtra = key && key.indexOf("x:") === 0;   // non-model species (plants/fungi/other) keyed "x:<sci>"
     var name = d.name || (lbl && speciesName(lbl)) || key || "";
-    var sci = d.sci || (lbl && lbl.sci) || name;
+    var sci = d.sci || (lbl && lbl.sci) || (isExtra ? key.slice(2) : name);
+    // Class drives which external references apply (birds → Macaulay/BirdLife;
+    // mammals → ADW; plants → Kew POWO; iNaturalist works for all).
+    var mcls = String((lbl ? (taxByCode[key] || {}).class_name : detClassOf(key)) || "").toLowerCase();
+    var isBird = isBirdKey(key) || mcls === "aves";
+    var isMammal = mcls === "mammalia";
+    var isPlant = mcls === "plantae";
+    var isFungi = mcls === "fungi";
     var hasLoc = d.lat != null && !isNaN(+d.lat) && d.lon != null && !isNaN(+d.lon);
     var hasObs = !!(d.url || hasLoc || (d.mpId && d.listName));
     function head(k) { var h = document.createElement("div"); h.className = "detrow-menu-hdr"; h.textContent = t(k); el.appendChild(h); }
@@ -6998,24 +7020,32 @@
       el.appendChild(drmBtn(t("detmenu.addList"), function () { drmRenderLists(el, d); }));
       if (d.mpId && d.listName) el.appendChild(drmBtn(t("detmenu.removeFromList"), function () { closeDetRowMenu(); removeListPoint(d.listName, d.mpId); redraw(); }, "block"));
     }
-    // 2) Information — learn about the species (model species only).
-    if (lbl) {
+    // 2) Information — learn about the species. Model species get the full set
+    // (range/migration/distribution map); non-model species (plants/fungi extras)
+    // still get the external references, chosen by group.
+    if (lbl || (sci && /\s/.test(sci))) {
       head("menu.secInfo");
-      el.appendChild(drmBtn(t("menu.apprange"), function () { closeDetRowMenu(); showSpeciesRange(key, d && d.date); }));
-      el.appendChild(drmBtn(t("menu.appmig"), function () { closeDetRowMenu(); showSpeciesMigration(key, d && d.date); }));
+      if (lbl) {
+        el.appendChild(drmBtn(t("menu.apprange"), function () { closeDetRowMenu(); showSpeciesRange(key, d && d.date); }));
+        el.appendChild(drmBtn(t("menu.appmig"), function () { closeDetRowMenu(); showSpeciesMigration(key, d && d.date); }));
+      }
       el.appendChild(drmBtn(t("menu.recent"), function () {
         closeDetRowMenu();
         var la = hasLoc ? +d.lat : (marker ? marker.getLatLng().lat : map.getCenter().lat);
         var lo = hasLoc ? +d.lon : (marker ? marker.getLatLng().lng : map.getCenter().lng);
         showRecent(name, sci, la, lo, key);
       }));
-      el.appendChild(drmBtn(t("menu.distmap"), function () { closeDetRowMenu(); showDistMap(name, sci, key); }));
+      if (lbl) el.appendChild(drmBtn(t("menu.distmap"), function () { closeDetRowMenu(); showDistMap(name, sci, key); }));
       el.appendChild(drmBtn(t("menu.wiki"), function () { closeDetRowMenu(); openWikipedia(sci); }));
-      if (isBirdKey(key)) el.appendChild(drmBtn(t("menu.birdlife"), function () { closeDetRowMenu(); openBirdLife((lbl && lbl.common) || name, sci); }));
-      el.appendChild(drmBtn(t("menu.macaulay"), function () { closeDetRowMenu(); openExternal(macaulayUrl(key, sci, d && d.date)); }));
-      el.appendChild(drmBtn(t("menu.xeno"), function () { closeDetRowMenu(); openExternal(xenoCantoUrl(sci)); }));
+      if (isBird) el.appendChild(drmBtn(t("menu.birdlife"), function () { closeDetRowMenu(); openBirdLife((lbl && lbl.common) || name, sci); }));
+      // iNaturalist — photos for EVERY group (the one that works beyond birds).
+      el.appendChild(drmBtn(t("menu.inat"), function () { closeDetRowMenu(); openExternal(inatPhotosUrl(sci)); }));
+      if (isBird) el.appendChild(drmBtn(t("menu.macaulay"), function () { closeDetRowMenu(); openExternal(macaulayUrl(key, sci, d && d.date)); }));   // birds only now
+      if (isMammal) el.appendChild(drmBtn(t("menu.adw"), function () { closeDetRowMenu(); openExternal(adwUrl(sci)); }));
+      if (isPlant) el.appendChild(drmBtn(t("menu.powo"), function () { closeDetRowMenu(); openExternal(powoUrl(sci)); }));
+      if (!isPlant && !isFungi) el.appendChild(drmBtn(t("menu.xeno"), function () { closeDetRowMenu(); openExternal(xenoCantoUrl(sci)); }));   // sounds — animals only
       el.appendChild(drmBtn(t("menu.nbn"), function () { closeDetRowMenu(); openExternal(nbnUrl(sci)); }));
-      if (isBirdKey(key)) el.appendChild(drmBtn(t("menu.ebp"), function () { closeDetRowMenu(); openExternal(ebpUrl(sci)); }));
+      if (isBird) el.appendChild(drmBtn(t("menu.ebp"), function () { closeDetRowMenu(); openExternal(ebpUrl(sci)); }));
     }
     // 3) Lists & actions — your data (any keyed species).
     if (key) {
