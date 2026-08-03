@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-03 — Move the List⇄Map switch into the green top bar (sw v821)
+
+- The switch is now relocated into `#site-header` (the green top bar) at init — appended right
+  before `#fs-wrap`, with `margin-left:auto` so it sits **immediately left of the Fullscreen icon**
+  — instead of the controls row above the map (where the status text shows). Restyled for the green
+  bar (translucent-white buttons, white-on-green icons, active = solid white with a brand-green icon).
+
 ## 2026-08-03 — Header List⇄Map switch · points icon · checklist moved (sw v820)
 
 - **List ⇄ Map switch** in the header (between the Points and Fullscreen icons), shown while a

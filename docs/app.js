@@ -4858,6 +4858,8 @@
       if (hdr && chkWrap) hdr.appendChild(chkWrap);
       var mpWrap = document.getElementById("mp-wrap");
       if (hdr && mpWrap) hdr.appendChild(mpWrap);
+      var vtWrap = document.getElementById("viewtoggle-wrap");
+      if (hdr && vtWrap) hdr.appendChild(vtWrap);   // List⇄Map switch, between Points and Fullscreen
       var fsWrap = document.getElementById("fs-wrap");
       if (hdr && fsWrap) hdr.appendChild(fsWrap);   // fullscreen toggle next to the Points button
       syncHeaderHeight();

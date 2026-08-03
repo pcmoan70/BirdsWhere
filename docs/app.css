@@ -2015,13 +2015,16 @@ button.dd-name:hover { text-decoration: underline; }
 }
 .map-help-pop .map-help-title { font-weight: 700; color: var(--brand-strong, #0b3a3a); margin-bottom: 4px; }
 .map-help-pop .map-help-body { white-space: pre-wrap; }
-/* Header List ⇄ Map segmented switch (for a fetched species list). */
-.view-seg { display: inline-flex; align-items: stretch; border: 1px solid var(--border, #ccc); border-radius: 8px; overflow: hidden; }
-.view-seg .vt-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: none; background: transparent; color: var(--ink-muted, #777); cursor: pointer; }
-.view-seg .vt-btn + .vt-btn { border-left: 1px solid var(--border, #ccc); }
-.view-seg .vt-btn.on { background: var(--brand, #0b7a5a); color: #fff; }
-.view-seg .vt-btn:not(.on):not(:disabled):hover { background: var(--surface-2, #eee); }
-.view-seg .vt-btn:disabled { opacity: 0.4; cursor: default; }
+/* Header List ⇄ Map segmented switch (in the green top bar, left of Fullscreen). */
+#site-header #viewtoggle-wrap { flex: 0 0 auto; margin-left: auto; }   /* pin to the right, just before #fs-wrap */
+.view-seg { display: inline-flex; align-items: stretch; height: 34px; box-sizing: border-box;
+  border: 1px solid rgba(255,255,255,0.28); border-radius: var(--radius-sm, 6px); overflow: hidden; }
+.view-seg .vt-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 100%;
+  padding: 0; border: none; background: rgba(255,255,255,0.10); color: #f3faf7; cursor: pointer; transition: background 0.15s; }
+.view-seg .vt-btn + .vt-btn { border-left: 1px solid rgba(255,255,255,0.28); }
+.view-seg .vt-btn.on { background: #fff; color: var(--brand-strong, #0b3a3a); }
+.view-seg .vt-btn:not(.on):not(:disabled):hover { background: rgba(255,255,255,0.22); }
+.view-seg .vt-btn:disabled { opacity: 0.45; cursor: default; }
 
 #sp-menu {
   position: absolute;
