@@ -7736,7 +7736,33 @@
     var bc = document.getElementById("barchart-panel"); if (bc) bc.style.display = "none";
     sp.classList.add("as-page"); sp.style.display = "block"; sp.scrollTop = 0;
     navOpen("page", closeAnyFullPage);
+    restrictListToView();   // the switch reflects the CURRENT map view
     updateViewToggle();
+  }
+  // Opening the list from the map restricts it to the species that actually have a
+  // visible plotted detection inside the current map viewport — so the list matches
+  // what's on screen. (A one-shot pass over the already-rendered rows.)
+  function restrictListToView() {
+    var tbody = document.getElementById("sp-tbody"); if (!tbody || !map) return;
+    var b = map.getBounds();
+    var inView = Object.create(null);
+    Object.keys(detPlot).forEach(function (k) {
+      var e = detPlot[k]; if (!e || !e.rows) return;
+      for (var i = 0; i < e.rows.length; i++) {
+        var r = e.rows[i];
+        if (isFinite(+r.lat) && isFinite(+r.lon) && b.contains([+r.lat, +r.lon]) && detDatePasses(r.date)) { inView[k] = 1; break; }
+      }
+    });
+    var shown = 0;
+    Array.prototype.forEach.call(tbody.querySelectorAll("tr"), function (tr) {
+      var key, sl = tr.querySelector(".sp-link");
+      if (sl) key = sl.getAttribute("data-key");
+      else { var ex = tr.querySelector(".det-count-extra[data-sci]"); if (ex) key = "x:" + String(ex.getAttribute("data-sci") || "").toLowerCase(); }
+      var show = !!(key && inView[key]);
+      tr.style.display = show ? "" : "none";
+      if (show) shown++;
+    });
+    try { setStatus(t("sp.inView", { n: shown })); } catch (e) {}
   }
   function goToMapView() {
     if (!viewToggleAvail()) return;

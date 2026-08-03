@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-08-03 — Switching to the List restricts it to the current map view (sw v822)
+
+- When you flip from Map → List with the header switch, `restrictListToView()` now hides every
+  species-list row whose species has **no visible plotted detection inside the current map
+  viewport** — so the list matches what's on screen. A "In map view: {n} species" status confirms
+  the count. One-shot over the rendered rows (interacting with the list re-reveals all, so it's not
+  a trap); the initial fetch list is still the full list.
+- New i18n `sp.inView` (15 languages).
+
 ## 2026-08-03 — Move the List⇄Map switch into the green top bar (sw v821)
 
 - The switch is now relocated into `#site-header` (the green top bar) at init — appended right
