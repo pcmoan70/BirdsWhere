@@ -2102,7 +2102,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
-    { v: "v817", date: "2026-08-03", text: "On a PC, hold Shift and hover over a map control (Locate/crosshair, Close by, or Place search) to get a popover explaining what it does and how its interactions work. If the explanation is long it scrolls — move onto the popover (keeping Shift down) and scroll. Not shown on touch devices." },
+    { v: "v818", date: "2026-08-03", text: "On a PC, hold Shift and hover over a control for a popover explaining what it does and how it works — now on the Locate/crosshair, Close by, Place search and offline-maps buttons, the legend's top row, and the detections list. Long explanations scroll (move onto the popover, keeping Shift down). Not shown on touch devices." },
     { v: "v815", date: "2026-08-03", text: "Better photo links per group in the species menu. iNaturalist photos are now offered for every species — the one source that covers mammals, plants and fungi, not just birds. Macaulay Library is shown for birds only (where it shines), with Kew's Plants of the World added for plants and Animal Diversity Web for mammals. Plants/fungi (which aren't in the AI model) now get these reference links too." },
     { v: "v813", date: "2026-08-02", text: "Hover a species name (on desktop) for a small popup with its scientific name — shown when “Scientific names” is enabled in Settings — and, on a second line, its name in your chosen second language when that's set. Handy wherever the name shows without those columns (the legend, the detections list, menus)." },
     { v: "v809", date: "2026-08-01", text: "Place labels overlay fixed. On the Light and Dark basemaps it used to print a second set of place names on top of the map's own — now it switches the base to a labels-free version so the overlay is the only set of names (no more doubling up), and “More” pulls in the next zoom's denser names so it's genuinely more detailed than the plain map. Satellite works as before (it has no names of its own); Streets and Topographic keep their built-in names, since those tiles can't be stripped." },
@@ -4763,7 +4763,7 @@
         '</div></div>' +
         '<div id="detlist-modal" style="display:none"><div id="detlist-box">' +
           '<button type="button" id="detlist-close" aria-label="Close">×</button>' +
-          '<div id="detlist-head">' +
+          '<div id="detlist-head" data-help="maphelp.detlist" data-help-title="detlist.title">' +
             '<h3 id="detlist-title">Detections</h3>' +
             '<div id="detlist-actions">' +
               '<button type="button" id="detlist-save" class="detlist-save-btn ico-btn">' + ico("save") + '<span class="ico-label" data-i18n="detlist.save">Save</span></button>' +
@@ -5154,18 +5154,14 @@
     keepListScroll = false;   // clear if no list render consumed it (e.g. barchart mode)
   }
 
-  // Shift + hover over a map function button → a scrollable popover explaining that
-  // control's interactions (the kind of detail that lives in About). Desktop only —
-  // disabled on touch (no hover, no Shift). The controls are created later, so this
-  // uses event delegation on document.
-  var MAP_HELP = [
-    { sel: ".geo-locate-btn", title: "ctrl.crossHold", body: "maphelp.cross" },
-    { sel: ".nearby-btn", title: "ctrl.nearby", body: "maphelp.nearby" },
-    { sel: ".place-search-btn", title: "ctrl.placeSearch", body: "maphelp.search" }
-  ];
+  // Shift + hover over any element carrying a data-help="<i18n key>" attribute → a
+  // scrollable popover explaining that control's interactions (the detail that lives
+  // in About). Optional data-help-title="<key>", else the element's own title text is
+  // the heading. Desktop only — disabled on touch (no hover, no Shift). Uses document
+  // delegation so it also covers re-rendered UI (legend row, detections list).
   function initMapHelpTips() {
     if (window.matchMedia && !window.matchMedia("(hover: hover)").matches) return;   // touch → no shift-hover help
-    var pop = null, hideT = null, hovered = null, shiftDown = false;
+    var pop = null, hideT = null, hovered = null, shiftDown = false, mx = 0, my = 0;
     function ensure() {
       if (!pop) {
         pop = document.createElement("div"); pop.className = "map-help-pop"; pop.style.display = "none";
@@ -5176,32 +5172,34 @@
       return pop;
     }
     function hide() { clearTimeout(hideT); if (pop) pop.style.display = "none"; }
-    function matchFor(el) { for (var i = 0; i < MAP_HELP.length; i++) { if (el.closest(MAP_HELP[i].sel)) return MAP_HELP[i]; } return null; }
-    function show(el, spec) {
+    function helpEl(el) { return el && el.closest ? el.closest("[data-help]") : null; }
+    function show(el) {
       var p = ensure();
+      var ttKey = el.getAttribute("data-help-title");
+      var title = ttKey ? t(ttKey) : (el.getAttribute("title") || el.getAttribute("aria-label") || "");
       p.innerHTML = '<div class="map-help-title"></div><div class="map-help-body"></div>';
-      p.querySelector(".map-help-title").textContent = t(spec.title);
-      p.querySelector(".map-help-body").textContent = t(spec.body);
+      var tt = p.querySelector(".map-help-title"); tt.textContent = title; tt.style.display = title ? "" : "none";
+      p.querySelector(".map-help-body").textContent = t(el.getAttribute("data-help"));
       p.style.left = "0px"; p.style.top = "0px"; p.style.display = "block";
-      var r = el.getBoundingClientRect(), pw = p.offsetWidth, ph = p.offsetHeight;
-      var left = r.right + 8; if (left + pw > window.innerWidth - 6) left = Math.max(6, r.left - pw - 8);   // flip left if no room
-      var top = r.top; if (top + ph > window.innerHeight - 6) top = Math.max(6, window.innerHeight - ph - 6);
+      var pw = p.offsetWidth, ph = p.offsetHeight;   // position near the cursor, flipping to stay on-screen
+      var left = mx + 14; if (left + pw > window.innerWidth - 6) left = Math.max(6, mx - pw - 14);
+      var top = my + 16; if (top + ph > window.innerHeight - 6) top = Math.max(6, my - ph - 16);
+      if (top < 6) top = 6;
       p.style.left = Math.round(left) + "px"; p.style.top = Math.round(top) + "px";
     }
+    document.addEventListener("mousemove", function (e) { mx = e.clientX; my = e.clientY; }, true);
     document.addEventListener("mouseover", function (e) {
-      var t2 = e.target; if (!t2 || !t2.closest) return;
-      var spec = matchFor(t2);
-      if (!spec) return;
-      hovered = spec; clearTimeout(hideT);
-      if (shiftDown) show(t2.closest(spec.sel), spec);
+      var el = helpEl(e.target); if (!el) return;
+      hovered = el; clearTimeout(hideT);
+      if (shiftDown) show(el);
     });
     document.addEventListener("mouseout", function (e) {
-      var t2 = e.target; if (!t2 || !t2.closest || !matchFor(t2)) return;
+      if (!helpEl(e.target)) return;
       var to = e.relatedTarget;
-      if (to && to.closest && (matchFor(to) || to.closest(".map-help-pop"))) return;   // moved onto the same control or the popover
+      if (to && to.closest && (helpEl(to) === helpEl(e.target) || to.closest(".map-help-pop"))) return;   // still on the control or the popover
       hovered = null; hideT = setTimeout(hide, 150);
     });
-    document.addEventListener("keydown", function (e) { if (e.key === "Shift" && !shiftDown) { shiftDown = true; if (hovered) { var el = document.querySelector(hovered.sel + ":hover"); if (el) show(el, hovered); } } });
+    document.addEventListener("keydown", function (e) { if (e.key === "Shift" && !shiftDown) { shiftDown = true; if (hovered && document.body.contains(hovered)) show(hovered); } });
     document.addEventListener("keyup", function (e) { if (e.key === "Shift") { shiftDown = false; hide(); } });
     window.addEventListener("blur", function () { shiftDown = false; hide(); });
   }
@@ -5297,7 +5295,7 @@
         var a = L.DomUtil.create("a", "geo-locate-btn", c);
         a.href = "#";
         a.title = t("ctrl.crossHold");
-        a.setAttribute("aria-label", t("ctrl.crossHold"));
+        a.setAttribute("aria-label", t("ctrl.crossHold")); a.setAttribute("data-help", "maphelp.cross");
         a.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">' +
           '<circle cx="12" cy="12" r="6"/><line x1="12" y1="1" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="23"/>' +
           '<line x1="1" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="23" y2="12"/></svg>';
@@ -5320,7 +5318,7 @@
         var a = L.DomUtil.create("a", "nearby-btn", c);
         a.href = "#";
         a.title = t("ctrl.nearby");
-        a.setAttribute("aria-label", t("ctrl.nearby"));
+        a.setAttribute("aria-label", t("ctrl.nearby")); a.setAttribute("data-help", "maphelp.nearby");
         a.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
           '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>' +
           '<circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg>';
@@ -5363,7 +5361,7 @@
         var c = L.DomUtil.create("div", "leaflet-bar leaflet-control place-search-ctrl");
         L.DomEvent.disableClickPropagation(c);
         var a = L.DomUtil.create("a", "place-search-btn", c);
-        a.href = "#"; a.title = t("ctrl.placeSearch"); a.setAttribute("aria-label", t("ctrl.placeSearch"));
+        a.href = "#"; a.title = t("ctrl.placeSearch"); a.setAttribute("aria-label", t("ctrl.placeSearch")); a.setAttribute("data-help", "maphelp.search");
         a.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
           '<circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>';   // magnifying glass
         // Tap = place search; press-and-hold (touch) or right-click (mouse) =
@@ -5458,7 +5456,7 @@
         var c = L.DomUtil.create("div", "leaflet-bar leaflet-control");
         L.DomEvent.disableClickPropagation(c);
         var a = L.DomUtil.create("a", "map-dl-btn", c);
-        a.href = "#"; a.title = t("ctrl.downloadHold"); a.setAttribute("aria-label", t("ctrl.downloadHold"));
+        a.href = "#"; a.title = t("ctrl.downloadHold"); a.setAttribute("aria-label", t("ctrl.downloadHold")); a.setAttribute("data-help", "maphelp.offline");
         a.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
           '<path d="M12 3v10"/><path d="M8 11l4 4 4-4"/><path d="M4 19h16"/></svg>';
         // Tap = download the current view; press-and-hold (touch OR mouse) or
@@ -8593,7 +8591,7 @@
     // cap is truncating the map, and the species rows.
     var hasSel = detSelectionActive();
     var hasFilter = detHasFilter();   // any filter active → show the black × (clear all)
-    el.innerHTML = '<div class="det-legend-head">' +
+    el.innerHTML = '<div class="det-legend-head" data-help="maphelp.legend">' +
         '<button type="button" class="det-min" title="' + escapeHtml(t("det.minimise")) + '" aria-label="' + escapeHtml(t("det.minimise")) + '">−</button>' +
         '<button type="button" class="det-list-btn ico-btn' + (hasFilter ? " filtered" : "") + '" title="' + escapeHtml(t("detlist.open")) + '" aria-label="' + escapeHtml(t("detlist.open")) + '">' + ico("menu") + "</button>" +
         (hasFilter ? '<button type="button" class="det-clear-sel" title="' + escapeHtml(t("det.clearFilters")) + '" aria-label="' + escapeHtml(t("det.clearFilters")) + '">×</button>' : "") +

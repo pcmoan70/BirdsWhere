@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-08-03 — Extend Shift+hover help to offline / legend / detections list (sw v818)
+
+- Generalised the Shift+hover help to a reusable `data-help="<i18n key>"` (+ optional
+  `data-help-title`) attribute so it also covers **re-rendered** UI. `initMapHelpTips` now
+  delegates on `[data-help]` and positions near the cursor.
+- Added help to: the **offline-maps download** button (`maphelp.offline`), the **legend top row**
+  (`maphelp.legend`), and the **detections-list** header (`maphelp.detlist`, titled via the existing
+  `detlist.title`). The 3 map buttons now carry `data-help` too.
+- 3 new i18n keys in 15 languages (long → the popover scrolls).
+
 ## 2026-08-03 — Shift+hover help on the map function buttons (desktop) (sw v817)
 
 - On a PC, holding **Shift** while hovering the **Locate/crosshair**, **Close by**, or **Place
