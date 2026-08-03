@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-08-03 — Header List⇄Map switch · points icon · checklist moved (sw v820)
+
+- **List ⇄ Map switch** in the header (between the Points and Fullscreen icons), shown while a
+  fetched species list is available (Species-List / Historic). Flips between the list page and the
+  plotted map, so you can hop back to the list from the map. Replaces the in-list "📍 Map" button.
+  `showListView` / `goToMapView` / `updateViewToggle`; nav-stack aware (navOpen/navClose "page").
+- **Map-points header icon** changed to 6 scattered dots.
+- **Checklist button** moved from the top of the species-list page to the **bottom action row**,
+  next to PDF (and CSV, which `relocateCsvButton` already docks there in list mode).
+- `updateSpMapBtn` now gates the switch's Map side (disabled until there's data). 2 new i18n keys
+  (`view.list/map`) in 15 languages.
+
 ## 2026-08-03 — kråke fix (GBIF too) · legend select on PC · BirdLife → Experimental (sw v819)
 
 - **kråke / svartkråke (Norway), round 2:** verified via GBIF that **94% of Norway's "Corvus corone"

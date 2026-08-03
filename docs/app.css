@@ -2015,6 +2015,13 @@ button.dd-name:hover { text-decoration: underline; }
 }
 .map-help-pop .map-help-title { font-weight: 700; color: var(--brand-strong, #0b3a3a); margin-bottom: 4px; }
 .map-help-pop .map-help-body { white-space: pre-wrap; }
+/* Header List ⇄ Map segmented switch (for a fetched species list). */
+.view-seg { display: inline-flex; align-items: stretch; border: 1px solid var(--border, #ccc); border-radius: 8px; overflow: hidden; }
+.view-seg .vt-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: none; background: transparent; color: var(--ink-muted, #777); cursor: pointer; }
+.view-seg .vt-btn + .vt-btn { border-left: 1px solid var(--border, #ccc); }
+.view-seg .vt-btn.on { background: var(--brand, #0b7a5a); color: #fff; }
+.view-seg .vt-btn:not(.on):not(:disabled):hover { background: var(--surface-2, #eee); }
+.view-seg .vt-btn:disabled { opacity: 0.4; cursor: default; }
 
 #sp-menu {
   position: absolute;
