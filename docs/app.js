@@ -2112,6 +2112,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v825", date: "2026-08-03", text: "Fetching a point in Species-List mode now drops the observation dots onto the map live, one source at a time, as the data streams in — instead of waiting on the whole list first. You start on the map; tap the list icon (top-right) whenever you want the ranked list, and again to return to the map." },
     { v: "v824", date: "2026-08-03", text: "Fetching a point now takes you straight to the observations on the map — no need to switch views. The List ⇄ Map button in the top bar is now a single icon showing where it'll take you (a list icon while you're on the map, a map icon while you're on the list). The status line above the map is also easier to read." },
     { v: "v823", date: "2026-08-03", text: "The species list has a new sortable Distance column: for every species it shows how far its nearest observation is from the point you clicked. Tap the column header to sort nearest-first. This replaces the separate “Close by” button on the map (now removed). The List ⇄ Map switch also moved to the far right of the top bar." },
     { v: "v820", date: "2026-08-03", text: "A List ⇄ Map switch now sits in the header (between the Points and fullscreen icons) whenever you've fetched a species list. Use it to flip between the list and the observations plotted on the map — including hopping back to the list from the map — instead of the old in-list “Map” button. The map-points icon is now a scatter of dots, and the Checklist button moved down next to the PDF/CSV download buttons at the foot of the list." },
@@ -3540,6 +3541,16 @@
     // Re-apply the active age/rare filters and sort as data arrives.
     applyAgeFilter();
     if (speciesListSort.col) sortSpeciesList();
+    // Map-first Species-List fetch: drop the dots onto the map as each source's
+    // data lands. We only plot while the map is the visible view — if the user
+    // has tapped the list icon we leave the (already-plotted) dots be; toggling
+    // back to the map re-plots the full cumulative result. Suppress the fitBounds
+    // on partials so the view stays put; fit once when the fetch completes.
+    if (spMapFetch && currentSpView && currentSpView.mode === "point" && !onListView()) {
+      plotNoFit = !isFinal;
+      try { plotSightingsResult(result); } catch (e) {}
+      plotNoFit = false;
+    }
   }
   function augmentRowsWithSightings(lat, lon, histRange, onProg) {
     var token = lat.toFixed(4) + "," + lon.toFixed(4) + (histRange ? ":" + histRange : "");
@@ -7826,7 +7837,9 @@
         if (ex.rows && ex.rows.length && extraInGroup(ex.cls) && passesAge(ex.latestTs)) entries.push({ key: "x:" + k, name: ex.name || ex.sci, rows: ex.rows, count: ex.count, cls: ex.cls || "" });
       });
       var failNote = (result.failed && result.failed.length) ? " · " + t("fetch.failed", { sources: failedNames(result.failed) }) : "";
-      if (!entries.length) { setStatus(failNote ? failNote.replace(/^ · /, "") : t("det.none")); return; }
+      // plotNoFit marks a progressive (partial) plot mid-fetch — an early source may
+      // return nothing yet, so stay quiet rather than flashing "no detections".
+      if (!entries.length) { if (!plotNoFit) setStatus(failNote ? failNote.replace(/^ · /, "") : t("det.none")); return; }
       // A fetch actually put observations on the map → outline the search area (thin
       // dashed green), which is what the red ×'s per-area delete acts on.
       if (currentSpView && isFinite(+currentSpView.lat) && isFinite(+currentSpView.lon)) rememberFetchedArea(+currentSpView.lat, +currentSpView.lon);
@@ -7843,7 +7856,7 @@
       // showcase (only if the user hasn't interacted yet).
       var bounds = L.latLngBounds([]);
       entries.forEach(function (e) { (e.rows || []).forEach(function (r) { if (r && isFinite(+r.lat) && isFinite(+r.lon)) bounds.extend([+r.lat, +r.lon]); }); });
-      if (bounds.isValid() && !autoOpenPlotting) { try { map.fitBounds(bounds.pad(0.2)); } catch (e3) {} }
+      if (bounds.isValid() && !autoOpenPlotting && !plotNoFit) { try { map.fitBounds(bounds.pad(0.2)); } catch (e3) {} }
       // Surface the map so the user sees the plotted points.
       if (!autoOpenPlotting) { document.getElementById("species-panel").style.display = "none"; updateViewToggle(); }
       if (map) map.invalidateSize();
@@ -14747,6 +14760,8 @@
   // point) sees its captured gen fall behind and bails BEFORE firing its
   // sightings fetch — so leaving "Recent" mid-render can't fire a recent fetch.
   var spListGen = 0;
+  var spMapFetch = false;   // Species-List point fetch in "map-first" mode → drop dots as they load
+  var plotNoFit = false;    // suppress plotSightingsResult's fitBounds (progressive partial plots)
   // eBird country species list (all species ever recorded in the region) —
   // used as the "official" national bird list to merge against the model's
   // predictions. BirdLife DataZone factsheets aren't fetchable from a static
@@ -15117,6 +15132,7 @@
     // instead of the recent all-source fetch.
     var keepScroll = keepListScroll; keepListScroll = false;   // consume one-shot flag
     var myGen = ++spListGen;   // supersede any older in-flight render (see spListGen)
+    spMapFetch = false;   // reset; set true below only for the map-first point flow
     currentSpView = hist
       ? { mode: "historic", lat: lat, lon: lon, from: hist.from, to: hist.to, range: hist.range, months: hist.months || [] }
       : { mode: "point", lat: lat, lon: lon };
@@ -15215,8 +15231,16 @@
       // keep it as an inline card under the map. Historic observations is a
       // full-screen page too.
       sp.classList.toggle("as-page", currentMode === "list" || currentMode === "historic");
-      sp.style.display = "block";
-      if (currentMode === "list" || currentMode === "historic") { if (!keepScroll) sp.scrollTop = 0; navOpen("page", closeAnyFullPage); }
+      if (currentMode === "list") {
+        // Species-List (recent): go straight to the map and drop dots in as the
+        // fetch streams. The list stays rendered-but-hidden until the header
+        // List⇄Map switch is tapped, so the user watches points land live.
+        sp.style.display = "none";
+        spMapFetch = true;
+      } else {
+        sp.style.display = "block";
+        if (currentMode === "historic") { if (!keepScroll) sp.scrollTop = 0; navOpen("page", closeAnyFullPage); }
+      }
       document.getElementById("barchart-panel").style.display = "none";
       updateViewToggle();   // a fresh list → the header List⇄Map switch applies now
       setStatus(t("status.spResult", { n: results.length, p: (pmin * 100).toFixed(0), lat: lat.toFixed(2), lon: lon.toFixed(2) }));
@@ -15264,13 +15288,11 @@
         });
       } else {
         var fetchGen = myGen;   // guard against a newer point / mode switch mid-fetch
+        // Map-first: the dots are dropped progressively from applySightings as each
+        // source resolves (see spMapFetch). Nothing to switch to here — just release
+        // the flag once the fetch settles so later plots use the normal (fit) path.
         augmentRowsWithSightings(lat, lon).then(function () {
-          if (spListGen !== fetchGen) return;   // a newer list render superseded this one
-          var res = currentSpView && currentSpView._result;
-          var hasData = !!(res && (res.dedupTotal > 0 || (res.agg && Object.keys(res.agg).length) || (res.extras && Object.keys(res.extras).length)));
-          // Load the fetched detections straight onto the map — unless the user has
-          // already left the list (toggled to map / changed mode).
-          if (hasData && currentMode === "list" && currentSpView && currentSpView.mode === "point" && onListView()) goToMapView();
+          if (spListGen === fetchGen) spMapFetch = false;
         });
       }
       lastSpeciesPdf = {

@@ -1,5 +1,18 @@
 # Changes
 
+## 2026-08-03 — Dots drop live as a point fetch streams (sw v825)
+
+- **Map-first Species-List fetch with progressive plotting.** Tapping a point in Species-List mode now
+  goes straight to the map instead of showing the list first: the observation dots are dropped on as
+  each source resolves (`applySightings` calls `plotSightingsResult` per partial when the new
+  `spMapFetch` flag is set), rather than only after the whole fetch completes (was the v824 behaviour).
+  The list is still rendered but kept hidden (`species-panel` `display:none`) until the header list
+  icon is tapped — `updateViewToggle` shows the LIST icon while on the map, and `showListView` opens
+  the (already-filling) list on demand.
+- Partial plots suppress `fitBounds` via a new `plotNoFit` flag so the view stays put while dots land;
+  the final plot fits once. Empty early partials no longer flash "no detections" (guarded on
+  `plotNoFit`). The flag is released when the fetch settles so later toggles use the normal fit path.
+
 ## 2026-08-03 — Fetch lands on the map · single-icon toggle · clearer status (sw v824)
 
 - **Fetching a point now loads the detections straight onto the map** (Species-List mode): when the

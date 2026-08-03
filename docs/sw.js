@@ -21,16 +21,16 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v824";
+var VERSION = "v825";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• Tap a point in Species-List mode and it now goes straight to the map, dropping the observation dots on as each source's data streams in — no waiting on the full list first. Tap the list icon (top-right) any time to see the list; tap it again to go back to the map.",
   "• Place labels fixed: on Light/Dark it no longer prints a second set of names over the map's own — it switches the base to a labels-free version so the overlay is the only labels, and “More” genuinely shows denser place names. (Streets/Topographic keep their built-in names.)",
   "• Smarter caching: switching from “All groups” to a single group filters the already-downloaded data instead of re-fetching, and narrowing a Historic date range or month subset within what you already fetched reuses it too. (“All” now spans plants & fungi as well, so it's a bit heavier.)",
   "• Settings are grouped by function (View · Fetching & detections · Data sources · Lists & sharing · Storage & offline · Display & language) with a horizontal divider between each group.",
-  "• New “Download — last N days” setting sets how far back a normal fetch reaches (every source; 0 = each source's own default). Fetch on open keeps its own separate window.",
-  "• Fetch on open now showcases the result if you haven't touched the app: when the load finishes it fits all points in view and maximizes the legend so the top detections are named right away. If you've already started interacting, the points just fill in on the map in the background."
+  "• New “Download — last N days” setting sets how far back a normal fetch reaches (every source; 0 = each source's own default). Fetch on open keeps its own separate window."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs
