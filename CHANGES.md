@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-08-03 — Shift+hover help on the map function buttons (desktop) (sw v817)
+
+- On a PC, holding **Shift** while hovering the **Locate/crosshair**, **Close by**, or **Place
+  search** control shows a scrollable popover explaining that control's interactions.
+  `initMapHelpTips()` delegates on document (controls are created later); shows on
+  Shift+mouseover, follows Shift keydown while hovering, hides on Shift keyup / leaving both the
+  control and the popover / window blur. Disabled on touch (`hover: hover` gate).
+- The popover (`.map-help-pop`) is a card, `max-height: 60vh; overflow-y: auto`, so long text
+  scrolls; move onto it (still holding Shift) and wheel-scroll.
+- New `MAP_HELP` map (selector → title/body keys) — extensible to more controls. 3 new i18n keys
+  (`maphelp.cross/nearby/search`) in 15 languages.
+
 ## 2026-08-03 — "Experimental features" toggle gates NBN Atlas / EuroBirdPortal (sw v816)
 
 - New Settings toggle **Experimental features** (`experimental`, default off, in Display & language).

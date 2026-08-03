@@ -2102,6 +2102,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v817", date: "2026-08-03", text: "On a PC, hold Shift and hover over a map control (Locate/crosshair, Close by, or Place search) to get a popover explaining what it does and how its interactions work. If the explanation is long it scrolls — move onto the popover (keeping Shift down) and scroll. Not shown on touch devices." },
     { v: "v815", date: "2026-08-03", text: "Better photo links per group in the species menu. iNaturalist photos are now offered for every species — the one source that covers mammals, plants and fungi, not just birds. Macaulay Library is shown for birds only (where it shines), with Kew's Plants of the World added for plants and Animal Diversity Web for mammals. Plants/fungi (which aren't in the AI model) now get these reference links too." },
     { v: "v813", date: "2026-08-02", text: "Hover a species name (on desktop) for a small popup with its scientific name — shown when “Scientific names” is enabled in Settings — and, on a second line, its name in your chosen second language when that's set. Handy wherever the name shows without those columns (the legend, the detections list, menus)." },
     { v: "v809", date: "2026-08-01", text: "Place labels overlay fixed. On the Light and Dark basemaps it used to print a second set of place names on top of the map's own — now it switches the base to a labels-free version so the overlay is the only set of names (no more doubling up), and “More” pulls in the next zoom's denser names so it's genuinely more detailed than the plain map. Satellite works as before (it has no names of its own); Streets and Topographic keep their built-in names, since those tiles can't be stripped." },
@@ -4855,6 +4856,7 @@
       updateAnalysisControls();
       applyI18n();
       initMap();
+      initMapHelpTips();
       bindControls();
       refreshHiddenUI();
       refreshChecklists();
@@ -5150,6 +5152,58 @@
     // Field-list re-render so the chk-filter buttons reflect interesting set changes.
     if (document.getElementById("field-page").style.display === "flex") renderFieldList();
     keepListScroll = false;   // clear if no list render consumed it (e.g. barchart mode)
+  }
+
+  // Shift + hover over a map function button → a scrollable popover explaining that
+  // control's interactions (the kind of detail that lives in About). Desktop only —
+  // disabled on touch (no hover, no Shift). The controls are created later, so this
+  // uses event delegation on document.
+  var MAP_HELP = [
+    { sel: ".geo-locate-btn", title: "ctrl.crossHold", body: "maphelp.cross" },
+    { sel: ".nearby-btn", title: "ctrl.nearby", body: "maphelp.nearby" },
+    { sel: ".place-search-btn", title: "ctrl.placeSearch", body: "maphelp.search" }
+  ];
+  function initMapHelpTips() {
+    if (window.matchMedia && !window.matchMedia("(hover: hover)").matches) return;   // touch → no shift-hover help
+    var pop = null, hideT = null, hovered = null, shiftDown = false;
+    function ensure() {
+      if (!pop) {
+        pop = document.createElement("div"); pop.className = "map-help-pop"; pop.style.display = "none";
+        pop.addEventListener("mouseenter", function () { clearTimeout(hideT); });
+        pop.addEventListener("mouseleave", hide);
+        document.body.appendChild(pop);
+      }
+      return pop;
+    }
+    function hide() { clearTimeout(hideT); if (pop) pop.style.display = "none"; }
+    function matchFor(el) { for (var i = 0; i < MAP_HELP.length; i++) { if (el.closest(MAP_HELP[i].sel)) return MAP_HELP[i]; } return null; }
+    function show(el, spec) {
+      var p = ensure();
+      p.innerHTML = '<div class="map-help-title"></div><div class="map-help-body"></div>';
+      p.querySelector(".map-help-title").textContent = t(spec.title);
+      p.querySelector(".map-help-body").textContent = t(spec.body);
+      p.style.left = "0px"; p.style.top = "0px"; p.style.display = "block";
+      var r = el.getBoundingClientRect(), pw = p.offsetWidth, ph = p.offsetHeight;
+      var left = r.right + 8; if (left + pw > window.innerWidth - 6) left = Math.max(6, r.left - pw - 8);   // flip left if no room
+      var top = r.top; if (top + ph > window.innerHeight - 6) top = Math.max(6, window.innerHeight - ph - 6);
+      p.style.left = Math.round(left) + "px"; p.style.top = Math.round(top) + "px";
+    }
+    document.addEventListener("mouseover", function (e) {
+      var t2 = e.target; if (!t2 || !t2.closest) return;
+      var spec = matchFor(t2);
+      if (!spec) return;
+      hovered = spec; clearTimeout(hideT);
+      if (shiftDown) show(t2.closest(spec.sel), spec);
+    });
+    document.addEventListener("mouseout", function (e) {
+      var t2 = e.target; if (!t2 || !t2.closest || !matchFor(t2)) return;
+      var to = e.relatedTarget;
+      if (to && to.closest && (matchFor(to) || to.closest(".map-help-pop"))) return;   // moved onto the same control or the popover
+      hovered = null; hideT = setTimeout(hide, 150);
+    });
+    document.addEventListener("keydown", function (e) { if (e.key === "Shift" && !shiftDown) { shiftDown = true; if (hovered) { var el = document.querySelector(hovered.sel + ":hover"); if (el) show(el, hovered); } } });
+    document.addEventListener("keyup", function (e) { if (e.key === "Shift") { shiftDown = false; hide(); } });
+    window.addEventListener("blur", function () { shiftDown = false; hide(); });
   }
 
   // ---- Map setup -----------------------------------------------------------

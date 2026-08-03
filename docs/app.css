@@ -2005,6 +2005,16 @@ button.dd-name:hover { text-decoration: underline; }
 }
 .sp-hovertip .spt-sci { display: block; font-style: italic; }
 .sp-hovertip .spt-n2 { display: block; opacity: 0.82; font-size: 0.74rem; }
+/* Shift+hover help popover for the map function buttons (desktop). Scrollable when
+   the explanation is long. */
+.map-help-pop {
+  position: fixed; z-index: 6500; width: min(300px, 80vw); max-height: 60vh; overflow-y: auto;
+  background: var(--surface, #fff); color: var(--ink, #1b1b1b);
+  border: 1px solid var(--border, #ccc); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.28);
+  padding: 9px 11px; font-size: 0.82rem; line-height: 1.4; overscroll-behavior: contain;
+}
+.map-help-pop .map-help-title { font-weight: 700; color: var(--brand-strong, #0b3a3a); margin-bottom: 4px; }
+.map-help-pop .map-help-body { white-space: pre-wrap; }
 
 #sp-menu {
   position: absolute;
