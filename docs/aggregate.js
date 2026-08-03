@@ -127,6 +127,19 @@ window.AppAggregate = (function () {
     }
     return null;
   }
+  // A subspecies trinomial "Genus species subspecies" frequently names a taxon the
+  // model carries as its OWN (split) species "Genus subspecies" — e.g. Corvus corone
+  // cornix (Hooded Crow) → the model's Corvus cornix, NOT the nominate Corvus corone
+  // (Carrion Crow). Prefer that exact "genus + subspecies" species over the plain
+  // epithet fallback, which would otherwise grab the middle word (the nominate).
+  function labelBySubspecies(sciName) {
+    if (!sciByLower) return null;
+    var parts = String(sciName || "").toLowerCase().replace(/[()]/g, " ").split(/\s+/).filter(Boolean);
+    if (parts.length < 3) return null;
+    var sub = parts[2];
+    if (!/^[a-z-]+$/.test(sub) || sub === parts[1]) return null;   // 3rd token isn't a plain epithet, or = the nominate
+    return sciByLower[parts[0] + " " + sub] || null;
+  }
 
   // ---- Aggregation ----------------------------------------------------------
   // Map a flat list of normalised records to model species (agg) + everything the
@@ -216,7 +229,8 @@ window.AppAggregate = (function () {
       // skipped for sources flagged noFuzzy (Laji.fi) so a record is never guessed
       // onto a different species.
       if (!key) {
-        var l = sci[snLower];                                                   // exact binomial
+        var l = sci[snLower];                                                   // exact binomial (or full trinomial)
+        if (!l && !r.noFuzzy) l = labelBySubspecies(r.sciName);                  // "Genus species subspecies" → the split species "Genus subspecies"
         if (!l && !r.noFuzzy) l = labelBySciEpithet(r.sciName, r.cls);           // genus-rename (epithet across genera)
         if (!l && !r.noFuzzy) l = labelBySciGenus(r.sciName, r.cls);             // same-genus exact/≤1-edit epithet (orthographic variants, subspecies)
         if (!l && !r.noFuzzy && r.comName) { var lc = comByLower[comNorm(r.comName)]; if (lc) l = lc; }   // shared English common name (split synonyms, e.g. Tyto alba vs furcata "American Barn Owl")

@@ -3012,7 +3012,7 @@
   function downloadDays() { var v = +window.GeoState.get("downloadDays", 0); return isFinite(v) && v > 0 ? v : 0; }
   // Bump when the aggregation/matching logic changes so results cached by the
   // previous code are ignored and the next fetch re-aggregates.
-  var SIGHT_CACHE_VER = 4;   // bumped: group-aware kingdom filter — "All" now keeps plants & fungi (aggregate.js)
+  var SIGHT_CACHE_VER = 5;   // bumped: subspecies-trinomial matching + Norwegian "kråke" (Corvus corone→cornix) fix
   var persistedSightings = {};           // ck -> { ts, sig, ver, out }, loaded once at boot
   function sightCK(lat, lon, rkm, group, days) { return lat.toFixed(2) + "," + lon.toFixed(2) + ":" + rkm + ":" + group + (days > 0 ? ":d" + days : ""); }
   // Signature of the settings that change what a fetch returns; a mismatch means a

@@ -1,5 +1,22 @@
 # Changes
 
+## 2026-08-03 — Fix Norwegian "kråke" folding into svartkråke (Corvus corone) (sw v814)
+
+- **Root cause (verified against the live APIs):** Artsobservasjoner records the Hooded Crow
+  (vernacular "kråke", the common Scandinavian crow) under the binomial **`Corvus corone`** — which
+  internationally, and in the model, is the *Carrion* Crow (**svartkråke**, genuinely scarce in
+  Norway). So every kråke exact-matched svartkråke and inflated it. (GBIF is unaffected — it resolves
+  the split correctly to `Corvus cornix`.)
+- **Fix 1 (`normalize.js`):** `fixNorwegianSci` remaps an Artsobservasjoner record whose ScientificName
+  is `Corvus corone` and whose Norwegian `Name` is `kråke` to **`Corvus cornix`** (Hooded Crow).
+  "svartkråke" and all other names are left untouched. Applies to the recent fetch and the historic
+  Nordic top-up.
+- **Fix 2 (`aggregate.js`):** general subspecies-trinomial handling — `labelBySubspecies` matches
+  "Genus species subspecies" to the model's split species "Genus subspecies" (e.g. `Corvus corone
+  cornix` → `Corvus cornix`) before the epithet fallback (which used to grab the middle word = the
+  nominate).
+- `SIGHT_CACHE_VER` 4 → 5 so pre-fix cached results are re-aggregated.
+
 ## 2026-08-02 — Hover a species name → tight sci/2nd-name popup (sw v813)
 
 - Hovering any species name (`.sp-link`, anywhere) now shows a small tight popup: the **scientific

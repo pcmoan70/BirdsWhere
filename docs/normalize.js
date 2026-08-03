@@ -49,6 +49,16 @@ window.AppNormalize = (function () {
     if (/^fung/.test(kk)) return "Fungi";
     return normClass(className);
   }
+  // Norwegian Artsdatabanken (Artsobservasjoner) records the HOODED Crow — by far the
+  // common Scandinavian crow, vernacular "kråke" — under the binomial "Corvus corone".
+  // Internationally, and in the model, that name is the CARRION Crow ("svartkråke",
+  // genuinely scarce in Norway). Uncorrected, every kråke exact-matches svartkråke and
+  // inflates it massively. Disambiguate by the Norwegian vernacular: kråke → the model's
+  // Corvus cornix (Hooded Crow). "svartkråke" and everything else keep their name.
+  function fixNorwegianSci(sn, name) {
+    if (/^\s*corvus corone\s*$/i.test(String(sn || "")) && String(name || "").trim().toLowerCase() === "kråke") return "Corvus cornix";
+    return sn;
+  }
 
   // ---- Uniform observation sources ------------------------------------------
   // Every source is normalised to one record shape so a single aggregator maps
@@ -120,6 +130,7 @@ window.AppNormalize = (function () {
     var out = [];
     ((obj && obj.Observations) || []).forEach(function (o) {
       var sn = o.ScientificName; if (!sn || !/\s/.test(sn)) return;
+      sn = fixNorwegianSci(sn, o.Name);   // kråke is filed under "Corvus corone" here — remap to Corvus cornix
       // Coordinates are WGS84 but decimal-comma strings; dates are dd.mm.yyyy.
       var la = parseFloat(String(o.Latitude || "").replace(",", ".")), lo = parseFloat(String(o.Longitude || "").replace(",", "."));
       var dm = String(o.CollectedDate || "").match(/(\d{2})\.(\d{2})\.(\d{4})/), date = dm ? (dm[3] + "-" + dm[2] + "-" + dm[1]) : "";
