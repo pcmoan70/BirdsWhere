@@ -2135,6 +2135,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v830", date: "2026-08-03", text: "Detections list rows gained two inline shortcuts beside each record: ➤ navigate straight to that spot (Google Maps), and ＋➤ add the spot to your route/tour (the route bar at the bottom of the screen). Previously these were only in the row's popup menu." },
     { v: "v828", date: "2026-08-03", text: "Shortcut links. Open the app with a URL like ?location=here;radius=5;show=list;sortby=time_recent to geolocate — or ?location=60.123,32.001 for fixed coordinates — and land straight on the species list, or the map (show=map) with dots dropping in. radius sets the search km; sortby is rarity_increasing (default, likeliest first), rarity_decreasing (rarest first) or time_recent (most recently seen first). Handy for a home-screen bookmark. See the README for examples." },
     { v: "v827", date: "2026-08-03", text: "Zoom now lands exactly on the H3 grid. Each zoom step corresponds to one H3 resolution drawn at its natural on-screen size, so the hexagons no longer render slightly too big or too small between steps. The deepest zoom is H3 resolution 13 (≈ level 19), and offline downloads still reach detail level 19." },
     { v: "v826", date: "2026-08-03", text: "Higher map detail. You can now zoom in one level deeper, and offline area downloads reach detail level 19 (was ~17) — the “Download max zoom” setting in Offline maps gains a “19 · maximum (full)” option. Deeper zoom shows more street/building detail where the basemap has it (some layers upscale past their native limit)." },
@@ -7049,7 +7050,11 @@
     // An always-visible 🎯 that focuses the map on this record (a span, not a
     // nested button — the row itself is the button that opens the full menu).
     var focusBtn = hasLoc ? '<span class="dl-focus" role="button" title="' + escapeHtml(t("detmenu.focusMap")) + '" aria-label="' + escapeHtml(t("detmenu.focusMap")) + '" data-lat="' + d.lat + '" data-lon="' + d.lon + '">' + ico("target") + "</span>" : "";
-    return '<button type="button" class="dl-row dl-row-menu"' + attrs + ">" + inner + focusBtn +
+    // Two inline shortcuts (spans, not nested buttons — the row itself is the button):
+    // ➤ navigate to this record's spot (one stop), and ＋➤ add that spot to the route/tour.
+    var navBtn = hasLoc ? '<span class="dl-nav" role="button" title="' + escapeHtml(t("nav.here")) + '" aria-label="' + escapeHtml(t("nav.here")) + '" data-lat="' + d.lat + '" data-lon="' + d.lon + '">' + ico("nav") + "</span>" : "";
+    var routeBtn = hasLoc ? '<span class="dl-route" role="button" title="' + escapeHtml(t("route.add")) + '" aria-label="' + escapeHtml(t("route.add")) + '" data-lat="' + d.lat + '" data-lon="' + d.lon + '" data-name="' + escapeHtml(d.name || "") + '"><span class="dl-route-plus">+</span>' + ico("nav") + "</span>" : "";
+    return '<button type="button" class="dl-row dl-row-menu"' + attrs + ">" + inner + focusBtn + navBtn + routeBtn +
       '<span class="dl-go">' + (d.url ? "↗" : "⋯") + "</span></button>";
   }
   // Add a map point to a named point-list (creating the list if needed). When the
@@ -7549,6 +7554,26 @@
         try { navClose("detlist"); } catch (e2) {}
         mapClickGuardUntil = Date.now() + 250;
         map.setView([lat, lon], Math.max(map.getZoom() || 0, 14));
+      });
+    });
+    // ➤ navigate straight to this record's spot (one stop), without opening the menu.
+    Array.prototype.forEach.call(body.querySelectorAll(".dl-nav"), function (s) {
+      s.addEventListener("click", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        var lat = parseFloat(this.getAttribute("data-lat")), lon = parseFloat(this.getAttribute("data-lon"));
+        if (!isFinite(lat) || !isFinite(lon)) return;
+        closeDetRowMenu();
+        navigatePoints([{ lat: lat, lon: lon }]);
+      });
+    });
+    // ＋➤ add this record's spot to the route/tour (the bottom route bar).
+    Array.prototype.forEach.call(body.querySelectorAll(".dl-route"), function (s) {
+      s.addEventListener("click", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        var lat = parseFloat(this.getAttribute("data-lat")), lon = parseFloat(this.getAttribute("data-lon"));
+        if (!isFinite(lat) || !isFinite(lon)) return;
+        closeDetRowMenu();
+        addToRoute(lat, lon, this.getAttribute("data-name") || "");
       });
     });
   }

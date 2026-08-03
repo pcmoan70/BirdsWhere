@@ -2668,6 +2668,12 @@ a.dl-row:hover, .dl-row-menu:hover { background: var(--surface-2, rgba(0,0,0,.05
 /* Always-visible "focus this record on the map" shortcut on each list row. */
 .dl-focus { flex: 0 0 auto; cursor: pointer; font-size: 0.95rem; line-height: 1; padding: 0 2px; }
 .dl-focus:hover { filter: brightness(1.15); }
+/* Inline "navigate to" (➤) and "add to route/tour" (＋➤) shortcuts on each row. */
+.dl-nav, .dl-route { flex: 0 0 auto; display: inline-flex; align-items: center; cursor: pointer;
+  color: var(--brand); padding: 0 1px; }
+.dl-nav .btn-ico, .dl-route .btn-ico { width: 16px; height: 16px; }
+.dl-nav:hover, .dl-route:hover { filter: brightness(1.15); }
+.dl-route-plus { font-size: 0.72rem; font-weight: 800; line-height: 1; margin-right: -1px; }
 /* By-species view: one expandable summary row per species. */
 .dl-sp-group { border-top: 1px solid var(--border, #e3e3e3); }
 .dl-sp-head { display: flex; width: 100%; box-sizing: border-box; align-items: center; gap: 8px;

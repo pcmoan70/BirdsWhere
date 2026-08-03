@@ -1,5 +1,18 @@
 # Changes
 
+## 2026-08-03 — Inline navigate + add-to-route on detection rows (sw v830)
+
+- **Each Detections list (☰) row now has two inline shortcut controls** (spans, like the existing 🎯
+  focus), added in `detRowHtml` when the record has coordinates:
+  - **➤ navigate** (`.dl-nav`, `ico("nav")`) → `navigatePoints([{lat,lon}])` — a one-stop Google Maps
+    route to that record's location.
+  - **＋➤ add to route/tour** (`.dl-route`, "+"-prefixed `ico("nav")`) → `addToRoute(lat, lon, name)` —
+    drops the spot into the bottom route bar.
+  - Both stop propagation so they don't also open the row menu; wired via delegation next to the
+    `.dl-focus` handler. The row popup menu still offers "Navigate here" / "Add to route" as well.
+- Reuses existing i18n (`nav.here`, `route.add`) — no new keys. CSS: `.dl-nav` / `.dl-route` /
+  `.dl-route-plus` mirror `.dl-focus`.
+
 ## 2026-08-03 — `location=` accepts coordinates + README examples (sw v829)
 
 - **`location` now also accepts explicit `lat,lon`** (e.g. `?location=60.12312,32.00123`), not just

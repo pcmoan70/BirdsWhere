@@ -240,10 +240,11 @@ clears everything). A **⚠** appears when the *Max points on map* draw cap is h
 ## Detections list & "Close by"
 
 - **☰ Detections list** — a large-text list sorted **By date** (grouped by date, then
-  observer/station) or **By species**, with a fuzzy filter box on longer lists. Each row's **🎯**
-  flies to the record; tapping opens its species menu. Its title is the place name the source
-  supplies (eBird hotspot / BirdWeather station where present). With the *2nd name* option on,
-  rows append the secondary-language name in parentheses.
+  observer/station) or **By species**, with a fuzzy filter box on longer lists. Each row has inline
+  shortcuts: **🎯** flies the map to the record, **➤** navigates there (Google Maps), and **＋➤** adds
+  that spot to your route/tour (the bottom route bar); tapping the row opens its species menu. Its
+  title is the place name the source supplies (eBird hotspot / BirdWeather station where present).
+  With the *2nd name* option on, rows append the secondary-language name in parentheses.
 - **Close by** — the **☰** button (top-left of the map) opens a big-text list of the plotted
   detections **sorted by distance** from your live GPS cross, fixed cross, placed pin or the map
   centre. Each row shows the count, days-since and distance; tapping **📍** jumps the map to it.
