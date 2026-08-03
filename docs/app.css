@@ -2566,21 +2566,28 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
 /* Place name on its own line at the top; the action icons + sort toggle on the
    line below. */
 #detlist-head { display: flex; flex-direction: column; gap: 7px; margin: 0 0 10px; }
+/* Copy-coordinates button sits in front of the place-name title. */
+.detlist-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.detlist-title-row #detlist-coords { flex: 0 0 auto; }
 #detlist-head h3 {
+  flex: 1 1 auto; min-width: 0;
   margin: 0 28px 0 0; color: var(--brand-deep); font-size: 1.1rem; line-height: 1.15;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;   /* fitDetTitle shrinks the font so the full name fits; ellipsis is the last-resort */
 }
 #detlist-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 /* Filter bar (time / species-mode / observer) moved into the detections-list popup.
    The .det-tog / subwindow styles are shared with the (former) legend controls. */
-/* Search box + "select matching species on map" button on one row. */
-#detlist-search-row { display: flex; align-items: center; gap: 6px; }
-#detlist-search-row #detlist-search { flex: 1 1 auto; min-width: 0; }
+/* Narrower "Filter species" box, with the "select on map" button and the filter
+   toggle bar (days / rarity+year-list / observer) to its right on the same row. */
+#detlist-search-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+#detlist-search-row #detlist-search { flex: 0 1 200px; min-width: 120px; }
+#detlist-filters-bar { flex: 0 0 auto; }
 .detlist-select-btn { flex: 0 0 auto; border: 1px solid var(--brand, #2e8b74); background: var(--brand-soft, #e7f2ee);
   color: var(--brand-strong, #1f5b48); cursor: pointer; font: inherit; font-size: 0.8rem; font-weight: 600;
   padding: 6px 10px; border-radius: 7px; white-space: nowrap; }
 .detlist-select-btn:hover { background: var(--brand, #2e8b74); color: #fff; }
-#detlist-filters-wrap { margin: 0 0 8px; }
+#detlist-filters-wrap { margin: 6px 0 8px; }
+#detlist-filters-wrap:empty { margin: 0; }
 .detlist-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .detlist-filters .det-clear-sel { margin-left: auto; border: none; background: transparent; cursor: pointer; color: var(--ink, #1a1a1a); font: inherit; font-size: 1.2rem; line-height: 1; padding: 2px 6px; }
 .detlist-filters .det-clear-sel:hover { color: #000; }
@@ -2592,6 +2599,8 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
   padding: 3px 10px; border-radius: 999px; color: var(--ink); white-space: nowrap; }
 .detlist-save-btn:hover:not(:disabled) { border-color: var(--brand); color: var(--brand-deep); }
 .detlist-save-btn:disabled { opacity: 0.45; cursor: default; }
+/* "＋" prefix on the Add-to-route button, sitting just before the navigate arrow. */
+#detlist-route .detlist-plus { font-weight: 800; margin-right: 1px; line-height: 1; }
 #detlist-search { box-sizing: border-box; width: 100%; margin: 0 0 10px; padding: 7px 10px; font: inherit; font-size: 0.85rem;
   border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--ink); }
 #detlist-search:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
@@ -2668,12 +2677,6 @@ a.dl-row:hover, .dl-row-menu:hover { background: var(--surface-2, rgba(0,0,0,.05
 /* Always-visible "focus this record on the map" shortcut on each list row. */
 .dl-focus { flex: 0 0 auto; cursor: pointer; font-size: 0.95rem; line-height: 1; padding: 0 2px; }
 .dl-focus:hover { filter: brightness(1.15); }
-/* Inline "navigate to" (➤) and "add to route/tour" (＋➤) shortcuts on each row. */
-.dl-nav, .dl-route { flex: 0 0 auto; display: inline-flex; align-items: center; cursor: pointer;
-  color: var(--brand); padding: 0 1px; }
-.dl-nav .btn-ico, .dl-route .btn-ico { width: 16px; height: 16px; }
-.dl-nav:hover, .dl-route:hover { filter: brightness(1.15); }
-.dl-route-plus { font-size: 0.72rem; font-weight: 800; line-height: 1; margin-right: -1px; }
 /* By-species view: one expandable summary row per species. */
 .dl-sp-group { border-top: 1px solid var(--border, #e3e3e3); }
 .dl-sp-head { display: flex; width: 100%; box-sizing: border-box; align-items: center; gap: 8px;

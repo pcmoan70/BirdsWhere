@@ -1,5 +1,20 @@
 # Changes
 
+## 2026-08-03 — Detections list header/toolbar tidy-up (sw v831)
+
+- **Reverted** the per-record inline ➤/＋➤ buttons from v830 (too noisy on every species row).
+- **Header "add to route"**: new `#detlist-route` button (＋ + `ico("nav")`) beside Navigate — adds the
+  list's spot (same averaged position Navigate uses, named after the title) to the route via `addToRoute`.
+- **Save button icon** changed from the floppy `ico("save")` to the 6-dot points-scatter glyph (the same
+  one the Points button uses), signalling "save as a point list".
+- **Copy-coordinates moved in front of the place name**: `#detlist-coords` now leads a new
+  `.detlist-title-row` (was in the actions row).
+- **Search + filters on one row**: `detFilterBarHtml` split into `detFilterTogglesHtml` (the toggle bar,
+  rendered into `#detlist-filters-bar` inside the search row) + `detFilterPanelsHtml` (open subwindows,
+  full-width in `#detlist-filters-wrap` below). "Filter species" is narrower (`flex: 0 1 200px`) with the
+  day / rarity+year-list / observer toggles beside it. `wireDetFilters` now binds on `#detlist-box` so it
+  reaches both containers.
+
 ## 2026-08-03 — Inline navigate + add-to-route on detection rows (sw v830)
 
 - **Each Detections list (☰) row now has two inline shortcut controls** (spans, like the existing 🎯

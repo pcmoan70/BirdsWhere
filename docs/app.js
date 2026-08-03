@@ -2135,7 +2135,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
-    { v: "v830", date: "2026-08-03", text: "Detections list rows gained two inline shortcuts beside each record: ➤ navigate straight to that spot (Google Maps), and ＋➤ add the spot to your route/tour (the route bar at the bottom of the screen). Previously these were only in the row's popup menu." },
+    { v: "v831", date: "2026-08-03", text: "Detections list (☰) header tidy-up: a ＋➤ “add to route/tour” button now sits next to Navigate (adds this spot to the route bar); the Save button shows a points-list icon; the copy-coordinates button moved in front of the place name; and the “Filter species” box is narrower, with the day / rarity+year-list / observer filters lined up beside it." },
     { v: "v828", date: "2026-08-03", text: "Shortcut links. Open the app with a URL like ?location=here;radius=5;show=list;sortby=time_recent to geolocate — or ?location=60.123,32.001 for fixed coordinates — and land straight on the species list, or the map (show=map) with dots dropping in. radius sets the search km; sortby is rarity_increasing (default, likeliest first), rarity_decreasing (rarest first) or time_recent (most recently seen first). Handy for a home-screen bookmark. See the README for examples." },
     { v: "v827", date: "2026-08-03", text: "Zoom now lands exactly on the H3 grid. Each zoom step corresponds to one H3 resolution drawn at its natural on-screen size, so the hexagons no longer render slightly too big or too small between steps. The deepest zoom is H3 resolution 13 (≈ level 19), and offline downloads still reach detail level 19." },
     { v: "v826", date: "2026-08-03", text: "Higher map detail. You can now zoom in one level deeper, and offline area downloads reach detail level 19 (was ~17) — the “Download max zoom” setting in Offline maps gains a “19 · maximum (full)” option. Deeper zoom shows more street/building detail where the basemap has it (some layers upscale past their native limit)." },
@@ -4911,17 +4911,25 @@
         '<div id="detlist-modal" style="display:none"><div id="detlist-box">' +
           '<button type="button" id="detlist-close" aria-label="Close">×</button>' +
           '<div id="detlist-head" data-help="maphelp.detlist" data-help-title="detlist.title">' +
-            '<h3 id="detlist-title">Detections</h3>' +
-            '<div id="detlist-actions">' +
-              '<button type="button" id="detlist-save" class="detlist-save-btn ico-btn">' + ico("save") + '<span class="ico-label" data-i18n="detlist.save">Save</span></button>' +
-              '<button type="button" id="detlist-nav" class="detlist-save-btn ico-btn" data-i18n-title="nav.title" title="Navigate in Google Maps" aria-label="Navigate in Google Maps">' + ico("nav") + "</button>" +
+            '<div class="detlist-title-row">' +
               '<button type="button" id="detlist-coords" class="detlist-save-btn ico-btn" data-i18n-title="coords.copyBtn" title="Copy coordinates" aria-label="Copy coordinates">' + ico("copy") + "</button>" +
+              '<h3 id="detlist-title">Detections</h3>' +
+            '</div>' +
+            '<div id="detlist-actions">' +
+              '<button type="button" id="detlist-save" class="detlist-save-btn ico-btn">' +
+                '<svg class="btn-ico" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" stroke="none" aria-hidden="true">' +
+                  '<circle cx="5" cy="7" r="1.9"/><circle cx="12.5" cy="4.5" r="1.9"/><circle cx="19" cy="9" r="1.9"/>' +
+                  '<circle cx="7.5" cy="15" r="1.9"/><circle cx="15" cy="13" r="1.9"/><circle cx="18.5" cy="19" r="1.9"/></svg>' +
+                '<span class="ico-label" data-i18n="detlist.save">Save</span></button>' +
+              '<button type="button" id="detlist-nav" class="detlist-save-btn ico-btn" data-i18n-title="nav.title" title="Navigate in Google Maps" aria-label="Navigate in Google Maps">' + ico("nav") + "</button>" +
+              '<button type="button" id="detlist-route" class="detlist-save-btn ico-btn" data-i18n-title="route.add" title="＋ Add to route" aria-label="＋ Add to route"><span class="detlist-plus">＋</span>' + ico("nav") + "</button>" +
               '<select id="detlist-sort" class="detlist-sort-sel" aria-label="Sort"></select>' +
             '</div>' +
           '</div>' +
           '<div id="detlist-search-row">' +
             '<input type="text" id="detlist-search" autocomplete="off" spellcheck="false" data-i18n-ph="detlist.search" placeholder="Filter species…" />' +
             '<button type="button" id="detlist-select" class="detlist-select-btn" style="display:none"></button>' +
+            '<div id="detlist-filters-bar"></div>' +
           '</div>' +
           '<div id="detlist-filters-wrap"></div>' +
           '<div id="detlist-body"></div>' +
@@ -7050,11 +7058,7 @@
     // An always-visible 🎯 that focuses the map on this record (a span, not a
     // nested button — the row itself is the button that opens the full menu).
     var focusBtn = hasLoc ? '<span class="dl-focus" role="button" title="' + escapeHtml(t("detmenu.focusMap")) + '" aria-label="' + escapeHtml(t("detmenu.focusMap")) + '" data-lat="' + d.lat + '" data-lon="' + d.lon + '">' + ico("target") + "</span>" : "";
-    // Two inline shortcuts (spans, not nested buttons — the row itself is the button):
-    // ➤ navigate to this record's spot (one stop), and ＋➤ add that spot to the route/tour.
-    var navBtn = hasLoc ? '<span class="dl-nav" role="button" title="' + escapeHtml(t("nav.here")) + '" aria-label="' + escapeHtml(t("nav.here")) + '" data-lat="' + d.lat + '" data-lon="' + d.lon + '">' + ico("nav") + "</span>" : "";
-    var routeBtn = hasLoc ? '<span class="dl-route" role="button" title="' + escapeHtml(t("route.add")) + '" aria-label="' + escapeHtml(t("route.add")) + '" data-lat="' + d.lat + '" data-lon="' + d.lon + '" data-name="' + escapeHtml(d.name || "") + '"><span class="dl-route-plus">+</span>' + ico("nav") + "</span>" : "";
-    return '<button type="button" class="dl-row dl-row-menu"' + attrs + ">" + inner + focusBtn + navBtn + routeBtn +
+    return '<button type="button" class="dl-row dl-row-menu"' + attrs + ">" + inner + focusBtn +
       '<span class="dl-go">' + (d.url ? "↗" : "⋯") + "</span></button>";
   }
   // Add a map point to a named point-list (creating the list if needed). When the
@@ -7384,8 +7388,13 @@
     }
     recolorDetections();   // swatches reflect the latest family colours
     // Filter bar (time / species-mode / observer) at the top of the popup.
+    var bar = document.getElementById("detlist-filters-bar");
+    if (bar) bar.innerHTML = detFilterTogglesHtml();   // toggle bar → beside the search box
     var fw = document.getElementById("detlist-filters-wrap");
-    if (fw) { fw.innerHTML = detFilterBarHtml(); wireDetFilters(fw); }
+    if (fw) fw.innerHTML = detFilterPanelsHtml();       // open subwindows → full-width row below
+    // Wire on the whole box so it reaches both the toggles (search row) and their
+    // panels (the wrap below), which now live in separate containers.
+    wireDetFilters(document.getElementById("detlist-box"));
     var rows = collectVisibleDetections(detListNear, true);   // ignore selection → all species stay searchable/selectable
     var totalRows = rows.length;   // pre-filter count → drives whether the search box is worth showing
     // Title = the place name the data SOURCE supplies for this spot: an eBird hotspot
@@ -7554,26 +7563,6 @@
         try { navClose("detlist"); } catch (e2) {}
         mapClickGuardUntil = Date.now() + 250;
         map.setView([lat, lon], Math.max(map.getZoom() || 0, 14));
-      });
-    });
-    // ➤ navigate straight to this record's spot (one stop), without opening the menu.
-    Array.prototype.forEach.call(body.querySelectorAll(".dl-nav"), function (s) {
-      s.addEventListener("click", function (e) {
-        e.preventDefault(); e.stopPropagation();
-        var lat = parseFloat(this.getAttribute("data-lat")), lon = parseFloat(this.getAttribute("data-lon"));
-        if (!isFinite(lat) || !isFinite(lon)) return;
-        closeDetRowMenu();
-        navigatePoints([{ lat: lat, lon: lon }]);
-      });
-    });
-    // ＋➤ add this record's spot to the route/tour (the bottom route bar).
-    Array.prototype.forEach.call(body.querySelectorAll(".dl-route"), function (s) {
-      s.addEventListener("click", function (e) {
-        e.preventDefault(); e.stopPropagation();
-        var lat = parseFloat(this.getAttribute("data-lat")), lon = parseFloat(this.getAttribute("data-lon"));
-        if (!isFinite(lat) || !isFinite(lon)) return;
-        closeDetRowMenu();
-        addToRoute(lat, lon, this.getAttribute("data-name") || "");
       });
     });
   }
@@ -8934,7 +8923,10 @@
   // detections-list popup, plus whichever subwindow is open. Reuses the same panel
   // builders the legend used to host. `hasFilter` decides whether a compact "clear
   // all filters" × appears (mirrors the legend's black ×).
-  function detFilterBarHtml() {
+  // The filter toggle bar (days / rarity+year-list / observer) — sits to the right of
+  // the "Filter species" box. Its open subwindows render separately (detFilterPanelsHtml)
+  // so they can drop full-width below the search row instead of squeezing in beside it.
+  function detFilterTogglesHtml() {
     var daysLbl = detDaysLabel();
     var daysOn = detRecencyDays() !== 0 || !!detDateRange() || detMonths().length > 0;
     var modeOn = detStarFilter || detRareFilter || detYearFilter || detLifeFilter;
@@ -8945,8 +8937,10 @@
         '<button type="button" class="det-tog det-mode-tog' + (modeOn ? " on" : "") + (detModePanelOpen ? " open" : "") + '" title="' + escapeHtml(modeTip) + '">' + escapeHtml(modeLbl) + "</button>" +
         '<button type="button" class="det-tog det-obs-tog ico-btn' + (detObsFilter ? " on" : "") + (detObsPanelOpen ? " open" : "") + '" title="' + escapeHtml(t("det.observers")) + '" aria-label="' + escapeHtml(t("det.observers")) + '">' + ico("user") + "</button>" +
         (detHasFilter() ? '<button type="button" class="det-clear-sel" title="' + escapeHtml(t("det.clearFilters")) + '" aria-label="' + escapeHtml(t("det.clearFilters")) + '">×</button>' : "") +
-      "</div>" +
-      (detDaysPanelOpen ? detDaysPanelHtml() : "") +
+      "</div>";
+  }
+  function detFilterPanelsHtml() {
+    return (detDaysPanelOpen ? detDaysPanelHtml() : "") +
       (detModePanelOpen ? detModePanelHtml() : "") +
       (detObsPanelOpen ? detObsPanelHtml() : "");
   }
@@ -11047,6 +11041,19 @@
       var la = 0, lo = 0;
       rows.forEach(function (d) { la += +d.lat; lo += +d.lon; });
       navigatePoints([{ lat: la / rows.length, lon: lo / rows.length }]);
+    });
+    var detlistRoute = document.getElementById("detlist-route");
+    if (detlistRoute) detlistRoute.addEventListener("click", function (e) {
+      e.stopPropagation();
+      // Add this list's spot to the route/tour — the same average position the
+      // Navigate button uses (where the listed birds actually are), named after the
+      // list's place-name title.
+      var rows = (detListLastRows || []).filter(function (d) { return isFinite(+d.lat) && isFinite(+d.lon); });
+      if (!rows.length) { setStatus(t("nav.empty")); return; }
+      var la = 0, lo = 0;
+      rows.forEach(function (d) { la += +d.lat; lo += +d.lon; });
+      var titleEl = document.getElementById("detlist-title");
+      addToRoute(la / rows.length, lo / rows.length, (titleEl && titleEl.textContent) || "");
     });
     var detlistCoords = document.getElementById("detlist-coords");
     if (detlistCoords) detlistCoords.addEventListener("click", function (e) {
