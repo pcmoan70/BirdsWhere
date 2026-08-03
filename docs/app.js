@@ -2135,6 +2135,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v836", date: "2026-08-04", text: "The species menu (tap any species name) gained “Show only this species” — it filters the plotted observations down to just that species on the map and in the detections list, so you can focus on one bird at a time. Tapping it again on the same species clears the filter and shows everything. Only appears when the species actually has observations plotted." },
     { v: "v834", date: "2026-08-03", text: "Fetch failures are clearer: when a data source fails or times out, its name turns red in the status line above the map — tap it to see exactly why (timed out, network error, or a missing free API key, with a shortcut to add one). The old automatic error pop-up is gone; the explanation is now one tap away when you want it." },
     { v: "v833", date: "2026-08-03", text: "Route lists are now marked in the Points panel with a ➤ badge, and their 🧭 button opens Google Maps directions straight through the stops (in order) instead of exporting a pin file. Other point lists still export as pins for Google My Maps." },
     { v: "v832", date: "2026-08-03", text: "Saved routes reload as routes. Tick a saved route in the Points panel — or just reopen the app with one shown — and its stops reappear numbered on the map with the route bar at the bottom, ready to navigate in Google Maps. Saving a route from the route bar now hands it straight over to that saved-list form (no duplicate pins)." },
@@ -7301,6 +7302,20 @@
     // 3) Lists & actions — your data (any keyed species).
     if (key) {
       head("menu.secActions");
+      // Filter the plotted observations to just this species (isolate it on the map +
+      // detections list), or clear the filter if it's already the only one shown. Only
+      // when the species actually has observations plotted.
+      if (typeof detPlot !== "undefined" && detPlot[key]) {
+        var onlyThis = !!detSelected[key] && Object.keys(detSelected).length === 1;
+        el.appendChild(drmBtn(onlyThis ? t("menu.showAllSp") : t("menu.filterSp"), function () {
+          closeDetRowMenu();
+          detSelected = {};
+          if (!onlyThis) detSelected[key] = true;   // isolate this species (toggle off → show all again)
+          saveLegendState(); rebuildDetLayers(); updateDetLegend();
+          var dm = document.getElementById("detlist-modal");
+          if (dm && dm.style.display === "flex" && typeof renderDetListModal === "function") renderDetListModal();
+        }));
+      }
       // Each row is a toggle whose icon shows the current state in the app's
       // colours, so the menu reads the same way as the list columns and the map.
       el.appendChild(drmToggle(SP_FLAG_GLYPH.star, isInteresting(key), t("menu.interesting"),

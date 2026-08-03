@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-08-04 — "Show only this species" in the species menu (sw v836)
+
+- **The unified species menu (`drmRenderMain`, opened by tapping any `.sp-link` name — list, legend,
+  detections) gained a "Show only this species" action** when the species is plotted (`detPlot[key]`). It
+  isolates that species by setting `detSelected = { [key]: true }` (the same selection the legend/map
+  honour via `detSelectionActive`), then `saveLegendState` + `rebuildDetLayers` + `updateDetLegend` and
+  re-renders the detections list if open. If it's already the only isolated species it flips to
+  "Show all species" and clears the selection.
+- New i18n `menu.filterSp` / `menu.showAllSp` across all 15 languages.
+
 ## 2026-08-03 — List⇄Map toggle survives reload from the map view (sw v835)
 
 - **Fixed the List⇄Map header toggle going missing after a reload/revisit** when you'd been looking at

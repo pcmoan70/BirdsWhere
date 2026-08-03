@@ -343,7 +343,9 @@ Right-click / long-press / tap any species name for:
   DataZone** (birds), **Macaulay Library** photos/audio (narrowed to the observation's season — a
   ±1-month `beginMonth`/`endMonth` window — so images match the time of year), **Xeno-canto** audio,
   **NBN Atlas (UK)**, **EuroBirdPortal** (birds, deep-linked to the species).
-- **Lists & actions** — state-showing **toggles**: **Interesting** (★), **Year list**, **Life
+- **Lists & actions** — **Show only this species** (when it has observations plotted: isolates that
+  species on the map + detections list, like a legend selection; tap again on the same species to show
+  everything), then state-showing **toggles**: **Interesting** (★), **Year list**, **Life
   list** (each coloured when the species is in that set, greyed when not), and **Hidden**, which
   toggles both ways (**red** = this click hides the species, **green** = this click brings it
   back — so a blocked species surfaced via the list's 🚫 filter can be unblocked here). Also
