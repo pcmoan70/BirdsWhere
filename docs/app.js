@@ -448,8 +448,9 @@
   // Grid resolution per zoom level (degrees per cell). Finer cells at deeper
   // zoom keep the heatmap detailed without exploding the cell count.
   var ZOOM_STEP = { 2: 3, 3: 2, 4: 1, 5: 0.5, 6: 0.5, 7: 0.25, 8: 0.25, 9: 0.125, 10: 0.0625, 11: 0.03125,
-    12: 0.015625, 13: 0.0078125, 14: 0.00390625, 15: 0.001953125, 16: 0.0009765625, 17: 0.00048828125, 18: 0.000244140625 };
-  var MAX_ZOOM = 18;
+    12: 0.015625, 13: 0.0078125, 14: 0.00390625, 15: 0.001953125, 16: 0.0009765625, 17: 0.00048828125,
+    18: 0.000244140625, 19: 0.0001220703125, 20: 0.00006103515625 };
+  var MAX_ZOOM = 20;   // deepest map zoom — lets area downloads reach detail level 19 (H3 snaps interactive zoom just under)
   // Snap the map's zoom to steps of ~2.65x (log2 ≈ 1.404) — one H3 resolution
   // per zoom level — so the chosen H3 cell size stays constant on screen as you
   // zoom (H3 resolutions are ~2.65x apart, vs the usual 2x per zoom level).
@@ -2112,6 +2113,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v826", date: "2026-08-03", text: "Higher map detail. You can now zoom in one level deeper, and offline area downloads reach detail level 19 (was ~17) — the “Download max zoom” setting in Offline maps gains a “19 · maximum (full)” option. Deeper zoom shows more street/building detail where the basemap has it (some layers upscale past their native limit)." },
     { v: "v825", date: "2026-08-03", text: "Fetching a point in Species-List mode now drops the observation dots onto the map live, one source at a time, as the data streams in — instead of waiting on the whole list first. You start on the map; tap the list icon (top-right) whenever you want the ranked list, and again to return to the map." },
     { v: "v824", date: "2026-08-03", text: "Fetching a point now takes you straight to the observations on the map — no need to switch views. The List ⇄ Map button in the top bar is now a single icon showing where it'll take you (a list icon while you're on the map, a map icon while you're on the list). The status line above the map is also easier to read." },
     { v: "v823", date: "2026-08-03", text: "The species list has a new sortable Distance column: for every species it shows how far its nearest observation is from the point you clicked. Tap the column header to sort nearest-first. This replaces the separate “Close by” button on the map (now removed). The List ⇄ Map switch also moved to the far right of the top bar." },
@@ -4830,7 +4832,8 @@
               '<label for="offline-zoom" data-i18n="ctrl.offlineZoom">Download max zoom</label>' +
               '<select id="offline-zoom">' +
                 '<option value="11">11 · regional</option><option value="13">13 · town</option>' +
-                '<option value="15">15 · street</option><option value="17" selected>17 · detailed (full)</option>' +
+                '<option value="15">15 · street</option><option value="17">17 · detailed</option>' +
+                '<option value="19" selected>19 · maximum (full)</option>' +
               '</select>' +
             '</div>' +
             '<div id="offline-list"></div>' +
@@ -5663,7 +5666,7 @@
   // pinned cache (kept until the user deletes it). The SW serves them offline.
   var OFFLINE_TILE_BYTES = 22000;   // rough per-tile size for the estimate
   var OFFLINE_MAX_TILES = 12000;    // guard against an unreasonably huge download
-  var offlineMaxZoom = 17;          // max zoom for area downloads — the app's deepest tile zoom (set in Settings)
+  var offlineMaxZoom = 19;          // max zoom for area downloads — the app's deepest tile zoom (set in Settings)
   var offlineFramesLayer = null;    // frames showing downloaded areas
   var offlineEditing = false;       // true while the "Manage offline maps" modal is open
   // Open the "Manage offline maps" list modal (from Settings, or a long-press on the
@@ -10951,7 +10954,7 @@
       rd.readAsArrayBuffer(f);   // read binary; branch on the ZIP magic (KMZ) then JSON vs KML text
     });
     document.getElementById("offline-zoom").addEventListener("change", function () {
-      offlineMaxZoom = +this.value || 17;
+      offlineMaxZoom = +this.value || 19;
       window.GeoState.save({ offlineMaxZoom: offlineMaxZoom });
     });
     renderOfflineAreas();
@@ -15904,7 +15907,7 @@
 
     // H3 detail offset (-2..+2, 0 = auto), set via the on-map hexagon control.
     hiResFactor = Math.max(-2, Math.min(2, +window.GeoState.get("hiResOffset", 0) || 0));
-    offlineMaxZoom = Math.max(11, Math.min(17, +window.GeoState.get("offlineMaxZoom", 17) || 17));
+    offlineMaxZoom = Math.max(11, Math.min(19, +window.GeoState.get("offlineMaxZoom", 19) || 19));
     var ozEl = document.getElementById("offline-zoom"); if (ozEl) ozEl.value = String(offlineMaxZoom);
 
     // Always start with the full probability range 5%–100% on load.

@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-08-03 — Higher map detail: zoom + offline downloads reach level 19 (sw v826)
+
+- **Raised the map's deepest zoom** `MAX_ZOOM` 18 → 20 so interactive zoom (H3-snapped to ~19.7) and
+  area downloads can reach detail level 19 (was effectively ~17, capped by the H3-snapped map max).
+- **Offline "Download max zoom"** now offers `19 · maximum (full)` (options 11/13/15/17/19), selected by
+  default; `offlineMaxZoom` default + clamp raised to 19. On 19-native basemaps (CARTO/OSM/Esri) area
+  downloads now fetch z19 tiles; OpenTopoMap still tops out at its native z17.
+- Extended `ZOOM_STEP` with entries for z19–20 so the richness heatmap cell size stays sensible at the
+  new deepest zooms (`ZOOM_STEP[z] || 3` already guarded against a miss).
+
 ## 2026-08-03 — Dots drop live as a point fetch streams (sw v825)
 
 - **Map-first Species-List fetch with progressive plotting.** Tapping a point in Species-List mode now
