@@ -335,7 +335,7 @@ window.GeoI18N = (function () {
       "ctrl.updateBanner": "Auto-show update banner",
       "ctrl.updateBannerHint": "Off (default): new versions never pop up — the “Reload to update” button at the top of Settings lights up instead, and you reload whenever you like. On: a banner appears when an update is ready.",
       "ctrl.experimental": "Experimental features",
-      "ctrl.experimentalHint": "Off (default). On: unlocks less-polished extras — currently the NBN Atlas and EuroBirdPortal links in the species menu; more may appear here over time.",
+      "ctrl.experimentalHint": "Off (default). On: unlocks less-polished extras — currently the NBN Atlas, EuroBirdPortal and BirdLife DataZone links in the species menu; more may appear here over time.",
       "settings.updateReady": "Update to {v}",
       "settings.updateApplying": "Updating…",
       "ctrl.savedloc": "Saved locations",

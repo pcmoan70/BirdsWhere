@@ -53,10 +53,22 @@ window.AppNormalize = (function () {
   // common Scandinavian crow, vernacular "kråke" — under the binomial "Corvus corone".
   // Internationally, and in the model, that name is the CARRION Crow ("svartkråke",
   // genuinely scarce in Norway). Uncorrected, every kråke exact-matches svartkråke and
-  // inflates it massively. Disambiguate by the Norwegian vernacular: kråke → the model's
-  // Corvus cornix (Hooded Crow). "svartkråke" and everything else keep their name.
+  // inflates it massively.
+  function isCoroneName(sn) { return /^\s*corvus corone\s*$/i.test(String(sn || "")); }
+  // Direct Artsobservasjoner: the Norwegian vernacular disambiguates precisely —
+  // "kråke" → Hooded (Corvus cornix); "svartkråke" (and anything else) keeps its name.
   function fixNorwegianSci(sn, name) {
-    if (/^\s*corvus corone\s*$/i.test(String(sn || "")) && String(name || "").trim().toLowerCase() === "kråke") return "Corvus cornix";
+    if (isCoroneName(sn) && String(name || "").trim().toLowerCase() === "kråke") return "Corvus cornix";
+    return sn;
+  }
+  // GBIF's Norway "Corvus corone" is ~94% Artsobservasjoner's kråke (Hooded Crow filed
+  // under the lumped name) republished via GBIF; Carrion Crow is a Norwegian rarity. No
+  // vernacular is carried here, so fold ALL Norwegian "Corvus corone" to Corvus cornix
+  // — stops the svartkråke inflation and lets it dedup with the direct Artsobs copy.
+  // (Genuine NO Carrion Crows fold in too — an accepted trade-off; SE/DK are untouched,
+  // where Carrion Crow is real.)
+  function fixGbifNordicCrow(sn, countryCode) {
+    if (isCoroneName(sn) && String(countryCode || "").toUpperCase() === "NO") return "Corvus cornix";
     return sn;
   }
 
@@ -99,6 +111,7 @@ window.AppNormalize = (function () {
       var sn = o.species || o.scientificName; if (!sn) return;
       sn = sn.replace(/\s+\([^)]*\)\s*/g, " ").replace(/,\s*\d{4}.*$/, "").trim();
       if (!/\s/.test(sn)) return;
+      sn = fixGbifNordicCrow(sn, o.countryCode);   // NO "Corvus corone" is Artsobs' kråke → Corvus cornix
       // Never let a dataset/source title masquerade as the common name: some GBIF
       // records carry vernacularName == the dataset (e.g. "iNaturalist research-
       // grade observations"), which would otherwise show as the species name.

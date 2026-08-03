@@ -3027,7 +3027,7 @@
   function downloadDays() { var v = +window.GeoState.get("downloadDays", 0); return isFinite(v) && v > 0 ? v : 0; }
   // Bump when the aggregation/matching logic changes so results cached by the
   // previous code are ignored and the next fetch re-aggregates.
-  var SIGHT_CACHE_VER = 5;   // bumped: subspecies-trinomial matching + Norwegian "kråke" (Corvus corone→cornix) fix
+  var SIGHT_CACHE_VER = 6;   // bumped: GBIF Norway "Corvus corone" (kråke) → Corvus cornix too
   var persistedSightings = {};           // ck -> { ts, sig, ver, out }, loaded once at boot
   function sightCK(lat, lon, rkm, group, days) { return lat.toFixed(2) + "," + lon.toFixed(2) + ":" + rkm + ":" + group + (days > 0 ? ":d" + days : ""); }
   // Signature of the settings that change what a fetch returns; a mismatch means a
@@ -7097,7 +7097,7 @@
       }));
       if (lbl) el.appendChild(drmBtn(t("menu.distmap"), function () { closeDetRowMenu(); showDistMap(name, sci, key); }));
       el.appendChild(drmBtn(t("menu.wiki"), function () { closeDetRowMenu(); openWikipedia(sci); }));
-      if (isBird) el.appendChild(drmBtn(t("menu.birdlife"), function () { closeDetRowMenu(); openBirdLife((lbl && lbl.common) || name, sci); }));
+      if (isBird && experimentalOn()) el.appendChild(drmBtn(t("menu.birdlife"), function () { closeDetRowMenu(); openBirdLife((lbl && lbl.common) || name, sci); }));   // BirdLife DataZone → Experimental
       // iNaturalist — photos for EVERY group (the one that works beyond birds).
       el.appendChild(drmBtn(t("menu.inat"), function () { closeDetRowMenu(); openExternal(inatPhotosUrl(sci)); }));
       if (isBird) el.appendChild(drmBtn(t("menu.macaulay"), function () { closeDetRowMenu(); openExternal(macaulayUrl(key, sci, d && d.date)); }));   // birds only now
@@ -8641,7 +8641,11 @@
     var canHover = !window.matchMedia || window.matchMedia("(hover: hover)").matches;
     el.querySelectorAll(".det-row-click").forEach(function (row) {
       if (canHover) {
-        row.addEventListener("mouseenter", function () { focusDetSpecies(this.getAttribute("data-key")); });
+        // Hover previews a species by isolating it — but ONLY when nothing is
+        // selected. Once the user has clicked species to restrict the map (multi-
+        // select), passive hover must not override/mask that selection (on touch
+        // there's no hover, so tap-select just works — this makes PC match it).
+        row.addEventListener("mouseenter", function () { if (!detSelectionActive()) focusDetSpecies(this.getAttribute("data-key")); });
         row.addEventListener("mouseleave", unfocusDetSpecies);
       }
       // Press-and-hold → isolate (touch hover). lpFired marks a hold so the

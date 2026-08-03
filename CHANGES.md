@@ -1,5 +1,20 @@
 # Changes
 
+## 2026-08-03 — kråke fix (GBIF too) · legend select on PC · BirdLife → Experimental (sw v819)
+
+- **kråke / svartkråke (Norway), round 2:** verified via GBIF that **94% of Norway's "Corvus corone"
+  occurrences (26.5k of 28k) come from Artsobservasjoner** — i.e. Hooded Crows filed under the lumped
+  name and republished through GBIF (no vernacular carried). The v814 fix only touched the *direct*
+  Artsobs source, so those still inflated svartkråke (and no longer deduped against the corrected
+  copy). `normGbif` now folds GBIF records with `countryCode === "NO"` and `Corvus corone` →
+  `Corvus cornix` (`fixGbifNordicCrow`). Carrion Crow is a genuine NO rarity, so the few real ones
+  fold in too — accepted trade-off; SE/DK untouched. `SIGHT_CACHE_VER` 5 → 6.
+- **Legend selection on PC:** hover-isolate now defers to an active selection — once you've clicked
+  species to restrict the map, passive mouse-hover no longer masks that selection (touch already
+  worked, having no hover).
+- **BirdLife DataZone** moved behind **Experimental features** in the species menu (with NBN Atlas
+  and EuroBirdPortal). English hint updated.
+
 ## 2026-08-03 — Extend Shift+hover help to offline / legend / detections list (sw v818)
 
 - Generalised the Shift+hover help to a reusable `data-help="<i18n key>"` (+ optional
