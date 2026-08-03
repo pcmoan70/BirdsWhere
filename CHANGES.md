@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-03 — `location=` accepts coordinates + README examples (sw v829)
+
+- **`location` now also accepts explicit `lat,lon`** (e.g. `?location=60.12312,32.00123`), not just
+  `here` — `maybeUrlLocationParam` parses/validates the pair and opens that point directly (no
+  geolocation). `here` still geolocates. Unrecognised values are ignored.
+- README: expanded the **Shortcut URLs** section with a full parameter table and copy-paste example URLs.
+
 ## 2026-08-03 — `?location=here` shortcut URL (sw v828)
 
 - **New deep-link** `?location=here;radius=5;show=list;sortby=time_recent` (semicolon- or `&`-separated;

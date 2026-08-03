@@ -2,20 +2,20 @@
 
 **Live app:** <https://pcmoan70.github.io/BirdsWhere/>
 
-An interactive, **100% in-browser** explorer of species distribution, migration and
-**live observations**, powered by the [BirdNET Geomodel](https://github.com/birdnet-team/geomodel)
-running client-side via [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/).
-There is **no server and no backend of our own** — the neural network runs on your
-device, and live observations are pulled straight from third-party APIs in your browser.
+An interactive, **100% in-browser** explorer of species **distribution, migration and live
+observations**. Everything runs on your device — there is **no server and no backend of our own**;
+live observations are pulled straight from third-party databases in your browser, and around them
+sit a full field-logging workflow, offline maps and cross-device sync. Observation search covers
+birds, mammals, amphibians and insects, as well as **plants and fungi**.
 
-The AI model **predicts** occurrence probabilities for **12,012 species** (birds, mammals,
-amphibians and insects) from `(latitude, longitude, week 1–48)` — i.e. how likely each species is
-to be present at a place and time of year, **not** what anyone has actually seen. On top of that
-prediction the app overlays **real observations** pulled live from third-party databases, plus a
-full field-logging workflow, offline maps and cross-device sync. Observation search additionally
-covers **plants and fungi**, which have no habitat model (observation-only).
+The **distribution maps**, the **migration estimates** and the **rarity-based sorting of observations**
+are based on the [BirdNET Geomodel](https://github.com/birdnet-team/geomodel), which estimates how
+likely each of **12,012 species** is to occur at a given place and week of the year (run on your
+device via [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/)). These are model estimates
+of what *could* be present — not a record of what anyone has actually seen; the live observations
+layered on top are the real sightings.
 
-> Predictions are model estimates, not ground truth; BirdWeather detections are AI acoustic
+> Model outputs are estimates, not ground truth; BirdWeather detections are AI acoustic
 > identifications, not human-verified.
 
 ---
@@ -299,15 +299,38 @@ clears everything). A **⚠** appears when the *Max points on map* draw cap is h
 
 ### Shortcut URLs
 
-- `?here=1` — geolocate and open the per-point species list at your current position.
-- `?location=here;radius=5;show=list;sortby=time_recent` — the same, with options (semicolon- or
-  `&`-separated):
-  - **`location`** — `here` (geolocate). *(the only value for now)*
-  - **`radius`** — sightings search radius in km (e.g. `5`); also updates the Settings slider.
-  - **`show`** — `map` (default: land on the map with dots dropping in as they load) or `list` (open
-    the ranked list page directly).
-  - **`sortby`** — `rarity_increasing` (default; most likely/common species first), `rarity_decreasing`
-    (rarest first), or `time_recent` (most recently observed first).
+Open the app straight onto a point's observations — handy as a home-screen bookmark or a link from
+another app. Options are `;`- or `&`-separated `key=value` pairs.
+
+**Parameters**
+
+- **`location`** — `here` (geolocate to your current position) **or** explicit `lat,lon` coordinates
+  (e.g. `60.12312,32.00123`; latitude −90…90, longitude −180…180).
+- **`radius`** — sightings search radius in km (e.g. `5`); persisted, so it also updates the Settings
+  slider.
+- **`show`** — `map` (default: land on the map with the dots dropping in as they load) or `list` (open
+  the ranked list page directly).
+- **`sortby`** — `rarity_increasing` (default; most likely / commonest species first),
+  `rarity_decreasing` (rarest first), or `time_recent` (most recently observed first).
+
+**Examples** (base: `https://pcmoan70.github.io/BirdsWhere/`)
+
+```
+?here=1
+    Geolocate and open the per-point species list at your current position (legacy shortcut).
+
+?location=here
+    Same as above, via the richer parameter.
+
+?location=here;radius=5;show=list;sortby=time_recent
+    Geolocate, 5 km radius, open the list, most-recently-seen species first.
+
+?location=60.12312,32.00123;radius=10;show=map;sortby=rarity_decreasing
+    Go to those coordinates, 10 km radius, land on the map, rarest species first.
+
+?location=59.9139,10.7522
+    Go to a fixed point (Oslo) with the current defaults.
+```
 
 ---
 

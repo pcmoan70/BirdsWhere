@@ -2135,7 +2135,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
-    { v: "v828", date: "2026-08-03", text: "Shortcut links. Open the app with a URL like ?location=here;radius=5;show=list;sortby=time_recent to geolocate and land straight on the species list — or the map (show=map) with dots dropping in. radius sets the search km; sortby is rarity_increasing (default, likeliest first), rarity_decreasing (rarest first) or time_recent (most recently seen first). Handy for a home-screen bookmark." },
+    { v: "v828", date: "2026-08-03", text: "Shortcut links. Open the app with a URL like ?location=here;radius=5;show=list;sortby=time_recent to geolocate — or ?location=60.123,32.001 for fixed coordinates — and land straight on the species list, or the map (show=map) with dots dropping in. radius sets the search km; sortby is rarity_increasing (default, likeliest first), rarity_decreasing (rarest first) or time_recent (most recently seen first). Handy for a home-screen bookmark. See the README for examples." },
     { v: "v827", date: "2026-08-03", text: "Zoom now lands exactly on the H3 grid. Each zoom step corresponds to one H3 resolution drawn at its natural on-screen size, so the hexagons no longer render slightly too big or too small between steps. The deepest zoom is H3 resolution 13 (≈ level 19), and offline downloads still reach detail level 19." },
     { v: "v826", date: "2026-08-03", text: "Higher map detail. You can now zoom in one level deeper, and offline area downloads reach detail level 19 (was ~17) — the “Download max zoom” setting in Offline maps gains a “19 · maximum (full)” option. Deeper zoom shows more street/building detail where the basemap has it (some layers upscale past their native limit)." },
     { v: "v825", date: "2026-08-03", text: "Fetching a point in Species-List mode now drops the observation dots onto the map live, one source at a time, as the data streams in — instead of waiting on the whole list first. You start on the map; tap the list icon (top-right) whenever you want the ranked list, and again to return to the map." },
@@ -4330,14 +4330,26 @@
     }
   }
   // Richer shortcut URL: ?location=here;radius=5;show=list;sortby=time_recent
-  //   location=here  → geolocate and open the per-point species list (only value for now)
+  //   location=here | <lat>,<lon>  → geolocate, or go to explicit coordinates
   //   radius=<km>    → set the sightings radius before fetching
   //   show=list|map  → land on the list page, or the map with dots dropping in (default)
   //   sortby=…       → rarity_increasing (default) | rarity_decreasing | time_recent
   function maybeUrlLocationParam() {
     var p = parseSemiParams();
-    if ((p.location || "").toLowerCase() !== "here") return false;
-    if (!navigator.geolocation || !map) { setStatus(t("status.locateError")); return true; }
+    var locRaw = (p.location || "").trim();
+    if (!locRaw) return false;
+    var isHere = locRaw.toLowerCase() === "here";
+    var coords = null;
+    if (!isHere) {   // accept explicit "lat,lon" (e.g. location=60.12312,32.00123)
+      var parts = locRaw.split(",");
+      if (parts.length === 2) {
+        var la = parseFloat(parts[0]), lo = parseFloat(parts[1]);
+        if (isFinite(la) && isFinite(lo) && la >= -90 && la <= 90 && lo >= -180 && lo <= 180) coords = [la, lo];
+      }
+      if (!coords) return false;   // unrecognised location value → ignore
+    }
+    if (!map) return true;
+    if (isHere && !navigator.geolocation) { setStatus(t("status.locateError")); return true; }
 
     var rk = parseFloat(p.radius);
     if (isFinite(rk) && rk > 0) {   // persist so the fetch + the settings slider agree
@@ -4357,14 +4369,17 @@
       modeSel.value = "list";
       modeSel.dispatchEvent(new Event("change", { bubbles: true }));
     }
-    navigator.geolocation.getCurrentPosition(function (pos) {
-      var lat = pos.coords.latitude, lon = pos.coords.longitude;
+    function openAt(lat, lon) {
       if (marker) map.removeLayer(marker);
       marker = L.marker([lat, lon]).addTo(map);
       map.setView([lat, lon], Math.max(map.getZoom() || 0, 11));
       renderSpeciesList(lat, lon);
-    }, function () { setStatus(t("status.locateError")); },
-    { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
+    }
+    if (coords) openAt(coords[0], coords[1]);
+    else navigator.geolocation.getCurrentPosition(
+      function (pos) { openAt(pos.coords.latitude, pos.coords.longitude); },
+      function () { setStatus(t("status.locateError")); },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
     return true;
   }
 
