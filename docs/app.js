@@ -1134,7 +1134,7 @@
   // Refresh the sort-arrow indicator on the sortable column headers. Class-based
   // (▲/▼ via CSS ::after) so it doesn't disturb the headers' dynamic labels.
   function updateSortIndicators() {
-    var cols = { "sp-species-head": "name", "sp-sci-head": "sci", "sp-prob-head": "prob", "sp-delta-head": "cmp" };
+    var cols = { "sp-species-head": "name", "sp-sci-head": "sci", "sp-prob-head": "prob", "sp-dist-head": "dist", "sp-delta-head": "cmp" };
     Object.keys(cols).forEach(function (id) {
       var el = document.getElementById(id); if (!el) return;
       var on = speciesListSort.col === cols[id];
@@ -1165,6 +1165,15 @@
       } else if (col === "cmp") {
         ka = parseFloat(a.getAttribute("data-cmp")); kb = parseFloat(b.getAttribute("data-cmp"));
         if (isNaN(ka)) ka = -Infinity; if (isNaN(kb)) kb = -Infinity;
+      } else if (col === "dist") {
+        // Nearest first; species with no detection (no distance) sink to the bottom
+        // regardless of direction.
+        ka = parseFloat(a.getAttribute("data-dist")); kb = parseFloat(b.getAttribute("data-dist"));
+        if (isNaN(ka)) ka = Infinity; if (isNaN(kb)) kb = Infinity;
+        var cd = ka < kb ? -1 : ka > kb ? 1 : 0;
+        if (ka === Infinity && kb === Infinity) return 0;
+        if (ka === Infinity) return 1; if (kb === Infinity) return -1;   // always last
+        return speciesListSort.dir === "asc" ? cd : -cd;
       } else {   // "count"
         var sa = a.querySelector(".sp-link"), sb = b.querySelector(".sp-link");
         var keyA = sa && sa.getAttribute("data-key"), keyB = sb && sb.getAttribute("data-key");
@@ -1183,7 +1192,7 @@
     if (!currentSpView || (currentSpView.mode !== "point" && currentSpView.mode !== "historic")) return;
     // Default direction is column-appropriate (alphabetical asc / numerical
     // desc). Each column cycles: default → opposite → off → default → ...
-    var defaultDir = (col === "sci" || col === "name") ? "asc" : "desc";
+    var defaultDir = (col === "sci" || col === "name" || col === "dist") ? "asc" : "desc";   // dist → nearest first
     var oppositeDir = defaultDir === "asc" ? "desc" : "asc";
     if (speciesListSort.col === col) {
       if (speciesListSort.dir === defaultDir) speciesListSort.dir = oppositeDir;
@@ -2103,6 +2112,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v823", date: "2026-08-03", text: "The species list has a new sortable Distance column: for every species it shows how far its nearest observation is from the point you clicked. Tap the column header to sort nearest-first. This replaces the separate “Close by” button on the map (now removed). The List ⇄ Map switch also moved to the far right of the top bar." },
     { v: "v820", date: "2026-08-03", text: "A List ⇄ Map switch now sits in the header (between the Points and fullscreen icons) whenever you've fetched a species list. Use it to flip between the list and the observations plotted on the map — including hopping back to the list from the map — instead of the old in-list “Map” button. The map-points icon is now a scatter of dots, and the Checklist button moved down next to the PDF/CSV download buttons at the foot of the list." },
     { v: "v818", date: "2026-08-03", text: "On a PC, hold Shift and hover over a control for a popover explaining what it does and how it works — now on the Locate/crosshair, Close by, Place search and offline-maps buttons, the legend's top row, and the detections list. Long explanations scroll (move onto the popover, keeping Shift down). Not shown on touch devices." },
     { v: "v815", date: "2026-08-03", text: "Better photo links per group in the species menu. iNaturalist photos are now offered for every species — the one source that covers mammals, plants and fungi, not just birds. Macaulay Library is shown for birds only (where it shines), with Kew's Plants of the World added for plants and Animal Diversity Web for mammals. Plants/fungi (which aren't in the AI model) now get these reference links too." },
@@ -3506,6 +3516,17 @@
       td.innerHTML = '<button type="button" class="det-count-btn" data-key="' + escapeHtml(key) + '">' + entry.count + "</button>" +
         (days != null ? '<span class="det-d">(' + days + ")</span>" : "");
     });
+    // Distance column: how far the NEAREST detection of each species is from this
+    // list's point. (Sortable — replaces the old "Close by" map list.)
+    var oLat = currentSpView ? +currentSpView.lat : NaN, oLon = currentSpView ? +currentSpView.lon : NaN;
+    var haveOrigin = isFinite(oLat) && isFinite(oLon);
+    tbody.querySelectorAll(".sp-dist[data-key]").forEach(function (td) {
+      var entry = agg[td.getAttribute("data-key")], tr = td.parentNode;
+      var km = (haveOrigin && entry && entry.rows) ? nearestDetKm(oLat, oLon, entry.rows) : null;
+      if (km == null) { if (isFinal) td.textContent = ""; if (tr) tr.removeAttribute("data-dist"); return; }
+      td.textContent = nearbyFmtDist(km);
+      if (tr) tr.setAttribute("data-dist", km);
+    });
     // We now know WHICH species were seen here, so the status column can mark the
     // ones the model considers unlikely at this spot.
     var rareSet = tbody._rareSet = spRareSet(agg, tbody);
@@ -3567,12 +3588,16 @@
     keys = keys.slice(0, 30);
     var frag = document.createDocumentFragment();
     var now = Date.now();
+    var oLat = currentSpView ? +currentSpView.lat : NaN, oLon = currentSpView ? +currentSpView.lon : NaN;
+    var haveOrigin = isFinite(oLat) && isFinite(oLon);
     keys.forEach(function (k) {
       var e = extras[k], name = e.name || e.sci;
       var days = e.latestTs ? Math.max(0, Math.round((now - e.latestTs) / 86400000)) : null;
+      var exKm = haveOrigin ? nearestDetKm(oLat, oLon, e.rows) : null;
       var tr = document.createElement("tr");
       tr.className = "sp-extra";
       tr.setAttribute("data-age-days", days != null ? days : "");
+      if (exKm != null) tr.setAttribute("data-dist", exKm);
       var clsBadge = e.cls ? '<span class="sp-extra-cls" title="' + escapeHtml(e.cls) + '">' + classGlyph(e.cls) + "</span> " : "";
       tr.innerHTML = spFlagCells(null, false) +   // not a model species → no list/star status to show
         '<td>' + clsBadge + '<span class="sp-extra-name" title="' + escapeHtml(t("sp.extraHint")) + '">' + escapeHtml(name) + '</span></td>' +
@@ -3581,6 +3606,7 @@
         '<td class="prob-cell prob-na">—</td>' +
         '<td class="num det-nd"><button type="button" class="det-count-btn det-count-extra" data-sci="' + escapeHtml(e.sci) + '" data-name="' + escapeHtml(name) + '">' + e.count + '</button>' +
           (days != null ? '<span class="det-d">(' + days + ")</span>" : "") + '</td>' +
+        '<td class="num sp-dist">' + (exKm != null ? escapeHtml(nearbyFmtDist(exKm)) : "") + '</td>' +
         '<td></td>';
       frag.appendChild(tr);
     });
@@ -4463,12 +4489,6 @@
                 '<p class="cu-hint" data-i18n="ctrl.legendInViewHint">The bottom-left legend lists only species with an observation currently visible on the map, updating as you pan and zoom. Off = list every plotted species.</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
-                '<label for="nearby-count" data-i18n="ctrl.nearbycount">Close by — rows shown</label>' +
-                '<input id="nearby-count" type="number" min="1" max="500" step="1" />' +
-                '<p class="cu-hint" data-i18n="ctrl.nearbycounthint">How many of the nearest detections the Close by list shows, sorted by distance from the live/fixed cross or placed pin.</p>' +
-                '<label class="ctrl-check"><input type="checkbox" id="nearby-points-toggle"> <span data-i18n="ctrl.nearbypoints">Also include active map points</span></label>' +
-              '</div>' +
-              '<div class="ctrl-group">' +
                 '<label for="rare-pct" data-i18n="ctrl.rarepct">Rare species threshold (%)</label>' +
                 '<input id="rare-pct" type="number" min="1" max="100" step="1" />' +
                 '<p class="cu-hint" data-i18n="ctrl.rarepcthint">A plotted species is “rare locally” when its detection count is at most this % of the commonest plotted species. Rare dots get a black centre; filter them with the legend’s ◉ Rare.</p>' +
@@ -4609,7 +4629,7 @@
             SP_FILTER_KEYS.map(function (f) {
               return '<th id="sp-f-' + f + '" class="spf-head" role="button" tabindex="0"><span>' + SP_FLAG_GLYPH[f] + '</span></th>';
             }).join("") +
-            '<th id="sp-species-head" class="clickable-head" data-i18n="th.species">Species</th><th class="name2" id="sp-name2-head"></th><th id="sp-sci-head" class="clickable-head" data-i18n="th.sci">Scientific name</th><th id="sp-prob-head" class="clickable-head" data-i18n="th.prob">Probability</th><th id="sp-nd-head" class="num clickable-head" data-i18n="th.nd">n(d)</th><th id="sp-delta-head"></th></tr></thead>' +
+            '<th id="sp-species-head" class="clickable-head" data-i18n="th.species">Species</th><th class="name2" id="sp-name2-head"></th><th id="sp-sci-head" class="clickable-head" data-i18n="th.sci">Scientific name</th><th id="sp-prob-head" class="clickable-head" data-i18n="th.prob">Probability</th><th id="sp-nd-head" class="num clickable-head" data-i18n="th.nd">n(d)</th><th id="sp-dist-head" class="num clickable-head" data-i18n="th.dist">Dist</th><th id="sp-delta-head"></th></tr></thead>' +
             '<tbody id="sp-tbody"></tbody>' +
           '</table>' +
           '<div class="sp-actions sp-actions-dl">' +
@@ -4858,10 +4878,10 @@
       if (hdr && chkWrap) hdr.appendChild(chkWrap);
       var mpWrap = document.getElementById("mp-wrap");
       if (hdr && mpWrap) hdr.appendChild(mpWrap);
-      var vtWrap = document.getElementById("viewtoggle-wrap");
-      if (hdr && vtWrap) hdr.appendChild(vtWrap);   // List⇄Map switch, between Points and Fullscreen
       var fsWrap = document.getElementById("fs-wrap");
       if (hdr && fsWrap) hdr.appendChild(fsWrap);   // fullscreen toggle next to the Points button
+      var vtWrap = document.getElementById("viewtoggle-wrap");
+      if (hdr && vtWrap) hdr.appendChild(vtWrap);   // List⇄Map switch, far right of the top bar
       syncHeaderHeight();
       window.addEventListener("resize", function () { syncHeaderHeight(); fitMapHeight(); });
       populateLangSelect();
@@ -5325,26 +5345,9 @@
     map.addControl(new LocateControl());
     map.on("locationerror", function () { setStatus(t("status.locateError")); });
 
-    // "Birds close by" — opens the distance-sorted list page (see openNearby).
-    var NearbyControl = L.Control.extend({
-      options: { position: "topleft" },
-      onAdd: function () {
-        var c = L.DomUtil.create("div", "leaflet-bar leaflet-control");
-        var a = L.DomUtil.create("a", "nearby-btn", c);
-        a.href = "#";
-        a.title = t("ctrl.nearby");
-        a.setAttribute("aria-label", t("ctrl.nearby")); a.setAttribute("data-help", "maphelp.nearby");
-        a.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-          '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>' +
-          '<circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg>';
-        L.DomEvent.on(a, "click", function (e) { L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e); openNearby(); });
-        return c;
-      }
-    });
-    map.addControl(new NearbyControl());
-    var nbToMap = document.getElementById("nb-tomap");
-    if (nbToMap) nbToMap.addEventListener("click", function () { resumeNearbyFollow(); closeNearby(true); });   // toggling to map resumes follow
-    window.addEventListener("resize", function () { if (nearbyIsOpen()) fitNearbyNames(); });   // re-fit names on rotate/resize
+    // "Birds close by" was a separate distance-sorted list opened from a map button;
+    // it's replaced by the sortable Distance column in the species list, so the map
+    // control is removed. (The nb-* page + handlers stay dead — never opened.)
 
     // Place (location-name) search — a map-pointer button below the crosshairs
     // that expands into a search box. The panel itself lives in the map wrapper
@@ -6691,6 +6694,15 @@
     return null;
   }
   function nearbyFmtDist(km) { return km < 1 ? Math.round(km * 1000) + " m" : (km < 10 ? km.toFixed(1) : Math.round(km)) + " km"; }
+  // Distance (km) from an origin to the NEAREST of a species' detection rows.
+  function nearestDetKm(oLat, oLon, rows) {
+    var min = Infinity;
+    for (var i = 0; i < (rows || []).length; i++) {
+      var r = rows[i]; if (!r || !isFinite(+r.lat) || !isFinite(+r.lon)) continue;
+      var d = haversineKm(oLat, oLon, +r.lat, +r.lon); if (d < min) min = d;
+    }
+    return isFinite(min) ? min : null;
+  }
   // "n(Nd)" behind the species name: n = count for that observation (blank if
   // unknown), Nd = days since it. Empty for map-point rows.
   function nearbyMeta(r) {
@@ -10727,15 +10739,6 @@
       });
     }
     wireNumSetting("max-points", detMaxPoints, 50, 100000, 5000, function (v) { window.GeoState.save({ maxMapPoints: v }); }, relayerDet);
-    wireNumSetting("nearby-count", nearbyCount, 1, 500, 25, function (v) { window.GeoState.save({ nearbyCount: v }); }, function () { if (nearbyIsOpen()) renderNearby(); });
-    var nearbyPtsEl = document.getElementById("nearby-points-toggle");
-    if (nearbyPtsEl) {
-      nearbyPtsEl.checked = nearbyInclPoints();
-      nearbyPtsEl.addEventListener("change", function () {
-        window.GeoState.save({ nearbyInclPoints: this.checked });
-        if (nearbyIsOpen()) renderNearby();
-      });
-    }
     var dedupEl = document.getElementById("dedup-toggle");
     if (dedupEl) {
       dedupEl.checked = dedupDetections();
@@ -11542,6 +11545,7 @@
     // list by that column (toggling asc → desc → off, where off returns to the
     // natural Probability-descending ranking).
     document.getElementById("sp-sci-head").addEventListener("click", function () { cycleSpeciesListSort("sci"); });
+    document.getElementById("sp-dist-head").addEventListener("click", function () { cycleSpeciesListSort("dist"); });
     document.getElementById("sp-prob-head").addEventListener("click", function () { cycleSpeciesListSort("prob"); });
     document.getElementById("sp-delta-head").addEventListener("click", function () { cycleSpeciesListSort("cmp"); });
     // Click the combined "n(d)" column header to cycle a filter:
@@ -14981,7 +14985,7 @@
         else if (r.inModel && r.inList) chip = '<span class="src-chip src-both" title="' + escapeHtml(t("src.both")) + '">✓</span>';
         else if (r.inModel) chip = '<span class="src-chip src-model" title="' + escapeHtml(t("src.modelOnly")) + '">?</span>';
         else chip = '<span class="src-chip src-list" title="' + escapeHtml(t("src.listOnly")) + '">●</span>';
-        return "<tr" + (!r.inModel ? ' class="row-list-only"' : "") + '>' + spFlagCells(r.label.key, false) + "<td>" + nameLinkHtml(r.label, true) + "</td>" + name2Cell + '<td class="sci">' + escapeHtml(r.label.sci) + "</td>" + probCell + '<td class="num det-nd"></td><td>' + chip + "</td></tr>";
+        return "<tr" + (!r.inModel ? ' class="row-list-only"' : "") + '>' + spFlagCells(r.label.key, false) + "<td>" + nameLinkHtml(r.label, true) + "</td>" + name2Cell + '<td class="sci">' + escapeHtml(r.label.sci) + "</td>" + probCell + '<td class="num det-nd"></td><td class="num sp-dist"></td><td>' + chip + "</td></tr>";
       }).join("");
       var sp = document.getElementById("species-panel");
       sp.classList.toggle("as-page", currentMode === "list");
@@ -15205,7 +15209,8 @@
                '<td>' + nameLinkHtml(r.label, true) + '</td>' + name2Cell + '<td class="sci">' +
                escapeHtml(r.label.sci) + '</td><td class="prob-cell"><span class="prob-num">' + pct +
                '%</span><div class="prob-bar" style="width:' + pct + '%;background:' + probHueColor(pRange > 0 ? (r.prob - pLo) / pRange : 1) + '"></div></td>' +
-               '<td class="num det-nd" data-key="' + dKey + '"><span class="det-wait" title="' + escapeHtml(t("status.loadingDet")) + '"></span></td>' + cmpCell + '</tr>';
+               '<td class="num det-nd" data-key="' + dKey + '"><span class="det-wait" title="' + escapeHtml(t("status.loadingDet")) + '"></span></td>' +
+               '<td class="num sp-dist" data-key="' + dKey + '"></td>' + cmpCell + '</tr>';
       }).join("");
       obsProgress();   // animate the loading placeholders until counts arrive
       if (speciesListSort.col) sortSpeciesList();   // apply name/prob/stat sort now (count sort re-applies once data loads)

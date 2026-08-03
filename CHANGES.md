@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-08-03 — Distance column in the species list · toggle far-right · drop "Close by" (sw v823)
+
+- **Sortable "Dist" column** in the species list: for each species, the distance from the list's
+  point to its **nearest** plotted detection (`nearestDetKm` + `nearbyFmtDist`, filled in
+  `applySightings` for model rows and `prependExtraSightings` for extras). Click the header to sort
+  (ascending = nearest first; species with no detection sink to the bottom). Added to all three
+  row templates (point/historic, and the country list gets an empty aligning cell) + `updateSortIndicators`.
+- **Removed the "Close by" map button** and its two settings — that distance-sorted list is now the
+  Distance column. `openNearby` is left dead (other `nearby*` helpers stay, still referenced).
+- **List⇄Map switch** moved to the **far right** of the top bar (appended after `#fs-wrap`).
+- New i18n `th.dist` (15 languages).
+
 ## 2026-08-03 — Switching to the List restricts it to the current map view (sw v822)
 
 - When you flip from Map → List with the header switch, `restrictListToView()` now hides every

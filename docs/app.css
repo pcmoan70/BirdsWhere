@@ -2016,7 +2016,7 @@ button.dd-name:hover { text-decoration: underline; }
 .map-help-pop .map-help-title { font-weight: 700; color: var(--brand-strong, #0b3a3a); margin-bottom: 4px; }
 .map-help-pop .map-help-body { white-space: pre-wrap; }
 /* Header List ⇄ Map segmented switch (in the green top bar, left of Fullscreen). */
-#site-header #viewtoggle-wrap { flex: 0 0 auto; margin-left: auto; }   /* pin to the right, just before #fs-wrap */
+#site-header #viewtoggle-wrap { flex: 0 0 auto; margin-left: 6px; }   /* far right, just after #fs-wrap (which holds margin-left:auto) */
 .view-seg { display: inline-flex; align-items: stretch; height: 34px; box-sizing: border-box;
   border: 1px solid rgba(255,255,255,0.28); border-radius: var(--radius-sm, 6px); overflow: hidden; }
 .view-seg .vt-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 100%;
