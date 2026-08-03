@@ -4544,6 +4544,10 @@
                 '<label class="ctrl-check"><input type="checkbox" id="update-banner-toggle"> <span data-i18n="ctrl.updateBanner">Auto-show update banner</span></label>' +
                 '<p class="cu-hint" data-i18n="ctrl.updateBannerHint">Off (default): new versions never pop up — the “Reload to update” button at the top of Settings lights up instead, and you reload whenever you like. On: a banner appears when an update is ready.</p>' +
               '</div>' +
+              '<div class="ctrl-group">' +
+                '<label class="ctrl-check"><input type="checkbox" id="experimental-toggle"> <span data-i18n="ctrl.experimental">Experimental features</span></label>' +
+                '<p class="cu-hint" data-i18n="ctrl.experimentalHint">Off (default). On: unlocks less-polished extras — currently the NBN Atlas and EuroBirdPortal links in the species menu; more may appear here over time.</p>' +
+              '</div>' +
               '<div class="app-qr"><img src="qr-app.svg" alt="" width="140" height="140" /><span class="app-qr-cap" data-i18n="settings.qrShare">Scan to open / share this app</span></div>' +
               '<div class="settings-section" data-i18n="settings.secWhatsNew">What’s new</div>' +
               '<div id="whatsnew-list" class="whatsnew-list"></div>' +
@@ -5558,6 +5562,10 @@
   var LABEL_LEVEL_OFFSET = { on: 0, more: 1 };   // zoom levels deeper than the view
   var labelsOverlay = null;
   function labelsMode() { return window.GeoState.get("mapLabels", "off"); }
+  // Experimental features gate (Settings) — off by default. Currently unlocks the
+  // less-polished species-menu references (NBN Atlas, EuroBirdPortal); the home for
+  // any future try-it-out links/features.
+  function experimentalOn() { return !!window.GeoState.get("experimental", false); }
   function applyLabelsOverlay() {
     if (labelsOverlay) { try { map.removeLayer(labelsOverlay); } catch (e) {} labelsOverlay = null; }
     var mode = labelsMode();
@@ -7044,8 +7052,11 @@
       if (isMammal) el.appendChild(drmBtn(t("menu.adw"), function () { closeDetRowMenu(); openExternal(adwUrl(sci)); }));
       if (isPlant) el.appendChild(drmBtn(t("menu.powo"), function () { closeDetRowMenu(); openExternal(powoUrl(sci)); }));
       if (!isPlant && !isFungi) el.appendChild(drmBtn(t("menu.xeno"), function () { closeDetRowMenu(); openExternal(xenoCantoUrl(sci)); }));   // sounds — animals only
-      el.appendChild(drmBtn(t("menu.nbn"), function () { closeDetRowMenu(); openExternal(nbnUrl(sci)); }));
-      if (isBird) el.appendChild(drmBtn(t("menu.ebp"), function () { closeDetRowMenu(); openExternal(ebpUrl(sci)); }));
+      // Experimental references (Settings → Experimental) — off by default.
+      if (experimentalOn()) {
+        el.appendChild(drmBtn(t("menu.nbn"), function () { closeDetRowMenu(); openExternal(nbnUrl(sci)); }));
+        if (isBird) el.appendChild(drmBtn(t("menu.ebp"), function () { closeDetRowMenu(); openExternal(ebpUrl(sci)); }));
+      }
     }
     // 3) Lists & actions — your data (any keyed species).
     if (key) {
@@ -10408,6 +10419,14 @@
       window.GeoState.save({ showSci: showSci });
       applyShowSci();
     });
+    var expCb = document.getElementById("experimental-toggle");
+    if (expCb) {
+      expCb.checked = experimentalOn();
+      expCb.addEventListener("change", function () {
+        window.GeoState.save({ experimental: this.checked });
+        closeContextMenus();   // a stale species menu would still show/hide the gated links
+      });
+    }
 
     // ---- App-update UI (non-intrusive by default) --------------------------
     // The service worker never auto-reloads. By default NO banner pops up: the

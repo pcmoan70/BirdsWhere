@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-08-03 — "Experimental features" toggle gates NBN Atlas / EuroBirdPortal (sw v816)
+
+- New Settings toggle **Experimental features** (`experimental`, default off, in Display & language).
+  When on, `drmRenderMain` shows the less-polished species-menu references — **NBN Atlas** and
+  **EuroBirdPortal** — which are hidden by default. Extensible: the gate (`experimentalOn`) is the
+  home for future try-it-out links/features.
+- Toggling it closes any open species menu so the gated links refresh. 2 new i18n keys
+  (`ctrl.experimental(+Hint)`) in 15 languages. Help updated.
+
 ## 2026-08-03 — Group-aware photo links (iNaturalist for all; Macaulay birds-only) (sw v815)
 
 - Species menu's external references are now chosen by group. New URL helpers `inatPhotosUrl`,
