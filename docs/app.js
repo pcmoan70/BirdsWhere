@@ -1191,6 +1191,12 @@
         if (ka === Infinity && kb === Infinity) return 0;
         if (ka === Infinity) return 1; if (kb === Infinity) return -1;   // always last
         return speciesListSort.dir === "asc" ? cd : -cd;
+      } else if (col === "recent") {
+        // Most-recent observation first (desc). No detection → 0 sinks to the bottom.
+        var ra = a.querySelector(".sp-link"), rb = b.querySelector(".sp-link");
+        var rkA = ra && ra.getAttribute("data-key"), rkB = rb && rb.getAttribute("data-key");
+        ka = (agg[rkA] && agg[rkA].latestTs) || 0;
+        kb = (agg[rkB] && agg[rkB].latestTs) || 0;
       } else {   // "count"
         var sa = a.querySelector(".sp-link"), sb = b.querySelector(".sp-link");
         var keyA = sa && sa.getAttribute("data-key"), keyB = sb && sb.getAttribute("data-key");
@@ -2129,6 +2135,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v828", date: "2026-08-03", text: "Shortcut links. Open the app with a URL like ?location=here;radius=5;show=list;sortby=time_recent to geolocate and land straight on the species list — or the map (show=map) with dots dropping in. radius sets the search km; sortby is rarity_increasing (default, likeliest first), rarity_decreasing (rarest first) or time_recent (most recently seen first). Handy for a home-screen bookmark." },
     { v: "v827", date: "2026-08-03", text: "Zoom now lands exactly on the H3 grid. Each zoom step corresponds to one H3 resolution drawn at its natural on-screen size, so the hexagons no longer render slightly too big or too small between steps. The deepest zoom is H3 resolution 13 (≈ level 19), and offline downloads still reach detail level 19." },
     { v: "v826", date: "2026-08-03", text: "Higher map detail. You can now zoom in one level deeper, and offline area downloads reach detail level 19 (was ~17) — the “Download max zoom” setting in Offline maps gains a “19 · maximum (full)” option. Deeper zoom shows more street/building detail where the basemap has it (some layers upscale past their native limit)." },
     { v: "v825", date: "2026-08-03", text: "Fetching a point in Species-List mode now drops the observation dots onto the map live, one source at a time, as the data streams in — instead of waiting on the whole list first. You start on the map; tap the list icon (top-right) whenever you want the ranked list, and again to return to the map." },
@@ -4297,6 +4304,70 @@
     { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
   }
 
+  // Parse the query string as semicolon- OR ampersand-separated key=value pairs,
+  // so a deep link like  ?location=here;radius=5;show=list;sortby=time_recent  works
+  // (URLSearchParams only splits on "&", keeping the ";" tail inside the first value).
+  function parseSemiParams() {
+    var out = {}, s = (window.location.search || "").replace(/^\?/, "");
+    if (!s) return out;
+    s.split(/[&;]/).forEach(function (pair) {
+      if (!pair) return;
+      var i = pair.indexOf("="), k = i < 0 ? pair : pair.slice(0, i), v = i < 0 ? "" : pair.slice(i + 1);
+      try { k = decodeURIComponent(k); v = decodeURIComponent(v.replace(/\+/g, " ")); } catch (e) {}
+      out[k.toLowerCase()] = v;
+    });
+    return out;
+  }
+  // Map a ?sortby=… value onto the species-list sort state. "rarity" is the inverse
+  // of the model probability, so rarity_increasing = probability desc (common → rare,
+  // the natural default) and rarity_decreasing = probability asc (rarest first).
+  function urlSortState(sortby) {
+    switch ((sortby || "").toLowerCase()) {
+      case "rarity_increasing": return { col: "prob", dir: "desc" };
+      case "rarity_decreasing": return { col: "prob", dir: "asc" };
+      case "time_recent":       return { col: "recent", dir: "desc" };
+      default: return null;
+    }
+  }
+  // Richer shortcut URL: ?location=here;radius=5;show=list;sortby=time_recent
+  //   location=here  → geolocate and open the per-point species list (only value for now)
+  //   radius=<km>    → set the sightings radius before fetching
+  //   show=list|map  → land on the list page, or the map with dots dropping in (default)
+  //   sortby=…       → rarity_increasing (default) | rarity_decreasing | time_recent
+  function maybeUrlLocationParam() {
+    var p = parseSemiParams();
+    if ((p.location || "").toLowerCase() !== "here") return false;
+    if (!navigator.geolocation || !map) { setStatus(t("status.locateError")); return true; }
+
+    var rk = parseFloat(p.radius);
+    if (isFinite(rk) && rk > 0) {   // persist so the fetch + the settings slider agree
+      rk = Math.max(0.1, Math.min(150, rk));
+      window.GeoState.save({ recentRadiusKm: rk }); allSightingsCache = {};
+      var rrEl = document.getElementById("recent-radius"); if (rrEl) rrEl.value = String(radiusStepIndex(rk));
+      var rrVal = document.getElementById("recent-radius-val"); if (rrVal) rrVal.textContent = radiusLabel(rk);
+    }
+
+    var sort = urlSortState(p.sortby);
+    if (sort) speciesListSort = sort;
+    updateSortIndicators();
+    urlForceView = (p.show || "").toLowerCase() === "list" ? "list" : null;   // else map-first (also 'map')
+
+    var modeSel = document.getElementById("mode-select");
+    if (modeSel && modeSel.value !== "list") {
+      modeSel.value = "list";
+      modeSel.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      var lat = pos.coords.latitude, lon = pos.coords.longitude;
+      if (marker) map.removeLayer(marker);
+      marker = L.marker([lat, lon]).addTo(map);
+      map.setView([lat, lon], Math.max(map.getZoom() || 0, 11));
+      renderSpeciesList(lat, lon);
+    }, function () { setStatus(t("status.locateError")); },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
+    return true;
+  }
+
   async function init() {
     var root = document.getElementById("demo-root");
     if (!root) return;
@@ -4931,10 +5002,16 @@
       showPerfModal();
       initOfflineIndicator();
       initInstall();
-      var hasHere = false, plainOpen = true;
-      try { var qp = new URLSearchParams(location.search); hasHere = qp.has("here"); plainOpen = !(qp.has("here") || qp.has("lat") || qp.has("lon") || qp.has("s")); } catch (e) {}
-      if (!hasHere) restoreSession();   // return to the view we left (reload-safe)
-      maybeUrlAutoLocate();     // ?here=1 → geolocate + open species list
+      var hasHere = false, plainOpen = true, hasLocParam = false;
+      try {
+        var qp = new URLSearchParams(location.search);
+        hasHere = qp.has("here");
+        hasLocParam = !!parseSemiParams().location;
+        plainOpen = !(qp.has("here") || qp.has("lat") || qp.has("lon") || qp.has("s") || hasLocParam);
+      } catch (e) {}
+      if (!hasHere && !hasLocParam) restoreSession();   // return to the view we left (reload-safe)
+      if (hasLocParam) maybeUrlLocationParam();   // ?location=here;radius=…;show=…;sortby=… → geolocate + open list/map
+      else maybeUrlAutoLocate();                  // ?here=1 → geolocate + open species list
       maybeOpenSharedPoint();   // ?lat=&lon= → a shared location: go there, drop the pin
       maybeImportShared();      // ?s=… → import a shared point / list / detection set
       // "Fetch on open": auto-fetch the ticked stored locations on a plain open
@@ -14793,6 +14870,7 @@
   // sightings fetch — so leaving "Recent" mid-render can't fire a recent fetch.
   var spListGen = 0;
   var spMapFetch = false;   // Species-List point fetch in "map-first" mode → drop dots as they load
+  var urlForceView = null;  // one-shot: a ?location=…;show=list URL wants the LIST page (not the map-first default)
   var plotNoFit = false;    // suppress plotSightingsResult's fitBounds (progressive partial plots)
   // eBird country species list (all species ever recorded in the region) —
   // used as the "official" national bird list to merge against the model's
@@ -15264,11 +15342,18 @@
       // full-screen page too.
       sp.classList.toggle("as-page", currentMode === "list" || currentMode === "historic");
       if (currentMode === "list") {
-        // Species-List (recent): go straight to the map and drop dots in as the
-        // fetch streams. The list stays rendered-but-hidden until the header
-        // List⇄Map switch is tapped, so the user watches points land live.
-        sp.style.display = "none";
-        spMapFetch = true;
+        var forceList = urlForceView === "list"; urlForceView = null;   // consume the one-shot URL request
+        if (forceList) {
+          // A ?location=…;show=list URL asked for the list explicitly → open the
+          // list page directly instead of the map-first default.
+          sp.style.display = "block"; if (!keepScroll) sp.scrollTop = 0; navOpen("page", closeAnyFullPage);
+        } else {
+          // Species-List (recent): go straight to the map and drop dots in as the
+          // fetch streams. The list stays rendered-but-hidden until the header
+          // List⇄Map switch is tapped, so the user watches points land live.
+          sp.style.display = "none";
+          spMapFetch = true;
+        }
       } else {
         sp.style.display = "block";
         if (currentMode === "historic") { if (!keepScroll) sp.scrollTop = 0; navOpen("page", closeAnyFullPage); }

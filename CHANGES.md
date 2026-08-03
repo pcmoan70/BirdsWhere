@@ -1,5 +1,19 @@
 # Changes
 
+## 2026-08-03 — `?location=here` shortcut URL (sw v828)
+
+- **New deep-link** `?location=here;radius=5;show=list;sortby=time_recent` (semicolon- or `&`-separated;
+  `parseSemiParams()` handles both since `URLSearchParams` only splits on `&`). `maybeUrlLocationParam()`
+  geolocates, switches to Species-List mode, sets the radius + sort, and renders the point.
+  - `location` — `here` (geolocate) is the only value for now; anything else is ignored.
+  - `radius` — km, persisted to `recentRadiusKm` (clamped 0.1–150) and reflected in the Settings slider.
+  - `show` — `map` (default: map-first, dots stream in via the new `spMapFetch` path) or `list` (opens
+    the list page directly via the one-shot `urlForceView` flag consumed in `renderSpeciesList`).
+  - `sortby` — `rarity_increasing` (default = probability desc), `rarity_decreasing` (probability asc),
+    or `time_recent` (new `"recent"` sort column in `sortSpeciesList`, ordering by `latestTs` desc).
+- `init` routes to the new handler when a `location` param is present (and treats it like `?here` for
+  skipping session-restore / fetch-on-open); legacy `?here=1` still works.
+
 ## 2026-08-03 — Zoom stops land exactly on the H3 grid (sw v827)
 
 - **Phased the zoom-snap ladder onto the real H3 resolutions.** Snapping was to plain multiples of

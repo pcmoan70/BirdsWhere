@@ -297,6 +297,18 @@ clears everything). A **⚠** appears when the *Max points on map* draw cap is h
 - Opening a shared link imports it after a confirmation, then strips the parameter so it won't
   re-import on reload.
 
+### Shortcut URLs
+
+- `?here=1` — geolocate and open the per-point species list at your current position.
+- `?location=here;radius=5;show=list;sortby=time_recent` — the same, with options (semicolon- or
+  `&`-separated):
+  - **`location`** — `here` (geolocate). *(the only value for now)*
+  - **`radius`** — sightings search radius in km (e.g. `5`); also updates the Settings slider.
+  - **`show`** — `map` (default: land on the map with dots dropping in as they load) or `list` (open
+    the ranked list page directly).
+  - **`sortby`** — `rarity_increasing` (default; most likely/common species first), `rarity_decreasing`
+    (rarest first), or `time_recent` (most recently observed first).
+
 ---
 
 ## The species menu
