@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-08-03 — Clickable red fetch-failure status (sw v834)
+
+- **A failed/timed-out source now shows as red, clickable text** in the status strip; tapping it opens a
+  dialog with the per-source reason(s) — `showFetchErrors(failed, timedOut)` (+ a "Manage data sources…"
+  shortcut when a free API key is missing). New `.status-err` style; `wireStatusFetchErrs` binds the spans
+  (click + Enter/Space) right after each `setStatusHtml`.
+- Wired at both completion points: `augmentRowsWithSightings` (recent/historic, list + map-first) and
+  `plotSightingsResult` (map plot, incl. the "nothing plotted, all failed" case). Timed-out source chips in
+  the plot status are now clickable too.
+- **Removed the automatic error pop-up** (`reportFetchErrors`, with its dedupe signature) — the explanation
+  is now opt-in via the red text, so a routine failed source no longer interrupts with a dialog.
+
 ## 2026-08-03 — Route lists: badge + direct Google Maps directions (sw v833)
 
 - **Points panel marks route lists**: `mpCollRowHtml` takes an `isRoute` flag (`isRouteColl(c)`) and

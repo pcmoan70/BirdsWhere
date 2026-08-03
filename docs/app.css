@@ -2742,6 +2742,8 @@ a.dl-row:hover, .dl-row-menu:hover { background: var(--surface-2, rgba(0,0,0,.05
 /* A source whose fetch hit the timeout (its partial records were kept). */
 .src-timeout { color: var(--danger, #c0392b); }
 .src-fail { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
+/* Red, clickable fetch-failure text in the status strip → tap opens the reasons. */
+.status-err { color: var(--danger, #c0392b); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
 /* "show all observers" line in the dot hover. */
 .det-hover-tip .dh-obs { display: block; margin-top: 3px; color: var(--ink-muted, #777); font-size: 0.72rem; line-height: 1.3;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }

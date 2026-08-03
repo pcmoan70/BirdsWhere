@@ -2135,6 +2135,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v834", date: "2026-08-03", text: "Fetch failures are clearer: when a data source fails or times out, its name turns red in the status line above the map — tap it to see exactly why (timed out, network error, or a missing free API key, with a shortcut to add one). The old automatic error pop-up is gone; the explanation is now one tap away when you want it." },
     { v: "v833", date: "2026-08-03", text: "Route lists are now marked in the Points panel with a ➤ badge, and their 🧭 button opens Google Maps directions straight through the stops (in order) instead of exporting a pin file. Other point lists still export as pins for Google My Maps." },
     { v: "v832", date: "2026-08-03", text: "Saved routes reload as routes. Tick a saved route in the Points panel — or just reopen the app with one shown — and its stops reappear numbered on the map with the route bar at the bottom, ready to navigate in Google Maps. Saving a route from the route bar now hands it straight over to that saved-list form (no duplicate pins)." },
     { v: "v831", date: "2026-08-03", text: "Detections list (☰) header tidy-up: a ＋➤ “add to route/tour” button now sits next to Navigate (adds this spot to the route bar); the Save button shows a points-list icon; the copy-coordinates button moved in front of the place name; and the “Filter species” box is narrower, with the day / rarity+year-list / observer filters lined up beside it." },
@@ -2953,22 +2954,35 @@
     document.getElementById("sources-modal").style.display = "flex";
     navOpen("sources", function () { document.getElementById("sources-modal").style.display = "none"; });
   }
-  var lastFetchErrSig = "";
-  function reportFetchErrors(failed) {
-    var arr = (failed || []).filter(Boolean);
-    if (!arr.length) { lastFetchErrSig = ""; return; }
-    var sig = arr.map(function (f) { return f.name + ":" + f.error; }).sort().join("|");
-    if (sig === lastFetchErrSig) return;
-    lastFetchErrSig = sig;
-    // If any of them failed only because a free API key isn't set, nudge the user
-    // toward registering one (fresher, more up-to-date data than GBIF's copy) and
-    // give them a button straight to the "Manage data sources…" window.
+  // Fetch-failure explanation lines: hard failures (with their reason) + timed-out
+  // sources (partial — they kept whatever they'd already paged).
+  function fetchIssueLines(failed, timedOut) {
+    var lines = [];
+    (failed || []).filter(Boolean).forEach(function (f) { lines.push((f.name || f) + " — " + (f.error || t("fetch.errUnknown"))); });
+    (timedOut || []).forEach(function (n) { lines.push(n + " — " + t("sources.timedOut")); });
+    return lines;
+  }
+  // Open a dialog listing each source that failed / timed out and why. Called when
+  // the red fetch-failure text in the status strip is tapped. If a source failed only
+  // for a missing free API key, add a shortcut to the "Manage data sources…" window.
+  function showFetchErrors(failed, timedOut) {
+    var lines = fetchIssueLines(failed, timedOut);
+    if (!lines.length) return;
     var msg = t("fetch.errTitle"), action = null;
-    if (splitFailed(arr).needKey.length) {
+    if (splitFailed(failed).needKey.length) {
       msg += "\n\n" + t("fetch.errKeyHint");
       action = { label: t("sources.manage"), handler: openSourcesManager };
     }
-    modalAlert(msg, arr.map(function (f) { return f.name + " — " + (f.error || t("fetch.errUnknown")); }), action);
+    modalAlert(msg, lines, action);
+  }
+  // Wire any red .status-err text just written into the status strip so tapping it
+  // (or Enter/Space when focused) opens the fetch-failure explanation.
+  function wireStatusFetchErrs(failed, timedOut) {
+    var el = document.getElementById("demo-status"); if (!el) return;
+    Array.prototype.forEach.call(el.querySelectorAll(".status-err"), function (s) {
+      s.addEventListener("click", function (ev) { ev.stopPropagation(); showFetchErrors(failed, timedOut); });
+      s.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); showFetchErrors(failed, timedOut); } });
+    });
   }
   // The observation sources, behind one interface. `country` (ISO-2) gates a
   // source to its own country — the national databases are only queried when the
@@ -3592,11 +3606,15 @@
       applySightings(tbody, token, result, true);
       if (!tbody || tbody.dataset.sightingsToken !== token) return;
       var sp = splitFailed(result.failed);
+      // A failure now shows as RED, CLICKABLE status text — tap it for the per-source
+      // reasons (+ a "Manage sources" shortcut when a free API key is missing).
       // Missing-key sources get the actionable "needs a free API key" line; only
       // otherwise fall back to the generic "didn't respond".
-      if (sp.needKey.length) setStatus(t("fetch.needKey", { sources: sp.needKey.join(", ") }));
-      else if (sp.other.length) setStatus(t("fetch.failed", { sources: failedNames(sp.other) }));
-      reportFetchErrors(sp.other);   // missing keys are shown in the status strip, not a popup
+      if (sp.needKey.length || sp.other.length) {
+        var etxt = sp.needKey.length ? t("fetch.needKey", { sources: sp.needKey.join(", ") }) : t("fetch.failed", { sources: failedNames(sp.other) });
+        setStatusHtml('<span class="status-err" role="button" tabindex="0" title="' + escapeHtml(t("fetch.clickErr")) + '">' + escapeHtml(etxt) + "</span>");
+        wireStatusFetchErrs(result.failed, result.timedOut);
+      }
     }).catch(function () {
       // Hard failure — clear the hourglasses so they don't spin forever.
       if (tbody && tbody.dataset.sightingsToken === token) {
@@ -7976,10 +7994,18 @@
         var ex = result.extras[k];
         if (ex.rows && ex.rows.length && extraInGroup(ex.cls) && passesAge(ex.latestTs)) entries.push({ key: "x:" + k, name: ex.name || ex.sci, rows: ex.rows, count: ex.count, cls: ex.cls || "" });
       });
-      var failNote = (result.failed && result.failed.length) ? " · " + t("fetch.failed", { sources: failedNames(result.failed) }) : "";
+      var hasFail = !!(result.failed && result.failed.length);
       // plotNoFit marks a progressive (partial) plot mid-fetch — an early source may
       // return nothing yet, so stay quiet rather than flashing "no detections".
-      if (!entries.length) { if (!plotNoFit) setStatus(failNote ? failNote.replace(/^ · /, "") : t("det.none")); return; }
+      if (!entries.length) {
+        if (!plotNoFit) {
+          if (hasFail) {   // nothing plotted because sources failed → red, clickable
+            setStatusHtml('<span class="status-err" role="button" tabindex="0" title="' + escapeHtml(t("fetch.clickErr")) + '">' + escapeHtml(t("fetch.failed", { sources: failedNames(result.failed) })) + "</span>");
+            wireStatusFetchErrs(result.failed, result.timedOut);
+          } else setStatus(t("det.none"));
+        }
+        return;
+      }
       // A fetch actually put observations on the map → outline the search area (thin
       // dashed green), which is what the red ×'s per-area delete acts on.
       if (currentSpView && isFinite(+currentSpView.lat) && isFinite(+currentSpView.lon)) rememberFetchedArea(+currentSpView.lat, +currentSpView.lon);
@@ -8006,12 +8032,14 @@
       var toSet = Object.create(null); (result.timedOut || []).forEach(function (n) { toSet[n] = 1; });
       var srcParts = Object.keys(bySrc).sort().map(function (s) {
         var lab = escapeHtml(s + " " + bySrc[s]);
-        return toSet[s] ? '<span class="src-timeout" title="' + escapeHtml(t("sources.timedOut")) + '">' + lab + "</span>" : lab;   // timed out → red
+        return toSet[s] ? '<span class="src-timeout status-err" title="' + escapeHtml(t("fetch.clickErr")) + '">' + lab + "</span>" : lab;   // timed out → red + clickable
       });
       var srcNote = srcParts.length ? " · " + srcParts.join(", ") : "";
       if (result.dedupTotal != null) srcNote += " · " + escapeHtml(t("sp.deduped", { n: result.dedupTotal }));   // unique kept after de-dup
-      setStatusHtml(escapeHtml(t("sp.plotted", { n: entries.length })) + srcNote + escapeHtml(failNote));
-      reportFetchErrors(result.failed);
+      // Hard failures append red, clickable text; tapping any red source opens the reasons.
+      var failHtml = hasFail ? ' · <span class="status-err" role="button" tabindex="0" title="' + escapeHtml(t("fetch.clickErr")) + '">' + escapeHtml(t("fetch.failed", { sources: failedNames(result.failed) })) + "</span>" : "";
+      setStatusHtml(escapeHtml(t("sp.plotted", { n: entries.length })) + srcNote + failHtml);
+      wireStatusFetchErrs(result.failed, result.timedOut);
   }
   // Plot every per-entry GPS fix from the open field checklist on the map,
   // grouped by species — reuses the detPlot legend / recency filter / spider,
