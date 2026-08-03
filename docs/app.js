@@ -16115,10 +16115,15 @@
     if (mode === "range") {
       var sp = window.GeoState.get("species", null);
       if (sp && labelsByKey[sp]) selectSpecies(sp);
-    } else if (s && s.page === "species" && isFinite(s.lat) && isFinite(s.lon)) {
-      renderSpeciesList(s.lat, s.lon);
     } else if (s && s.page === "migration" && isFinite(s.lat) && isFinite(s.lon)) {
       renderAnalysis(s.lat, s.lon);
+    } else if (mode === "list" && s && isFinite(s.lat) && isFinite(s.lon) && (s.page === "species" || !s.page)) {
+      // Restore the point we were viewing so currentSpView — and the List⇄Map toggle —
+      // come back on reload. `page:"species"` = we left off ON the list page → reopen
+      // it; otherwise we were on the MAP after it (page cleared) → map-first lands back
+      // on the map. Without this, a map-view reload left the toggle hidden.
+      if (s.page === "species") urlForceView = "list";
+      renderSpeciesList(s.lat, s.lon);
     }
   }
   function restoreControls() {

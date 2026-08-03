@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-08-03 — List⇄Map toggle survives reload from the map view (sw v835)
+
+- **Fixed the List⇄Map header toggle going missing after a reload/revisit** when you'd been looking at
+  the map (not the list page). `currentSpView` is runtime-only, and `restoreSession` only rebuilt it when
+  the saved `page === "species"`; if the list page had been closed (`page` cleared to `""`) it restored
+  nothing, so `viewToggleAvail()` stayed false. `restoreSession` now re-renders the saved point in list
+  mode whenever there's a saved lat/lon and `page` is `"species"` or empty — reopening the list if that's
+  where we left off (`urlForceView`), else letting map-first land back on the map. Either way
+  `currentSpView` + the toggle come back.
+
 ## 2026-08-03 — Clickable red fetch-failure status (sw v834)
 
 - **A failed/timed-out source now shows as red, clickable text** in the status strip; tapping it opens a
