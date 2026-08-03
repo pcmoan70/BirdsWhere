@@ -21,12 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v826";
+var VERSION = "v827";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
-  "• You can now zoom in deeper and download offline maps at higher detail — the map's maximum detail level goes up to 19 (was ~17). In Offline maps, “Download max zoom” now offers a 19 · maximum option.",
+  "• You can now zoom in deeper and download offline maps at higher detail — the map's maximum detail level goes up to 19 (was ~17). In Offline maps, “Download max zoom” now offers a 19 · maximum option. Each zoom step now lands exactly on an H3 grid resolution, so the hexagon cells are always drawn at their natural on-screen size.",
   "• Tap a point in Species-List mode and it now goes straight to the map, dropping the observation dots on as each source's data streams in — no waiting on the full list first. Tap the list icon (top-right) any time to see the list; tap it again to go back to the map.",
   "• Place labels fixed: on Light/Dark it no longer prints a second set of names over the map's own — it switches the base to a labels-free version so the overlay is the only labels, and “More” genuinely shows denser place names. (Streets/Topographic keep their built-in names.)",
   "• Smarter caching: switching from “All groups” to a single group filters the already-downloaded data instead of re-fetching, and narrowing a Historic date range or month subset within what you already fetched reuses it too. (“All” now spans plants & fungi as well, so it's a bit heavier.)",

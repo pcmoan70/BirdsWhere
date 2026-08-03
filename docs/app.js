@@ -457,6 +457,22 @@
   var H3_ZOOM_STEP = (typeof window !== "undefined" && window.h3)
     ? Math.log(window.h3.getHexagonEdgeLengthAvg(5, "m") ? window.h3.getHexagonEdgeLengthAvg(4, "m") / window.h3.getHexagonEdgeLengthAvg(5, "m") : 2.6458) / Math.LN2
     : 1.404;
+  // The map's zoom stops are anchored so each one lands EXACTLY on an H3 resolution
+  // — i.e. at every stop an H3 cell of the chosen resolution is drawn at its target
+  // on-screen size (H3_TARGET_EDGE_PX). Snapping to plain multiples of H3_ZOOM_STEP
+  // had the right spacing but the wrong phase, so cells rendered up to ~1.8x off.
+  // The ladder is  H3_ZOOM_PHASE + k·H3_ZOOM_STEP  (H3 resolutions are near-uniformly
+  // spaced, so one phase offset places every stop on-grid).
+  var TILE_SIZE_M = 156543.03392;        // web-mercator metres/pixel at zoom 0 (equator)
+  var H3_TARGET_EDGE_PX = 15;            // target on-screen H3 cell edge, in px (see h3ResForView)
+  // Zoom at which resolution r's average edge is exactly H3_TARGET_EDGE_PX on screen.
+  function h3ZoomForRes(r) { return Math.log(H3_TARGET_EDGE_PX * TILE_SIZE_M / window.h3.getHexagonEdgeLengthAvg(r, "m")) / Math.LN2; }
+  var H3_ZOOM_PHASE = (typeof window !== "undefined" && window.h3)
+    ? ((h3ZoomForRes(8) % H3_ZOOM_STEP) + H3_ZOOM_STEP) % H3_ZOOM_STEP   // reference res 8; phase is res-independent
+    : 0;
+  function h3SnapZoom(z) { return Math.round((z - H3_ZOOM_PHASE) / H3_ZOOM_STEP) * H3_ZOOM_STEP + H3_ZOOM_PHASE; }
+  function h3SnapDown(z) { return Math.floor((z - H3_ZOOM_PHASE) / H3_ZOOM_STEP) * H3_ZOOM_STEP + H3_ZOOM_PHASE; }
+  function h3SnapUp(z)   { return Math.ceil((z - H3_ZOOM_PHASE) / H3_ZOOM_STEP) * H3_ZOOM_STEP + H3_ZOOM_PHASE; }
 
   // Perceptual scaling: gamma < 1 stretches low values for visibility
   var DISPLAY_GAMMA = 0.5;
@@ -2113,6 +2129,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v827", date: "2026-08-03", text: "Zoom now lands exactly on the H3 grid. Each zoom step corresponds to one H3 resolution drawn at its natural on-screen size, so the hexagons no longer render slightly too big or too small between steps. The deepest zoom is H3 resolution 13 (≈ level 19), and offline downloads still reach detail level 19." },
     { v: "v826", date: "2026-08-03", text: "Higher map detail. You can now zoom in one level deeper, and offline area downloads reach detail level 19 (was ~17) — the “Download max zoom” setting in Offline maps gains a “19 · maximum (full)” option. Deeper zoom shows more street/building detail where the basemap has it (some layers upscale past their native limit)." },
     { v: "v825", date: "2026-08-03", text: "Fetching a point in Species-List mode now drops the observation dots onto the map live, one source at a time, as the data streams in — instead of waiting on the whole list first. You start on the map; tap the list icon (top-right) whenever you want the ranked list, and again to return to the map." },
     { v: "v824", date: "2026-08-03", text: "Fetching a point now takes you straight to the observations on the map — no need to switch views. The List ⇄ Map button in the top bar is now a single icon showing where it'll take you (a list icon while you're on the map, a map icon while you're on the list). The status line above the map is also easier to read." },
@@ -5260,10 +5277,10 @@
     // always projects onto the visible map.
     map = L.map("demo-map", {
       center: center, zoom: zoom,
-      // Keep min/max zoom on the H3 step ladder (multiples of H3_ZOOM_STEP) so
-      // the clamped end stops don't land off-grid with larger cells.
-      minZoom: window.h3 ? Math.ceil(2 / H3_ZOOM_STEP) * H3_ZOOM_STEP : 2,
-      maxZoom: window.h3 ? Math.floor(MAX_ZOOM / H3_ZOOM_STEP) * H3_ZOOM_STEP : MAX_ZOOM,
+      // Keep min/max zoom on the H3 grid ladder (H3_ZOOM_PHASE + k·H3_ZOOM_STEP) so
+      // the clamped end stops land on an exact H3 resolution, not off-grid.
+      minZoom: window.h3 ? h3SnapUp(2) : 2,
+      maxZoom: window.h3 ? h3SnapDown(MAX_ZOOM) : MAX_ZOOM,
       worldCopyJump: true,
       // Mouse wheel zooms on devices with a precise pointer (PC). On touch
       // (coarse pointer) it stays off — zoom there is via the +/− icons / pinch,
@@ -5277,6 +5294,16 @@
       zoomSnap: window.h3 ? H3_ZOOM_STEP : 1,
       zoomDelta: window.h3 ? H3_ZOOM_STEP : 1,
     });
+
+    // Leaflet's zoomSnap only rounds to MULTIPLES of the step (phase 0); override the
+    // clamp so every settled zoom lands on the phased H3 grid ladder instead — every
+    // zoom path (wheel, +/- buttons, setView, fitBounds) resolves through _limitZoom.
+    if (window.h3) {
+      map._limitZoom = function (z) {
+        return Math.max(this.getMinZoom(), Math.min(this.getMaxZoom(), h3SnapZoom(z)));
+      };
+      map.setZoom(map.getZoom(), { animate: false });   // re-snap the initial view onto the phased grid (the constructor used Leaflet's un-phased rule)
+    }
 
     setBasemap(window.GeoState.get("basemap", "streets"));
 
@@ -5732,7 +5759,9 @@
   function offlineZoomLevels(zStart, zMax) {
     var step = window.h3 ? H3_ZOOM_STEP : 1;
     var maxZ = map.getMaxZoom(), seen = {}, out = [];
-    for (var m = 0; m <= maxZ + 1e-6; m += step) {
+    // Walk the phased H3 ladder (the exact stops the map settles on) so the cached
+    // integer tile zooms match what it will actually request.
+    for (var m = window.h3 ? H3_ZOOM_PHASE : 0; m <= maxZ + 1e-6; m += step) {
       var tz = Math.round(m);
       if (tz < zStart || tz > zMax || seen[tz]) continue;
       seen[tz] = 1; out.push(tz);
@@ -11996,8 +12025,8 @@
     var z = map.getZoom();
     // Metres-per-pixel at the equator (no cos(lat) term): the resolution follows
     // the zoom only, so panning north–south doesn't flip the H3 resolution.
-    var mpp = 156543.03392 / Math.pow(2, z);
-    var targetM = Math.max(1, 15 * mpp);
+    var mpp = TILE_SIZE_M / Math.pow(2, z);
+    var targetM = Math.max(1, H3_TARGET_EDGE_PX * mpp);
     var best = 0, bestD = Infinity;
     for (var r = 0; r <= 14; r++) {
       // Geometric (log) closeness: H3 resolutions are ~2.65x apart in edge, so

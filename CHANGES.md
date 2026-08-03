@@ -1,5 +1,19 @@
 # Changes
 
+## 2026-08-03 — Zoom stops land exactly on the H3 grid (sw v827)
+
+- **Phased the zoom-snap ladder onto the real H3 resolutions.** Snapping was to plain multiples of
+  `H3_ZOOM_STEP` (phase 0), which had the right spacing but the wrong phase — at a stop an H3 cell could
+  be up to ~1.8× off its target on-screen size. The ladder is now `H3_ZOOM_PHASE + k·H3_ZOOM_STEP`,
+  where `H3_ZOOM_PHASE` is derived (via `h3ZoomForRes`) from the zoom at which a resolution's average
+  edge equals `H3_TARGET_EDGE_PX` (15px). Verified against the h3 lib: every stop matches the exact
+  resolution zoom to < 0.001.
+- `map._limitZoom` is overridden to snap onto the phased ladder (Leaflet's `zoomSnap` only rounds to
+  multiples), so every zoom path — wheel, ± buttons, `setView`, `fitBounds` — settles on-grid. The
+  initial view is re-snapped once after the override (the constructor used Leaflet's un-phased rule).
+- `minZoom`/`maxZoom` and `offlineZoomLevels` now walk the phased ladder. The deepest stop is H3
+  resolution 13 (zoom ≈ 19.33), so offline downloads still resolve to level 19.
+
 ## 2026-08-03 — Higher map detail: zoom + offline downloads reach level 19 (sw v826)
 
 - **Raised the map's deepest zoom** `MAX_ZOOM` 18 → 20 so interactive zoom (H3-snapped to ~19.7) and
