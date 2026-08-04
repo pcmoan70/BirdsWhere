@@ -12342,9 +12342,12 @@
         syncFlagsHead();
         keepListScroll = true;      // a filter toggle should not jump the list to the top
         if (f !== "hidden") { rebuildDetLayers(); updateDetLegend(); }   // map + legend follow the filter
-        // ◉ is a row-hiding pass over the already-rendered rows, so it applies
-        // without a re-render; the others change which rows exist.
-        if (f === "rare") applyAgeFilter(); else refreshCurrentView();
+        // Apply the filter IN PLACE (show/hide the already-rendered rows) so toggling a
+        // cue filter stays on the list page — a full re-render (refreshCurrentView →
+        // renderSpeciesList) would drop the user back to the map-first view. Fall back to
+        // the full refresh only when the in-place path can't handle the mode (e.g. country).
+        if (f === "rare") applyAgeFilter();
+        else if (!refreshCueCellsInPlace()) refreshCurrentView();
       };
       th.addEventListener("click", toggle);
       th.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });

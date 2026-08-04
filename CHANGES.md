@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-04 — Fix: cue-filter toggles stay on the list (no jump to map) (sw v865)
+
+- Toggling a species-list cue filter (★ / ◉ / 🟠 year / 🟡 life / 🚫 hidden) no longer jumps to the map.
+  The non-rare toggles called `refreshCurrentView()` → `renderSpeciesList()`, which in Species-List mode
+  resets to the map-first view (`sp.style.display = "none"`). They now re-apply the filter in place via
+  `refreshCueCellsInPlace()` (rare already did, via `applyAgeFilter`), falling back to the full refresh only
+  when in-place can't handle the mode (e.g. country). The map dots/legend still follow the filter.
+
 ## 2026-08-04 — Date menu: explicit "Range…" popup (sw v864)
 
 - The date-filter menu (`showDateFilterMenu`) gained a **Range…** item opening `showDateRangeModal` — a
