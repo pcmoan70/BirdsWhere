@@ -1,5 +1,21 @@
 # Changes
 
+## 2026-08-04 — Season column (now vs peak) + location prediction cache (sw v856)
+
+- **Prediction cache.** New `predCache` keyed by a discrete grid cell (`PRED_GRID_DEG` 0.1°) → per-week
+  full species vectors (the model returns the whole vector per query, so one entry serves all species).
+  `predictWeek(lat,lon,week)` (cached; used by the species list now) and `predictAllWeeks(lat,lon)`
+  (batch-computes only the missing weeks in one run). LRU-capped (`PRED_CELL_CAP` cells). The list's
+  current-week query and the Season 48-week computation share it; re-sorts / layout switches reuse it.
+- **Season column.** `classifySeason(cell,idx,week)` → now-vs-peak `ratio` + phase (off / arriving ↑ /
+  at peak ● / leaving ↓) using circular week neighbours for the slope. `fillSeasonCells` runs after the
+  list renders (async, gen-guarded), writes each row's `.sp-season` cell (`seasonCellHtml`: glyph + % +
+  coloured bar) and `data-season` sort key, and populates `seasonByKey` (shared with the record tables).
+  New `<th id="sp-season-head">` (sortable via `cycleSpeciesListSort("season")`); empty cell added to the
+  extras + country row templates; hidden in country-view / no-model. Record tables (`spRecRowHtml`,
+  `spDetailTableHtml`, `buildSpObsHtml`, `spObsCmp`) gained a sortable Season column too.
+- i18n `th.season` + `season.off/arriving/peak/leaving` (15 langs); CSS `.season-cell/.season-bar/.season-glyph`.
+
 ## 2026-08-04 — Record-table actions + species-list coloring in the observation records (sw v855)
 
 - **Location → map actions.** In a species' expanded records, the observation's Location is now a

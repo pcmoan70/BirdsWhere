@@ -21,16 +21,16 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v855";
+var VERSION = "v856";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
-  "• In a species' expanded records, tapping the Location now opens map actions for that observation — Find on map, Add as point, or Add to route.",
-  "• Tapping an observer's name in those records now also lets you add them to an observer list (as well as filtering by them).",
-  "• Deleting a species from the map now leaves a grey, struck-through name in the legend (no colour dot, no ×) and greys it in the species list too. Tap the grey name to forget the deletion.",
-  "• Expand a species' records by tapping anywhere on its row (the ▸ caret is gone; the name + dates stay clickable for their own actions). The expanded records show each observation's Location instead of repeating the species name.",
-  "• After a historic fetch, the chosen date range + months now show in the description text and the date/month controls collapse to a small 📅 button — saving a row of space."
+  "• New Season column in the species list (and the record tables): for each species it shows where you are in its year here — arriving ↑, at peak ●, leaving ↓ or off-season · — as a coloured bar (now vs its yearly peak). Sortable, so you can put the species that are peaking right now on top.",
+  "• Faster re-queries: the model's predictions for a location are now kept in memory (per map cell, all weeks), so re-sorting, switching layout and the Season column reuse them instead of recomputing.",
+  "• In a species' expanded records, tapping the Location opens map actions (Find on map / Add as point / Add to route); tapping an observer's name can add them to an observer list; and the row background opens the full species menu.",
+  "• Deleting a species leaves a grey, struck-through name in the legend and list — tap it to forget the deletion.",
+  "• Record tables show the probability as a coloured bar (black text on white) matching the Species-list table."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs
