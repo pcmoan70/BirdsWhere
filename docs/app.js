@@ -265,7 +265,9 @@
       mail:     '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 7l8.5 6 8.5-6"/>',
       menu:     '<path d="M4 7h16M4 12h16M4 17h16"/>',
       share:    '<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8 15.8 6.2M8.2 13.2l7.6 4.6"/>',
-      copy:     '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/>'
+      copy:     '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/>',
+      // Scatter of dots — mirrors the header Points icon (the "points" concept).
+      dots:     '<circle cx="5" cy="7" r="2" fill="currentColor" stroke="none"/><circle cx="12.5" cy="4.5" r="2" fill="currentColor" stroke="none"/><circle cx="19" cy="9" r="2" fill="currentColor" stroke="none"/><circle cx="7.5" cy="15" r="2" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="2" fill="currentColor" stroke="none"/><circle cx="18.5" cy="19" r="2" fill="currentColor" stroke="none"/>'
     };
     return '<svg class="btn-ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (P[name] || "") + "</svg>";
   }
@@ -10780,11 +10782,11 @@
     var collSection = (collItems.length || dsItems.length) ? '<div class="mp-coll-list">' + collItems.join("") + dsItems.join("") + "</div>" : "";
     panel.innerHTML =
       '<div class="mp-head mp-head-share">' +
-        '<button type="button" id="mp-import-share" class="demo-btn demo-btn-light ico-btn" title="' + escapeHtml(tLabel("share.importFile")) + '">' + ico("upload") + '<span class="ico-label">' + escapeHtml(tLabel("share.importFile")) + "</span></button>" +
+        '<button type="button" id="mp-import-share" class="demo-btn demo-btn-light ico-btn" title="' + escapeHtml(tLabel("share.importFile")) + '">' + ico("upload") + '<span class="ico-label">' + escapeHtml(tLabel("points.load")) + "</span></button>" +
         '<input type="file" id="share-file-input" accept=".share,.mcshare,.txt,text/plain" style="display:none" />' +
       "</div>" +
       (Object.keys(detPlot).length ? '<div class="mp-head">' +
-        '<button type="button" id="mp-save-det" class="demo-btn ico-btn">' + ico("save") + '<span class="ico-label" data-i18n="points.savePoints">' + escapeHtml(tLabel("points.savePoints")) + "</span></button>" +
+        '<button type="button" id="mp-save-det" class="demo-btn ico-btn">' + ico("dots") + '<span class="ico-label" data-i18n="points.savePoints">' + escapeHtml(tLabel("points.savePoints")) + "</span></button>" +
         '<button type="button" id="mp-share-det" class="demo-btn demo-btn-light ico-btn" title="' + escapeHtml(t("share.detHover")) + '">' + ico("share") + '<span class="ico-label">' + escapeHtml(tLabel("share.shareBtn")) + "</span></button>" +
       "</div>" : "") +
       collSection +

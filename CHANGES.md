@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-04 — Points panel: shorter "Load" label + dots icon on Save points (sw v861)
+
+- The Points panel's "Import shared file" button now shows the short label **Load** (reusing the existing
+  `points.load` string; the full "Import shared file" stays as the hover tooltip).
+- "Save points" now leads with a small **scatter-of-dots** icon (new `ico("dots")`, mirroring the header
+  Points icon) instead of the generic save/disk icon.
+
 ## 2026-08-04 — Fix: species-name click in Per observation no longer jumps to the map (sw v860)
 
 - In "Per observation", the species name sits inside the record row, so a click fired BOTH the
