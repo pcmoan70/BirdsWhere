@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-08-04 — Record tables: separate name columns, count, per-group sort, colour dot (sw v851)
+
+- **Rewrote the record tables** (`spRecRowHtml` + `spObsCmp` + `spObsHeadCell`, replacing `spGroupTableHtml`):
+  columns are **colour dot + species name · 2nd name · probability · [date] · distance · count · [observer]**
+  — the 2nd name is its **own column** (no more parenthesised name), plus a **count** column (`th.count` = "#").
+- **Per-column sorting within groups**: shared `spObsSort` (name/name2/prob/date/dist/count/obs); clicking a
+  header cycles asc→desc→off and re-sorts the records **within each date × observer × location group**.
+  "Per observation" is now ONE table (`buildSpObsHtml`) with spanning group-separator rows (`.sp-obs-grp`).
+- **Consistent colouring**: new `spColorDot(key)` (from `detPlot[key].color`, else a stable `keyHue`) leads
+  every record row AND every species-list row; `applySightings` updates the species-list dot to the plotted
+  map colour. i18n `th.count`; CSS `.sp-cdot` / `.sp-obs-h` / `.sp-obs-grp`.
+
 ## 2026-08-04 — Headers on expand tables; all dates/observers clickable to filter (sw v850)
 
 - **Column headers** on the expanded species records (`spDetailTableHtml`) and the Per-observation group

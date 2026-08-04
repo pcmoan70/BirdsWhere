@@ -1231,82 +1231,110 @@
   // The expanded sub-list as a columns table matching the species list: species name ·
   // 2nd name · probability (at the record's location) · date (click = filter) · distance
   // · observer (click = filter).
+  // Shared sort for the record tables (expand + per-observation), applied WITHIN each
+  // date×observer×location group. col: name|name2|prob|date|dist|count|obs.
+  var spObsSort = { col: "", dir: "" };
+  function speciesColor(key) {
+    if (typeof detPlot !== "undefined" && detPlot[key] && detPlot[key].color) return detPlot[key].color;
+    try { return "hsl(" + keyHue(key) + ", 35%, 52%)"; } catch (e) { return "#888"; }
+  }
+  // A plain species-colour dot — used in BOTH the species list and the record tables
+  // so the colouring matches (status ★/◉ is shown by the flag columns / elsewhere).
+  function spColorDot(key, color) { return '<span class="det-sw sp-cdot" style="background:' + (color || speciesColor(key)) + '"></span>'; }
+  function spRecDistKm(d) {
+    var oLat = currentSpView ? +currentSpView.lat : NaN, oLon = currentSpView ? +currentSpView.lon : NaN;
+    return (isFinite(oLat) && isFinite(oLon) && isFinite(+d.lat) && isFinite(+d.lon)) ? haversineKm(oLat, oLon, +d.lat, +d.lon) : Infinity;
+  }
+  function spObsCmp(a, b) {
+    var col = spObsSort.col, sgn = spObsSort.dir === "desc" ? -1 : 1;
+    if (col === "name") return sgn * String(a.name || "").localeCompare(String(b.name || ""));
+    if (col === "name2") return sgn * String(detName2(a.key) || "").localeCompare(String(detName2(b.key) || ""));
+    if (col === "prob") { var pa = a.prob >= 0 ? a.prob : Infinity, pb = b.prob >= 0 ? b.prob : Infinity; return sgn * (pa - pb); }
+    if (col === "date") return sgn * String(a.date || "").localeCompare(String(b.date || ""));
+    if (col === "count") { var ca = parseInt(a.count, 10) || 0, cb = parseInt(b.count, 10) || 0; return sgn * (ca - cb); }
+    if (col === "dist") return sgn * (spRecDistKm(a) - spRecDistKm(b));
+    if (col === "obs") return sgn * String(a.observer || "").localeCompare(String(b.observer || ""));
+    var pa2 = a.prob >= 0 ? a.prob : Infinity, pb2 = b.prob >= 0 ? b.prob : Infinity;   // default: rarest first
+    return (pa2 - pb2) || String(a.name || "").localeCompare(String(b.name || ""));
+  }
+  function spObsHeadCell(col, label, num) {
+    var on = spObsSort.col === col, arrow = on ? (spObsSort.dir === "asc" ? " ▲" : " ▼") : "";
+    return '<th class="sp-obs-h' + (num ? " num" : "") + '" role="button" data-col="' + col + '">' + escapeHtml(label) + arrow + "</th>";
+  }
+  // One record row: colour swatch + species name, 2nd name, probability, [date],
+  // distance, count, [observer] — separate columns (no parenthesised 2nd name).
+  function spRecRowHtml(d, opts) {
+    var km = spRecDistKm(d); km = isFinite(km) ? escapeHtml(nearbyFmtDist(km)) : "";
+    var pct = (d.prob >= 0) ? Math.round(d.prob * 100) + "%" : "—";
+    var cnt = (d.count != null && d.count !== "") ? escapeHtml(String(d.count)) : "";
+    var sw = spColorDot(d.key, d.color);
+    var dateCell = d.date ? '<span class="dl-date-click" role="button" data-date="' + escapeHtml(d.date) + '" title="' + escapeHtml(t("detlist.dateFilterHint")) + '">' + escapeHtml(fmtDate(d.date)) + "</span>" : "";
+    var obs = detObsRealNames(d.observer);
+    var obsCell = obs.map(function (n) { return '<span class="sp-obs-filter" role="button" data-obs="' + escapeHtml(n) + '" title="' + escapeHtml(t("obs.filterHint")) + '">' + escapeHtml(n) + "</span>"; }).join(", ");
+    return '<tr class="sp-d-row" data-lat="' + (d.lat == null ? "" : d.lat) + '" data-lon="' + (d.lon == null ? "" : d.lon) + '">' +
+      '<td class="sp-d-name">' + sw + escapeHtml(d.name || "") + "</td>" +
+      (opts.name2 ? '<td class="name2">' + escapeHtml(detName2(d.key) || "") + "</td>" : "") +
+      '<td class="num">' + pct + "</td>" +
+      (opts.date ? '<td class="sp-d-date">' + dateCell + "</td>" : "") +
+      '<td class="num">' + km + "</td>" +
+      '<td class="num">' + cnt + "</td>" +
+      (opts.obs ? '<td class="sp-d-obs">' + obsCell + "</td>" : "") + "</tr>";
+  }
+  // The expanded sub-list for one species: full columns, sorted by spObsSort.
   function spDetailTableHtml(key, rows) {
-    var oLat = currentSpView ? +currentSpView.lat : NaN, oLon = currentSpView ? +currentSpView.lon : NaN;
-    var haveO = isFinite(oLat) && isFinite(oLon);
-    var name2On = !!secondLang, nm2 = name2On ? escapeHtml(detName2(key) || "") : "";
-    var body = rows.map(function (d) {
-      var km = (haveO && isFinite(+d.lat) && isFinite(+d.lon)) ? escapeHtml(nearbyFmtDist(haversineKm(oLat, oLon, +d.lat, +d.lon))) : "";
-      var pct = (d.prob >= 0) ? Math.round(d.prob * 100) + "%" : "—";
-      var dateCell = d.date ? '<span class="dl-date-click" role="button" data-date="' + escapeHtml(d.date) + '" title="' + escapeHtml(t("detlist.dateFilterHint")) + '">' + escapeHtml(fmtDate(d.date)) + "</span>" : "";
-      var obs = detObsRealNames(d.observer);
-      var obsCell = obs.map(function (n) { return '<span class="sp-obs-filter" role="button" data-obs="' + escapeHtml(n) + '" title="' + escapeHtml(t("obs.filterHint")) + '">' + escapeHtml(n) + "</span>"; }).join(", ");
-      return '<tr class="sp-d-row" data-lat="' + (d.lat == null ? "" : d.lat) + '" data-lon="' + (d.lon == null ? "" : d.lon) + '">' +
-        '<td class="sp-d-name">' + escapeHtml(detListName(key, d.name)) + "</td>" +
-        (name2On ? '<td class="name2">' + nm2 + "</td>" : "") +
-        '<td class="num">' + pct + "</td>" +
-        '<td class="sp-d-date">' + dateCell + "</td>" +
-        '<td class="num">' + km + "</td>" +
-        '<td class="sp-d-obs">' + obsCell + "</td></tr>";
-    }).join("");
-    var hdr = "<thead><tr>" +
-      '<th>' + escapeHtml(t("th.species")) + "</th>" +
-      (name2On ? '<th>' + escapeHtml(window.GeoI18N.langByCode(secondLang).name) + "</th>" : "") +
-      '<th class="num">' + escapeHtml(t("th.prob")) + "</th>" +
-      '<th>' + escapeHtml(t("th.date")) + "</th>" +
-      '<th class="num">' + escapeHtml(t("th.dist")) + "</th>" +
-      '<th>' + escapeHtml(t("th.obs")) + "</th></tr></thead>";
+    var name2On = !!secondLang;
+    var hdr = "<thead><tr>" + spObsHeadCell("name", t("th.species")) +
+      (name2On ? spObsHeadCell("name2", window.GeoI18N.langByCode(secondLang).name) : "") +
+      spObsHeadCell("prob", t("th.prob"), true) + spObsHeadCell("date", t("th.date")) +
+      spObsHeadCell("dist", t("th.dist"), true) + spObsHeadCell("count", t("th.count"), true) +
+      spObsHeadCell("obs", t("th.obs")) + "</tr></thead>";
+    var body = rows.slice().sort(spObsCmp).map(function (d) { return spRecRowHtml(d, { name2: name2On, date: true, obs: true }); }).join("");
     return '<table class="sp-detail-tbl">' + hdr + "<tbody>" + body + "</tbody></table>";
   }
-  // "Per observation": the same columns table, but records stay grouped per
-  // date × observer × location (the triple). Each group's rows show species · 2nd
-  // name · probability · distance (date/observer/location live in the group header,
-  // where date + observer are clickable to filter).
-  function spGroupTableHtml(items) {
-    var oLat = currentSpView ? +currentSpView.lat : NaN, oLon = currentSpView ? +currentSpView.lon : NaN;
-    var haveO = isFinite(oLat) && isFinite(oLon), name2On = !!secondLang;
-    var body = items.slice().sort(function (a, b) {
-      var pa = (a.prob >= 0) ? a.prob : Infinity, pb = (b.prob >= 0) ? b.prob : Infinity;
-      return (pa - pb) || String(a.name).localeCompare(String(b.name));
-    }).map(function (d) {
-      var km = (haveO && isFinite(+d.lat) && isFinite(+d.lon)) ? escapeHtml(nearbyFmtDist(haversineKm(oLat, oLon, +d.lat, +d.lon))) : "";
-      var pct = (d.prob >= 0) ? Math.round(d.prob * 100) + "%" : "—";
-      return '<tr class="sp-d-row" data-lat="' + (d.lat == null ? "" : d.lat) + '" data-lon="' + (d.lon == null ? "" : d.lon) + '">' +
-        '<td class="sp-d-name">' + escapeHtml(detListName(d.key, d.name)) + "</td>" +
-        (name2On ? '<td class="name2">' + escapeHtml(detName2(d.key) || "") + "</td>" : "") +
-        '<td class="num">' + pct + "</td>" +
-        '<td class="num">' + km + "</td></tr>";
-    }).join("");
-    var hdr = "<thead><tr><th>" + escapeHtml(t("th.species")) + "</th>" +
-      (name2On ? "<th></th>" : "") +
-      '<th class="num">' + escapeHtml(t("th.prob")) + '</th><th class="num">' + escapeHtml(t("th.dist")) + "</th></tr></thead>";
-    return '<table class="sp-detail-tbl">' + hdr + "<tbody>" + body + "</tbody></table>";
-  }
+  // "Per observation": ONE columns table with the records grouped by date × observer ×
+  // location (a spanning group-separator row per triple); columns sort WITHIN each group.
   function buildSpObsHtml(rows) {
+    var name2On = !!secondLang, ncols = 3 + (name2On ? 1 : 0) + 1;   // name [name2] prob dist count
+    var hdr = "<thead><tr>" + spObsHeadCell("name", t("th.species")) +
+      (name2On ? spObsHeadCell("name2", window.GeoI18N.langByCode(secondLang).name) : "") +
+      spObsHeadCell("prob", t("th.prob"), true) + spObsHeadCell("dist", t("th.dist"), true) +
+      spObsHeadCell("count", t("th.count"), true) + "</tr></thead>";
     var byDate = {}, dates = [];
     rows.forEach(function (d) { var k = d.date || ""; if (!byDate[k]) { byDate[k] = []; dates.push(k); } byDate[k].push(d); });
     dates.sort(function (a, b) { return b.localeCompare(a); });
-    return dates.map(function (dt) {
+    var body = dates.map(function (dt) {
       var byG = {}, gkeys = [];
       byDate[dt].forEach(function (d) {
         var obsv = (d.src === "BirdWeather" ? "" : (d.observer || "")).trim(), loc = (d.place || "").trim();
-        var key = obsv + "␟" + loc;
-        if (!(key in byG)) { byG[key] = { obs: obsv, loc: loc, items: [] }; gkeys.push(key); }
-        byG[key].items.push(d);
+        var gk = obsv + "␟" + loc;
+        if (!(gk in byG)) { byG[gk] = { obs: obsv, loc: loc, items: [] }; gkeys.push(gk); }
+        byG[gk].items.push(d);
       });
       gkeys.sort(function (a, b) { var A = byG[a], B = byG[b]; if (!A.obs !== !B.obs) return A.obs ? -1 : 1; return (A.obs || "").localeCompare(B.obs || "") || (A.loc || "").localeCompare(B.loc || ""); });
       var dateLbl = escapeHtml(fmtDate(dt) || t("detlist.noDate"));
       var datePart = dt ? '<span class="dl-date-click" role="button" data-date="' + escapeHtml(dt) + '" title="' + escapeHtml(t("detlist.dateFilterHint")) + '">' + dateLbl + "</span>" : dateLbl;
-      return gkeys.map(function (key) {
-        var g = byG[key];
+      return gkeys.map(function (gk) {
+        var g = byG[gk];
         var obsSpan = g.obs ? ' · <span class="sp-obs-filter" role="button" data-obs="' + escapeHtml(g.obs) + '" title="' + escapeHtml(t("obs.filterHint")) + '">' + escapeHtml(g.obs) + "</span>" : "";
         var locSpan = g.loc ? ' <span class="dl-loc">· ' + escapeHtml(g.loc) + "</span>" : "";
-        return '<div class="sp-obs-group"><div class="sp-obs-head">' + datePart + obsSpan + locSpan + '<span class="dl-ct">' + g.items.length + "</span></div>" +
-          spGroupTableHtml(g.items) + "</div>";
+        var headRow = '<tr class="sp-obs-grp"><td colspan="' + ncols + '">' + datePart + obsSpan + locSpan + '<span class="dl-ct">' + g.items.length + "</span></td></tr>";
+        return headRow + g.items.slice().sort(spObsCmp).map(function (d) { return spRecRowHtml(d, { name2: name2On, date: false, obs: false }); }).join("");
       }).join("");
     }).join("");
+    return '<table class="sp-detail-tbl sp-obs-tbl">' + hdr + "<tbody>" + body + "</tbody></table>";
   }
   function wireSpDetail(container) {
+    // Sortable column headers — sort applies WITHIN each date×observer×location group.
+    Array.prototype.forEach.call(container.querySelectorAll(".sp-obs-h"), function (th) {
+      th.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var col = this.getAttribute("data-col");
+        if (spObsSort.col === col) spObsSort.dir = spObsSort.dir === "asc" ? "desc" : (spObsSort.dir === "desc" ? "" : "asc");
+        else { spObsSort.col = col; spObsSort.dir = "asc"; }
+        if (!spObsSort.dir) spObsSort.col = "";
+        if (container.id === "sp-records") renderSpBody(); else refreshSpExpansions();
+      });
+    });
     Array.prototype.forEach.call(container.querySelectorAll(".dl-date-click"), function (s) {
       s.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); showDateFilterMenu(this.getAttribute("data-date"), e.clientX, e.clientY); });
     });
@@ -2334,6 +2362,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v851", date: "2026-08-04", text: "The expanded species records and “Per observation” are now full sortable tables: species name and second name in separate columns (no more parentheses), a count column, and every column sortable within its date × observer × location group. A species-colour dot (matching the map) leads each record and each species-list row, so the two lists are coloured consistently." },
     { v: "v850", date: "2026-08-04", text: "Every date and observer shown across the lists is now tappable to filter (On/Before/After for dates, Only/All for observers) — including the species list's “Last” column and the records in the pop-up. The expanded species records also gained column headers (Species · 2nd name · Prob · Date · Dist · Observer)." },
     { v: "v849", date: "2026-08-04", text: "The list filters now also filter the map: the ★/◉/🟠/🟡 flag columns and the n(d) day filter narrow the plotted dots too (n(d) ≤1d = today/yesterday only; year-list/life-list/rarity show only those). The list⇄map view only changes when you tap the toggle now. And “Per observation” uses the same columns table, grouped by date × observer × location." },
     { v: "v848", date: "2026-08-04", text: "Expanding a species row now lays its individual records out as a columns table matching the list: species name, 2nd name, probability at that location, date, distance and observer. The date and the observer are clickable to filter (Only / All), and tapping a record row jumps the map to it." },
@@ -3768,7 +3797,10 @@
     tbody.querySelectorAll(".det-nd").forEach(function (td) {
       var key = td.getAttribute("data-key"); if (!key) return;   // skip extras rows
       var entry = agg[key], row = td.parentNode;
-      if (row) row.classList.toggle("sp-has-det", !!(entry && entry.count));   // caret shows only when there's something to expand
+      if (row) {
+        row.classList.toggle("sp-has-det", !!(entry && entry.count));   // caret shows only when there's something to expand
+        var dot = row.querySelector(".sp-cdot"); if (dot && detPlot[key] && detPlot[key].color) dot.style.background = detPlot[key].color;   // match the map colour once plotted
+      }
       if (!entry || !entry.count) { if (isFinal) td.textContent = ""; return; }   // partial: leave the hourglass for not-yet-arrived data
       var days = entry.latestTs ? Math.max(0, Math.round((now - entry.latestTs) / 86400000)) : null;
       td.innerHTML = '<button type="button" class="det-count-btn" data-key="' + escapeHtml(key) + '">' + entry.count + "</button>" +
@@ -15849,7 +15881,7 @@
         var pct = Math.round(r.prob * 100);
         var sortAttrs = ' data-name="' + escapeHtml(speciesName(r.label).toLowerCase()) + '" data-prob="' + r.prob + '"' + (hasCompare ? ' data-cmp="' + r.cmpVal + '"' : "");
         return '<tr' + sortAttrs + '>' + spFlagCells(r.label.key, false) +
-               '<td><span class="sp-exp" role="button" data-key="' + dKey + '" title="' + escapeHtml(t("sp.expandHint")) + '">▸</span>' + nameLinkHtml(r.label, true) + '</td>' + name2Cell + '<td class="sci">' +
+               '<td><span class="sp-exp" role="button" data-key="' + dKey + '" title="' + escapeHtml(t("sp.expandHint")) + '">▸</span>' + spColorDot(r.label.key) + nameLinkHtml(r.label, true) + '</td>' + name2Cell + '<td class="sci">' +
                escapeHtml(r.label.sci) + '</td><td class="prob-cell"><span class="prob-num">' + pct +
                '%</span><div class="prob-bar" style="width:' + pct + '%;background:' + probHueColor(pRange > 0 ? (r.prob - pLo) / pRange : 1) + '"></div></td>' +
                '<td class="num det-nd" data-key="' + dKey + '"><span class="det-wait" title="' + escapeHtml(t("status.loadingDet")) + '"></span></td>' +

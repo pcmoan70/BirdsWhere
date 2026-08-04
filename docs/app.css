@@ -2650,12 +2650,15 @@ tr.sp-has-det .sp-exp { display: inline-block; }
 .sp-detail-tbl .sp-d-row:hover { background: var(--surface, rgba(0,0,0,.05)); }
 .sp-obs-filter, .sp-detail-tbl .dl-date-click, .sp-obs-head .dl-date-click { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
 .sp-obs-filter:hover, .sp-detail-tbl .dl-date-click:hover, .sp-obs-head .dl-date-click:hover { color: var(--brand); }
-/* "Per observation" tabular view: date × observer × location group header + records table. */
-.sp-obs-group { margin: 0 0 7px; }
-.sp-obs-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 4px;
-  background: var(--surface-2, #f2f2f2); font-size: 0.76rem; font-weight: 600; color: var(--ink, #222); padding: 3px 6px; }
-.sp-obs-head .dl-ct { margin-left: auto; font-weight: 400; color: var(--ink-muted, #888); }
-.sp-obs-head .dl-loc { font-weight: 400; font-style: italic; color: var(--ink-muted, #888); }
+/* Record tables: sortable headers + "Per observation" date×observer×location group rows. */
+.sp-detail-tbl thead th.sp-obs-h { cursor: pointer; white-space: nowrap; }
+.sp-detail-tbl thead th.sp-obs-h:hover { color: var(--brand); }
+.sp-obs-tbl .sp-obs-grp > td { background: var(--surface-2, #f2f2f2); font-weight: 600; font-size: 0.74rem;
+  color: var(--ink, #222); padding: 3px 6px; }
+.sp-obs-tbl .sp-obs-grp .dl-ct { margin-left: 6px; font-weight: 400; color: var(--ink-muted, #888); }
+.sp-obs-tbl .sp-obs-grp .dl-loc { font-weight: 400; font-style: italic; color: var(--ink-muted, #888); }
+/* Species colour swatch inline before the name (species list + record tables). */
+.sp-cdot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: middle; flex: 0 0 auto; }
 /* Date + observer label: truncate with an ellipsis; the full name(s) stay
    available via the title tooltip on hover. */
 .dl-date-head .dl-date-lbl { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
