@@ -101,6 +101,17 @@ window.AppNormalize = (function () {
     });
     return out;
   }
+  // GBIF's recordedBy for a multi-observer record is either an array or a single
+  // string. The app splits observers on "|"/";" (not "," — that appears inside
+  // "Last, First" names), so join arrays with " | ". Artportalen (via GBIF) instead
+  // publishes co-observers as a COMMA-separated string; convert those to the same
+  // "|" convention so each observer splits out — enabling per-observer filtering and
+  // adding individuals to observer lists.
+  function gbifObserver(o) {
+    var rb = Array.isArray(o.recordedBy) ? o.recordedBy.filter(Boolean).join(" | ") : String(o.recordedBy || "");
+    if (/artportalen/i.test(o.datasetName || "") && rb.indexOf("|") < 0) rb = rb.split(/\s*,\s*/).filter(Boolean).join(" | ");
+    return rb;
+  }
   function normGbif(arr) {
     var out = [];
     (arr || []).forEach(function (o) {
@@ -120,7 +131,7 @@ window.AppNormalize = (function () {
       out.push({ src: "GBIF", speciesCode: "", sciName: sn, comName: vn, family: o.family || "", cls: classOrKingdom(o.class, o.kingdom), kingdom: o.kingdom || "",
         lat: o.decimalLatitude != null ? +o.decimalLatitude : null, lon: o.decimalLongitude != null ? +o.decimalLongitude : null,
         date: (o.eventDate || "").slice(0, 10), dt: o.eventDate || "", url: o.key ? "https://www.gbif.org/occurrence/" + o.key : "", origin: o.datasetName || "", place: o.locality || "",
-        observer: (Array.isArray(o.recordedBy) ? o.recordedBy.join(", ") : (o.recordedBy || "")), count: o.individualCount != null ? o.individualCount : "",
+        observer: gbifObserver(o), count: o.individualCount != null ? o.individualCount : "",
         act: o.behavior || "", note: o.occurrenceRemarks || "" });
     });
     return out;

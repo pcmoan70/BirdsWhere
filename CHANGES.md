@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-04 — Split Artportalen[GBIF] multi-observer records (sw v869)
+
+- Artportalen via GBIF publishes co-observers as one COMMA-separated string, but the app splits observers
+  on "|"/";" (comma stays intact because it appears inside "Last, First" names) — so those records read as a
+  single blob observer. `normGbif` now homogenises via `gbifObserver(o)`: arrays join with " | ", and an
+  Artportalen dataset's comma-separated string is converted to the "|" convention. Each observer now splits
+  out, so per-observer filtering and adding individuals to observer lists work on such records.
+
 ## 2026-08-04 — Checklist button moved behind Experimental (sw v868)
 
 - The field **Checklist** button (foot of the species list) now shows only when Experimental is on.
