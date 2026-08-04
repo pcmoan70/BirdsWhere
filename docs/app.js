@@ -777,6 +777,18 @@
     }
     marker = L.marker([lat, lon]).addTo(map);
   }
+  // "Show on map" from an observation/record: reveal the map (close any open menu,
+  // records modal or full-screen list), drop the point marker at the location, and
+  // centre the view on it.
+  function focusPointOnMap(lat, lon) {
+    if (!map || !isFinite(lat) || !isFinite(lon)) return;
+    try { closeDetRowMenu(); } catch (e) {}
+    try { navClose("detlist"); } catch (e) {}                                   // close the records modal
+    try { if (typeof onListView === "function" && onListView()) navClose("page"); } catch (e) {}   // close the full-screen list
+    setPointMarker(lat, lon);                                                   // put the map pointer on the location
+    mapClickGuardUntil = Date.now() + 250;
+    map.setView([lat, lon], Math.max(map.getZoom() || 0, 14));
+  }
   // Position indicators: a red plus marks where you were when you tapped the
   // crosshairs (a snapshot); a blue plus follows the live GPS position.
   var posMarker = null, posFixedMarker = null, posWatching = false, posCentered = false;
@@ -1376,11 +1388,9 @@
       r.addEventListener("click", function (e) {
         var la = parseFloat(this.getAttribute("data-lat")), lo = parseFloat(this.getAttribute("data-lon"));
         if (isPerObs) {
-          // Per observation: the species name opens the menu; a background click keeps
-          // the quick jump-to-map.
-          if (!isFinite(la) || !isFinite(lo) || !map) return;
-          try { navClose("detlist"); } catch (e2) {}
-          mapClickGuardUntil = Date.now() + 250; map.setView([la, lo], Math.max(map.getZoom() || 0, 14));
+          // Per observation: the species name opens the menu; a background click shows
+          // the point on the map (marker + view).
+          focusPointOnMap(la, lo);
           return;
         }
         // Expanded Species-list records: a background click opens the unified species +
@@ -2425,6 +2435,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v858", date: "2026-08-04", text: "“Show on map” from an observation (the record menu, the expanded records' location, and the 🎯 focus button) now drops the map pointer on that location and reveals the map — it closes the full-screen list or the records modal so you land directly on the spot, marker in place." },
     { v: "v856", date: "2026-08-04", text: "New Season column in the Species-list table: a coloured now-vs-peak bar telling you where you are in each species' year at this point — arriving ↑, at peak ●, leaving ↓ or off-season ·. Sortable, so the species peaking right now can go on top. It's powered by a new prediction cache: the model returns the whole species vector per query, so those values are kept in memory per map cell (all 48 weeks), and re-sorting / layout switches / the Season computation reuse them instead of recomputing." },
     { v: "v855", date: "2026-08-04", text: "More actions in a species' expanded records: tap an observation's Location for map actions (Find on map · Add as point · Add to route); tap an observer's name to filter by them OR add them to an observer list; and tap the row background for the full species + location menu. The species name reopens the species menu in Per observation, and the records now show the probability as a coloured bar (black text on white) matching the Species-list table." },
     { v: "v854", date: "2026-08-04", text: "Deleting a species from the map now leaves a grey, struck-through name in the legend (no colour dot, no ×) and greys the same species in the species list — so you can see what you removed, not just that it vanished. Tap the grey name to forget the deletion (the species can re-appear on the next fetch). Expanding a species' records: tap anywhere on the row (the ▸ caret is gone; the species name and dates stay clickable for their own actions), and the expanded records now show the observation's Location instead of repeating the species name. Also: after a historic fetch the chosen date range + months show in the description text and the date/month controls collapse to a small 📅 button to save a row of space." },
@@ -7619,11 +7630,7 @@
       head("menu.secObs");
       if (d.url) el.appendChild(drmBtn(t("det.openSource"), function () { closeDetRowMenu(); openExternal(d.url); }));
       if (hasLoc) {
-        el.appendChild(drmBtn(t("detmenu.focusMap"), function () {
-          closeDetRowMenu();
-          try { navClose("detlist"); } catch (e) {}   // close the list so the map is visible
-          if (map) { mapClickGuardUntil = Date.now() + 250; map.setView([+d.lat, +d.lon], Math.max(map.getZoom() || 0, 14)); }
-        }));
+        el.appendChild(drmBtn(t("detmenu.focusMap"), function () { focusPointOnMap(+d.lat, +d.lon); }));
         el.appendChild(drmBtn(t("nav.here"), function () { closeDetRowMenu(); navigatePoints([{ lat: +d.lat, lon: +d.lon }]); }, "nav"));
         el.appendChild(drmBtn(t("route.add"), function () { closeDetRowMenu(); addToRoute(+d.lat, +d.lon, name); }));
       }
@@ -7826,11 +7833,7 @@
     var el = openAnchoredMenu("detrow-menu");
     el.innerHTML = "";
     var h = document.createElement("div"); h.className = "detrow-menu-hdr"; h.textContent = name || (lat.toFixed(4) + ", " + lon.toFixed(4)); el.appendChild(h);
-    el.appendChild(drmBtn(t("locmenu.find"), function () {
-      closeDetRowMenu();
-      try { navClose("detlist"); } catch (e) {}   // close the list so the map is visible
-      if (map) { mapClickGuardUntil = Date.now() + 250; map.setView([lat, lon], Math.max(map.getZoom() || 0, 14)); }
-    }, "nav"));
+    el.appendChild(drmBtn(t("locmenu.find"), function () { focusPointOnMap(lat, lon); }, "nav"));
     el.appendChild(drmBtn(t("locmenu.add"), function () {
       closeDetRowMenu();
       addMapPoint({ lat: lat, lon: lon, name: name || "", source: "manual" });
@@ -7965,11 +7968,7 @@
       s.addEventListener("click", function (e) {
         e.preventDefault(); e.stopPropagation();
         var lat = parseFloat(this.getAttribute("data-lat")), lon = parseFloat(this.getAttribute("data-lon"));
-        if (!isFinite(lat) || !isFinite(lon) || !map) return;
-        closeDetRowMenu();
-        try { navClose("detlist"); } catch (e2) {}
-        mapClickGuardUntil = Date.now() + 250;
-        map.setView([lat, lon], Math.max(map.getZoom() || 0, 14));
+        focusPointOnMap(lat, lon);
       });
     });
   }

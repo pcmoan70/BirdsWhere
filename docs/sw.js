@@ -21,16 +21,16 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v857";
+var VERSION = "v858";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• “Show on map” (from an observation's menu / records) now drops the map pointer on that location and reveals the map — closing the list or records view so you land right on the spot.",
   "• New Season column in the Species-list table: for each species it shows where you are in its year here — arriving ↑, at peak ●, leaving ↓ or off-season · — as a coloured bar (now vs its yearly peak). Sortable, so you can put the species that are peaking right now on top.",
   "• Faster re-queries: the model's predictions for a location are now kept in memory (per map cell, all weeks), so re-sorting, switching layout and the Season column reuse them instead of recomputing.",
   "• In a species' expanded records, tapping the Location opens map actions (Find on map / Add as point / Add to route); tapping an observer's name can add them to an observer list; and the row background opens the full species menu.",
-  "• Deleting a species leaves a grey, struck-through name in the legend and list — tap it to forget the deletion.",
-  "• Record tables show the probability as a coloured bar (black text on white) matching the Species-list table."
+  "• Deleting a species leaves a grey, struck-through name in the legend and list — tap it to forget the deletion."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs

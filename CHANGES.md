@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-04 — "Show on map" places the marker + reveals the map (sw v858)
+
+- New shared `focusPointOnMap(lat,lon)`: closes the record menu / records modal / full-screen list,
+  drops the point marker (`setPointMarker`) at the location, then centres the view on it. Replaces the
+  four ad-hoc "focus" handlers that only did `setView` (no marker, and didn't close the list page):
+  `drmRenderMain` "Show on map", `showLocPointMenu` "Find on map", the `.dl-focus` 🎯 button, and the
+  Per-observation row-background jump.
+
 ## 2026-08-04 — Scope Season to the Species-list table only (sw v857)
 
 - The Season column now shows ONLY on the non-expanded **Species list** table. Removed it from the record
