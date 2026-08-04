@@ -169,11 +169,13 @@ country. **BirdWeather** collapses machine detections to one "present" record pe
 station and day, tunable by **min detections/day** and **min confidence**. **eBird** and
 **BirdWeather** are birds-only; the other sources honour the species-group filter.
 
-**GBIF datasets** (Settings → *GBIF datasets*, each individually toggled): **Observation.org**
-and **Birda** (global), plus nation-tagged **Artportalen (SE)**, **Artsobservasjoner (NO)**,
-**Laji.fi / Notebook (FI)**, **DOFbasen (DK)**, **eElurikkus / EELIS (EE)** and
-**SmartBirds / BSPB (BG)**. You can add your own datasets by hand (country code + dataset key
-or gbif.org URL).
+**GBIF datasets** (Settings → *GBIF datasets*, each individually toggled): **Observation.org**,
+**Birda**, **Pl@ntNet** and **eBird EOD** (global, historic) — plus nation-tagged
+**Artportalen (SE)**, **Artsobservasjoner (NO)**, **Laji.fi / Notebook (FI)**, **DOFbasen (DK)**,
+**eElurikkus / EELIS (EE)**, **SmartBirds / BSPB (BG)**, **naturgucker (DE)**, **Birds of Ireland (IE)**,
+**AIRONE Wintering Birds (IT)**, **Salzburg biodiversity DB (AT)**, **Oiseaux des Jardins + Faune-Occitanie
+(FR, historic)**, **SABAP2 (ZA)** and **Birdata (AU)**. You can add your own datasets by hand (country
+code + dataset key or gbif.org URL).
 
 **Sightings radius** — set it with the Settings slider **or Shift + mouse-wheel over the map**
 (scroll up = larger). It steps a 0.1 … 150 km ladder (default **25 km**), controls the fetch

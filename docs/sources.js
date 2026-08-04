@@ -46,12 +46,28 @@ window.AppSources = (function () {
     // Birdata — BirdLife Australia's national bird atlas/surveys (~23M total, ~1.5M in
     // 2024–25), key-free; complements eBird for Australia. Gated to AU.
     { key: "4bf1cca8-832c-4891-9e17-7e7a65b7cc81", name: "Birdata / BirdLife Australia (AU)", url: "https://birdata.birdlife.org.au/", country: "AU" },
+    // AIRONE — "The Atlas of Wintering Birds in Italy" (Univ. degli Studi di Milano).
+    // The dominant Italian bird dataset on GBIF and one of the few national portals
+    // still adding current data (~2.75M birds w/coords, ~111k in 2025). Italy has no
+    // direct source here; gated to IT.
+    { key: "a722377c-ceda-4d15-b02a-f5c7c6a07652", name: "AIRONE Wintering Birds (IT)", url: "https://www.gbif.org/dataset/a722377c-ceda-4d15-b02a-f5c7c6a07652", country: "IT" },
+    // Biodiversitätsdatenbank Salzburg (Haus der Natur) — Austria's only actively-
+    // updated bird source on GBIF (~654k birds w/coords, ~11k in 2025); ornitho.at is
+    // not on GBIF. Gated to AT.
+    { key: "c1492854-5d15-40e9-9ee7-24a18ac05112", name: "Salzburg biodiversity DB (AT)", url: "https://www.hausdernatur.at/", country: "AT" },
     // eBird Observation Dataset (EOD) — by far the largest bird source on GBIF, global.
     // HISTORIC-ONLY: it's queried only for a Historic date-range fetch, not the recent
     // fetch — GBIF's copy lags eBird's live API by months, so the direct eBird source
     // (a free key, last ~30 days) stays the fresh recent feed, while EOD gives deep
     // key-free historic coverage everywhere. Not country-gated (global).
     { key: "4fa7b334-ce0d-4e88-aaae-2e0c138d049e", name: "eBird (GBIF · historic)", url: "https://ebird.org/", historicOnly: true },
+    // Faune-France network (LPO / PatriNat) opportunistic bird data — France's biggest
+    // volume on GBIF (Oiseaux des Jardins ~6.5M, Faune-Occitanie ~3.9M). GBIF's copy is
+    // batch-published and ends ~2022, so — like eBird EOD — these are HISTORIC-ONLY
+    // (only queried for a Historic date-range fetch), gated to FR, giving France a deep
+    // baseline it otherwise lacks here.
+    { key: "e0876b81-db28-4e44-891e-ae768e6bb9b5", name: "Oiseaux des Jardins (FR · historic)", url: "https://www.oiseauxdesjardins.fr/", country: "FR", historicOnly: true },
+    { key: "c3710778-6492-4094-b7a6-9d63a76e133a", name: "Faune-Occitanie (FR · historic)", url: "https://www.faune-occitanie.org/", country: "FR", historicOnly: true },
     // Pl@ntNet — global plant (+ some fungi) identifications, ~2.6M records, fresh. Only
     // queried when the active group is Plants, Fungi or All (groups gate); in "All" it
     // uses its own Plantae(6)+Fungi(5) filter so it still returns flora there. Global.

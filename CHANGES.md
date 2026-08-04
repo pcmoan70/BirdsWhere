@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-08-05 — Add Italy, Austria + France GBIF bird datasets (sw v873)
+
+- Added four national GBIF datasets to `DEFAULT_GBIF_DATASETS` after a GBIF-API gap analysis:
+  - **AIRONE Wintering Birds (IT)** `a722377c…` — ~2.75M birds w/coords, ~111k in 2025 (live). Gated to IT.
+  - **Salzburg biodiversity DB (AT)** `c1492854…` — ~654k, ~11k in 2025 (live). Gated to AT.
+  - **Oiseaux des Jardins (FR)** `e0876b81…` (~6.5M) + **Faune-Occitanie (FR)** `c3710778…` (~3.9M) — GBIF
+    copy ends ~2022, so `historicOnly: true` + gated to FR (Historic date-range fetches only, like eBird EOD).
+- README GBIF list refreshed (also now lists naturgucker/IE/ZA/AU/Pl@ntNet/eBird EOD, which were missing).
+- Rationale: most other national portals (UK BirdTrack, ornitho.*, Trektellen/EURING) aren't queryable live
+  GBIF datasets, and US/CA/UK/ES/PL/CZ are already dominated by eBird/iNaturalist/Observation.org.
+
 ## 2026-08-05 — Identify GBIF records that carry no datasetName (sw v872)
 
 - Some GBIF records (e.g. Observation.org) have no `datasetName`, so the source showed as a bare "GBIF"
