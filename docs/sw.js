@@ -21,11 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v845";
+var VERSION = "v846";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• In the Species-list table, species that have observations now show a ▸ caret — tap it to expand the row into that species' individual records (observer · source · count · date), sorted to match the column you're sorting by.",
   "• The fetched species list now has just two layouts: the sortable Species-list table (now with a “Last” seen-date column) and “Per observation” (records grouped by date → observer → location). The old By-species/count/rarity/distance layouts are folded into the table's sortable columns.",
   "• The pop-up detections list (from tapping a dot) is now a focused one-place view — filtering has moved to the fetched species list, which is the hub for filters + layouts. The 2nd-name column there is now sortable too.",
   "• Filter observations by source or by date straight from the list: tap a record's source (eBird, GBIF…) for Only / Hide / All sources, or tap a date header for On / Before / After that date. Map, legend and list all follow.",

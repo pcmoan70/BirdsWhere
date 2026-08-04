@@ -2631,6 +2631,12 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
 /* Clickable source label in a record row → source filter. */
 .dl-src-click { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
 .dl-src-click:hover { color: var(--brand); }
+/* Expandable species rows: a caret (only when the species has detections) opens a
+   sub-row listing that species' individual records. */
+.sp-exp { display: none; cursor: pointer; color: var(--ink-muted, #888); font-size: 0.8em; margin-right: 4px; user-select: none; }
+tr.sp-has-det .sp-exp { display: inline-block; }
+.sp-exp:hover { color: var(--brand); }
+.sp-detail-row > .sp-detail-cell { padding: 0 4px 5px 20px; background: var(--surface-2, rgba(0,0,0,.03)); }
 /* Date + observer label: truncate with an ellipsis; the full name(s) stay
    available via the title tooltip on hover. */
 .dl-date-head .dl-date-lbl { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

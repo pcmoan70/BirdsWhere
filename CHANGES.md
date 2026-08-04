@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-08-04 — Expandable species rows (sub-list of records) (sw v846)
+
+- Each model-species row in the table gains a **▸ expand caret** (`.sp-exp`, shown only on rows with
+  detections via `sp-has-det`, set in `applySightings`). Tapping it opens a **sub-row** (`.sp-detail-row`
+  / `.sp-detail-cell`, `colspan`) listing that species' individual records via `detRowHtml` (wired with
+  `wireRecordList`), sorted per the active list sort (`spDetailRowsFor` → distance/last where relevant,
+  else newest-first).
+- Expanded state tracked in `spExpanded`; `refreshSpExpansions()` removes + re-inserts the sub-rows fresh
+  after `sortSpeciesList` and `applyAgeFilter` (which skip `.sp-detail-row`), so sublists follow sort +
+  visibility. i18n `sp.expandHint` (15 langs).
+
 ## 2026-08-04 — Consolidate fetch-list layouts; Last column; Per-obs by location (sw v845)
 
 - **Layout dropdown → two options**: `Species list` (the table) and `Per observation`. The By

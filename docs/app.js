@@ -1180,10 +1180,57 @@
   }
   // Sort the rendered species-list rows in place by the active column, keeping
   // the existing filters intact (we only reorder rows, never remove or hide).
+  // ---- Expandable species rows: each row can open a sub-list of that species'
+  // detection records (sorted per the active list sort). --------------------
+  var spExpanded = Object.create(null);   // model-species key → expanded
+  function findSpRow(tbody, key) {
+    var links = tbody.querySelectorAll(".sp-link[data-key]");
+    for (var i = 0; i < links.length; i++) if (links[i].getAttribute("data-key") === key) return links[i].closest("tr");
+    return null;
+  }
+  function spDetailRowsFor(key) {
+    var rows = collectVisibleDetections(null, true).filter(function (d) { return d.key === key; });
+    var col = speciesListSort.col, dir = speciesListSort.dir;
+    if (col === "dist") {
+      var oLat = currentSpView ? +currentSpView.lat : NaN, oLon = currentSpView ? +currentSpView.lon : NaN;
+      var have = isFinite(oLat) && isFinite(oLon);
+      rows.sort(function (a, b) {
+        var da = (have && isFinite(+a.lat)) ? haversineKm(oLat, oLon, +a.lat, +a.lon) : Infinity;
+        var db = (have && isFinite(+b.lat)) ? haversineKm(oLat, oLon, +b.lat, +b.lon) : Infinity;
+        return (dir === "desc") ? db - da : da - db;
+      });
+    } else {
+      rows.sort(function (a, b) { var c = String(b.date || "").localeCompare(String(a.date || "")); return (col === "last" && dir === "asc") ? -c : c; });
+    }
+    return rows;
+  }
+  function refreshSpExpansions() {
+    var tbody = document.getElementById("sp-tbody"); if (!tbody) return;
+    Array.prototype.slice.call(tbody.querySelectorAll(".sp-detail-row")).forEach(function (tr) { if (tr.parentNode) tr.parentNode.removeChild(tr); });
+    Array.prototype.forEach.call(tbody.querySelectorAll(".sp-exp"), function (c) { c.textContent = spExpanded[c.getAttribute("data-key")] ? "▾" : "▸"; });
+    Object.keys(spExpanded).forEach(function (key) {
+      var row = findSpRow(tbody, key);
+      if (!row || row.style.display === "none") return;
+      var recs = spDetailRowsFor(key);
+      if (!recs.length) return;
+      var tr = document.createElement("tr"); tr.className = "sp-detail-row";
+      var td = document.createElement("td"); td.colSpan = row.children.length; td.className = "sp-detail-cell";
+      td.innerHTML = recs.map(function (d) { return detRowHtml(d, true); }).join("");
+      tr.appendChild(td);
+      row.parentNode.insertBefore(tr, row.nextSibling);
+      wireRecordList(td, function () {});
+    });
+  }
+  function toggleSpExpand(key) {
+    if (spExpanded[key]) delete spExpanded[key]; else spExpanded[key] = 1;
+    refreshSpExpansions();
+  }
   function sortSpeciesList() {
     var tbody = document.getElementById("sp-tbody");
     if (!tbody || !speciesListSort.col) return;
     var agg = tbody._sightingsAgg || {};
+    // Drop any expanded detail sub-rows before reordering; re-added (re-sorted) after.
+    Array.prototype.slice.call(tbody.querySelectorAll(".sp-detail-row")).forEach(function (tr) { if (tr.parentNode) tr.parentNode.removeChild(tr); });
     // Keep "not in model" rows anchored at the bottom; only sort the model rows.
     var all = Array.prototype.slice.call(tbody.children);
     var extras = all.filter(function (tr) { return tr.classList.contains("sp-extra"); });
@@ -1240,6 +1287,7 @@
     rows.forEach(function (tr) { frag.appendChild(tr); });
     extras.forEach(function (tr) { frag.appendChild(tr); });   // uncovered species stay at the bottom
     tbody.appendChild(frag);
+    refreshSpExpansions();   // re-insert expanded species' detail sub-rows, freshly sorted
   }
   function cycleSpeciesListSort(col) {
     if (!currentSpView || (currentSpView.mode !== "point" && currentSpView.mode !== "historic")) return;
@@ -1275,6 +1323,7 @@
     var anyBuild = withBuild && (spFilters.star || spFilters.year || spFilters.life || spFilters.hidden);
     var now = Date.now();
     Array.prototype.forEach.call(tbody.querySelectorAll("tr"), function (tr) {
+      if (tr.classList.contains("sp-detail-row")) return;   // handled by refreshSpExpansions below
       var extra = tr.classList.contains("sp-extra");
       var sl = tr.querySelector(".sp-link"), key = sl && sl.getAttribute("data-key");
       var entry = (!extra && key && agg) ? agg[key] : null;
@@ -1292,6 +1341,7 @@
       var buildOk = !anyBuild || extra || (!!key && passSpeciesFilter(key));
       tr.style.display = (ageOk && rareOk && buildOk) ? "" : "none";
     });
+    refreshSpExpansions();   // keep expanded detail sub-rows under their (visible) species
   }
   // Toggling a cue (★ / year / life / 🚫) in the recent or historic species list
   // only changes that species' status icons — it needs NO refetch and NO re-run of
@@ -2165,6 +2215,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v846", date: "2026-08-04", text: "Species rows in the list are now expandable: species with observations show a ▸ caret — tap it to open a sub-list of that species' individual records (observer, source, count, date, each clickable), sorted to match your active column sort (e.g. by distance or last-seen date)." },
     { v: "v845", date: "2026-08-04", text: "The fetched species list is consolidated into two layouts: the Species-list table (multi-column, sortable — now with a Last-seen-date column alongside probability, count and distance) and Per observation (detailed records grouped by date → observer → location). The separate By-species/count/rarity/distance layouts are folded into the table's sortable columns." },
     { v: "v842", date: "2026-08-04", text: "The fetched species list is now the hub for filtering + layout, so the pop-up detections list (from tapping a plotted dot) is slimmed to a focused one-place view: place name, copy-coordinates, Save / Navigate / Add-to-route and the layout sort — no filter bar or search. The whole-map ☰ list button is gone (use the fetch list's By observation instead). Also: the 2nd-name column in the species list is now sortable." },
     { v: "v841", date: "2026-08-04", text: "The fetched species list can now switch layout: a dropdown offers the model prediction table, or the full detailed observations — By observation (grouped by date, like the pop-up), By species, By count, By rarity, or By distance. The detailed views carry the day / mode / observer filter bar and show observer, source, count and date on each record (all clickable to filter). This is the fetch list taking over the filtering + layout controls." },
@@ -3593,7 +3644,8 @@
     var now = Date.now();
     tbody.querySelectorAll(".det-nd").forEach(function (td) {
       var key = td.getAttribute("data-key"); if (!key) return;   // skip extras rows
-      var entry = agg[key];
+      var entry = agg[key], row = td.parentNode;
+      if (row) row.classList.toggle("sp-has-det", !!(entry && entry.count));   // caret shows only when there's something to expand
       if (!entry || !entry.count) { if (isFinal) td.textContent = ""; return; }   // partial: leave the hourglass for not-yet-arrived data
       var days = entry.latestTs ? Math.max(0, Math.round((now - entry.latestTs) / 86400000)) : null;
       td.innerHTML = '<button type="button" class="det-count-btn" data-key="' + escapeHtml(key) + '">' + entry.count + "</button>" +
@@ -11902,6 +11954,8 @@
     // sightings panel for that species (multi-source merge with Show in map).
     // Extras (not in model) have no species code → query by sci name only.
     document.getElementById("sp-tbody").addEventListener("click", function (e) {
+      var exp = e.target.closest && e.target.closest(".sp-exp");
+      if (exp) { e.preventDefault(); e.stopPropagation(); toggleSpExpand(exp.getAttribute("data-key")); return; }
       var btn = e.target.closest && e.target.closest(".det-count-btn");
       if (!btn) return;
       if (!currentSpView || (currentSpView.mode !== "point" && currentSpView.mode !== "historic")) return;
@@ -15635,7 +15689,7 @@
         var pct = Math.round(r.prob * 100);
         var sortAttrs = ' data-name="' + escapeHtml(speciesName(r.label).toLowerCase()) + '" data-prob="' + r.prob + '"' + (hasCompare ? ' data-cmp="' + r.cmpVal + '"' : "");
         return '<tr' + sortAttrs + '>' + spFlagCells(r.label.key, false) +
-               '<td>' + nameLinkHtml(r.label, true) + '</td>' + name2Cell + '<td class="sci">' +
+               '<td><span class="sp-exp" role="button" data-key="' + dKey + '" title="' + escapeHtml(t("sp.expandHint")) + '">▸</span>' + nameLinkHtml(r.label, true) + '</td>' + name2Cell + '<td class="sci">' +
                escapeHtml(r.label.sci) + '</td><td class="prob-cell"><span class="prob-num">' + pct +
                '%</span><div class="prob-bar" style="width:' + pct + '%;background:' + probHueColor(pRange > 0 ? (r.prob - pLo) / pRange : 1) + '"></div></td>' +
                '<td class="num det-nd" data-key="' + dKey + '"><span class="det-wait" title="' + escapeHtml(t("status.loadingDet")) + '"></span></td>' +
