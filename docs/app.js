@@ -7021,6 +7021,7 @@
   // species swatch is shown so the year/life "needs" cue is consistent.
   function detNeedClass(key) {
     if (!key) return "";
+    if (!listEdgesOn()) return "";   // year/life-list edges toggled off → no halo in the legend or lists
     var tier = detNeedTier(key);
     return tier === "life" ? " det-need-life" : tier === "year" ? " det-need-year" : "";
   }
@@ -11442,7 +11443,7 @@
       // make it distracting).
       if (leTog) leTog.addEventListener("change", function () {
         window.GeoState.save({ listEdges: this.checked });
-        rebuildDetLayers(); updateDetLegend();
+        detFiltersRefresh();   // map + legend + any open detection list follow the toggle
       });
       document.getElementById("lists-close").addEventListener("click", function () { navClose("lists"); });
       document.getElementById("lists-modal").addEventListener("click", function (e) { if (e.target === this) navClose("lists"); });

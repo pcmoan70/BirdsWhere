@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-04 — Year/life-list edges toggle also hides the legend + list halos (sw v866)
+
+- The "list edges" toggle (`listEdges`) turned off the year/life-list rings on the map dots, but the
+  legend and detection-list swatches kept showing them (`detNeedClass` wasn't gated). `detNeedClass` now
+  returns no halo when `listEdgesOn()` is false, so the yellow/bronze rings disappear from the legend and
+  the detection/record lists too. The toggle now runs `detFiltersRefresh()` so open lists update at once.
+
 ## 2026-08-04 — Fix: cue-filter toggles stay on the list (no jump to map) (sw v865)
 
 - Toggling a species-list cue filter (★ / ◉ / 🟠 year / 🟡 life / 🚫 hidden) no longer jumps to the map.
