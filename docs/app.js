@@ -1271,19 +1271,32 @@
   // distance, count, [observer] — separate columns (no parenthesised 2nd name).
   function spRecRowHtml(d, opts) {
     var km = spRecDistKm(d); km = isFinite(km) ? escapeHtml(nearbyFmtDist(km)) : "";
-    var pct = (d.prob >= 0) ? Math.round(d.prob * 100) + "%" : "—";
+    // Probability as a coloured bar (same treatment as the Species-list table), black
+    // text on a white cell — not a species-coloured pill.
+    var hasP = d.prob >= 0, pct = hasP ? Math.round(d.prob * 100) : 0;
+    var probCell = hasP
+      ? '<td class="prob-cell"><span class="prob-num">' + pct + '%</span><div class="prob-bar" style="width:' + pct + '%;background:' + probHueColor(d.prob) + '"></div></td>'
+      : '<td class="prob-cell prob-na">—</td>';
     var cnt = (d.count != null && d.count !== "") ? escapeHtml(String(d.count)) : "";
     var sw = spColorDot(d.key, d.color);
     var dateCell = d.date ? '<span class="dl-date-click" role="button" data-date="' + escapeHtml(d.date) + '" title="' + escapeHtml(t("detlist.dateFilterHint")) + '">' + escapeHtml(fmtDate(d.date)) + "</span>" : "";
     var obs = detObsRealNames(d.observer);
     var obsCell = obs.map(function (n) { return '<span class="sp-obs-filter" role="button" data-obs="' + escapeHtml(n) + '" title="' + escapeHtml(t("obs.filterHint")) + '">' + escapeHtml(n) + "</span>"; }).join(", ");
     var showName = opts.name !== false;   // the expanded per-species view drops the (redundant) species name
-    return '<tr class="sp-d-row" data-lat="' + (d.lat == null ? "" : d.lat) + '" data-lon="' + (d.lon == null ? "" : d.lon) + '">' +
-      (showName ? '<td class="sp-d-name">' + sw + escapeHtml(d.name || "") + "</td>" : "") +
+    // The species name is a .sp-link (opens the unified species menu); it also carries
+    // this record's location so that menu shows the "this observation" actions too.
+    var lbl = (typeof labelsByKey !== "undefined") ? labelsByKey[d.key] : null;
+    var sci = lbl ? lbl.sci : "";
+    var recAttrs = ' data-key="' + escapeHtml(d.key || "") + '" data-name="' + escapeHtml(d.name || "") + '" data-sci="' + escapeHtml(sci) +
+      '" data-lat="' + (d.lat == null ? "" : d.lat) + '" data-lon="' + (d.lon == null ? "" : d.lon) +
+      '" data-date="' + escapeHtml(d.date || "") + '" data-url="' + escapeHtml(d.url || "") + '"';
+    var nameLink = '<span class="sp-link"' + recAttrs + ">" + escapeHtml(d.name || "") + "</span>";
+    return '<tr class="sp-d-row"' + recAttrs + ">" +
+      (showName ? '<td class="sp-d-name">' + sw + nameLink + "</td>" : "") +
       (opts.name2 ? '<td class="name2">' + escapeHtml(detName2(d.key) || "") + "</td>" : "") +
-      '<td class="num">' + pct + "</td>" +
+      probCell +
       (opts.date ? '<td class="sp-d-date">' + dateCell + "</td>" : "") +
-      (opts.loc ? '<td class="sp-d-loc">' + escapeHtml(d.place || "") + "</td>" : "") +
+      (opts.loc ? '<td class="sp-d-loc">' + (d.place ? '<span class="sp-loc-click" role="button" title="' + escapeHtml(t("locmenu.hint")) + '">' + escapeHtml(d.place) + "</span>" : "") + "</td>" : "") +
       '<td class="num">' + km + "</td>" +
       '<td class="num">' + cnt + "</td>" +
       (opts.obs ? '<td class="sp-d-obs">' + obsCell + "</td>" : "") + "</tr>";
@@ -1348,14 +1361,33 @@
       s.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); showDateFilterMenu(this.getAttribute("data-date"), e.clientX, e.clientY); });
     });
     Array.prototype.forEach.call(container.querySelectorAll(".sp-obs-filter"), function (s) {
-      s.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); showObsFilterMenu(this.getAttribute("data-obs"), e.clientX, e.clientY); });
+      s.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); observerClickMenu(this.getAttribute("data-obs"), this); });
     });
+    Array.prototype.forEach.call(container.querySelectorAll(".sp-loc-click"), function (s) {
+      s.addEventListener("click", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        var row = this.closest(".sp-d-row");
+        var la = row ? parseFloat(row.getAttribute("data-lat")) : NaN, lo = row ? parseFloat(row.getAttribute("data-lon")) : NaN;
+        showLocPointMenu(la, lo, this.textContent, e.clientX, e.clientY);
+      });
+    });
+    var isPerObs = container.id === "sp-records";
     Array.prototype.forEach.call(container.querySelectorAll(".sp-d-row"), function (r) {
-      r.addEventListener("click", function () {
+      r.addEventListener("click", function (e) {
         var la = parseFloat(this.getAttribute("data-lat")), lo = parseFloat(this.getAttribute("data-lon"));
-        if (!isFinite(la) || !isFinite(lo) || !map) return;
-        try { navClose("detlist"); } catch (e2) {}
-        mapClickGuardUntil = Date.now() + 250; map.setView([la, lo], Math.max(map.getZoom() || 0, 14));
+        if (isPerObs) {
+          // Per observation: the species name opens the menu; a background click keeps
+          // the quick jump-to-map.
+          if (!isFinite(la) || !isFinite(lo) || !map) return;
+          try { navClose("detlist"); } catch (e2) {}
+          mapClickGuardUntil = Date.now() + 250; map.setView([la, lo], Math.max(map.getZoom() || 0, 14));
+          return;
+        }
+        // Expanded Species-list records: a background click opens the unified species +
+        // location menu (find/add point/route + species info & lists).
+        showDetRowMenu({ key: this.getAttribute("data-key") || "", name: this.getAttribute("data-name") || "",
+          sci: this.getAttribute("data-sci") || "", lat: isFinite(la) ? la : null, lon: isFinite(lo) ? lo : null,
+          date: this.getAttribute("data-date") || "", url: this.getAttribute("data-url") || "" }, e.clientX, e.clientY, function () {});
       });
     });
   }
@@ -2389,6 +2421,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v855", date: "2026-08-04", text: "More actions in a species' expanded records: tap an observation's Location for map actions (Find on map · Add as point · Add to route); tap an observer's name to filter by them OR add them to an observer list; and tap the row background for the full species + location menu. The species name reopens the species menu in Per observation, and the records now show the probability as a coloured bar (black text on white) matching the Species-list table." },
     { v: "v854", date: "2026-08-04", text: "Deleting a species from the map now leaves a grey, struck-through name in the legend (no colour dot, no ×) and greys the same species in the species list — so you can see what you removed, not just that it vanished. Tap the grey name to forget the deletion (the species can re-appear on the next fetch). Expanding a species' records: tap anywhere on the row (the ▸ caret is gone; the species name and dates stay clickable for their own actions), and the expanded records now show the observation's Location instead of repeating the species name. Also: after a historic fetch the chosen date range + months show in the description text and the date/month controls collapse to a small 📅 button to save a row of space." },
     { v: "v853", date: "2026-08-04", text: "The species list now explains when a recency / date window is hiding some of the fetched detections: a small note shows the active window and how many records it's dropping (e.g. “Showing last 7 days — 42 detections not shown”), so a short list is never a surprise." },
     { v: "v852", date: "2026-08-04", text: "Fixed a bug where a Historic fetch showed zero detections: the recent-days display filter was hiding the older historic records. A historic fetch now sets the date window to the range you fetched (clearing the recency window), so historic and recent observations are treated the same way in the list and on the map." },
@@ -7773,22 +7806,32 @@
     if (detSrcFilter) el.appendChild(drmBtn(t("src.all"), function () { closeDetRowMenu(); setDetSrcFilter(null); }));
     positionAnchoredMenu(el, x, y);
   }
-  // Menu off a clicked observer name: only this observer · all · add to a list.
-  function showObsFilterMenu(name, x, y) {
-    if (!name) return;
-    var el = openAnchoredMenu("detrow-menu");
-    el.innerHTML = "";
-    var h = document.createElement("div"); h.className = "detrow-menu-hdr"; h.textContent = name; el.appendChild(h);
-    el.appendChild(drmBtn(t("obs.only", { name: name }), function () { closeDetRowMenu(); setDetObsFilter(new Set([name])); saveLegendState(); detFiltersRefresh(); }));
-    if (detObsFilter) el.appendChild(drmBtn(t("obs.all"), function () { closeDetRowMenu(); setDetObsFilter(null); saveLegendState(); detFiltersRefresh(); }));
-    positionAnchoredMenu(el, x, y);
-  }
   // Set the global date-range filter (clears the month-of-year filter so the chosen
   // day isn't further narrowed). Empty from/to → open-ended on that side; both empty → off.
   function setDetDateFilter(from, to) {
     var range = (from || to) ? { from: from || "", to: to || "" } : null;
     window.GeoState.save({ detDateRange: range, detMonths: [] });
     detFiltersRefresh();
+  }
+  // Tapping a record's location (in the expanded species records) → map actions for
+  // that observation point: find it on the map, save it as a point, or add it to the route.
+  function showLocPointMenu(lat, lon, name, x, y) {
+    if (!isFinite(lat) || !isFinite(lon)) return;
+    var el = openAnchoredMenu("detrow-menu");
+    el.innerHTML = "";
+    var h = document.createElement("div"); h.className = "detrow-menu-hdr"; h.textContent = name || (lat.toFixed(4) + ", " + lon.toFixed(4)); el.appendChild(h);
+    el.appendChild(drmBtn(t("locmenu.find"), function () {
+      closeDetRowMenu();
+      try { navClose("detlist"); } catch (e) {}   // close the list so the map is visible
+      if (map) { mapClickGuardUntil = Date.now() + 250; map.setView([lat, lon], Math.max(map.getZoom() || 0, 14)); }
+    }, "nav"));
+    el.appendChild(drmBtn(t("locmenu.add"), function () {
+      closeDetRowMenu();
+      addMapPoint({ lat: lat, lon: lon, name: name || "", source: "manual" });
+      setStatus(t("locmenu.added"));
+    }));
+    el.appendChild(drmBtn(t("route.add"), function () { closeDetRowMenu(); addToRoute(lat, lon, name || ""); }));
+    positionAnchoredMenu(el, x, y);
   }
   // The date-header shortcut menu: On / Before / After the tapped date.
   function showDateFilterMenu(dateStr, x, y) {
@@ -12288,7 +12331,12 @@
       var link = e.target.closest ? e.target.closest(".sp-link") : null;
       if (link) {
         e.preventDefault();
-        showDetRowMenu({ key: link.getAttribute("data-key"), name: link.getAttribute("data-name"), sci: link.getAttribute("data-sci") || "" }, e.clientX, e.clientY, function () {});
+        // A record-level .sp-link also carries the observation's coordinates/date, so
+        // the menu can show the "this observation" (find/route/list) actions too.
+        var llat = parseFloat(link.getAttribute("data-lat")), llon = parseFloat(link.getAttribute("data-lon"));
+        showDetRowMenu({ key: link.getAttribute("data-key"), name: link.getAttribute("data-name"), sci: link.getAttribute("data-sci") || "",
+          lat: isFinite(llat) ? llat : null, lon: isFinite(llon) ? llon : null,
+          date: link.getAttribute("data-date") || "", url: link.getAttribute("data-url") || "" }, e.clientX, e.clientY, function () {});
         return;
       }
       // Close the dropdown popovers when clicking outside a panel/toggle.

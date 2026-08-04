@@ -21,17 +21,16 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v854";
+var VERSION = "v855";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
-  "• Deleting a species from the map now leaves a grey, struck-through name in the legend (no colour dot, no ×) and greys it in the species list too — so you can see what you removed. Tap the grey name to forget the deletion (the species can re-appear on the next fetch).",
-  "• Expand a species' records by tapping anywhere on its row (the ▸ caret is gone; the name + dates stay clickable for their own actions). The expanded records now show each observation's Location instead of repeating the species name.",
-  "• After a historic fetch, the chosen date range + months now show in the description text and the date/month controls collapse to a small 📅 button — saving a row of space.",
-  "• When a recency / date window is active and hiding some of the fetched detections, the species list now says so — e.g. “Showing last 7 days — 42 detections not shown” — so a short list is never a mystery.",
-  "• The expanded records and “Per observation” are now proper sortable tables: species name and 2nd name in separate columns, a count column, each column sortable within its date × observer × location group, and a species-colour dot matching the map.",
-  "• Every date and observer shown in the lists is now tappable to filter by it (On/Before/After for dates, Only/All for observers). The list's ★/◉/🟠/🟡 and n(d) filters now also filter the MAP."
+  "• In a species' expanded records, tapping the Location now opens map actions for that observation — Find on map, Add as point, or Add to route.",
+  "• Tapping an observer's name in those records now also lets you add them to an observer list (as well as filtering by them).",
+  "• Deleting a species from the map now leaves a grey, struck-through name in the legend (no colour dot, no ×) and greys it in the species list too. Tap the grey name to forget the deletion.",
+  "• Expand a species' records by tapping anywhere on its row (the ▸ caret is gone; the name + dates stay clickable for their own actions). The expanded records show each observation's Location instead of repeating the species name.",
+  "• After a historic fetch, the chosen date range + months now show in the description text and the date/month controls collapse to a small 📅 button — saving a row of space."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs

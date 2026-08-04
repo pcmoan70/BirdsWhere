@@ -1,5 +1,23 @@
 # Changes
 
+## 2026-08-04 — Record-table actions + species-list coloring in the observation records (sw v855)
+
+- **Location → map actions.** In a species' expanded records, the observation's Location is now a
+  clickable `.sp-loc-click` opening `showLocPointMenu` (Find on map / Add as point / Add to route).
+  Reuses `addMapPoint` + `addToRoute`. i18n `locmenu.find/add/added/hint` (15 langs).
+- **Observer → add to list.** The record tables' observer-name clicks now call `observerClickMenu`
+  (filter-only / all / add-to-observer-list) instead of the filter-only `showObsFilterMenu` (removed as
+  dead). Consistent with the legend/detlist observer clicks.
+- **Species name reopens the species menu in Per observation.** `spRecRowHtml` wraps the species name in
+  `.sp-link` again (regression fix) — and the link now carries the record's lat/lon/date/url so the unified
+  menu also shows the "this observation" (find/route/list) section. The global `.sp-link` handler reads
+  those attributes.
+- **Row-background click → species + location menu.** In the expanded Species-list records, clicking the
+  row background opens `showDetRowMenu` (species info + this-observation actions). Per observation keeps the
+  quick jump-to-map on a background click.
+- **Coloured probability bar.** The record tables render probability as a `.prob-cell`/`.prob-bar`
+  (probHueColor), black text on white — matching the Species-list table instead of a plain % / species pill.
+
 ## 2026-08-04 — Soft-delete species (grey tombstone) + collapse historic controls (sw v854)
 
 - **Delete → grey tombstone.** Deleting a species from the map no longer makes it vanish silently:
