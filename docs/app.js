@@ -7869,7 +7869,29 @@
     el.appendChild(drmBtn(t("date.on"), function () { closeDetRowMenu(); setDetDateFilter(dateStr, dateStr); }));
     el.appendChild(drmBtn(t("date.before"), function () { closeDetRowMenu(); setDetDateFilter("", dateStr); }));
     el.appendChild(drmBtn(t("date.after"), function () { closeDetRowMenu(); setDetDateFilter(dateStr, ""); }));
+    el.appendChild(drmBtn(t("date.range"), function () { closeDetRowMenu(); showDateRangeModal(dateStr); }));
     positionAnchoredMenu(el, x, y);
+  }
+  // A small popup to enter an explicit from–to date range (opened from the date menu).
+  // Prefills with the active range, else the tapped date as the start.
+  function showDateRangeModal(dateStr) {
+    var cur = detDateRange() || {};
+    var from0 = cur.from || dateStr || "", to0 = cur.to || "";
+    var m = createModal({ boxClass: "date-range-modal", escClose: true });
+    m.box.innerHTML =
+      '<div class="drm-title">' + escapeHtml(t("hist.range")) + "</div>" +
+      '<div class="drm-row"><input type="date" class="drm-from" value="' + escapeHtml(from0) + '" />' +
+        '<span class="drm-dash">–</span><input type="date" class="drm-to" value="' + escapeHtml(to0) + '" /></div>' +
+      '<div class="drm-btns"><button type="button" class="drm-cancel demo-btn demo-btn-light">' + escapeHtml(t("btn.cancel")) + "</button>" +
+        '<button type="button" class="drm-apply demo-btn">' + escapeHtml(t("date.apply")) + "</button></div>";
+    m.box.querySelector(".drm-cancel").addEventListener("click", m.close);
+    m.box.querySelector(".drm-apply").addEventListener("click", function () {
+      var f = (m.box.querySelector(".drm-from").value || "").trim();
+      var to = (m.box.querySelector(".drm-to").value || "").trim();
+      if (f && to && f > to) { var tmp = f; f = to; to = tmp; }   // tolerate a reversed range
+      m.close();
+      setDetDateFilter(f, to);   // both empty → clears the date filter
+    });
   }
   // Build the grouped/flat record-list HTML from a set of detection rows. `layout`:
   // "date" (group by date/observer — the detailed "By observation" view), "name" /

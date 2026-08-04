@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-04 — Date menu: explicit "Range…" popup (sw v864)
+
+- The date-filter menu (`showDateFilterMenu`) gained a **Range…** item opening `showDateRangeModal` — a
+  small `createModal` popup with from–to `<input type="date">` fields (prefilled with the active range, or
+  the tapped date as the start), Cancel / Apply. Apply calls `setDetDateFilter` (tolerates a reversed
+  range; both empty clears the filter). New i18n `date.range` / `date.apply` (15 langs); CSS `.date-range-modal`.
+
 ## 2026-08-04 — Source column in the record tables (sortable + filterable) (sw v863)
 
 - The expanded per-species records and the "Per observation" table now have a **Source** column

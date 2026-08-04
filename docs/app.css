@@ -1392,6 +1392,14 @@ button.dd-name:hover { text-decoration: underline; }
   box-shadow: 0 10px 40px rgba(0,0,0,.35); padding: 18px; width: min(380px, 92vw); box-sizing: border-box;
 }
 .ui-modal-msg { font-size: 0.92rem; line-height: 1.4; white-space: pre-wrap; }
+/* Explicit from–to date-range popup (from the date-filter menu). */
+.date-range-modal { width: min(320px, 92vw); }
+.date-range-modal .drm-title { font-weight: 700; font-size: 0.95rem; margin-bottom: 12px; }
+.date-range-modal .drm-row { display: flex; align-items: center; gap: 8px; }
+.date-range-modal .drm-row input[type="date"] { flex: 1 1 0; min-width: 0; padding: 6px 8px; font-size: 0.9rem;
+  border: 1px solid var(--border, #d8e1dd); border-radius: 6px; background: var(--surface, #fff); color: var(--ink, #222); }
+.date-range-modal .drm-dash { color: var(--ink-muted, #888); }
+.date-range-modal .drm-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 /* Bulleted detail under the message (e.g. the list of sources that failed). */
 .ui-modal-list { margin: 8px 0 0; padding-left: 20px; font-size: 0.88rem; line-height: 1.4; text-align: left; color: var(--ink); }
 .ui-modal-list li { margin: 3px 0; word-break: break-word; }
