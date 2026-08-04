@@ -2143,6 +2143,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v839", date: "2026-08-04", text: "In the detections list, the date headers are now clickable: tap a date and choose On this date / Before this date / After this date to set the date-range filter instantly (map + list + legend follow). A fast way to jump to a day's records. First step of a larger move to put filtering and layout controls onto the fetched species list." },
     { v: "v837", date: "2026-08-04", text: "A red × now sits on the right-hand side of the map whenever you have observations plotted. One tap clears every plotted point off the map (the same as the legend's clear), and the × disappears once nothing's left. A quick way to wipe the map before a fresh look." },
     { v: "v836", date: "2026-08-04", text: "The species menu (tap any species name) gained “Show only this species” — it filters the plotted observations down to just that species on the map and in the detections list, so you can focus on one bird at a time. Tapping it again on the same species clears the filter and shows everything. Only appears when the species actually has observations plotted." },
     { v: "v834", date: "2026-08-03", text: "Fetch failures are clearer: when a data source fails or times out, its name turns red in the status line above the map — tap it to see exactly why (timed out, network error, or a missing free API key, with a shortcut to add one). The old automatic error pop-up is gone; the explanation is now one tap away when you want it." },
@@ -7443,6 +7444,32 @@
       if (el.scrollWidth > el.clientWidth) el.style.fontSize = Math.max(12, size - 1) + "px";   // rounding guard
     }
   }
+  // Re-apply the detection filters everywhere they show: map dots, legend, the open
+  // detections popup, and (later) the fetch list. One place so any filter shortcut
+  // (date header, panels, etc.) keeps every surface in sync.
+  function detFiltersRefresh() {
+    saveLegendState(); rebuildDetLayers(); updateDetLegend();
+    var dm = document.getElementById("detlist-modal");
+    if (dm && dm.style.display === "flex" && typeof renderDetListModal === "function") renderDetListModal();
+  }
+  // Set the global date-range filter (clears the month-of-year filter so the chosen
+  // day isn't further narrowed). Empty from/to → open-ended on that side; both empty → off.
+  function setDetDateFilter(from, to) {
+    var range = (from || to) ? { from: from || "", to: to || "" } : null;
+    window.GeoState.save({ detDateRange: range, detMonths: [] });
+    detFiltersRefresh();
+  }
+  // The date-header shortcut menu: On / Before / After the tapped date.
+  function showDateFilterMenu(dateStr, x, y) {
+    if (!dateStr) return;
+    var el = openAnchoredMenu("detrow-menu");
+    el.innerHTML = "";
+    var h = document.createElement("div"); h.className = "detrow-menu-hdr"; h.textContent = fmtDate(dateStr) || dateStr; el.appendChild(h);
+    el.appendChild(drmBtn(t("date.on"), function () { closeDetRowMenu(); setDetDateFilter(dateStr, dateStr); }));
+    el.appendChild(drmBtn(t("date.before"), function () { closeDetRowMenu(); setDetDateFilter("", dateStr); }));
+    el.appendChild(drmBtn(t("date.after"), function () { closeDetRowMenu(); setDetDateFilter(dateStr, ""); }));
+    positionAnchoredMenu(el, x, y);
+  }
   function renderDetListModal() {
     var body = document.getElementById("detlist-body");
     if (!body) return;
@@ -7587,7 +7614,9 @@
           var obsSpan = !o ? "" : (isBW
             ? ' <span class="dl-obs">· ' + escapeHtml(o) + "</span>"
             : ' <span class="dl-obs dl-obs-add" data-obs="' + escapeHtml(o) + '" title="' + escapeHtml(t("obs.addToList")) + '">· ' + escapeHtml(o) + "</span>");
-          var head = dateLbl + obsSpan;
+          // The date itself is a shortcut to date-filtering: tap it for On / Before / After.
+          var datePart = dt ? '<span class="dl-date-click" role="button" data-date="' + escapeHtml(dt) + '" title="' + escapeHtml(t("detlist.dateFilterHint")) + '">' + dateLbl + "</span>" : dateLbl;
+          var head = datePart + obsSpan;
           var full = (fmtDate(dt) || t("detlist.noDate")) + (o ? " · " + o : "");   // plain text → full name(s) on hover when truncated
           return '<div class="dl-date-head"><span class="dl-date-lbl" title="' + escapeHtml(full) + '">' + head + '</span><span class="dl-ct">' + items.length + "</span></div>" +
             items.map(function (d) { return detRowHtml(d, false); }).join("");
@@ -7604,6 +7633,13 @@
       s.addEventListener("click", function (e) {
         e.preventDefault(); e.stopPropagation();
         observerClickMenu(this.getAttribute("data-obs"), this);
+      });
+    });
+    // Click a date header → On / Before / After that date (sets the date filter).
+    Array.prototype.forEach.call(body.querySelectorAll(".dl-date-click"), function (s) {
+      s.addEventListener("click", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        showDateFilterMenu(this.getAttribute("data-date"), e.clientX, e.clientY);
       });
     });
     function detRowData(b) {

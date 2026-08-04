@@ -21,16 +21,17 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v838";
+var VERSION = "v839";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• In the detections list, tap a date header to filter by it — On this date / Before / After — a quick shortcut to the date-range filter.",
   "• A red × now appears on the right of the map whenever observations are plotted — one tap clears them all, and the × disappears.",
   "• Tap a species name and the menu now has “Show only this species” — it isolates that species' observations on the map (and the detections list). Tap it again on the same species to bring the rest back.",
   "• When a data source fails or times out during a fetch, its name now shows in red in the status line — tap it to see exactly why (and a shortcut to add a missing free API key). No more surprise pop-ups.",
   "• Saved routes reload properly: tick a saved route in the Points panel (or reopen the app with one shown) and its stops come back numbered on the map with the route bar at the bottom, ready to navigate. Route lists are marked with a ➤ badge, and their 🧭 button opens Google Maps directions through the stops directly (other lists still export as pins).",
-  "• Tidier detections list (☰): the header now has a ＋➤ “add to route/tour” button next to Navigate, the Save button shows a points icon, and the copy-coordinates button sits in front of the place name. The “Filter species” box is narrower with the day / rarity / observer filters beside it on the same row."
+  "• Tap a species name → “Show only this species” isolates its observations on the map + list."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs

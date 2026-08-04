@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-08-04 — Date-header click → On/Before/After date filter (sw v839)
+
+- In the detailed detections list, **date headers are clickable** (`.dl-date-click`): tapping one opens a
+  small menu (`showDateFilterMenu`) with **On this date / Before this date / After this date**, which sets
+  the global `detDateRange` via `setDetDateFilter` (also clearing the month-of-year filter) and refreshes
+  map + legend + list through the new shared `detFiltersRefresh()`.
+- New i18n `date.on` / `date.before` / `date.after` / `detlist.dateFilterHint` in all 15 languages.
+- First increment of the larger plan in `tasks/fetch-list-controls_20260804.md` (move filtering + layout,
+  incl. a full-detail "By observation" view and a source filter, onto the fetched species list; slim the
+  popup to per-location).
+
 ## 2026-08-04 — Clear-× sits below the other right-side map icons (sw v838)
 
 - The red clear-× is now re-appended below the download + overlay-toggle controls (it was added before
