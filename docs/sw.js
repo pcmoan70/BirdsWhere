@@ -21,11 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v851";
+var VERSION = "v852";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• Fixed: Historic fetches were showing zero detections (the recent-days filter was hiding the older records). Historic now sets the date window to the range you fetched, so recent and historic are treated the same way.",
   "• The expanded records and “Per observation” are now proper sortable tables: species name and 2nd name in separate columns (no more parentheses), a count column, each column sortable within its date × observer × location group, and a species-colour dot matching the map — the same dot now leads every row of the species list too.",
   "• Every date and observer shown in the lists is now tappable to filter by it (On/Before/After for dates, Only/All for observers) — including the “Last” column. The expanded species records now show column headers too.",
   "• The list's ★/◉/🟠/🟡 flag filters and the n(d) day filter now also filter the MAP: e.g. n(d) ≤1d shows only today/yesterday's dots, and the year-list / life-list / rarity filters show only those species on the map too. The list⇄map view now only switches when you tap the toggle — a fetch or filter no longer flips it.",

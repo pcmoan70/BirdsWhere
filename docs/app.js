@@ -2362,6 +2362,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v852", date: "2026-08-04", text: "Fixed a bug where a Historic fetch showed zero detections: the recent-days display filter was hiding the older historic records. A historic fetch now sets the date window to the range you fetched (clearing the recency window), so historic and recent observations are treated the same way in the list and on the map." },
     { v: "v851", date: "2026-08-04", text: "The expanded species records and “Per observation” are now full sortable tables: species name and second name in separate columns (no more parentheses), a count column, and every column sortable within its date × observer × location group. A species-colour dot (matching the map) leads each record and each species-list row, so the two lists are coloured consistently." },
     { v: "v850", date: "2026-08-04", text: "Every date and observer shown across the lists is now tappable to filter (On/Before/After for dates, Only/All for observers) — including the species list's “Last” column and the records in the pop-up. The expanded species records also gained column headers (Species · 2nd name · Prob · Date · Dist · Observer)." },
     { v: "v849", date: "2026-08-04", text: "The list filters now also filter the map: the ★/◉/🟠/🟡 flag columns and the n(d) day filter narrow the plotted dots too (n(d) ≤1d = today/yesterday only; year-list/life-list/rarity show only those). The list⇄map view only changes when you tap the toggle now. And “Per observation” uses the same columns table, grouped by date × observer × location." },
@@ -15799,6 +15800,12 @@
     currentSpView = hist
       ? { mode: "historic", lat: lat, lon: lon, from: hist.from, to: hist.to, range: hist.range, months: hist.months || [] }
       : { mode: "point", lat: lat, lon: lon };
+    // Harmonise the date window so historic records aren't dropped by the recency
+    // filter: Historic sets the global date-range to the fetched range (and clears
+    // recency); Recent clears the range so its own recency window applies. Either way
+    // detDatePasses treats both the same in the list + on the map.
+    if (hist) window.GeoState.save({ detDateRange: { from: hist.from, to: hist.to }, detRecencyDays: 0, detMonths: (hist.months || []).slice() });
+    else window.GeoState.save({ detDateRange: null });
     if (currentMode === "list") saveSession({ mode: "list", page: "species", lat: lat, lon: lon });
     var spTitle = document.getElementById("sp-title"); if (spTitle) spTitle.textContent = hist ? t("mode.historic") : t("panel.spTitle");
     setPointMarker(lat, lon);   // show the pin for the point this list is about

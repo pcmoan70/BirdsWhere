@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-08-04 — Fix: Historic fetch showed zero detections (recency filter) (sw v852)
+
+- A Historic fetch showed **0 detections** in the list: the v847 change made `applyAgeFilter` apply the
+  global recency window (`detDatePasses` → `detRecencyDays`, default 30d) to the count, so the older
+  historic records were all filtered out (and their species dropped as "filtered out"). `plotSightingsResult`
+  only clears recency when *plotting*, which historic doesn't do during the list fetch.
+- Fix / harmonise: `renderSpeciesList` now sets the global **date range** to the fetched historic range
+  (`{from,to}`, `detRecencyDays: 0`, `detMonths` = the fetched months) for a historic fetch, and clears the
+  range (`detDateRange: null`) for a recent fetch. So `detDatePasses` treats both consistently in the list
+  and on the map.
+
 ## 2026-08-04 — Record tables: separate name columns, count, per-group sort, colour dot (sw v851)
 
 - **Rewrote the record tables** (`spRecRowHtml` + `spObsCmp` + `spObsHeadCell`, replacing `spGroupTableHtml`):
