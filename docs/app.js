@@ -3941,10 +3941,18 @@
     var token = lat.toFixed(4) + "," + lon.toFixed(4) + (histRange ? ":" + histRange : "");
     var tbody = document.getElementById("sp-tbody");
     if (tbody) tbody.dataset.sightingsToken = token;   // supersede if another click arrives
+    var mapFetch = spMapFetch;   // this fetch intended to drop dots on the map (map-first point flow)
     hideSourceCounts();   // clear any prior location's "Loaded: …" line before this fetch
     var onPartial = function (partial) { applySightings(tbody, token, partial, false); };   // live-fill rows as each source returns (recent) / each month batch (historic)
     var fetchP = histRange ? fetchHistoricSightingsAt(lat, lon, histRange, onProg, onPartial) : fetchAllSightingsAt(lat, lon, onPartial);
     return fetchP.then(function (result) {
+      // Superseded by a newer fetch (the user triggered another): don't touch the newer
+      // list, but STILL plot this fetch's detections in the background so no queued fetch
+      // is lost — the dots accumulate (plotDetections merges) like any other fetch.
+      if (!tbody || tbody.dataset.sightingsToken !== token) {
+        if (mapFetch) { var prevObs = obsStatusActive; plotNoFit = true; try { plotSightingsResult(result); } catch (e) {} plotNoFit = false; obsStatusActive = prevObs; }
+        return;
+      }
       applySightings(tbody, token, result, true);
       if (!tbody || tbody.dataset.sightingsToken !== token) return;
       var sp = splitFailed(result.failed);

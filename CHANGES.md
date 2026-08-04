@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-08-04 — Don't drop superseded point fetches — all plot their dots (sw v867)
+
+- Triggering several recent (point) fetches in a row used to lose the earlier ones: `applySightings`
+  discards a fetch's results once a newer fetch has taken over the `sp-tbody` token, so the older fetch's
+  detections (already downloaded — recent fetches aren't aborted) were thrown away. Now `augmentRowsWithSightings`
+  detects the superseded case and still plots that fetch's final result in the background
+  (`plotSightingsResult` with `plotNoFit`, restoring `obsStatusActive`) — the dots accumulate via
+  `plotDetections` like any other fetch, so every triggered fetch ends up on the map.
+- Note: this covers the recent map-first flow (`mapFetch`); Historic remains a single deliberate range fetch
+  (a new one still aborts the previous).
+
 ## 2026-08-04 — Year/life-list edges toggle also hides the legend + list halos (sw v866)
 
 - The "list edges" toggle (`listEdges`) turned off the year/life-list rings on the map dots, but the
