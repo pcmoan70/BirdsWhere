@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-08-05 — GBIF origin: read associatedReferences (Artsobservasjoner) (sw v875)
+
+- Artsobservasjoner via GBIF carries no `datasetName`, a bare-UUID `occurrenceID`, and its
+  `mobil.artsobservasjoner.no` link in **`associatedReferences`** — so `gbifOrigin` showed a bare "GBIF".
+  Two fixes: (1) scan `associatedReferences` too, and (2) don't stop at a truthy-but-non-URL `occurrenceID`
+  — iterate the URL-candidate fields and take the first that yields a host (stripping www/mobil/m
+  sub-domains). Artsobservasjoner records now read `Artsobservasjoner[GBIF]`; other Norwegian datasets show
+  their platform host instead of "GBIF".
+
 ## 2026-08-05 — Dedup keeps the direct-source copy over a GBIF republish (sw v874)
 
 - The "Deduplicate detections" setting's cross-database dedup (`ensureDedup`) picked the first record with a

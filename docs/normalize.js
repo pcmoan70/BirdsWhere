@@ -118,9 +118,15 @@ window.AppNormalize = (function () {
   // (e.g. "observation.org" → "Observation.org[GBIF]") instead of a bare "GBIF".
   function gbifOrigin(o) {
     if (o.datasetName) return o.datasetName;
-    var u = String(o.occurrenceID || o.references || "");
-    var m = u.match(/^https?:\/\/(?:www\.)?([^\/?#]+)/i);
-    if (m && m[1]) return m[1];
+    // Scan every field that can hold the record's own URL and take the first that
+    // yields a host — occurrenceID is often a bare UUID (so the URL lives in
+    // references / associatedReferences, e.g. Artsobservasjoner puts its
+    // mobil.artsobservasjoner.no link there). Strip common sub-domains.
+    var cands = [o.occurrenceID, o.references, o.associatedReferences];
+    for (var i = 0; i < cands.length; i++) {
+      var m = String(cands[i] || "").match(/^https?:\/\/(?:www\.|mobil\.|m\.)?([^\/?#]+)/i);
+      if (m && m[1]) return m[1];
+    }
     return o.rightsHolder || "";
   }
   function normGbif(arr) {
