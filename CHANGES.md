@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-08-04 — Filter by data source (click a source in the list) (sw v840)
+
+- **New global source filter** `detSrcFilter` (Set of source labels, or null = all) + `detPassesSrc(r)`,
+  applied wherever rows are gated: `collectVisibleDetections`, the dot-draw loop, and `detVisibleCount`
+  (so map dots, legend counts and the list all honour it). `detSourcesPresent()` lists the sources in the
+  plotted set.
+- **Clickable source** in each record row (`srcClickHtml` / `.dl-src-click`) → `showSrcFilterMenu`:
+  Only this source · Hide this source (when >1 present) · All sources. Natural in-list placement, no new
+  top-bar control. Persisted in `mapLegend.srcFilter` (with a stale-filter heal on load); wired into
+  `detHasFilter` + `clearAllFilters`.
+- New i18n `src.only` / `src.hide` / `src.all` / `detlist.srcFilterHint` in all 15 languages.
+
 ## 2026-08-04 — Date-header click → On/Before/After date filter (sw v839)
 
 - In the detailed detections list, **date headers are clickable** (`.dl-date-click`): tapping one opens a

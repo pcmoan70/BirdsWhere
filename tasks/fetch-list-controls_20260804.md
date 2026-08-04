@@ -58,6 +58,16 @@ record row itself, filter toggles) should carry a short **title** tooltip saying
 date → "Filter by this date", observer → "Add observer to a list", species name → "Species info &
 actions", source → "Filter by source". Do this as a pass over the shared record renderer + fetch list.
 
+## Refinement (2026-08-04): layout switches grouped↔flat; minimal new elements
+- **Layout dropdown drives arrangement of the detail records**: grouped-by-date (default, "By
+  observation") and grouped-by-species stay; ADD **flat** orderings — by distance, by rarity, by count,
+  by name — that list records without date grouping.
+- **Make as few new UI elements as possible.** Prefer contextual, in-list placement over new controls:
+  filter by **date** (click the date header — done), by **source** (click the source shown on a record),
+  by **observer** (click the observer) — these ARE the "column"/value filters. Only genuinely-new element
+  is the layout dropdown; the filter toggle bar is a relocation, not new. Source filter therefore is
+  primarily click-the-source (with the multi-select pick-list reachable the same way the observer one is).
+
 ## Target design
 ### A. Species/fetch list = filter + sort hub
 - New **controls bar** at the top of `#species-panel` (under the coords line):

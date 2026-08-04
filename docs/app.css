@@ -2620,6 +2620,9 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
 .dl-date-head .dl-obs-add:hover { color: var(--brand); text-decoration: underline; }
 .dl-date-head .dl-date-click { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
 .dl-date-head .dl-date-click:hover { color: var(--brand); }
+/* Clickable source label in a record row → source filter. */
+.dl-src-click { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
+.dl-src-click:hover { color: var(--brand); }
 /* Date + observer label: truncate with an ellipsis; the full name(s) stay
    available via the title tooltip on hover. */
 .dl-date-head .dl-date-lbl { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

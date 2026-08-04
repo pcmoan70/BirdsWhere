@@ -21,12 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v839";
+var VERSION = "v840";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
-  "• In the detections list, tap a date header to filter by it — On this date / Before / After — a quick shortcut to the date-range filter.",
+  "• Filter observations by source or by date straight from the list: tap a record's source (eBird, GBIF…) for Only / Hide / All sources, or tap a date header for On / Before / After that date. Map, legend and list all follow.",
   "• A red × now appears on the right of the map whenever observations are plotted — one tap clears them all, and the × disappears.",
   "• Tap a species name and the menu now has “Show only this species” — it isolates that species' observations on the map (and the detections list). Tap it again on the same species to bring the rest back.",
   "• When a data source fails or times out during a fetch, its name now shows in red in the status line — tap it to see exactly why (and a shortcut to add a missing free API key). No more surprise pop-ups.",

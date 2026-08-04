@@ -2143,6 +2143,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v840", date: "2026-08-04", text: "Filter observations by data source right from the list: tap a record's source (eBird, GBIF, iNaturalist…) and choose Only this source, Hide it, or All sources — the map, legend and list all follow, and it sticks until you clear filters. Pairs with the date-header shortcut (On/Before/After). Part of moving filtering onto the fetched list with as few extra controls as possible." },
     { v: "v839", date: "2026-08-04", text: "In the detections list, the date headers are now clickable: tap a date and choose On this date / Before this date / After this date to set the date-range filter instantly (map + list + legend follow). A fast way to jump to a day's records. First step of a larger move to put filtering and layout controls onto the fetched species list." },
     { v: "v837", date: "2026-08-04", text: "A red × now sits on the right-hand side of the map whenever you have observations plotted. One tap clears every plotted point off the map (the same as the legend's clear), and the × disappears once nothing's left. A quick way to wipe the map before a fresh look." },
     { v: "v836", date: "2026-08-04", text: "The species menu (tap any species name) gained “Show only this species” — it filters the plotted observations down to just that species on the map and in the detections list, so you can focus on one bird at a time. Tapping it again on the same species clears the filter and shows everything. Only appears when the species actually has observations plotted." },
@@ -6535,6 +6536,14 @@
   // checklist lists the single names, and a record matches if any selected name
   // is a SUBSTRING of its observer string.
   var detObsFilter = null;              // Set of selected names (incl "") or null
+  var detSrcFilter = null;              // Set of source labels to keep, or null = all (filter by data source)
+  function detPassesSrc(r) { return !detSrcFilter || detSrcFilter.has(srcLabel(r)); }
+  // Distinct source labels among the plotted rows (what a source filter can pick from).
+  function detSourcesPresent() {
+    var s = Object.create(null);
+    Object.keys(detPlot).forEach(function (k) { (detPlot[k].rows || []).forEach(function (r) { var l = srcLabel(r); if (l) s[l] = 1; }); });
+    return Object.keys(s).sort();
+  }
   var detObsNames = [];                 // selected non-empty names = substring needles
   var detObsAllowNone = false;          // is "(no observer)" selected
   var detObsPanelOpen = false;          // is the observer checklist showing (transient)
@@ -6849,6 +6858,7 @@
       (e.rows || []).forEach(function (r) {
         if (!detDatePasses(r.date)) return;
         if (!detObsPasses(r)) return;          // observer filter (legend 👤)
+        if (!detPassesSrc(r)) return;          // data-source filter (click a source in the list)
         if (center) {
           if (Math.abs(r.lat - near.lat) > dLat || Math.abs(r.lon - near.lon) > dLon) return;   // bbox reject (cheap)
           if (map.distance(center, L.latLng(r.lat, r.lon)) > near.meters) return;
@@ -7086,14 +7096,15 @@
       // The station name/#id is shown in the date-section HEADER (in the slot the
       // observer name uses for other sources), NOT here next to the species. So the
       // species row carries only the count-prefixed source; no sub-line.
-      meta = [showDate ? escapeHtml(fmtDate(d.date)) : "", "×" + escapeHtml(String(d.count || 1)) + " BirdWeather"].filter(Boolean).join(" · ");
+      meta = [showDate ? escapeHtml(fmtDate(d.date)) : "", "×" + escapeHtml(String(d.count || 1)) + " " + srcClickHtml("BirdWeather")].filter(Boolean).join(" · ");
       subLines = "";
     } else {
       // Source is struck through when the recipient can't access it (a shared record
       // from a keyed source with no key here) — the rest of the meta is plain text.
+      // Accessible source names are CLICKABLE → filter the list/map by that source.
       var srcTxt = srcLabel(d);
       var srcHtml = !srcTxt ? "" : (sourceAccessible(d.src)
-        ? escapeHtml(srcTxt)
+        ? srcClickHtml(srcTxt)
         : '<span class="dl-noaccess-ic" title="' + escapeHtml(t("detlist.noAccess")) + '">🔒</span><span class="dl-src-noaccess" title="' + escapeHtml(t("detlist.noAccess")) + '">' + escapeHtml(srcTxt) + "</span>");
       meta = [showDate ? escapeHtml(fmtDate(d.date)) : "",
         (d.count != null && d.count !== "") ? "×" + escapeHtml(String(d.count)) : "",
@@ -7452,6 +7463,29 @@
     var dm = document.getElementById("detlist-modal");
     if (dm && dm.style.display === "flex" && typeof renderDetListModal === "function") renderDetListModal();
   }
+  // A clickable source label in a record row → opens the source-filter menu.
+  function srcClickHtml(label) {
+    return '<span class="dl-src-click" role="button" data-src="' + escapeHtml(label) + '" title="' + escapeHtml(t("detlist.srcFilterHint")) + '">' + escapeHtml(label) + "</span>";
+  }
+  // Set the data-source filter to a Set of labels (or null = all), then refresh.
+  function setDetSrcFilter(set) {
+    detSrcFilter = set || null;
+    saveLegendState(); detFiltersRefresh();
+  }
+  // Menu off a clicked source: only this · hide this · all present sources.
+  function showSrcFilterMenu(label, x, y) {
+    if (!label) return;
+    var present = detSourcesPresent();
+    var el = openAnchoredMenu("detrow-menu");
+    el.innerHTML = "";
+    var h = document.createElement("div"); h.className = "detrow-menu-hdr"; h.textContent = label; el.appendChild(h);
+    el.appendChild(drmBtn(t("src.only", { src: label }), function () { closeDetRowMenu(); setDetSrcFilter(new Set([label])); }));
+    if (present.length > 1) el.appendChild(drmBtn(t("src.hide", { src: label }), function () {
+      closeDetRowMenu(); setDetSrcFilter(new Set(present.filter(function (s) { return s !== label; })));
+    }));
+    if (detSrcFilter) el.appendChild(drmBtn(t("src.all"), function () { closeDetRowMenu(); setDetSrcFilter(null); }));
+    positionAnchoredMenu(el, x, y);
+  }
   // Set the global date-range filter (clears the month-of-year filter so the chosen
   // day isn't further narrowed). Empty from/to → open-ended on that side; both empty → off.
   function setDetDateFilter(from, to) {
@@ -7642,6 +7676,13 @@
         showDateFilterMenu(this.getAttribute("data-date"), e.clientX, e.clientY);
       });
     });
+    // Click a record's source → filter by source (only this / hide this / all).
+    Array.prototype.forEach.call(body.querySelectorAll(".dl-src-click"), function (s) {
+      s.addEventListener("click", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        showSrcFilterMenu(this.getAttribute("data-src"), e.clientX, e.clientY);
+      });
+    });
     function detRowData(b) {
       return {
         key: b.getAttribute("data-key"), name: b.getAttribute("data-name"),
@@ -7795,6 +7836,7 @@
       if (!detDatePasses(r.date)) return;
       if (allowed && !allowed.has(r)) return;   // global cap: only the newest N are drawn
       if (!detObsPasses(r)) return;             // observer filter (legend 👤)
+      if (!detPassesSrc(r)) return;             // data-source filter
       var lk = (+r.lat).toFixed(4) + "," + (+r.lon).toFixed(4);
       var s = obsByLoc[lk] || (obsByLoc[lk] = Object.create(null));
       var o = (r.observer || "").trim(); if (o) s[o] = 1;
@@ -8187,7 +8229,7 @@
   // recency days / date range.) Drives the black × (clear all) in both the legend
   // and the detections-list filter bar.
   function detHasFilter() {
-    return detSelectionActive() || detStarFilter || detRareFilter || detYearFilter || detLifeFilter || !!detObsFilter || (detRecencyDays() !== 0) || !!detDateRange() || detMonths().length > 0;
+    return detSelectionActive() || detStarFilter || detRareFilter || detYearFilter || detLifeFilter || !!detObsFilter || !!detSrcFilter || (detRecencyDays() !== 0) || !!detDateRange() || detMonths().length > 0;
   }
   // Reset every legend filter at once (the black ×): the species selection, the
   // ★/◉/🟡 mode filter, the observer filter, and the recency (days) window → All.
@@ -8197,6 +8239,7 @@
     detStarFilter = false; detRareFilter = false; detYearFilter = false; detLifeFilter = false;
     detObsPanelOpen = false; detDaysPanelOpen = false; detModePanelOpen = false;
     setDetObsFilter(null);                                                   // observer → all
+    detSrcFilter = null;                                                     // source → all
     window.GeoState.save({ detRecencyDays: 0, detDateRange: null, detMonths: [] });   // days + range + months → All
     saveLegendState(); rebuildDetLayers(); updateDetLegend();
     var dm = document.getElementById("detlist-modal");
@@ -8341,7 +8384,7 @@
   // Persist the legend's UI state — collapsed, the starred-only filter, and the
   // row selection — so the map legend comes back the way the user left it.
   function saveLegendState() {
-    window.GeoState.save({ mapLegend: { mini: detLegendMini, starFilter: detStarFilter, rareFilter: detRareFilter, yearFilter: detYearFilter, lifeFilter: detLifeFilter, selected: Object.keys(detSelected), obsFilter: detObsFilter ? Array.from(detObsFilter) : null } });
+    window.GeoState.save({ mapLegend: { mini: detLegendMini, starFilter: detStarFilter, rareFilter: detRareFilter, yearFilter: detYearFilter, lifeFilter: detLifeFilter, selected: Object.keys(detSelected), obsFilter: detObsFilter ? Array.from(detObsFilter) : null, srcFilter: detSrcFilter ? Array.from(detSrcFilter) : null } });
   }
   function loadDetections() {
     // Self-heal a store left over-quota by an older build: cap the stored
@@ -8368,6 +8411,12 @@
     detYearFilter = !!ls.yearFilter;
     detLifeFilter = !!ls.lifeFilter;
     setDetObsFilter(Array.isArray(ls.obsFilter) ? new Set(ls.obsFilter) : null);
+    detSrcFilter = (Array.isArray(ls.srcFilter) && ls.srcFilter.length) ? new Set(ls.srcFilter) : null;
+    // Heal a stale source filter (none of its sources plotted) so it can't blank the map.
+    if (detSrcFilter && Object.keys(detPlot).length) {
+      var pres = detSourcesPresent();
+      if (!pres.some(function (s) { return detSrcFilter.has(s); })) detSrcFilter = null;
+    }
     detSelected = {};
     (Array.isArray(ls.selected) ? ls.selected : []).forEach(function (k) { if (detPlot[k]) detSelected[k] = true; });
     rebuildDetLayers();
@@ -8710,7 +8759,7 @@
     var b = legendViewBounds, n = 0;
     for (var i = 0; i < e.rows.length; i++) {
       var r = e.rows[i];
-      if (!detDatePasses(r.date) || !detObsPasses(r)) continue;
+      if (!detDatePasses(r.date) || !detObsPasses(r) || !detPassesSrc(r)) continue;
       if (b && !(isFinite(+r.lat) && isFinite(+r.lon) && b.contains([+r.lat, +r.lon]))) continue;
       n++;
     }
