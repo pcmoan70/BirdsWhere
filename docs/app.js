@@ -677,6 +677,13 @@
     if (!ts) return "";
     try { return fmtDate(new Date(ts).toISOString().slice(0, 10)); } catch (e) { return ""; }
   }
+  // "Last" cell content: the date, CLICKABLE to filter (On / Before / After).
+  function lastDateCellHtml(ts) {
+    if (!ts) return "";
+    var iso = ""; try { iso = new Date(ts).toISOString().slice(0, 10); } catch (e) {}
+    var lbl = escapeHtml(lastDateLabel(ts));
+    return iso ? '<span class="dl-date-click" role="button" data-date="' + iso + '" title="' + escapeHtml(t("detlist.dateFilterHint")) + '">' + lbl + "</span>" : lbl;
+  }
 
   // Format a grid step (degrees) for the status line — keep significant digits
   // for the fine steps used at deep zoom (so it never shows "0°").
@@ -1242,7 +1249,14 @@
         '<td class="num">' + km + "</td>" +
         '<td class="sp-d-obs">' + obsCell + "</td></tr>";
     }).join("");
-    return '<table class="sp-detail-tbl"><tbody>' + body + "</tbody></table>";
+    var hdr = "<thead><tr>" +
+      '<th>' + escapeHtml(t("th.species")) + "</th>" +
+      (name2On ? '<th>' + escapeHtml(window.GeoI18N.langByCode(secondLang).name) + "</th>" : "") +
+      '<th class="num">' + escapeHtml(t("th.prob")) + "</th>" +
+      '<th>' + escapeHtml(t("th.date")) + "</th>" +
+      '<th class="num">' + escapeHtml(t("th.dist")) + "</th>" +
+      '<th>' + escapeHtml(t("th.obs")) + "</th></tr></thead>";
+    return '<table class="sp-detail-tbl">' + hdr + "<tbody>" + body + "</tbody></table>";
   }
   // "Per observation": the same columns table, but records stay grouped per
   // date × observer × location (the triple). Each group's rows show species · 2nd
@@ -1263,7 +1277,10 @@
         '<td class="num">' + pct + "</td>" +
         '<td class="num">' + km + "</td></tr>";
     }).join("");
-    return '<table class="sp-detail-tbl"><tbody>' + body + "</tbody></table>";
+    var hdr = "<thead><tr><th>" + escapeHtml(t("th.species")) + "</th>" +
+      (name2On ? "<th></th>" : "") +
+      '<th class="num">' + escapeHtml(t("th.prob")) + '</th><th class="num">' + escapeHtml(t("th.dist")) + "</th></tr></thead>";
+    return '<table class="sp-detail-tbl">' + hdr + "<tbody>" + body + "</tbody></table>";
   }
   function buildSpObsHtml(rows) {
     var byDate = {}, dates = [];
@@ -1438,7 +1455,7 @@
         tr.classList.toggle("sp-has-det", fc > 0);
         var ndBtn = tr.querySelector(".det-nd .det-count-btn"); if (ndBtn) ndBtn.textContent = fc;
         var ndDays = tr.querySelector(".det-nd .det-d"); if (ndDays) ndDays.textContent = flatest ? "(" + Math.max(0, Math.round((now - flatest) / 86400000)) + ")" : "";
-        var lastTd = tr.querySelector(".sp-last"); if (lastTd) { lastTd.textContent = flatest ? lastDateLabel(flatest) : ""; if (flatest) tr.setAttribute("data-last", flatest); else tr.removeAttribute("data-last"); }
+        var lastTd = tr.querySelector(".sp-last"); if (lastTd) { lastTd.innerHTML = flatest ? lastDateCellHtml(flatest) : ""; if (flatest) tr.setAttribute("data-last", flatest); else tr.removeAttribute("data-last"); }
         obsFilteredOut = !!(entry.count) && fc === 0;
       }
       tr.style.display = (ageOk && rareOk && buildOk && !obsFilteredOut) ? "" : "none";
@@ -2317,6 +2334,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v850", date: "2026-08-04", text: "Every date and observer shown across the lists is now tappable to filter (On/Before/After for dates, Only/All for observers) — including the species list's “Last” column and the records in the pop-up. The expanded species records also gained column headers (Species · 2nd name · Prob · Date · Dist · Observer)." },
     { v: "v849", date: "2026-08-04", text: "The list filters now also filter the map: the ★/◉/🟠/🟡 flag columns and the n(d) day filter narrow the plotted dots too (n(d) ≤1d = today/yesterday only; year-list/life-list/rarity show only those). The list⇄map view only changes when you tap the toggle now. And “Per observation” uses the same columns table, grouped by date × observer × location." },
     { v: "v848", date: "2026-08-04", text: "Expanding a species row now lays its individual records out as a columns table matching the list: species name, 2nd name, probability at that location, date, distance and observer. The date and the observer are clickable to filter (Only / All), and tapping a record row jumps the map to it." },
     { v: "v847", date: "2026-08-04", text: "The species list now respects the active observation filters throughout: each species' n(d) count and last-seen date reflect only the records that pass the current date / source / observer filters, and a species whose records are all filtered out drops out of the list entirely — so an expanded row is never empty." },
@@ -3772,7 +3790,7 @@
       var entry = agg[td.getAttribute("data-key")], tr = td.parentNode;
       var ts = entry && entry.latestTs;
       if (!ts) { if (isFinal) td.textContent = ""; if (tr) tr.removeAttribute("data-last"); return; }
-      td.textContent = lastDateLabel(ts);
+      td.innerHTML = lastDateCellHtml(ts);
       if (tr) tr.setAttribute("data-last", ts);
     });
     // We now know WHICH species were seen here, so the status column can mark the
@@ -3869,7 +3887,7 @@
         '<td class="prob-cell prob-na">—</td>' +
         '<td class="num det-nd"><button type="button" class="det-count-btn det-count-extra" data-sci="' + escapeHtml(e.sci) + '" data-name="' + escapeHtml(name) + '">' + e.count + '</button>' +
           (days != null ? '<span class="det-d">(' + days + ")</span>" : "") + '</td>' +
-        '<td class="num sp-last">' + (e.latestTs ? escapeHtml(lastDateLabel(e.latestTs)) : "") + '</td>' +
+        '<td class="num sp-last">' + (e.latestTs ? lastDateCellHtml(e.latestTs) : "") + '</td>' +
         '<td class="num sp-dist">' + (exKm != null ? escapeHtml(nearbyFmtDist(exKm)) : "") + '</td>' +
         '<td></td>';
       frag.appendChild(tr);
@@ -7288,7 +7306,7 @@
       // The station name/#id is shown in the date-section HEADER (in the slot the
       // observer name uses for other sources), NOT here next to the species. So the
       // species row carries only the count-prefixed source; no sub-line.
-      meta = [showDate ? escapeHtml(fmtDate(d.date)) : "", "×" + escapeHtml(String(d.count || 1)) + " " + srcClickHtml("BirdWeather")].filter(Boolean).join(" · ");
+      meta = [showDate ? dateClickHtml(d.date) : "", "×" + escapeHtml(String(d.count || 1)) + " " + srcClickHtml("BirdWeather")].filter(Boolean).join(" · ");
       subLines = "";
     } else {
       // Source is struck through when the recipient can't access it (a shared record
@@ -7298,7 +7316,7 @@
       var srcHtml = !srcTxt ? "" : (sourceAccessible(d.src)
         ? srcClickHtml(srcTxt)
         : '<span class="dl-noaccess-ic" title="' + escapeHtml(t("detlist.noAccess")) + '">🔒</span><span class="dl-src-noaccess" title="' + escapeHtml(t("detlist.noAccess")) + '">' + escapeHtml(srcTxt) + "</span>");
-      meta = [showDate ? escapeHtml(fmtDate(d.date)) : "",
+      meta = [showDate ? dateClickHtml(d.date) : "",
         (d.count != null && d.count !== "") ? "×" + escapeHtml(String(d.count)) : "",
         srcHtml].filter(Boolean).join(" · ");
       subLines =
@@ -7662,6 +7680,11 @@
     var dm = document.getElementById("detlist-modal");
     if (dm && dm.style.display === "flex") { renderDetListModal(); return; }
     if (typeof speciesPanelPopulated === "function" && speciesPanelPopulated()) renderSpControls();
+  }
+  // A clickable date → opens the On/Before/After date-filter menu.
+  function dateClickHtml(dateStr) {
+    if (!dateStr) return "";
+    return '<span class="dl-date-click" role="button" data-date="' + escapeHtml(dateStr) + '" title="' + escapeHtml(t("detlist.dateFilterHint")) + '">' + escapeHtml(fmtDate(dateStr)) + "</span>";
   }
   // A clickable source label in a record row → opens the source-filter menu.
   function srcClickHtml(label) {
@@ -8768,13 +8791,16 @@
     var menu = openAnchoredMenu("obs-addmenu");
     menu.innerHTML = '<div class="obs-addmenu-head">' + escapeHtml(name) + "</div>" +
       '<button type="button" class="obs-addmenu-item obs-act-filter">' + escapeHtml(t("obs.filterOnly")) + "</button>" +
+      (detObsFilter ? '<button type="button" class="obs-addmenu-item obs-act-all">' + escapeHtml(t("obs.all")) + "</button>" : "") +
       '<button type="button" class="obs-addmenu-item obs-act-add">' + escapeHtml(t("obs.addToListAct")) + "</button>";
     positionAnchoredMenu(menu, r.left, r.bottom + 2);
     menu.querySelector(".obs-act-filter").addEventListener("click", function (e) {
       e.stopPropagation(); closeAnchoredMenu();
       setDetObsFilter(name ? new Set([name]) : null);   // show only this observer's records
-      saveLegendState(); rebuildDetLayers(); updateDetLegend(); renderDetListModal();
+      saveLegendState(); detFiltersRefresh();
     });
+    var allBtn = menu.querySelector(".obs-act-all");
+    if (allBtn) allBtn.addEventListener("click", function (e) { e.stopPropagation(); closeAnchoredMenu(); setDetObsFilter(null); saveLegendState(); detFiltersRefresh(); });
     menu.querySelector(".obs-act-add").addEventListener("click", function (e) {
       e.stopPropagation(); closeAnchoredMenu();
       showAddToListMenu(name, r);
@@ -12071,6 +12097,8 @@
     // sightings panel for that species (multi-source merge with Show in map).
     // Extras (not in model) have no species code → query by sci name only.
     document.getElementById("sp-tbody").addEventListener("click", function (e) {
+      var dc = e.target.closest && e.target.closest(".dl-date-click");
+      if (dc) { e.preventDefault(); e.stopPropagation(); showDateFilterMenu(dc.getAttribute("data-date"), e.clientX, e.clientY); return; }
       var exp = e.target.closest && e.target.closest(".sp-exp");
       if (exp) { e.preventDefault(); e.stopPropagation(); toggleSpExpand(exp.getAttribute("data-key")); return; }
       var btn = e.target.closest && e.target.closest(".det-count-btn");

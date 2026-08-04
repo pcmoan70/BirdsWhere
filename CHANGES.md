@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-08-04 — Headers on expand tables; all dates/observers clickable to filter (sw v850)
+
+- **Column headers** on the expanded species records (`spDetailTableHtml`) and the Per-observation group
+  tables (`spGroupTableHtml`): Species · 2nd name · Prob · Date · Dist · Observer. New i18n `th.date` /
+  `th.obs`; `.sp-detail-tbl thead th` CSS.
+- **All dates are click-to-filter**: the species list's **Last** column is now a `.dl-date-click`
+  (`lastDateCellHtml`, wired in the `#sp-tbody` handler), and `detRowHtml`'s record date uses the new
+  `dateClickHtml`. General `.dl-date-click` style added.
+- **Observers filterable**: `observerActionMenu` (from the popup's observer names) now refreshes both
+  surfaces via `detFiltersRefresh` and offers **All observers** (clear) alongside **Only this observer**;
+  the fetch-list tables use `sp-obs-filter` → `showObsFilterMenu`.
+
 ## 2026-08-04 — List filters drive the map; no auto view-switch; Per-obs tabular (sw v849)
 
 - **Flag columns → global filters**: toggling ★/◉/🟠/🟡 now mirrors to `detStarFilter`/`detRareFilter`/

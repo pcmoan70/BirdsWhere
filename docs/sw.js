@@ -21,16 +21,16 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v849";
+var VERSION = "v850";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• Every date and observer shown in the lists is now tappable to filter by it (On/Before/After for dates, Only/All for observers) — including the “Last” column. The expanded species records now show column headers too.",
   "• The list's ★/◉/🟠/🟡 flag filters and the n(d) day filter now also filter the MAP: e.g. n(d) ≤1d shows only today/yesterday's dots, and the year-list / life-list / rarity filters show only those species on the map too. The list⇄map view now only switches when you tap the toggle — a fetch or filter no longer flips it.",
   "• “Per observation” now uses the same columns table, with records grouped by date × observer × location.",
   "• Expanding a species row now shows its records as a tidy columns table — species, 2nd name, probability at that spot, date, distance and observer — with the date and observer clickable to filter, and each row tapping through to the map.",
-  "• The species list now fully respects the active filters (date / source / observer): a species' count reflects only the matching records, and a species with nothing left after filtering drops out of the list — so an expanded row is never empty.",
-  "• The fetched species list has two layouts — the sortable Species-list table (with a “Last” seen column) and “Per observation” — and is the hub for filters + layout. The pop-up detections list (tapping a dot) is a focused one-place view.",
+  "• The fetched species list has two layouts — the sortable Species-list table (with a “Last” seen column) and “Per observation” — and is the hub for filters + layout. The pop-up detections list (tapping a dot) is a focused one-place view. A filtered-out species drops out (no empty expands).",
   "• Filter observations by source, date or observer straight from the list — tap the value for Only / All."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets

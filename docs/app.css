@@ -2628,7 +2628,9 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
 .dl-date-head .dl-obs-add:hover { color: var(--brand); text-decoration: underline; }
 .dl-date-head .dl-date-click { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
 .dl-date-head .dl-date-click:hover { color: var(--brand); }
-/* Clickable source label in a record row → source filter. */
+/* Clickable date / source anywhere → filter (dotted underline affordance). */
+.dl-date-click { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
+.dl-date-click:hover { color: var(--brand); }
 .dl-src-click { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
 .dl-src-click:hover { color: var(--brand); }
 /* Expandable species rows: a caret (only when the species has detections) opens a
@@ -2639,6 +2641,8 @@ tr.sp-has-det .sp-exp { display: inline-block; }
 .sp-detail-row > .sp-detail-cell { padding: 0 4px 5px 20px; background: var(--surface-2, rgba(0,0,0,.03)); }
 /* Columns view for a species' expanded records. */
 .sp-detail-tbl { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.sp-detail-tbl thead th { text-align: left; font-weight: 600; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-muted, #888); padding: 1px 6px; }
+.sp-detail-tbl thead th.num { text-align: right; }
 .sp-detail-tbl td { padding: 2px 6px; border-top: 1px solid var(--border, #e8e8e8); color: var(--ink, #222); }
 .sp-detail-tbl td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .sp-detail-tbl .name2 { color: var(--ink-muted, #777); }
