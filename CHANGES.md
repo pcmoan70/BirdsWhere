@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-04 — Probability column next to Season in the species list (sw v859)
+
+- Moved the **Probability** column so it sits directly before **Season** in the Species-list table (order
+  is now …n(d) · Last · Dist · Probability · Season), so the two coloured bars read together. Reordered the
+  header + the main / extras / country row templates consistently; all cell access is by id/class so sort
+  and the no-model/country hiding are unaffected.
+
 ## 2026-08-04 — "Show on map" places the marker + reveals the map (sw v858)
 
 - New shared `focusPointOnMap(lat,lon)`: closes the record menu / records modal / full-screen list,
