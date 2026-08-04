@@ -21,12 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v870";
+var VERSION = "v871";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
-  "• New base maps: Light and Dark are replaced by Voyager (clean colour map), CyclOSM (trails + hillshade), Esri Topo and NatGeo — alongside Streets, Topographic and Satellite.",
+  "• New base maps: Light and Dark are replaced by Voyager (clean colour map), CyclOSM (trails + hillshade) and Esri Topo — alongside Streets, Topographic and Satellite.",
   "• Triggering several point fetches in a row no longer loses the earlier ones: each fetch now finishes and drops its dots on the map (they accumulate), instead of a newer fetch discarding the older one's results.",
   "• Tapping a date now also offers “Range…”, a small popup to enter an explicit from–to date range for the filter (on top of On / Before / After).",
   "• The expanded / Per-observation record tables now have a Source column (e.g. Observation.org[GBIF]) — sortable, and tap a source to filter to / hide it.",

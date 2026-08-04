@@ -1,5 +1,10 @@
 # Changes
 
+## 2026-08-05 — Remove the NatGeo base map (sw v871)
+
+- Dropped the **NatGeo** (Esri) base map added in v870 (config entry, dropdown option, `basemap.natgeo`
+  i18n ×15, README). A saved `natgeo` choice migrates to Streets via `setBasemap`'s unknown-key guard.
+
 ## 2026-08-04 — Replace Light/Dark base maps with 4 new layers (sw v870)
 
 - Removed the **Light** and **Dark** (CARTO) base maps. Added four free, no-key layers: **Voyager**

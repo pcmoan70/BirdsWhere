@@ -4650,9 +4650,6 @@
     // Topographic with roads + labels (Esri)
     esritopo: { url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
                 attribution: ESRI_ATTR + ' &mdash; Esri, DeLorme, NAVTEQ, TomTom, and the GIS community', maxNativeZoom: 19 },
-    // National Geographic style: terrain + relief + labels (Esri)
-    natgeo: { url: "https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}",
-              attribution: ESRI_ATTR + ' &mdash; National Geographic, Esri, DeLorme, NAVTEQ, and others', maxNativeZoom: 16 },
     // Satellite imagery
     satellite: { url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
                  attribution: 'Imagery &copy; <a href="https://www.esri.com">Esri</a>, Maxar, Earthstar Geographics', maxNativeZoom: 19 } };
@@ -4907,7 +4904,6 @@
                   '<option value="cyclosm" data-i18n="basemap.cyclosm">CyclOSM</option>' +
                   '<option value="topo" data-i18n="basemap.topo">Topographic</option>' +
                   '<option value="esritopo" data-i18n="basemap.esritopo">Esri Topo</option>' +
-                  '<option value="natgeo" data-i18n="basemap.natgeo">NatGeo</option>' +
                   '<option value="satellite" data-i18n="basemap.satellite">Satellite</option>' +
                 '</select>' +
               '</div>' +

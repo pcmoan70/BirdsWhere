@@ -53,7 +53,7 @@ A Leaflet map with a **Mode** selector in the header:
 - **Species Range** — a probability heatmap for one chosen species, animatable across the year.
 - **Species Richness** — predicted species count per grid cell, also animatable.
 
-**Base maps:** Voyager, Streets, CyclOSM, Topographic, Esri Topo, NatGeo, Satellite — deep zoom (down to ~0.25°
+**Base maps:** Voyager, Streets, CyclOSM, Topographic, Esri Topo, Satellite — deep zoom (down to ~0.25°
 cells) with bilinear smoothing on the model layers. A **Resolution** control trades finer
 detail for speed.
 
