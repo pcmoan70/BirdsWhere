@@ -4410,7 +4410,8 @@
   var ORIGIN_PLATFORM = [
     [/^inaturalist\b/i, "iNaturalist"],
     [/^ebird\b/i, "eBird"],
-    [/^observation\.org\b/i, "Observation.org"],
+    [/observation\.org\b/i, "Observation.org"],
+    [/observation international/i, "Observation.org"],   // rightsHolder "Stichting Observation International"
     [/artportalen/i, "Artportalen"],
     [/artsobserva|artskart/i, "Artsobservasjoner"],
     [/^global biodiversity/i, "GBIF"]

@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-05 — Identify GBIF records that carry no datasetName (sw v872)
+
+- Some GBIF records (e.g. Observation.org) have no `datasetName`, so the source showed as a bare "GBIF"
+  with no platform. `normGbif` now derives the origin via new `gbifOrigin(o)`: `datasetName`, else the host
+  of the record's own URL (`occurrenceID` / `references`, e.g. `observation.org`), else `rightsHolder` — so
+  `srcLabel` reads e.g. `Observation.org[GBIF]`. Added `shortOrigin` mappings: unanchored `observation.org`
+  + `observation international` (the "Stichting Observation International" rights holder).
+
 ## 2026-08-05 — Remove the NatGeo base map (sw v871)
 
 - Dropped the **NatGeo** (Esri) base map added in v870 (config entry, dropdown option, `basemap.natgeo`
