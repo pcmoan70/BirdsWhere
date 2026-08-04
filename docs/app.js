@@ -1214,7 +1214,12 @@
   function refreshSpExpansions() {
     var tbody = document.getElementById("sp-tbody"); if (!tbody) return;
     Array.prototype.slice.call(tbody.querySelectorAll(".sp-detail-row")).forEach(function (tr) { if (tr.parentNode) tr.parentNode.removeChild(tr); });
-    Array.prototype.forEach.call(tbody.querySelectorAll(".sp-exp"), function (c) { c.textContent = spExpanded[c.getAttribute("data-key")] ? "▾" : "▸"; });
+    // Mark expanded species rows so the row shows it's open (the ▸ caret was removed;
+    // the whole row is the expand target now — see the sp-tbody click handler).
+    Array.prototype.forEach.call(tbody.querySelectorAll("tr"), function (tr) {
+      var sl = tr.querySelector(".sp-link[data-key]"); var k = sl && sl.getAttribute("data-key");
+      if (k) tr.classList.toggle("sp-open", !!spExpanded[k]);
+    });
     Object.keys(spExpanded).forEach(function (key) {
       var row = findSpRow(tbody, key);
       if (!row || row.style.display === "none") return;
@@ -1254,6 +1259,7 @@
     if (col === "count") { var ca = parseInt(a.count, 10) || 0, cb = parseInt(b.count, 10) || 0; return sgn * (ca - cb); }
     if (col === "dist") return sgn * (spRecDistKm(a) - spRecDistKm(b));
     if (col === "obs") return sgn * String(a.observer || "").localeCompare(String(b.observer || ""));
+    if (col === "loc") return sgn * String(a.place || "").localeCompare(String(b.place || ""));
     var pa2 = a.prob >= 0 ? a.prob : Infinity, pb2 = b.prob >= 0 ? b.prob : Infinity;   // default: rarest first
     return (pa2 - pb2) || String(a.name || "").localeCompare(String(b.name || ""));
   }
@@ -1271,24 +1277,27 @@
     var dateCell = d.date ? '<span class="dl-date-click" role="button" data-date="' + escapeHtml(d.date) + '" title="' + escapeHtml(t("detlist.dateFilterHint")) + '">' + escapeHtml(fmtDate(d.date)) + "</span>" : "";
     var obs = detObsRealNames(d.observer);
     var obsCell = obs.map(function (n) { return '<span class="sp-obs-filter" role="button" data-obs="' + escapeHtml(n) + '" title="' + escapeHtml(t("obs.filterHint")) + '">' + escapeHtml(n) + "</span>"; }).join(", ");
+    var showName = opts.name !== false;   // the expanded per-species view drops the (redundant) species name
     return '<tr class="sp-d-row" data-lat="' + (d.lat == null ? "" : d.lat) + '" data-lon="' + (d.lon == null ? "" : d.lon) + '">' +
-      '<td class="sp-d-name">' + sw + escapeHtml(d.name || "") + "</td>" +
+      (showName ? '<td class="sp-d-name">' + sw + escapeHtml(d.name || "") + "</td>" : "") +
       (opts.name2 ? '<td class="name2">' + escapeHtml(detName2(d.key) || "") + "</td>" : "") +
       '<td class="num">' + pct + "</td>" +
       (opts.date ? '<td class="sp-d-date">' + dateCell + "</td>" : "") +
+      (opts.loc ? '<td class="sp-d-loc">' + escapeHtml(d.place || "") + "</td>" : "") +
       '<td class="num">' + km + "</td>" +
       '<td class="num">' + cnt + "</td>" +
       (opts.obs ? '<td class="sp-d-obs">' + obsCell + "</td>" : "") + "</tr>";
   }
   // The expanded sub-list for one species: full columns, sorted by spObsSort.
   function spDetailTableHtml(key, rows) {
-    var name2On = !!secondLang;
-    var hdr = "<thead><tr>" + spObsHeadCell("name", t("th.species")) +
-      (name2On ? spObsHeadCell("name2", window.GeoI18N.langByCode(secondLang).name) : "") +
+    // The species name / 2nd name are already on the row above (the species this list
+    // expands), so drop them here and show the observation's LOCATION instead.
+    var hdr = "<thead><tr>" +
       spObsHeadCell("prob", t("th.prob"), true) + spObsHeadCell("date", t("th.date")) +
+      spObsHeadCell("loc", t("th.location")) +
       spObsHeadCell("dist", t("th.dist"), true) + spObsHeadCell("count", t("th.count"), true) +
       spObsHeadCell("obs", t("th.obs")) + "</tr></thead>";
-    var body = rows.slice().sort(spObsCmp).map(function (d) { return spRecRowHtml(d, { name2: name2On, date: true, obs: true }); }).join("");
+    var body = rows.slice().sort(spObsCmp).map(function (d) { return spRecRowHtml(d, { name: false, date: true, loc: true, obs: true }); }).join("");
     return '<table class="sp-detail-tbl">' + hdr + "<tbody>" + body + "</tbody></table>";
   }
   // "Per observation": ONE columns table with the records grouped by date × observer ×
@@ -1455,6 +1464,7 @@
       if (tr.classList.contains("sp-detail-row")) return;   // handled by refreshSpExpansions below
       var extra = tr.classList.contains("sp-extra");
       var sl = tr.querySelector(".sp-link"), key = sl && sl.getAttribute("data-key");
+      tr.classList.toggle("sp-deleted", !!(key && deletedSpecies[key]));   // grey a species removed from the map
       var entry = (!extra && key && agg) ? agg[key] : null;
       var ageOk = true;
       if (days && agg) {
@@ -2379,6 +2389,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v854", date: "2026-08-04", text: "Deleting a species from the map now leaves a grey, struck-through name in the legend (no colour dot, no ×) and greys the same species in the species list — so you can see what you removed, not just that it vanished. Tap the grey name to forget the deletion (the species can re-appear on the next fetch). Expanding a species' records: tap anywhere on the row (the ▸ caret is gone; the species name and dates stay clickable for their own actions), and the expanded records now show the observation's Location instead of repeating the species name. Also: after a historic fetch the chosen date range + months show in the description text and the date/month controls collapse to a small 📅 button to save a row of space." },
     { v: "v853", date: "2026-08-04", text: "The species list now explains when a recency / date window is hiding some of the fetched detections: a small note shows the active window and how many records it's dropping (e.g. “Showing last 7 days — 42 detections not shown”), so a short list is never a surprise." },
     { v: "v852", date: "2026-08-04", text: "Fixed a bug where a Historic fetch showed zero detections: the recent-days display filter was hiding the older historic records. A historic fetch now sets the date window to the range you fetched (clearing the recency window), so historic and recent observations are treated the same way in the list and on the map." },
     { v: "v851", date: "2026-08-04", text: "The expanded species records and “Per observation” are now full sortable tables: species name and second name in separate columns (no more parentheses), a count column, and every column sortable within its date × observer × location group. A species-colour dot (matching the map) leads each record and each species-list row, so the two lists are coloured consistently." },
@@ -6785,6 +6796,7 @@
   // legend row to "select" it — that isolates the selected species (the rest are
   // hidden); with nothing selected every species shows, in colour.
   var detSelected = {};
+  var deletedSpecies = Object.create(null);   // key → name of species deleted from the map (grey tombstone in the legend + list)
   // "Starred only" filter, driven by the legend dropdown: when on, the legend
   // lists (and the map shows) only the species the user has starred.
   var detStarFilter = false;
@@ -8184,6 +8196,7 @@
     var eCls = (cls != null && cls !== "") ? cls : ((prev && prev.cls) || (taxByCode[key] && taxByCode[key].class_name) || "");
     var e = { key: key, name: (name || (prev && prev.name)), color: (prev && prev.color) || "#888", rows: merged, group: null, cls: eCls };
     detPlot[key] = e;
+    if (deletedSpecies[key]) delete deletedSpecies[key];   // re-plotting un-deletes a tombstoned species
     recolorDetections();   // assign family-based colours now that this species is in the set
     // Over the draw cap (single add) → re-render everything under the newest-N
     // limit. Under the cap, or mid-bulk (defer), render just this species; a bulk
@@ -8472,8 +8485,10 @@
     clearSpider();
     var fromList = removeListSpecies(key);   // also delete from shown lists so it doesn't re-inject
     if (detPlot[key].group) map.removeLayer(detPlot[key].group);
+    deletedSpecies[key] = detName(detPlot[key]) || key;   // tombstone: remember the name (grey, no dot/×, in the legend + list)
     delete detPlot[key]; delete detSelected[key];
     updateDetLegend(); saveDetections(); saveLegendState();
+    if (typeof applyAgeFilter === "function") { try { applyAgeFilter(); } catch (e) {} }   // grey the row in the species list
     if (fromList && typeof refreshMpPanel === "function") refreshMpPanel();   // keep the points-panel count current
   }
   // Is any detection filter active? (species selection, ★/◉/🟡/🔴 mode, observer,
@@ -8503,7 +8518,7 @@
     if (storedLocFramesLayer) storedLocFramesLayer.clearLayers();   // selection preview
     clearFetchedAreas();   // remembered fetched-area outlines go with the detections
     Object.keys(detPlot).forEach(function (k) { if (detPlot[k].group) map.removeLayer(detPlot[k].group); });
-    detPlot = {}; detSelected = {};
+    detPlot = {}; detSelected = {}; deletedSpecies = Object.create(null);
     // Filters are DELIBERATELY kept (they persist until the black × / toggled off) —
     // only the transient subwindow-open flags and the minimise state reset here.
     detObsPanelOpen = false; detDaysPanelOpen = false; detModePanelOpen = false; detLegendMini = false;
@@ -8633,7 +8648,7 @@
   // Persist the legend's UI state — collapsed, the starred-only filter, and the
   // row selection — so the map legend comes back the way the user left it.
   function saveLegendState() {
-    window.GeoState.save({ mapLegend: { mini: detLegendMini, starFilter: detStarFilter, rareFilter: detRareFilter, yearFilter: detYearFilter, lifeFilter: detLifeFilter, selected: Object.keys(detSelected), obsFilter: detObsFilter ? Array.from(detObsFilter) : null, srcFilter: detSrcFilter ? Array.from(detSrcFilter) : null } });
+    window.GeoState.save({ mapLegend: { mini: detLegendMini, starFilter: detStarFilter, rareFilter: detRareFilter, yearFilter: detYearFilter, lifeFilter: detLifeFilter, selected: Object.keys(detSelected), obsFilter: detObsFilter ? Array.from(detObsFilter) : null, srcFilter: detSrcFilter ? Array.from(detSrcFilter) : null, deleted: deletedSpecies } });
   }
   function loadDetections() {
     // Self-heal a store left over-quota by an older build: cap the stored
@@ -8668,6 +8683,8 @@
     }
     detSelected = {};
     (Array.isArray(ls.selected) ? ls.selected : []).forEach(function (k) { if (detPlot[k]) detSelected[k] = true; });
+    deletedSpecies = Object.create(null);
+    if (ls.deleted && typeof ls.deleted === "object") Object.keys(ls.deleted).forEach(function (k) { if (!detPlot[k]) deletedSpecies[k] = ls.deleted[k]; });
     rebuildDetLayers();
     updateDetLegend();
   }
@@ -9172,7 +9189,8 @@
   function updateDetLegend() {
     var allKeys = Object.keys(detPlot);
     updateClearPtsBtn();   // reveal/hide the red × with the plotted set (runs even on the empty early-return)
-    if (!allKeys.length) { if (detLegend) { map.removeControl(detLegend); detLegend = null; } return; }
+    var delKeys = Object.keys(deletedSpecies);
+    if (!allKeys.length && !delKeys.length) { if (detLegend) { map.removeControl(detLegend); detLegend = null; } return; }
     ensureDedup();
     maybeComputeDetProbs();   // (re)compute habitat probabilities when the plotted set changed
     // The dropdown's "Starred only" narrows which species the legend lists (and
@@ -9266,6 +9284,11 @@
         var rowCls = "det-row det-row-click" + (selActive && !sel ? " det-row-off" : "") + (sel ? " det-row-on" : "");
         var sw = (selActive && !sel) ? DET_MUTE_COLOR : e.color;
         return '<div class="' + rowCls + '" data-key="' + escapeHtml(k) + '">' + detSwatch(sw, isInteresting(e.key), detIsRare(k), e.key) + '<span class="det-nm" title="' + nm + '">' + nm + '</span><span class="det-ct">' + ct + '</span><button type="button" class="det-del" data-key="' + escapeHtml(k) + '" aria-label="remove">×</button></div>';
+      }).join("") +
+      // Deleted species leave a grey tombstone row: name only, no colour dot and no ×
+      // (already deleted). Tapping it restores the species (re-plots on the next fetch).
+      delKeys.map(function (k) {
+        return '<div class="det-row det-row-deleted" data-key="' + escapeHtml(k) + '" title="' + escapeHtml(t("det.deletedHint")) + '"><span class="det-nm">' + escapeHtml(deletedSpecies[k]) + "</span></div>";
       }).join("");
     // Red ×, two-stage: with remembered fetched areas and not yet armed, the first
     // click arms per-area delete (a red × appears on each area). Otherwise it wipes
@@ -9282,6 +9305,15 @@
     });
     el.querySelector(".det-min").addEventListener("click", function () { mapClickGuardUntil = Date.now() + 250; detLegendMini = true; saveLegendState(); updateDetLegend(); });
     el.querySelectorAll(".det-del").forEach(function (b) { b.addEventListener("click", function (e) { e.stopPropagation(); removeDetection(this.getAttribute("data-key")); }); });
+    // Tap a grey tombstone row → forget the deletion (its row clears; the species can
+    // re-appear on the next fetch).
+    el.querySelectorAll(".det-row-deleted").forEach(function (r) {
+      r.addEventListener("click", function (e) {
+        e.stopPropagation(); delete deletedSpecies[this.getAttribute("data-key")];
+        saveLegendState(); updateDetLegend();
+        if (typeof applyAgeFilter === "function") { try { applyAgeFilter(); } catch (e2) {} }
+      });
+    });
     // Click a row to toggle its visibility selection. Stop the click here so it
     // can't leak to the map and pop the point-options popup at the legend's spot.
     // ⚠ CONFIRMED BEHAVIOUR — keep as-is (user-approved 2026-06-26). Do NOT revert
@@ -12151,10 +12183,19 @@
     document.getElementById("sp-tbody").addEventListener("click", function (e) {
       var dc = e.target.closest && e.target.closest(".dl-date-click");
       if (dc) { e.preventDefault(); e.stopPropagation(); showDateFilterMenu(dc.getAttribute("data-date"), e.clientX, e.clientY); return; }
-      var exp = e.target.closest && e.target.closest(".sp-exp");
-      if (exp) { e.preventDefault(); e.stopPropagation(); toggleSpExpand(exp.getAttribute("data-key")); return; }
       var btn = e.target.closest && e.target.closest(".det-count-btn");
-      if (!btn) return;
+      if (!btn) {
+        // No caret any more: clicking anywhere on a species row (that has records)
+        // toggles its expanded record list — EXCEPT on the active elements in the row
+        // (the species name opens the species view, the date/count/flag cells filter).
+        if (e.target.closest && e.target.closest(".sp-link, .dl-date-click, .spf, [role=button], a, button, input, select")) return;
+        var trg = e.target.closest && e.target.closest("tr.sp-has-det");
+        if (trg && !trg.classList.contains("sp-detail-row")) {
+          var slk = trg.querySelector(".sp-link[data-key]"), rk = slk && slk.getAttribute("data-key");
+          if (rk) { e.preventDefault(); toggleSpExpand(rk); return; }
+        }
+        return;
+      }
       if (!currentSpView || (currentSpView.mode !== "point" && currentSpView.mode !== "historic")) return;
       var range = currentSpView.mode === "historic" ? currentSpView.range : null;   // historic → records over that range
       if (btn.classList.contains("det-count-extra")) {
@@ -15735,8 +15776,11 @@
   function collapseHistRange(from, to) {
     var wrap = document.getElementById("histrange-wrap"), body = document.getElementById("hist-range-body"), r = document.getElementById("hist-restore");
     if (!wrap || !body || !r) return;
-    r.textContent = "📅 " + fmtDate(from) + " – " + fmtDate(to);
-    r.title = t("hist.range");
+    // The chosen range + months now live in the descriptive text (sp-coords), so the
+    // collapsed control is just a compact icon that re-opens the picker — no repeated
+    // date text taking a row (see the user request to "remove controls to save space").
+    r.textContent = "📅 " + t("hist.change");
+    r.title = t("hist.change");
     body.style.display = "none"; r.style.display = "";
   }
   function expandHistRange() {
@@ -15908,7 +15952,7 @@
         var pct = Math.round(r.prob * 100);
         var sortAttrs = ' data-name="' + escapeHtml(speciesName(r.label).toLowerCase()) + '" data-prob="' + r.prob + '"' + (hasCompare ? ' data-cmp="' + r.cmpVal + '"' : "");
         return '<tr' + sortAttrs + '>' + spFlagCells(r.label.key, false) +
-               '<td><span class="sp-exp" role="button" data-key="' + dKey + '" title="' + escapeHtml(t("sp.expandHint")) + '">▸</span>' + spColorDot(r.label.key) + nameLinkHtml(r.label, true) + '</td>' + name2Cell + '<td class="sci">' +
+               '<td>' + spColorDot(r.label.key) + nameLinkHtml(r.label, true) + '</td>' + name2Cell + '<td class="sci">' +
                escapeHtml(r.label.sci) + '</td><td class="prob-cell"><span class="prob-num">' + pct +
                '%</span><div class="prob-bar" style="width:' + pct + '%;background:' + probHueColor(pRange > 0 ? (r.prob - pLo) / pRange : 1) + '"></div></td>' +
                '<td class="num det-nd" data-key="' + dKey + '"><span class="det-wait" title="' + escapeHtml(t("status.loadingDet")) + '"></span></td>' +

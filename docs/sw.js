@@ -21,17 +21,17 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v853";
+var VERSION = "v854";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• Deleting a species from the map now leaves a grey, struck-through name in the legend (no colour dot, no ×) and greys it in the species list too — so you can see what you removed. Tap the grey name to forget the deletion (the species can re-appear on the next fetch).",
+  "• Expand a species' records by tapping anywhere on its row (the ▸ caret is gone; the name + dates stay clickable for their own actions). The expanded records now show each observation's Location instead of repeating the species name.",
+  "• After a historic fetch, the chosen date range + months now show in the description text and the date/month controls collapse to a small 📅 button — saving a row of space.",
   "• When a recency / date window is active and hiding some of the fetched detections, the species list now says so — e.g. “Showing last 7 days — 42 detections not shown” — so a short list is never a mystery.",
-  "• Fixed: Historic fetches were showing zero detections (the recent-days filter was hiding the older records). Historic now sets the date window to the range you fetched, so recent and historic are treated the same way.",
-  "• The expanded records and “Per observation” are now proper sortable tables: species name and 2nd name in separate columns (no more parentheses), a count column, each column sortable within its date × observer × location group, and a species-colour dot matching the map — the same dot now leads every row of the species list too.",
-  "• Every date and observer shown in the lists is now tappable to filter by it (On/Before/After for dates, Only/All for observers) — including the “Last” column. The expanded species records now show column headers too.",
-  "• The list's ★/◉/🟠/🟡 flag filters and the n(d) day filter now also filter the MAP: e.g. n(d) ≤1d shows only today/yesterday's dots, and the year-list / life-list / rarity filters show only those species on the map too. The list⇄map view now only switches when you tap the toggle — a fetch or filter no longer flips it.",
-  "• The fetched species list has two layouts — the sortable Species-list table (with a “Last” seen column) and “Per observation” — and is the hub for filters + layout. Filter by source, date or observer by tapping the value; a filtered-out species drops out (no empty expands)."
+  "• The expanded records and “Per observation” are now proper sortable tables: species name and 2nd name in separate columns, a count column, each column sortable within its date × observer × location group, and a species-colour dot matching the map.",
+  "• Every date and observer shown in the lists is now tappable to filter by it (On/Before/After for dates, Only/All for observers). The list's ★/◉/🟠/🟡 and n(d) filters now also filter the MAP."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs

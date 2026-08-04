@@ -1,5 +1,28 @@
 # Changes
 
+## 2026-08-04 — Soft-delete species (grey tombstone) + collapse historic controls (sw v854)
+
+- **Delete → grey tombstone.** Deleting a species from the map no longer makes it vanish silently:
+  `removeDetection` now records the removed species in a new `deletedSpecies` map (key → name) after
+  removing its dots. `updateDetLegend` renders those as a grey, struck-through `.det-row-deleted` row —
+  name only, **no colour swatch and no ×** — and its early-return keeps the legend alive while only
+  tombstones remain. The species table greys the matching row too (`applyAgeFilter` toggles `sp-deleted`).
+  Tapping a tombstone forgets the deletion (`delete deletedSpecies[key]`); re-plotting a species
+  (`plotDetections`) un-deletes it automatically. `clearDetections` clears all tombstones. Persisted in
+  `mapLegend.deleted` (save/load in `saveLegendState`/`loadDetections`, only re-hydrated for keys not
+  currently plotted). i18n `det.deletedHint` (15 langs); CSS `.det-row-deleted` / `tr.sp-deleted`.
+- **Historic controls collapse to a 📅 button.** After a historic fetch the chosen date range + months
+  already show in the description text (`sp-coords`); the collapsed control (`collapseHistRange`) no longer
+  repeats the "from – to" text — it's now a compact "📅 <Dates>" button that re-opens the picker, saving a
+  row. i18n `hist.change` (15 langs).
+- **Expanded per-species records: drop the redundant name, add location.** `spDetailTableHtml` /
+  `spRecRowHtml` now omit the species name + 2nd-name columns (they're on the species row above) and add a
+  sortable **Location** column (`d.place`, `spObsCmp` "loc" case). i18n `th.location` (15 langs); CSS `.sp-d-loc`.
+- **Expand by clicking the row, not a caret.** The ▸/▾ caret (`.sp-exp`) is removed; clicking anywhere on a
+  species row that has records toggles its expanded list — except on the active elements (species name → the
+  species view; date/count/flag cells → filters). `refreshSpExpansions` marks the open row `sp-open`; the
+  `sp-tbody` click handler does the row-level toggle. CSS: `tr.sp-has-det` cursor/hover + `tr.sp-open`.
+
 ## 2026-08-04 — Explain when the recency/date window hides detections (sw v853)
 
 - New `#sp-recency-note` in the species panel + `updateRecencyNote()`: when a date filter (recency days /
