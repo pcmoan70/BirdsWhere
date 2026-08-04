@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-08-04 — Checklist button moved behind Experimental (sw v868)
+
+- The field **Checklist** button (foot of the species list) now shows only when Experimental is on.
+  New `applyExperimentalUi()` toggles `#sp-checklist-btn` visibility; called at boot and when the
+  Experimental setting changes. Updated the Experimental hint (en/sv) to list the Checklist.
+
 ## 2026-08-04 — Don't drop superseded point fetches — all plot their dots (sw v867)
 
 - Triggering several recent (point) fetches in a row used to lose the earlier ones: `applySightings`

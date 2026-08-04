@@ -6175,6 +6175,12 @@
   // less-polished species-menu references (NBN Atlas, EuroBirdPortal); the home for
   // any future try-it-out links/features.
   function experimentalOn() { return !!window.GeoState.get("experimental", false); }
+  // Show/hide the experimental-gated UI that lives in static HTML (re-run on the
+  // toggle). The Checklist button is experimental-only; menu links are gated at render.
+  function applyExperimentalUi() {
+    var b = document.getElementById("sp-checklist-btn");
+    if (b) b.style.display = experimentalOn() ? "" : "none";
+  }
   function applyLabelsOverlay() {
     if (labelsOverlay) { try { map.removeLayer(labelsOverlay); } catch (e) {} labelsOverlay = null; }
     var mode = labelsMode();
@@ -11322,8 +11328,10 @@
     var expCb = document.getElementById("experimental-toggle");
     if (expCb) {
       expCb.checked = experimentalOn();
+      applyExperimentalUi();   // reflect the saved state on the Checklist button at boot
       expCb.addEventListener("change", function () {
         window.GeoState.save({ experimental: this.checked });
+        applyExperimentalUi();   // show/hide the Checklist button live
         closeContextMenus();   // a stale species menu would still show/hide the gated links
       });
     }
