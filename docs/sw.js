@@ -21,17 +21,16 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v844";
+var VERSION = "v845";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• The fetched species list now has just two layouts: the sortable Species-list table (now with a “Last” seen-date column) and “Per observation” (records grouped by date → observer → location). The old By-species/count/rarity/distance layouts are folded into the table's sortable columns.",
   "• The pop-up detections list (from tapping a dot) is now a focused one-place view — filtering has moved to the fetched species list, which is the hub for filters + layouts. The 2nd-name column there is now sortable too.",
-  "• The fetched species list gains a layout dropdown: keep the prediction table, or switch to the full detailed observations — By observation (grouped by date), By species, By count, By rarity or By distance — with the day/mode/observer filters right there. The detailed views show observer, source, count and date, all clickable.",
   "• Filter observations by source or by date straight from the list: tap a record's source (eBird, GBIF…) for Only / Hide / All sources, or tap a date header for On / Before / After that date. Map, legend and list all follow.",
   "• A red × now appears on the right of the map whenever observations are plotted — one tap clears them all, and the × disappears.",
-  "• Tap a species name and the menu now has “Show only this species” — it isolates that species' observations on the map (and the detections list). Tap it again on the same species to bring the rest back.",
-  "• When a data source fails or times out during a fetch, its name shows in red in the status line — tap it to see exactly why."
+  "• Tap a species name and the menu now has “Show only this species” — it isolates that species' observations on the map (and the detections list)."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs

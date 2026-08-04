@@ -672,6 +672,11 @@
     try { return d.toLocaleDateString(lang, { year: "numeric", month: "2-digit", day: "2-digit" }); }
     catch (e) { return s; }
   }
+  // A localized short date from a timestamp (for the species list's "Last" column).
+  function lastDateLabel(ts) {
+    if (!ts) return "";
+    try { return fmtDate(new Date(ts).toISOString().slice(0, 10)); } catch (e) { return ""; }
+  }
 
   // Format a grid step (degrees) for the status line — keep significant digits
   // for the fine steps used at deep zoom (so it never shows "0°").
@@ -1041,10 +1046,9 @@
   // Fetch-list layout: the model-prediction "table", or a detailed record layout.
   var spLayout = "table";
   var SP_LAYOUTS = [
-    ["table", "splay.table"], ["observation", "splay.observation"], ["species", "splay.species"],
-    ["count", "splay.count"], ["rarity", "splay.rarity"], ["distance", "splay.distance"]
+    ["table", "splay.table"], ["observation", "splay.observation"]
   ];
-  function spRecordLayout() { return spLayout === "species" ? "name" : spLayout === "observation" ? "date" : spLayout; }
+  function spRecordLayout() { return "date"; }   // the only record layout now is "Per observation" (date→observer→location)
   var menuKey = null, menuName = "", menuSci = "";  // species the menu targets
 
   function isHidden(key) { return !!hiddenSpecies[key]; }
@@ -1166,7 +1170,7 @@
   // Refresh the sort-arrow indicator on the sortable column headers. Class-based
   // (▲/▼ via CSS ::after) so it doesn't disturb the headers' dynamic labels.
   function updateSortIndicators() {
-    var cols = { "sp-species-head": "name", "sp-name2-head": "name2", "sp-sci-head": "sci", "sp-prob-head": "prob", "sp-dist-head": "dist", "sp-delta-head": "cmp" };
+    var cols = { "sp-species-head": "name", "sp-name2-head": "name2", "sp-sci-head": "sci", "sp-prob-head": "prob", "sp-last-head": "last", "sp-dist-head": "dist", "sp-delta-head": "cmp" };
     Object.keys(cols).forEach(function (id) {
       var el = document.getElementById(id); if (!el) return;
       var on = speciesListSort.col === cols[id];
@@ -1209,6 +1213,14 @@
         if (ka === Infinity && kb === Infinity) return 0;
         if (ka === Infinity) return 1; if (kb === Infinity) return -1;   // always last
         return speciesListSort.dir === "asc" ? cd : -cd;
+      } else if (col === "last") {
+        // Most-recent first (desc); species with no observation date sink to the bottom.
+        ka = parseFloat(a.getAttribute("data-last")); kb = parseFloat(b.getAttribute("data-last"));
+        if (isNaN(ka)) ka = -Infinity; if (isNaN(kb)) kb = -Infinity;
+        if (ka === -Infinity && kb === -Infinity) return 0;
+        if (ka === -Infinity) return 1; if (kb === -Infinity) return -1;   // always last
+        var ld = ka < kb ? -1 : ka > kb ? 1 : 0;
+        return speciesListSort.dir === "asc" ? ld : -ld;
       } else if (col === "recent") {
         // Most-recent observation first (desc). No detection → 0 sinks to the bottom.
         var ra = a.querySelector(".sp-link"), rb = b.querySelector(".sp-link");
@@ -2153,6 +2165,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v845", date: "2026-08-04", text: "The fetched species list is consolidated into two layouts: the Species-list table (multi-column, sortable — now with a Last-seen-date column alongside probability, count and distance) and Per observation (detailed records grouped by date → observer → location). The separate By-species/count/rarity/distance layouts are folded into the table's sortable columns." },
     { v: "v842", date: "2026-08-04", text: "The fetched species list is now the hub for filtering + layout, so the pop-up detections list (from tapping a plotted dot) is slimmed to a focused one-place view: place name, copy-coordinates, Save / Navigate / Add-to-route and the layout sort — no filter bar or search. The whole-map ☰ list button is gone (use the fetch list's By observation instead). Also: the 2nd-name column in the species list is now sortable." },
     { v: "v841", date: "2026-08-04", text: "The fetched species list can now switch layout: a dropdown offers the model prediction table, or the full detailed observations — By observation (grouped by date, like the pop-up), By species, By count, By rarity, or By distance. The detailed views carry the day / mode / observer filter bar and show observer, source, count and date on each record (all clickable to filter). This is the fetch list taking over the filtering + layout controls." },
     { v: "v840", date: "2026-08-04", text: "Filter observations by data source right from the list: tap a record's source (eBird, GBIF, iNaturalist…) and choose Only this source, Hide it, or All sources — the map, legend and list all follow, and it sticks until you clear filters. Pairs with the date-header shortcut (On/Before/After). Part of moving filtering onto the fetched list with as few extra controls as possible." },
@@ -3597,6 +3610,14 @@
       td.textContent = nearbyFmtDist(km);
       if (tr) tr.setAttribute("data-dist", km);
     });
+    // Last-seen date column (sortable). data-last carries the timestamp for sorting.
+    tbody.querySelectorAll(".sp-last[data-key]").forEach(function (td) {
+      var entry = agg[td.getAttribute("data-key")], tr = td.parentNode;
+      var ts = entry && entry.latestTs;
+      if (!ts) { if (isFinal) td.textContent = ""; if (tr) tr.removeAttribute("data-last"); return; }
+      td.textContent = lastDateLabel(ts);
+      if (tr) tr.setAttribute("data-last", ts);
+    });
     // We now know WHICH species were seen here, so the status column can mark the
     // ones the model considers unlikely at this spot.
     var rareSet = tbody._rareSet = spRareSet(agg, tbody);
@@ -3681,6 +3702,7 @@
       var tr = document.createElement("tr");
       tr.className = "sp-extra";
       tr.setAttribute("data-age-days", days != null ? days : "");
+      if (e.latestTs) tr.setAttribute("data-last", e.latestTs);
       if (exKm != null) tr.setAttribute("data-dist", exKm);
       var clsBadge = e.cls ? '<span class="sp-extra-cls" title="' + escapeHtml(e.cls) + '">' + classGlyph(e.cls) + "</span> " : "";
       tr.innerHTML = spFlagCells(null, false) +   // not a model species → no list/star status to show
@@ -3690,6 +3712,7 @@
         '<td class="prob-cell prob-na">—</td>' +
         '<td class="num det-nd"><button type="button" class="det-count-btn det-count-extra" data-sci="' + escapeHtml(e.sci) + '" data-name="' + escapeHtml(name) + '">' + e.count + '</button>' +
           (days != null ? '<span class="det-d">(' + days + ")</span>" : "") + '</td>' +
+        '<td class="num sp-last">' + (e.latestTs ? escapeHtml(lastDateLabel(e.latestTs)) : "") + '</td>' +
         '<td class="num sp-dist">' + (exKm != null ? escapeHtml(nearbyFmtDist(exKm)) : "") + '</td>' +
         '<td></td>';
       frag.appendChild(tr);
@@ -4793,7 +4816,7 @@
             SP_FILTER_KEYS.map(function (f) {
               return '<th id="sp-f-' + f + '" class="spf-head" role="button" tabindex="0"><span>' + SP_FLAG_GLYPH[f] + '</span></th>';
             }).join("") +
-            '<th id="sp-species-head" class="clickable-head" data-i18n="th.species">Species</th><th class="name2 clickable-head" id="sp-name2-head"></th><th id="sp-sci-head" class="clickable-head" data-i18n="th.sci">Scientific name</th><th id="sp-prob-head" class="clickable-head" data-i18n="th.prob">Probability</th><th id="sp-nd-head" class="num clickable-head" data-i18n="th.nd">n(d)</th><th id="sp-dist-head" class="num clickable-head" data-i18n="th.dist">Dist</th><th id="sp-delta-head"></th></tr></thead>' +
+            '<th id="sp-species-head" class="clickable-head" data-i18n="th.species">Species</th><th class="name2 clickable-head" id="sp-name2-head"></th><th id="sp-sci-head" class="clickable-head" data-i18n="th.sci">Scientific name</th><th id="sp-prob-head" class="clickable-head" data-i18n="th.prob">Probability</th><th id="sp-nd-head" class="num clickable-head" data-i18n="th.nd">n(d)</th><th id="sp-last-head" class="num clickable-head" data-i18n="th.last">Last</th><th id="sp-dist-head" class="num clickable-head" data-i18n="th.dist">Dist</th><th id="sp-delta-head"></th></tr></thead>' +
             '<tbody id="sp-tbody"></tbody>' +
           '</table>' +
           '<div class="sp-actions sp-actions-dl">' +
@@ -7575,22 +7598,35 @@
     rows.forEach(function (d) { var k = d.date || ""; if (!byDate[k]) { byDate[k] = []; dates.push(k); } byDate[k].push(d); });
     dates.sort(function (a, b) { return b.localeCompare(a); });
     return dates.map(function (dt) {
-      var byObs = {}, obs = [];
-      byDate[dt].forEach(function (d) { var o = (d.src === "BirdWeather" ? (d.place || "") : (d.observer || "")).trim(); if (!(o in byObs)) { byObs[o] = []; obs.push(o); } byObs[o].push(d); });
-      obs.sort(function (a, b) { if (!a !== !b) return a ? -1 : 1; return a.localeCompare(b); });
+      // Within a date, group by OBSERVER + LOCATION so the header reads date · observer · place.
+      var byG = {}, gkeys = [];
+      byDate[dt].forEach(function (d) {
+        var obsv = (d.src === "BirdWeather" ? "" : (d.observer || "")).trim();
+        var loc = (d.place || "").trim();
+        var key = obsv + "␟" + loc;
+        if (!(key in byG)) { byG[key] = { obs: obsv, loc: loc, items: [] }; gkeys.push(key); }
+        byG[key].items.push(d);
+      });
+      gkeys.sort(function (a, b) {
+        var A = byG[a], B = byG[b];
+        if (!A.obs !== !B.obs) return A.obs ? -1 : 1;   // named observers first
+        return (A.obs || "").localeCompare(B.obs || "") || (A.loc || "").localeCompare(B.loc || "");
+      });
       var dateLbl = escapeHtml(fmtDate(dt) || t("detlist.noDate"));
-      return obs.map(function (o) {
-        var items = byObs[o].slice().sort(function (a, b) {
+      var datePart = dt ? '<span class="dl-date-click" role="button" data-date="' + escapeHtml(dt) + '" title="' + escapeHtml(t("detlist.dateFilterHint")) + '">' + dateLbl + "</span>" : dateLbl;
+      return gkeys.map(function (key) {
+        var g = byG[key];
+        var items = g.items.slice().sort(function (a, b) {
           var pa = (a.prob >= 0) ? a.prob : Infinity, pb = (b.prob >= 0) ? b.prob : Infinity;
           return (pa - pb) || a.name.localeCompare(b.name);
         });
         var isBW = items[0] && items[0].src === "BirdWeather";
-        var obsSpan = !o ? "" : (isBW
-          ? ' <span class="dl-obs">· ' + escapeHtml(o) + "</span>"
-          : ' <span class="dl-obs dl-obs-add" role="button" data-obs="' + escapeHtml(o) + '" title="' + escapeHtml(t("obs.addToList")) + '">· ' + escapeHtml(o) + "</span>");
-        var datePart = dt ? '<span class="dl-date-click" role="button" data-date="' + escapeHtml(dt) + '" title="' + escapeHtml(t("detlist.dateFilterHint")) + '">' + dateLbl + "</span>" : dateLbl;
-        var full = (fmtDate(dt) || t("detlist.noDate")) + (o ? " · " + o : "");
-        return '<div class="dl-date-head"><span class="dl-date-lbl" title="' + escapeHtml(full) + '">' + datePart + obsSpan + '</span><span class="dl-ct">' + items.length + "</span></div>" +
+        var obsSpan = !g.obs ? "" : (isBW
+          ? ' <span class="dl-obs">· ' + escapeHtml(g.obs) + "</span>"
+          : ' <span class="dl-obs dl-obs-add" role="button" data-obs="' + escapeHtml(g.obs) + '" title="' + escapeHtml(t("obs.addToList")) + '">· ' + escapeHtml(g.obs) + "</span>");
+        var locSpan = g.loc ? ' <span class="dl-loc">· ' + escapeHtml(g.loc) + "</span>" : "";
+        var full = (fmtDate(dt) || t("detlist.noDate")) + (g.obs ? " · " + g.obs : "") + (g.loc ? " · " + g.loc : "");
+        return '<div class="dl-date-head"><span class="dl-date-lbl" title="' + escapeHtml(full) + '">' + datePart + obsSpan + locSpan + '</span><span class="dl-ct">' + items.length + "</span></div>" +
           items.map(function (d) { return detRowHtml(d, false); }).join("");
       }).join("");
     }).join("");
@@ -11884,6 +11920,7 @@
     // natural Probability-descending ranking).
     document.getElementById("sp-sci-head").addEventListener("click", function () { cycleSpeciesListSort("sci"); });
     var n2h = document.getElementById("sp-name2-head"); if (n2h) n2h.addEventListener("click", function () { cycleSpeciesListSort("name2"); });
+    var lh = document.getElementById("sp-last-head"); if (lh) lh.addEventListener("click", function () { cycleSpeciesListSort("last"); });
     document.getElementById("sp-dist-head").addEventListener("click", function () { cycleSpeciesListSort("dist"); });
     document.getElementById("sp-prob-head").addEventListener("click", function () { cycleSpeciesListSort("prob"); });
     document.getElementById("sp-delta-head").addEventListener("click", function () { cycleSpeciesListSort("cmp"); });
@@ -15327,7 +15364,7 @@
         else if (r.inModel && r.inList) chip = '<span class="src-chip src-both" title="' + escapeHtml(t("src.both")) + '">✓</span>';
         else if (r.inModel) chip = '<span class="src-chip src-model" title="' + escapeHtml(t("src.modelOnly")) + '">?</span>';
         else chip = '<span class="src-chip src-list" title="' + escapeHtml(t("src.listOnly")) + '">●</span>';
-        return "<tr" + (!r.inModel ? ' class="row-list-only"' : "") + '>' + spFlagCells(r.label.key, false) + "<td>" + nameLinkHtml(r.label, true) + "</td>" + name2Cell + '<td class="sci">' + escapeHtml(r.label.sci) + "</td>" + probCell + '<td class="num det-nd"></td><td class="num sp-dist"></td><td>' + chip + "</td></tr>";
+        return "<tr" + (!r.inModel ? ' class="row-list-only"' : "") + '>' + spFlagCells(r.label.key, false) + "<td>" + nameLinkHtml(r.label, true) + "</td>" + name2Cell + '<td class="sci">' + escapeHtml(r.label.sci) + "</td>" + probCell + '<td class="num det-nd"></td><td class="num sp-last"></td><td class="num sp-dist"></td><td>' + chip + "</td></tr>";
       }).join("");
       var sp = document.getElementById("species-panel");
       sp.classList.toggle("as-page", currentMode === "list");
@@ -15602,6 +15639,7 @@
                escapeHtml(r.label.sci) + '</td><td class="prob-cell"><span class="prob-num">' + pct +
                '%</span><div class="prob-bar" style="width:' + pct + '%;background:' + probHueColor(pRange > 0 ? (r.prob - pLo) / pRange : 1) + '"></div></td>' +
                '<td class="num det-nd" data-key="' + dKey + '"><span class="det-wait" title="' + escapeHtml(t("status.loadingDet")) + '"></span></td>' +
+               '<td class="num sp-last" data-key="' + dKey + '"></td>' +
                '<td class="num sp-dist" data-key="' + dKey + '"></td>' + cmpCell + '</tr>';
       }).join("");
       obsProgress();   // animate the loading placeholders until counts arrive

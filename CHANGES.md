@@ -1,5 +1,18 @@
 # Changes
 
+## 2026-08-04 — Consolidate fetch-list layouts; Last column; Per-obs by location (sw v845)
+
+- **Layout dropdown → two options**: `Species list` (the table) and `Per observation`. The By
+  species/count/rarity/distance record layouts are folded into the table's sortable columns
+  (`SP_LAYOUTS` trimmed; `spRecordLayout()` always `date`).
+- **New sortable "Last" column** (most-recent observation date per species): header `sp-last-head`
+  (`th.last`), cells in the model/extras/country row templates, filled in `applySightings` from
+  `agg.latestTs` (+ `data-last` for sort), `lastDateLabel(ts)` helper; `sortSpeciesList` `last` branch
+  (newest first, undated last), cols map + header click.
+- **"Per observation" groups by date → observer → location** (`buildRecordListHtml` date layout now keys
+  on observer+place; `.dl-loc` shown in the header).
+- i18n `th.last` (15 langs).
+
 ## 2026-08-04 — Hover point tooltip opens below the point, height-capped (sw v844)
 
 - The on-map hover tooltip (`showDetHover`) now opens **below** the point by default (flipping above only
