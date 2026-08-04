@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-08-04 — Scope Season to the Species-list table only (sw v857)
+
+- The Season column now shows ONLY on the non-expanded **Species list** table. Removed it from the record
+  tables (`spRecRowHtml` cell, `spDetailTableHtml` / `buildSpObsHtml` headers, `spObsCmp` sort case) and
+  dropped the now-unused `seasonByKey` map + the record-table refresh in `fillSeasonCells`.
+
 ## 2026-08-04 — Season column (now vs peak) + location prediction cache (sw v856)
 
 - **Prediction cache.** New `predCache` keyed by a discrete grid cell (`PRED_GRID_DEG` 0.1°) → per-week

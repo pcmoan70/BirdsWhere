@@ -21,12 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v856";
+var VERSION = "v857";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
-  "• New Season column in the species list (and the record tables): for each species it shows where you are in its year here — arriving ↑, at peak ●, leaving ↓ or off-season · — as a coloured bar (now vs its yearly peak). Sortable, so you can put the species that are peaking right now on top.",
+  "• New Season column in the Species-list table: for each species it shows where you are in its year here — arriving ↑, at peak ●, leaving ↓ or off-season · — as a coloured bar (now vs its yearly peak). Sortable, so you can put the species that are peaking right now on top.",
   "• Faster re-queries: the model's predictions for a location are now kept in memory (per map cell, all weeks), so re-sorting, switching layout and the Season column reuse them instead of recomputing.",
   "• In a species' expanded records, tapping the Location opens map actions (Find on map / Add as point / Add to route); tapping an observer's name can add them to an observer list; and the row background opens the full species menu.",
   "• Deleting a species leaves a grey, struck-through name in the legend and list — tap it to forget the deletion.",

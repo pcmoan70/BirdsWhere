@@ -720,7 +720,6 @@ input:focus-visible {
 /* "Now vs peak" is undefined for a whole country → hide the column in country view. */
 #species-list-table.country-view #sp-season-head,
 #species-list-table.country-view td.season-cell { display: none; }
-.sp-detail-tbl .season-cell { width: auto; }
 
 /* Loading overlay */
 #demo-loading {

@@ -1260,7 +1260,6 @@
     if (col === "dist") return sgn * (spRecDistKm(a) - spRecDistKm(b));
     if (col === "obs") return sgn * String(a.observer || "").localeCompare(String(b.observer || ""));
     if (col === "loc") return sgn * String(a.place || "").localeCompare(String(b.place || ""));
-    if (col === "season") { var sa = seasonByKey[a.key], sb = seasonByKey[b.key]; return sgn * ((sa ? sa.ratio : -1) - (sb ? sb.ratio : -1)); }
     var pa2 = a.prob >= 0 ? a.prob : Infinity, pb2 = b.prob >= 0 ? b.prob : Infinity;   // default: rarest first
     return (pa2 - pb2) || String(a.name || "").localeCompare(String(b.name || ""));
   }
@@ -1292,13 +1291,10 @@
       '" data-lat="' + (d.lat == null ? "" : d.lat) + '" data-lon="' + (d.lon == null ? "" : d.lon) +
       '" data-date="' + escapeHtml(d.date || "") + '" data-url="' + escapeHtml(d.url || "") + '"';
     var nameLink = '<span class="sp-link"' + recAttrs + ">" + escapeHtml(d.name || "") + "</span>";
-    // Season (now vs peak) is per species at the point — read from the shared cache
-    // (blank until fillSeasonCells has run for this point).
-    var seasonC = '<td class="season-cell">' + seasonCellHtml(seasonByKey[d.key]) + "</td>";
     return '<tr class="sp-d-row"' + recAttrs + ">" +
       (showName ? '<td class="sp-d-name">' + sw + nameLink + "</td>" : "") +
       (opts.name2 ? '<td class="name2">' + escapeHtml(detName2(d.key) || "") + "</td>" : "") +
-      probCell + seasonC +
+      probCell +
       (opts.date ? '<td class="sp-d-date">' + dateCell + "</td>" : "") +
       (opts.loc ? '<td class="sp-d-loc">' + (d.place ? '<span class="sp-loc-click" role="button" title="' + escapeHtml(t("locmenu.hint")) + '">' + escapeHtml(d.place) + "</span>" : "") + "</td>" : "") +
       '<td class="num">' + km + "</td>" +
@@ -1310,8 +1306,8 @@
     // The species name / 2nd name are already on the row above (the species this list
     // expands), so drop them here and show the observation's LOCATION instead.
     var hdr = "<thead><tr>" +
-      spObsHeadCell("prob", t("th.prob"), true) + spObsHeadCell("season", t("th.season")) +
-      spObsHeadCell("date", t("th.date")) + spObsHeadCell("loc", t("th.location")) +
+      spObsHeadCell("prob", t("th.prob"), true) + spObsHeadCell("date", t("th.date")) +
+      spObsHeadCell("loc", t("th.location")) +
       spObsHeadCell("dist", t("th.dist"), true) + spObsHeadCell("count", t("th.count"), true) +
       spObsHeadCell("obs", t("th.obs")) + "</tr></thead>";
     var body = rows.slice().sort(spObsCmp).map(function (d) { return spRecRowHtml(d, { name: false, date: true, loc: true, obs: true }); }).join("");
@@ -1320,11 +1316,11 @@
   // "Per observation": ONE columns table with the records grouped by date × observer ×
   // location (a spanning group-separator row per triple); columns sort WITHIN each group.
   function buildSpObsHtml(rows) {
-    var name2On = !!secondLang, ncols = 5 + (name2On ? 1 : 0);   // name [name2] prob season dist count
+    var name2On = !!secondLang, ncols = 3 + (name2On ? 1 : 0) + 1;   // name [name2] prob dist count
     var hdr = "<thead><tr>" + spObsHeadCell("name", t("th.species")) +
       (name2On ? spObsHeadCell("name2", window.GeoI18N.langByCode(secondLang).name) : "") +
-      spObsHeadCell("prob", t("th.prob"), true) + spObsHeadCell("season", t("th.season")) +
-      spObsHeadCell("dist", t("th.dist"), true) + spObsHeadCell("count", t("th.count"), true) + "</tr></thead>";
+      spObsHeadCell("prob", t("th.prob"), true) + spObsHeadCell("dist", t("th.dist"), true) +
+      spObsHeadCell("count", t("th.count"), true) + "</tr></thead>";
     var byDate = {}, dates = [];
     rows.forEach(function (d) { var k = d.date || ""; if (!byDate[k]) { byDate[k] = []; dates.push(k); } byDate[k].push(d); });
     dates.sort(function (a, b) { return b.localeCompare(a); });
@@ -2429,7 +2425,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
-    { v: "v856", date: "2026-08-04", text: "New Season column in the species list (and the record tables): a coloured now-vs-peak bar telling you where you are in each species' year at this point — arriving ↑, at peak ●, leaving ↓ or off-season ·. Sortable, so the species peaking right now can go on top. It's powered by a new prediction cache: the model returns the whole species vector per query, so those values are kept in memory per map cell (all 48 weeks), and re-sorting / layout switches / the Season computation reuse them instead of recomputing." },
+    { v: "v856", date: "2026-08-04", text: "New Season column in the Species-list table: a coloured now-vs-peak bar telling you where you are in each species' year at this point — arriving ↑, at peak ●, leaving ↓ or off-season ·. Sortable, so the species peaking right now can go on top. It's powered by a new prediction cache: the model returns the whole species vector per query, so those values are kept in memory per map cell (all 48 weeks), and re-sorting / layout switches / the Season computation reuse them instead of recomputing." },
     { v: "v855", date: "2026-08-04", text: "More actions in a species' expanded records: tap an observation's Location for map actions (Find on map · Add as point · Add to route); tap an observer's name to filter by them OR add them to an observer list; and tap the row background for the full species + location menu. The species name reopens the species menu in Per observation, and the records now show the probability as a coloured bar (black text on white) matching the Species-list table." },
     { v: "v854", date: "2026-08-04", text: "Deleting a species from the map now leaves a grey, struck-through name in the legend (no colour dot, no ×) and greys the same species in the species list — so you can see what you removed, not just that it vanished. Tap the grey name to forget the deletion (the species can re-appear on the next fetch). Expanding a species' records: tap anywhere on the row (the ▸ caret is gone; the species name and dates stay clickable for their own actions), and the expanded records now show the observation's Location instead of repeating the species name. Also: after a historic fetch the chosen date range + months show in the description text and the date/month controls collapse to a small 📅 button to save a row of space." },
     { v: "v853", date: "2026-08-04", text: "The species list now explains when a recency / date window is hiding some of the fetched detections: a small note shows the active window and how many records it's dropping (e.g. “Showing last 7 days — 42 detections not shown”), so a short list is never a surprise." },
@@ -12736,10 +12732,6 @@
       '<span class="season-num">' + pct + "%</span>" +
       '<div class="season-bar" style="width:' + pct + '%;background:' + meta.c + '"></div>';
   }
-  // Season results for the CURRENT point (key → {ratio, phase}); shared by the
-  // species table and the record tables. Guarded by the point it was built for.
-  var seasonByKey = Object.create(null);
-  var seasonPointKey = "";
   var seasonKeyIdx = null;                  // species key → model output index (built once)
   function ensureSeasonKeyIdx() {
     if (seasonKeyIdx) return seasonKeyIdx;
@@ -12747,33 +12739,23 @@
     for (var i = 0; i < labels.length; i++) seasonKeyIdx[labels[i].key] = i;
     return seasonKeyIdx;
   }
-  // Fill the Season cells for the current species list: ensure the 48-week cache
-  // for the point, derive each visible species' season, write the cell + sort key,
-  // then re-sort (if sorted by season) and refresh the record tables.
+  // Fill the Season cells of the (non-expanded) Species-list table: ensure the
+  // 48-week cache for the point, derive each species' now-vs-peak, write the cell +
+  // its sort key, then re-sort if the list is sorted by Season.
   async function fillSeasonCells(lat, lon, gen) {
     var tbody = document.getElementById("sp-tbody"); if (!tbody) return;
     var week = +document.getElementById("week-select").value;
     var cell = await predictAllWeeks(lat, lon);
     if (gen != null && gen !== spListGen) return;   // superseded by a newer render
     var idxMap = ensureSeasonKeyIdx();
-    seasonByKey = Object.create(null);
-    seasonPointKey = predCellKey(lat, lon) + "@" + week;
     Array.prototype.forEach.call(tbody.querySelectorAll("td.sp-season[data-key]"), function (td) {
       var key = td.getAttribute("data-key"), idx = idxMap[key];
       if (idx == null) return;
       var s = classifySeason(cell, idx, week);
-      seasonByKey[key] = s;
       td.innerHTML = seasonCellHtml(s);
       var tr = td.parentNode; if (tr) tr.setAttribute("data-season", s.ratio);
     });
     if (speciesListSort.col === "season") sortSpeciesList();
-    // Record tables (Per observation / expanded) read seasonByKey — refresh if shown.
-    if (typeof renderSpBody === "function" && spLayout && spLayout !== "table") {
-      var rec = document.getElementById("sp-records");
-      if (rec && rec.style.display !== "none") renderSpBody();
-    } else {
-      refreshSpExpansions();
-    }
   }
 
   // Progress bar inside the computing overlay (0..1).
