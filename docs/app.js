@@ -4634,15 +4634,25 @@
   // Base map tile layers
   var baseLayer = null;
   var CARTO_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>';
+  var ESRI_ATTR = 'Tiles &copy; <a href="https://www.esri.com">Esri</a>';
   var BASEMAPS = {
-    dark:  { url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",  attribution: CARTO_ATTR, subdomains: "abcd", maxNativeZoom: 20 },
-    light: { url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", attribution: CARTO_ATTR, subdomains: "abcd", maxNativeZoom: 20 },
+    // Clean, colourful general-purpose map (CARTO Voyager) — the default.
+    voyager: { url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", attribution: CARTO_ATTR, subdomains: "abcd", maxNativeZoom: 20 },
     // Street/political (standard OpenStreetMap)
     streets: { url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', subdomains: "abc", maxNativeZoom: 19 },
+    // Outdoor map: trails, paths + hillshading (CyclOSM)
+    cyclosm: { url: "https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png",
+               attribution: '&copy; <a href="https://www.cyclosm.org">CyclOSM</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', subdomains: "abc", maxNativeZoom: 20 },
     // Topographic / terrain (contours + relief)
     topo:  { url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
              attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>, SRTM | &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)', subdomains: "abc", maxNativeZoom: 17 },
+    // Topographic with roads + labels (Esri)
+    esritopo: { url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+                attribution: ESRI_ATTR + ' &mdash; Esri, DeLorme, NAVTEQ, TomTom, and the GIS community', maxNativeZoom: 19 },
+    // National Geographic style: terrain + relief + labels (Esri)
+    natgeo: { url: "https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}",
+              attribution: ESRI_ATTR + ' &mdash; National Geographic, Esri, DeLorme, NAVTEQ, and others', maxNativeZoom: 16 },
     // Satellite imagery
     satellite: { url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
                  attribution: 'Imagery &copy; <a href="https://www.esri.com">Esri</a>, Maxar, Earthstar Geographics', maxNativeZoom: 19 } };
@@ -4892,10 +4902,12 @@
               '<div class="ctrl-group" id="maptype-wrap">' +
                 '<label for="maptype-select" data-i18n="ctrl.basemap">Map type</label>' +
                 '<select id="maptype-select">' +
-                  '<option value="dark" data-i18n="basemap.dark">Dark</option>' +
-                  '<option value="light" data-i18n="basemap.light">Light</option>' +
+                  '<option value="voyager" data-i18n="basemap.voyager">Voyager</option>' +
                   '<option value="streets" data-i18n="basemap.streets">Streets</option>' +
+                  '<option value="cyclosm" data-i18n="basemap.cyclosm">CyclOSM</option>' +
                   '<option value="topo" data-i18n="basemap.topo">Topographic</option>' +
+                  '<option value="esritopo" data-i18n="basemap.esritopo">Esri Topo</option>' +
+                  '<option value="natgeo" data-i18n="basemap.natgeo">NatGeo</option>' +
                   '<option value="satellite" data-i18n="basemap.satellite">Satellite</option>' +
                 '</select>' +
               '</div>' +
@@ -6130,18 +6142,18 @@
   // variant we switch to when the overlay is on. streets (OSM) and topo
   // (OpenTopoMap) bake their names in and have no labels-free tiles, so the overlay
   // would just print a second, misaligned set of names over them — skip it there.
-  function labelsSupported(which) { return which === "light" || which === "dark" || which === "satellite"; }
-  // Base tile URL for a basemap, swapping CARTO light/dark to their _nolabels
-  // variant while the labels overlay is active (so the overlay is the ONLY set of
-  // place names — no duplication — and its density can exceed the baked-in labels).
+  function labelsSupported(which) { return which === "voyager" || which === "satellite"; }
+  // Base tile URL for a basemap, swapping CARTO Voyager to its _nolabels variant
+  // while the labels overlay is active (so the overlay is the ONLY set of place
+  // names — no duplication — and its density can exceed the baked-in labels).
   function baseUrlFor(which) {
     var labelsOn = labelsMode() !== "off";
-    if (labelsOn && which === "dark") return "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png";
-    if (labelsOn && which === "light") return "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png";
-    return (BASEMAPS[which] || BASEMAPS.dark).url;
+    if (labelsOn && which === "voyager") return "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png";
+    return (BASEMAPS[which] || BASEMAPS.streets).url;
   }
   function setBasemap(which) {
-    var cfg = BASEMAPS[which] || BASEMAPS.dark;
+    if (!BASEMAPS[which]) which = "streets";   // migrate a removed/unknown choice (e.g. the old Light/Dark)
+    var cfg = BASEMAPS[which];
     if (baseLayer) map.removeLayer(baseLayer);
     // subdomains must not be undefined — Leaflet reads .length even when the
     // URL has no {s} placeholder (e.g. the Esri satellite layer).
@@ -6186,8 +6198,8 @@
     var mode = labelsMode();
     if (!map || mode === "off") return;
     var bm = window.GeoState.get("basemap", "streets");
-    if (!labelsSupported(bm)) return;   // streets/topo bake their names in — don't print a second set
-    var style = (bm === "dark" || bm === "satellite") ? "dark_only_labels" : "light_only_labels";
+    if (!labelsSupported(bm)) return;   // streets/topo/etc. bake their names in — don't print a second set
+    var style = (bm === "satellite") ? "dark_only_labels" : "light_only_labels";   // dark labels read best on imagery; light on Voyager
     var opts = { attribution: "", subdomains: "abcd", maxZoom: MAX_ZOOM, maxNativeZoom: 20, noWrap: true, zIndex: 350 };
     var off = LABEL_LEVEL_OFFSET[mode] || 0;
     if (off > 0) { opts.zoomOffset = off; opts.tileSize = 256 / Math.pow(2, off); }   // deeper zoom's (denser) labels, geo-aligned
@@ -6344,7 +6356,7 @@
   // A tile layer for an arbitrary basemap (not necessarily the live one), used to
   // rebuild the exact tile URLs when re-downloading a purged area.
   function offlineLayerFor(basemap) {
-    var cfg = BASEMAPS[basemap] || BASEMAPS.light || BASEMAPS[Object.keys(BASEMAPS)[0]];
+    var cfg = BASEMAPS[basemap] || BASEMAPS.streets || BASEMAPS[Object.keys(BASEMAPS)[0]];
     return L.tileLayer(baseUrlFor(basemap), { maxZoom: MAX_ZOOM, maxNativeZoom: cfg.maxNativeZoom || MAX_ZOOM, subdomains: cfg.subdomains || "abc", noWrap: true });   // match the live base variant (CARTO _nolabels when labels are on)
   }
   // Re-fetch a recorded area's tiles back into its OWN pinned cache (same id), e.g.

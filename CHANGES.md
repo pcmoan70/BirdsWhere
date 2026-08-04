@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-08-04 — Replace Light/Dark base maps with 4 new layers (sw v870)
+
+- Removed the **Light** and **Dark** (CARTO) base maps. Added four free, no-key layers: **Voyager**
+  (CARTO Voyager — clean colour map), **CyclOSM** (trails + hillshade), **Esri Topo** (Esri World Topo) and
+  **NatGeo** (Esri NatGeo World Map). Dropdown order: Voyager · Streets · CyclOSM · Topographic · Esri Topo ·
+  NatGeo · Satellite.
+- `setBasemap` migrates a removed/unknown saved choice (old Light/Dark) to Streets. The labels overlay now
+  supports **Voyager** (swaps to `voyager_nolabels`) + Satellite; `baseUrlFor` / `labelsSupported` /
+  `applyLabelsOverlay` / offline fallbacks updated off the removed layers. i18n `basemap.voyager/cyclosm/esritopo/natgeo` (15 langs); README updated.
+
 ## 2026-08-04 — Split Artportalen[GBIF] multi-observer records (sw v869)
 
 - Artportalen via GBIF publishes co-observers as one COMMA-separated string, but the app splits observers
