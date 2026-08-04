@@ -9189,7 +9189,11 @@
         var g = groups[gk]; if (g.length < 2) return;
         var srcs = Object.create(null); g.forEach(function (r) { srcs[r.src || ""] = 1; });
         if (Object.keys(srcs).length < 2) return;   // all one source → not a cross-database dup, keep all
-        var keeper = g[0]; for (var i = 0; i < g.length; i++) { if (g[i].url) { keeper = g[i]; break; } }
+        // Keep the DIRECT-source copy over a GBIF republish of the same sighting (the
+        // native record is fresher and links to its own database); within that, prefer
+        // a record that has a URL. Score: non-GBIF +2, has-url +1 — highest wins.
+        var keeper = g[0], best = -1;
+        g.forEach(function (r) { var s = (r.src !== "GBIF" ? 2 : 0) + (r.url ? 1 : 0); if (s > best) { best = s; keeper = r; } });
         g.forEach(function (r) { if (r !== keeper) detDupHidden.add(r); });
       });
     });

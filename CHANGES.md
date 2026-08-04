@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-05 — Dedup keeps the direct-source copy over a GBIF republish (sw v874)
+
+- The "Deduplicate detections" setting's cross-database dedup (`ensureDedup`) picked the first record with a
+  URL as the keeper — but GBIF records also have URLs, so a GBIF copy could win. It now scores each record
+  in a duplicate group (non-GBIF +2, has-url +1) and keeps the highest, so a **direct-source** entry beats a
+  **GBIF republish** of the same sighting (fresher + native link). (The always-on aggregate.js dedup already
+  drops GBIF records that match a native one; this aligns the setting-based layer with it.)
+
 ## 2026-08-05 — Add Italy, Austria + France GBIF bird datasets (sw v873)
 
 - Added four national GBIF datasets to `DEFAULT_GBIF_DATASETS` after a GBIF-API gap analysis:
