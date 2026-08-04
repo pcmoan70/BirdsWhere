@@ -1489,6 +1489,23 @@
       tr.style.display = (ageOk && rareOk && buildOk && !obsFilteredOut) ? "" : "none";
     });
     refreshSpExpansions();   // keep expanded detail sub-rows under their (visible) species
+    updateRecencyNote();
+  }
+  // When the date/recency window is hiding some fetched detections, spell that out
+  // (what window is active + how many detections it's dropping) so a "short" list is
+  // never a mystery.
+  function updateRecencyNote() {
+    var el = document.getElementById("sp-recency-note"); if (!el) return;
+    var tbody = document.getElementById("sp-tbody"), agg = tbody && tbody._sightingsAgg;
+    var rg = detDateRange(), days = detRecencyDays(), months = detMonths();
+    var active = !!rg || days !== 0 || months.length > 0;
+    var hidden = 0;
+    if (active && agg) Object.keys(agg).forEach(function (k) { (agg[k].rows || []).forEach(function (r) { if (!detDatePasses(r.date)) hidden++; }); });
+    if (!active || !hidden) { el.style.display = "none"; return; }
+    var win = rg ? ((rg.from ? fmtDate(rg.from) : "…") + " – " + (rg.to ? fmtDate(rg.to) : "…"))
+      : (days ? t("sp.lastDays", { n: days }) : t("sp.monthsOnly", { n: months.length }));
+    el.textContent = t("sp.recencyNote", { window: win, n: hidden });
+    el.style.display = "";
   }
   // Toggling a cue (★ / year / life / 🚫) in the recent or historic species list
   // only changes that species' status icons — it needs NO refetch and NO re-run of
@@ -2362,6 +2379,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v853", date: "2026-08-04", text: "The species list now explains when a recency / date window is hiding some of the fetched detections: a small note shows the active window and how many records it's dropping (e.g. “Showing last 7 days — 42 detections not shown”), so a short list is never a surprise." },
     { v: "v852", date: "2026-08-04", text: "Fixed a bug where a Historic fetch showed zero detections: the recent-days display filter was hiding the older historic records. A historic fetch now sets the date window to the range you fetched (clearing the recency window), so historic and recent observations are treated the same way in the list and on the map." },
     { v: "v851", date: "2026-08-04", text: "The expanded species records and “Per observation” are now full sortable tables: species name and second name in separate columns (no more parentheses), a count column, and every column sortable within its date × observer × location group. A species-colour dot (matching the map) leads each record and each species-list row, so the two lists are coloured consistently." },
     { v: "v850", date: "2026-08-04", text: "Every date and observer shown across the lists is now tappable to filter (On/Before/After for dates, Only/All for observers) — including the species list's “Last” column and the records in the pop-up. The expanded species records also gained column headers (Species · 2nd name · Prob · Date · Dist · Observer)." },
@@ -5016,6 +5034,7 @@
             '<div id="sp-filters-bar"></div>' +
           '</div>' +
           '<div id="sp-filters-wrap"></div>' +
+          '<div id="sp-recency-note" class="sp-recency-note" style="display:none"></div>' +
           '<div class="hist-progress" id="sp-hist-prog" style="display:none"><div class="hist-progress-fill hist-progress-indet" id="sp-hist-prog-fill"></div></div>' +
           '<div class="sp-loading" id="sp-loading" style="display:none"></div>' +
           '<div id="sp-records" style="display:none"></div>' +
@@ -15785,6 +15804,7 @@
       renderSpFilterBar();
     }
     renderSpBody();
+    updateRecencyNote();
   }
   async function renderSpeciesList(lat, lon, hist) {
     // `hist` (optional) = { from, to, range }: Historic-observations mode. The

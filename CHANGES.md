@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-04 — Explain when the recency/date window hides detections (sw v853)
+
+- New `#sp-recency-note` in the species panel + `updateRecencyNote()`: when a date filter (recency days /
+  date range / months) is active AND dropping some of the fetched records, it shows the window + the hidden
+  count — e.g. "Showing last 7 days — 42 detections not shown". Counts `!detDatePasses(r.date)` over the
+  fetched agg; hidden when nothing's dropped (so Historic, whose range == the fetch, stays quiet). Called
+  from `applyAgeFilter` + `renderSpControls`. i18n `sp.recencyNote` / `sp.lastDays` / `sp.monthsOnly`; CSS.
+
 ## 2026-08-04 — Fix: Historic fetch showed zero detections (recency filter) (sw v852)
 
 - A Historic fetch showed **0 detections** in the list: the v847 change made `applyAgeFilter` apply the

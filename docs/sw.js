@@ -21,17 +21,17 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v852";
+var VERSION = "v853";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• When a recency / date window is active and hiding some of the fetched detections, the species list now says so — e.g. “Showing last 7 days — 42 detections not shown” — so a short list is never a mystery.",
   "• Fixed: Historic fetches were showing zero detections (the recent-days filter was hiding the older records). Historic now sets the date window to the range you fetched, so recent and historic are treated the same way.",
   "• The expanded records and “Per observation” are now proper sortable tables: species name and 2nd name in separate columns (no more parentheses), a count column, each column sortable within its date × observer × location group, and a species-colour dot matching the map — the same dot now leads every row of the species list too.",
   "• Every date and observer shown in the lists is now tappable to filter by it (On/Before/After for dates, Only/All for observers) — including the “Last” column. The expanded species records now show column headers too.",
   "• The list's ★/◉/🟠/🟡 flag filters and the n(d) day filter now also filter the MAP: e.g. n(d) ≤1d shows only today/yesterday's dots, and the year-list / life-list / rarity filters show only those species on the map too. The list⇄map view now only switches when you tap the toggle — a fetch or filter no longer flips it.",
-  "• The fetched species list has two layouts — the sortable Species-list table (with a “Last” seen column) and “Per observation” — and is the hub for filters + layout. The pop-up detections list (tapping a dot) is a focused one-place view. A filtered-out species drops out (no empty expands).",
-  "• Filter observations by source, date or observer straight from the list — tap the value for Only / All."
+  "• The fetched species list has two layouts — the sortable Species-list table (with a “Last” seen column) and “Per observation” — and is the hub for filters + layout. Filter by source, date or observer by tapping the value; a filtered-out species drops out (no empty expands)."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs

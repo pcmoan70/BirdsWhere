@@ -2628,6 +2628,9 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
 .dl-date-head .dl-obs-add:hover { color: var(--brand); text-decoration: underline; }
 .dl-date-head .dl-date-click { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
 .dl-date-head .dl-date-click:hover { color: var(--brand); }
+/* Note when the date/recency window is hiding some fetched detections. */
+.sp-recency-note { margin: 2px 2px 6px; padding: 4px 8px; font-size: 0.78rem; line-height: 1.35;
+  color: var(--brand-deep, #1f5b48); background: var(--brand-soft, #e7f2ee); border-radius: 6px; }
 /* Clickable date / source anywhere → filter (dotted underline affordance). */
 .dl-date-click { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
 .dl-date-click:hover { color: var(--brand); }
