@@ -1,5 +1,19 @@
 # Changes
 
+## 2026-08-04 — Slim the popup to per-location; remove whole-map ☰; 2nd-name sortable (sw v842)
+
+- **Detections popup is now per-location only**: removed its filter toggle bar, the species search box and
+  "Select N on map" (HTML + `renderDetListModal` logic + the dead init wiring). It keeps the header
+  (place title, copy-coords, Save, Navigate, Add-to-route) + the layout sort + the record body, and still
+  honours the global filters (now set from the fetch list) via `collectVisibleDetections`.
+- **Removed the whole-map ☰** (`det-list-btn`) from the legend head + its handler — the fetch list's
+  "By observation" is the all-records view now.
+- `updateDetLegendKeepObsScroll` / obs-scroll helpers now target `#sp-filters-wrap` (the filter bar's new
+  home) and refresh the fetch list.
+- **2nd-name column sortable** in the species list: `sortSpeciesList` gains a `name2` branch (reads the
+  `.name2` cell); `cycleSpeciesListSort` default asc; added to `updateSortIndicators` cols + header click;
+  `clickable-head` on `#sp-name2-head`.
+
 ## 2026-08-04 — Fetch list gains layout dropdown + detailed record views (sw v841)
 
 - **Shared record renderer**: extracted the detlist body into `buildRecordListHtml(rows, layout, openMap)`

@@ -1166,7 +1166,7 @@
   // Refresh the sort-arrow indicator on the sortable column headers. Class-based
   // (▲/▼ via CSS ::after) so it doesn't disturb the headers' dynamic labels.
   function updateSortIndicators() {
-    var cols = { "sp-species-head": "name", "sp-sci-head": "sci", "sp-prob-head": "prob", "sp-dist-head": "dist", "sp-delta-head": "cmp" };
+    var cols = { "sp-species-head": "name", "sp-name2-head": "name2", "sp-sci-head": "sci", "sp-prob-head": "prob", "sp-dist-head": "dist", "sp-delta-head": "cmp" };
     Object.keys(cols).forEach(function (id) {
       var el = document.getElementById(id); if (!el) return;
       var on = speciesListSort.col === cols[id];
@@ -1192,6 +1192,9 @@
         kb = (b.children[7].textContent || "").toLowerCase();
       } else if (col === "name") {
         ka = a.getAttribute("data-name") || ""; kb = b.getAttribute("data-name") || "";
+      } else if (col === "name2") {
+        var n2a = a.querySelector(".name2"), n2b = b.querySelector(".name2");
+        ka = (n2a ? n2a.textContent : "").toLowerCase(); kb = (n2b ? n2b.textContent : "").toLowerCase();
       } else if (col === "prob") {
         ka = +a.getAttribute("data-prob") || 0; kb = +b.getAttribute("data-prob") || 0;
       } else if (col === "cmp") {
@@ -1230,7 +1233,7 @@
     if (!currentSpView || (currentSpView.mode !== "point" && currentSpView.mode !== "historic")) return;
     // Default direction is column-appropriate (alphabetical asc / numerical
     // desc). Each column cycles: default → opposite → off → default → ...
-    var defaultDir = (col === "sci" || col === "name" || col === "dist") ? "asc" : "desc";   // dist → nearest first
+    var defaultDir = (col === "sci" || col === "name" || col === "name2" || col === "dist") ? "asc" : "desc";   // dist → nearest first
     var oppositeDir = defaultDir === "asc" ? "desc" : "asc";
     if (speciesListSort.col === col) {
       if (speciesListSort.dir === defaultDir) speciesListSort.dir = oppositeDir;
@@ -2150,6 +2153,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v842", date: "2026-08-04", text: "The fetched species list is now the hub for filtering + layout, so the pop-up detections list (from tapping a plotted dot) is slimmed to a focused one-place view: place name, copy-coordinates, Save / Navigate / Add-to-route and the layout sort — no filter bar or search. The whole-map ☰ list button is gone (use the fetch list's By observation instead). Also: the 2nd-name column in the species list is now sortable." },
     { v: "v841", date: "2026-08-04", text: "The fetched species list can now switch layout: a dropdown offers the model prediction table, or the full detailed observations — By observation (grouped by date, like the pop-up), By species, By count, By rarity, or By distance. The detailed views carry the day / mode / observer filter bar and show observer, source, count and date on each record (all clickable to filter). This is the fetch list taking over the filtering + layout controls." },
     { v: "v840", date: "2026-08-04", text: "Filter observations by data source right from the list: tap a record's source (eBird, GBIF, iNaturalist…) and choose Only this source, Hide it, or All sources — the map, legend and list all follow, and it sticks until you clear filters. Pairs with the date-header shortcut (On/Before/After). Part of moving filtering onto the fetched list with as few extra controls as possible." },
     { v: "v839", date: "2026-08-04", text: "In the detections list, the date headers are now clickable: tap a date and choose On this date / Before this date / After this date to set the date-range filter instantly (map + list + legend follow). A fast way to jump to a day's records. First step of a larger move to put filtering and layout controls onto the fetched species list." },
@@ -4789,7 +4793,7 @@
             SP_FILTER_KEYS.map(function (f) {
               return '<th id="sp-f-' + f + '" class="spf-head" role="button" tabindex="0"><span>' + SP_FLAG_GLYPH[f] + '</span></th>';
             }).join("") +
-            '<th id="sp-species-head" class="clickable-head" data-i18n="th.species">Species</th><th class="name2" id="sp-name2-head"></th><th id="sp-sci-head" class="clickable-head" data-i18n="th.sci">Scientific name</th><th id="sp-prob-head" class="clickable-head" data-i18n="th.prob">Probability</th><th id="sp-nd-head" class="num clickable-head" data-i18n="th.nd">n(d)</th><th id="sp-dist-head" class="num clickable-head" data-i18n="th.dist">Dist</th><th id="sp-delta-head"></th></tr></thead>' +
+            '<th id="sp-species-head" class="clickable-head" data-i18n="th.species">Species</th><th class="name2 clickable-head" id="sp-name2-head"></th><th id="sp-sci-head" class="clickable-head" data-i18n="th.sci">Scientific name</th><th id="sp-prob-head" class="clickable-head" data-i18n="th.prob">Probability</th><th id="sp-nd-head" class="num clickable-head" data-i18n="th.nd">n(d)</th><th id="sp-dist-head" class="num clickable-head" data-i18n="th.dist">Dist</th><th id="sp-delta-head"></th></tr></thead>' +
             '<tbody id="sp-tbody"></tbody>' +
           '</table>' +
           '<div class="sp-actions sp-actions-dl">' +
@@ -4972,12 +4976,6 @@
               '<select id="detlist-sort" class="detlist-sort-sel" aria-label="Sort"></select>' +
             '</div>' +
           '</div>' +
-          '<div id="detlist-search-row">' +
-            '<input type="text" id="detlist-search" autocomplete="off" spellcheck="false" data-i18n-ph="detlist.search" placeholder="Filter species…" />' +
-            '<button type="button" id="detlist-select" class="detlist-select-btn" style="display:none"></button>' +
-            '<div id="detlist-filters-bar"></div>' +
-          '</div>' +
-          '<div id="detlist-filters-wrap"></div>' +
           '<div id="detlist-body"></div>' +
         '</div></div>' +
         '<div id="offline-modal" style="display:none"><div id="offline-box">' +
@@ -7651,19 +7649,12 @@
       sortSel.innerHTML = opts.map(function (o) { return '<option value="' + o[0] + '"' + (detListSort === o[0] ? " selected" : "") + ">" + escapeHtml(t(o[1])) + "</option>"; }).join("");
     }
     recolorDetections();   // swatches reflect the latest family colours
-    // Filter bar (time / species-mode / observer) at the top of the popup.
-    var bar = document.getElementById("detlist-filters-bar");
-    if (bar) bar.innerHTML = detFilterTogglesHtml();   // toggle bar → beside the search box
-    var fw = document.getElementById("detlist-filters-wrap");
-    if (fw) fw.innerHTML = detFilterPanelsHtml();       // open subwindows → full-width row below
-    // Wire on the whole box so it reaches both the toggles (search row) and their
-    // panels (the wrap below), which now live in separate containers.
-    wireDetFilters(document.getElementById("detlist-box"));
-    var rows = collectVisibleDetections(detListNear, true);   // ignore selection → all species stay searchable/selectable
-    var totalRows = rows.length;   // pre-filter count → drives whether the search box is worth showing
+    // Per-location popup: the records at the clicked spot. Filtering lives on the
+    // fetched species list now; here we just show + sort + save/navigate. The global
+    // filters (set from the fetch list) still apply through collectVisibleDetections.
+    var rows = collectVisibleDetections(detListNear, true);
     // Title = the place name the data SOURCE supplies for this spot: an eBird hotspot
-    // / BirdWeather station name where present, else the first record's own place
-    // text. (Kept simple — no reverse-geocoding or nearby-point folding.)
+    // / BirdWeather station name where present, else the first record's own place text.
     var titleEl = document.getElementById("detlist-title");
     if (titleEl) {
       var explicit = "", firstPlace = "";
@@ -7675,37 +7666,10 @@
       titleEl.textContent = (explicit || firstPlace) || t("detlist.title");
       titleEl.title = titleEl.textContent; fitDetTitle();
     }
-    var emptyMsg = rows.length ? t("detlist.noMatch") : t("detlist.empty");
-    if (detListQuery) {
-      // Prefer exact (substring) matches; only when there are none fall back to
-      // the looser partial/subsequence matches, so a precise query isn't buried.
-      var exact = rows.filter(function (d) { return detExactMatch(detListQuery, detSearchText(d)); });
-      rows = exact.length ? exact : rows.filter(function (d) { return detFuzzy(detListQuery, detSearchText(d)); });
-    } else if (detSelectionActive()) {
-      // A legend species-selection isolates the map to those species — mirror it in
-      // the list so it matches the dots on screen. (While searching, everything stays
-      // visible above so more species can still be found and added to the selection.)
-      rows = rows.filter(function (d) { return detSelected[d.key]; });
-    }
+    var emptyMsg = t("detlist.empty");
+    // Mirror a legend species-selection so the list matches the dots on screen.
+    if (detSelectionActive()) rows = rows.filter(function (d) { return detSelected[d.key]; });
     detListLastRows = rows;   // what "Save as list" / "Navigate" will use
-    // Only offer the species filter when the list is long enough to scroll (≥10
-    // detections); a short list is easier to just scan. Kept visible if a query is
-    // already active so it can be cleared.
-    var searchEl = document.getElementById("detlist-search");
-    if (searchEl) searchEl.style.display = (totalRows >= 10 || detListQuery) ? "" : "none";
-    // While a search is active, offer a button to SELECT the matching species on the
-    // map (adds them to the legend's multi-select). Clicking clears the box so the
-    // next search's picks STACK onto the current selection.
-    var selBtn = document.getElementById("detlist-select");
-    if (selBtn) {
-      var matchKeys = Object.create(null);
-      rows.forEach(function (d) { if (d.key) matchKeys[d.key] = 1; });
-      var nMatch = Object.keys(matchKeys).length;
-      if (detListQuery && nMatch) {
-        selBtn.style.display = "";
-        selBtn.textContent = t("detlist.selectMatch", { n: nMatch });
-      } else { selBtn.style.display = "none"; }
-    }
     var saveBtn = document.getElementById("detlist-save"); if (saveBtn) saveBtn.disabled = !rows.length;
     var navBtn = document.getElementById("detlist-nav"); if (navBtn) navBtn.disabled = !rows.length;
     if (!rows.length) { body.innerHTML = '<div class="dl-empty">' + escapeHtml(emptyMsg) + "</div>"; return; }
@@ -8544,11 +8508,12 @@
   function updateDetLegendKeepObsScroll() {
     // The observer checklist lives in the detections-list popup now; preserve ITS
     // scroll across the re-render (and still refresh the legend).
-    var lst = document.querySelector("#detlist-filters-wrap .det-obs-list"), st = lst ? lst.scrollTop : 0;
+    var lst = document.querySelector("#sp-filters-wrap .det-obs-list") || document.querySelector("#detlist-filters-wrap .det-obs-list"); var st = lst ? lst.scrollTop : 0;
     updateDetLegend();
     var dm = document.getElementById("detlist-modal");
     if (dm && dm.style.display === "flex" && typeof renderDetListModal === "function") renderDetListModal();
-    var nl = document.querySelector("#detlist-filters-wrap .det-obs-list"); if (nl) nl.scrollTop = st;
+    if (typeof speciesPanelPopulated === "function" && speciesPanelPopulated()) renderSpControls();
+    var nl = document.querySelector("#sp-filters-wrap .det-obs-list") || document.querySelector("#detlist-filters-wrap .det-obs-list"); if (nl) nl.scrollTop = st;
   }
   // Small popup (anchored to a clicked observer name) to toggle that observer's
   // membership in each saved list, or start a new list containing them. Uses the
@@ -8994,7 +8959,6 @@
     var hasFilter = detHasFilter();   // any filter active → show the black × (clear all)
     el.innerHTML = '<div class="det-legend-head" data-help="maphelp.legend">' +
         '<button type="button" class="det-min" title="' + escapeHtml(t("det.minimise")) + '" aria-label="' + escapeHtml(t("det.minimise")) + '">−</button>' +
-        '<button type="button" class="det-list-btn ico-btn' + (hasFilter ? " filtered" : "") + '" title="' + escapeHtml(t("detlist.open")) + '" aria-label="' + escapeHtml(t("detlist.open")) + '">' + ico("menu") + "</button>" +
         (hasFilter ? '<button type="button" class="det-clear-sel" title="' + escapeHtml(t("det.clearFilters")) + '" aria-label="' + escapeHtml(t("det.clearFilters")) + '">×</button>' : "") +
         '<button type="button" class="det-clear' + (detAreaDeleteMode ? " armed" : "") + '" title="' + escapeHtml(detAreaDeleteMode ? t("det.delAreaHint") : (fetchedAreas.length ? t("det.delAreaArm") : t("det.clearAll"))) + '" aria-label="' + escapeHtml(t("det.clearAll")) + '">' + X_MARK_SVG + '</button>' +
         (capped ? '<span class="det-cap-warn" role="img" title="' + escapeHtml(capTip) + '" aria-label="' + escapeHtml(capTip) + '">⚠</span>' : "") +
@@ -9024,7 +8988,6 @@
       e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
       clearAllFilters();              // selection + mode + observer + recency days, dots kept
     });
-    el.querySelector(".det-list-btn").addEventListener("click", function (e) { e.stopPropagation(); mapClickGuardUntil = Date.now() + 250; openDetListModal(); });
     el.querySelector(".det-min").addEventListener("click", function () { mapClickGuardUntil = Date.now() + 250; detLegendMini = true; saveLegendState(); updateDetLegend(); });
     el.querySelectorAll(".det-del").forEach(function (b) { b.addEventListener("click", function (e) { e.stopPropagation(); removeDetection(this.getAttribute("data-key")); }); });
     // Click a row to toggle its visibility selection. Stop the click here so it
@@ -11222,23 +11185,6 @@
     document.getElementById("detlist-modal").addEventListener("click", function (e) { if (e.target === this) navClose("detlist"); });
     var sortToggle = document.getElementById("detlist-sort");
     if (sortToggle) sortToggle.addEventListener("change", function () { detListSort = this.value; renderDetListModal(); });
-    var detlistSearch = document.getElementById("detlist-search");
-    if (detlistSearch) detlistSearch.addEventListener("input", function () {
-      detListQuery = this.value; renderDetListModal();   // the list filters instantly…
-      scheduleDetMapSearch(this.value);                  // …the map dots follow ~1.5 s after the last keystroke
-    });
-    // "Select N on map": add every species currently matching the search to the
-    // legend's multi-select (which isolates them on the map), then clear the box so
-    // the next search STACKS more species onto the selection.
-    var detlistSelect = document.getElementById("detlist-select");
-    if (detlistSelect) detlistSelect.addEventListener("click", function (e) {
-      e.stopPropagation();
-      (detListLastRows || []).forEach(function (d) { if (d.key && detPlot[d.key]) detSelected[d.key] = true; });
-      detListQuery = ""; clearDetMapSearch();
-      if (detlistSearch) detlistSearch.value = "";
-      saveLegendState(); rebuildDetLayers(); updateDetLegend(); renderDetListModal();
-      if (detlistSearch) detlistSearch.focus();
-    });
     var detlistSave = document.getElementById("detlist-save");
     if (detlistSave) detlistSave.addEventListener("click", function (e) {
       e.stopPropagation();
@@ -11928,6 +11874,7 @@
     // list by that column (toggling asc → desc → off, where off returns to the
     // natural Probability-descending ranking).
     document.getElementById("sp-sci-head").addEventListener("click", function () { cycleSpeciesListSort("sci"); });
+    var n2h = document.getElementById("sp-name2-head"); if (n2h) n2h.addEventListener("click", function () { cycleSpeciesListSort("name2"); });
     document.getElementById("sp-dist-head").addEventListener("click", function () { cycleSpeciesListSort("dist"); });
     document.getElementById("sp-prob-head").addEventListener("click", function () { cycleSpeciesListSort("prob"); });
     document.getElementById("sp-delta-head").addEventListener("click", function () { cycleSpeciesListSort("cmp"); });
