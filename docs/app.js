@@ -7734,7 +7734,16 @@
       }
       html += '<div class="dh-obs">👤 ' + escapeHtml(acc) + (shown < obsNames.length ? " ++" : "") + "</div>";
     }
-    if (!detHoverTip) detHoverTip = L.tooltip({ direction: "top", offset: [0, -5], opacity: 0.97, className: "det-hover-tip" });
+    // Open the tooltip BELOW the point (so it can't run off the TOP of the window and
+    // hide the newest detections, which lead the content) — flipping above only when
+    // the point sits so low that below would clip off the bottom. (Leaflet tooltips
+    // don't auto-flip.)
+    var cp, size;
+    try { cp = map.latLngToContainerPoint(latlng); size = map.getSize(); } catch (e) { cp = null; }
+    var dir = (cp && cp.y > size.y * 0.72) ? "top" : "bottom";
+    var off = dir === "bottom" ? L.point(0, 6) : L.point(0, -6);
+    if (detHoverTip) { try { map.closeTooltip(detHoverTip); } catch (e2) {} }   // recreate so the new direction/offset apply
+    detHoverTip = L.tooltip({ direction: dir, offset: off, opacity: 0.97, className: "det-hover-tip" });
     detHoverTip.setLatLng(latlng).setContent(html);
     map.openTooltip(detHoverTip);
   }

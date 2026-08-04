@@ -2744,7 +2744,10 @@ a.dl-row:hover, .dl-row-menu:hover { background: var(--surface-2, rgba(0,0,0,.05
   color: var(--ink, #222);
   /* Grow to fit the longest "species ×N" line; only wrap once it would overrun
      the screen, so long species names aren't clipped in a narrow balloon. */
-  width: max-content; max-width: min(92vw, 460px); white-space: normal; overflow-wrap: anywhere; }
+  width: max-content; max-width: min(92vw, 460px); white-space: normal; overflow-wrap: anywhere;
+  /* Bound the height so a very dense spot can't overrun the window; the newest dates
+     lead the content, so clipping only drops the OLDEST (bottom) ones. */
+  max-height: 60vh; overflow: hidden; }
 .det-hover-tip .dh-meta { color: var(--ink-muted, #777); font-size: 0.72rem; font-variant-numeric: tabular-nums; }
 /* Date section header in the dot hover (one per day, newest first). */
 .det-hover-tip .dh-date { font-weight: 600; font-size: 0.74rem; color: var(--ink, #222); margin: 5px 0 1px;

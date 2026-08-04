@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-08-04 — Hover point tooltip opens below the point, height-capped (sw v844)
+
+- The on-map hover tooltip (`showDetHover`) now opens **below** the point by default (flipping above only
+  when the point is very low on screen), so it can't run off the TOP of the window and hide the newest
+  detections (which lead the content, newest-date-first). Direction/offset are set per-hover from the
+  point's on-screen position (Leaflet tooltips don't auto-flip).
+- Capped the tooltip height (`max-height: 60vh; overflow: hidden`) so a very dense spot stays within the
+  window; clipping only drops the oldest (bottom) dates.
+
 ## 2026-08-04 — Hover tooltips on the record list's active elements (sw v843)
 
 - Explanatory `title` tooltips on the detailed record list: the record row (`detlist.rowHint` — "Species
