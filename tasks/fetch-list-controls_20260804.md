@@ -1,5 +1,15 @@
 # Plan — Move filtering & sort into the fetch (species) list; slim the detections popup
 
+## STATUS: shipped v839–v843 (2026-08-04)
+- v839 date-header On/Before/After · v840 source click-filter · v841 fetch-list layout dropdown +
+  detailed record views (shared renderer) + record-layout filter bar · v842 slimmed popup to
+  per-location + removed whole-map ☰ + 2nd-name sortable · v843 hover tooltips.
+- Interpretation to verify: the observation filter bar shows on the RECORD layouts (not the prediction
+  table) — so the table keeps its own flag columns + age cycle and D1/D5's n(d) re-derivation was NOT
+  applied (no disconnect since the table has no filter bar). Record views live-render on layout/filter
+  change, not continuously during a fetch stream.
+
+
 Date: 2026-08-04
 
 ## Goal (user request)
