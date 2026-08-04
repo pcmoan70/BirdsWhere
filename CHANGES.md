@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-04 — Fix: species-name click in Per observation no longer jumps to the map (sw v860)
+
+- In "Per observation", the species name sits inside the record row, so a click fired BOTH the
+  `.sp-link` menu AND the row's `focusPointOnMap` — switching straight to the map. The row click handler
+  now ignores clicks on `.sp-link` / `.dl-date-click` / `.sp-obs-filter` / `.sp-loc-click`, so tapping the
+  name just opens the species menu and stays in the list; the map jump happens only via a map action in
+  that menu (or a background tap on the row).
+
 ## 2026-08-04 — Probability column next to Season in the species list (sw v859)
 
 - Moved the **Probability** column so it sits directly before **Season** in the Species-list table (order

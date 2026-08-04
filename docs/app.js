@@ -1386,10 +1386,14 @@
     var isPerObs = container.id === "sp-records";
     Array.prototype.forEach.call(container.querySelectorAll(".sp-d-row"), function (r) {
       r.addEventListener("click", function (e) {
+        // A click on the species name (or another active cell) is handled by that
+        // element — the name opens the species menu and STAYS in the list; only a
+        // map action inside the menu jumps to the map. Don't also fire the row jump.
+        if (e.target.closest && e.target.closest(".sp-link, .dl-date-click, .sp-obs-filter, .sp-loc-click")) return;
         var la = parseFloat(this.getAttribute("data-lat")), lo = parseFloat(this.getAttribute("data-lon"));
         if (isPerObs) {
-          // Per observation: the species name opens the menu; a background click shows
-          // the point on the map (marker + view).
+          // Per observation: a background click (not on the name) shows the point on
+          // the map (marker + view).
           focusPointOnMap(la, lo);
           return;
         }
