@@ -2799,6 +2799,10 @@ a.dl-row:hover, .dl-row-menu:hover { background: var(--surface-2, rgba(0,0,0,.05
 .leaflet-bar a.country-btn,
 .leaflet-bar a.map-dl-btn { display: flex; align-items: center; justify-content: center; color: var(--brand-deep); }
 .geo-locate-btn svg, .fs-toggle-btn svg, .place-search-btn svg, .anim-btn svg, .h3-detail-btn svg, .nearby-btn svg, .country-btn svg, .map-dl-btn svg { display: block; }
+/* Red × (clear all plotted observations), right of the map, shown only when there are points. */
+.leaflet-bar a.clearpts-btn { display: flex; align-items: center; justify-content: center; color: var(--danger, #c0392b); }
+.leaflet-bar a.clearpts-btn:hover { color: #fff; background: var(--danger, #c0392b); }
+.clearpts-btn svg { display: block; }
 /* Crosshair control has 3 states: off (grey) → follow (blue, filled) → read (red,
    filled). The filled states make the current mode unmistakable. */
 .leaflet-bar a.geo-locate-btn { color: #8a8a8a; }

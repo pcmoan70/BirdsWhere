@@ -314,6 +314,14 @@
   }
   var animCtrlEl = null;   // the on-map migration-animation control container
   var h3CtrlEl = null;     // the on-map H3 detail (+/-) control container
+  var clearPtsCtrlEl = null;   // the on-map red × that clears all plotted observations
+  // Show the red × (right of the map) only while observations are plotted; a tap
+  // clears them all. Kept in sync from updateDetLegend (runs on every plot/clear).
+  function updateClearPtsBtn() {
+    if (!clearPtsCtrlEl) return;
+    var has = typeof detPlot !== "undefined" && Object.keys(detPlot).length > 0;
+    clearPtsCtrlEl.style.display = has ? "" : "none";
+  }
   // Step the H3 detail offset (range/richness overlay) finer/coarser, -2..+2.
   function adjustH3Detail(delta) {
     var v = Math.max(-2, Math.min(2, (hiResFactor | 0) + delta));
@@ -2135,6 +2143,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v837", date: "2026-08-04", text: "A red × now sits on the right-hand side of the map whenever you have observations plotted. One tap clears every plotted point off the map (the same as the legend's clear), and the × disappears once nothing's left. A quick way to wipe the map before a fresh look." },
     { v: "v836", date: "2026-08-04", text: "The species menu (tap any species name) gained “Show only this species” — it filters the plotted observations down to just that species on the map and in the detections list, so you can focus on one bird at a time. Tapping it again on the same species clears the filter and shows everything. Only appears when the species actually has observations plotted." },
     { v: "v834", date: "2026-08-03", text: "Fetch failures are clearer: when a data source fails or times out, its name turns red in the status line above the map — tap it to see exactly why (timed out, network error, or a missing free API key, with a shortcut to add one). The old automatic error pop-up is gone; the explanation is now one tap away when you want it." },
     { v: "v833", date: "2026-08-03", text: "Route lists are now marked in the Points panel with a ➤ badge, and their 🧭 button opens Google Maps directions straight through the stops (in order) instead of exporting a pin file. Other point lists still export as pins for Google My Maps." },
@@ -5666,6 +5675,29 @@
     });
     map.addControl(new DownloadControl());
 
+    // A red × on the right of the map, shown only while observations are plotted;
+    // one tap clears them all (same as the legend's clear-the-map ×), then it hides.
+    var ClearPointsControl = L.Control.extend({
+      options: { position: "topright" },
+      onAdd: function () {
+        var c = L.DomUtil.create("div", "leaflet-bar leaflet-control clearpts-ctrl");
+        L.DomEvent.disableClickPropagation(c);
+        var a = L.DomUtil.create("a", "clearpts-btn", c);
+        a.href = "#"; a.title = t("ctrl.clearPoints"); a.setAttribute("aria-label", t("ctrl.clearPoints"));
+        a.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+        L.DomEvent.on(a, "click", function (e) {
+          L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e);
+          clearDetections();
+          updateClearPtsBtn();   // nothing plotted now → hide the ×
+        });
+        clearPtsCtrlEl = c;
+        c.style.display = "none";   // updateClearPtsBtn reveals it once points exist
+        setTimeout(updateClearPtsBtn, 0);
+        return c;
+      }
+    });
+    map.addControl(new ClearPointsControl());
+
     // Live position (blue "follow" state): keep the plus marker on the current
     // location. On the first fix, centre the map and populate the click-driven modes
     // at that point. Later fixes move the plus and keep it AT LEAST 10% in from every
@@ -8797,6 +8829,7 @@
   }
   function updateDetLegend() {
     var allKeys = Object.keys(detPlot);
+    updateClearPtsBtn();   // reveal/hide the red × with the plotted set (runs even on the empty early-return)
     if (!allKeys.length) { if (detLegend) { map.removeControl(detLegend); detLegend = null; } return; }
     ensureDedup();
     maybeComputeDetProbs();   // (re)compute habitat probabilities when the plotted set changed

@@ -235,6 +235,9 @@ red **×** that clears all detections — or, when fetched-area outlines exist, 
 **per-area delete** (a red × on each area removes just that area's detections; a second click
 clears everything). A **⚠** appears when the *Max points on map* draw cap is hiding dots.
 
+There's also a standalone red **×** on the **right of the map** (near the offline-download button),
+shown only while observations are plotted: one tap clears them all off the map and the × disappears.
+
 ---
 
 ## Detections list & "Close by"

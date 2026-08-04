@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-04 — Red × on the right of the map clears all plotted points (sw v837)
+
+- **New `ClearPointsControl`** (Leaflet control, `position: "topright"`): a red × shown only while
+  observations are plotted; one tap calls `clearDetections()` (the legend's clear-the-map action) and
+  then hides. Visibility is driven by `updateClearPtsBtn()` (checks `Object.keys(detPlot).length`), called
+  from `updateDetLegend()` so it tracks every plot/clear/reload.
+- New `.clearpts-btn` CSS (red glyph, white-on-red hover) and i18n `ctrl.clearPoints` across all 15 languages.
+
 ## 2026-08-04 — "Show only this species" in the species menu (sw v836)
 
 - **The unified species menu (`drmRenderMain`, opened by tapping any `.sp-link` name — list, legend,

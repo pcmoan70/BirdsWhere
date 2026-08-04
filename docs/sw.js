@@ -21,16 +21,16 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v836";
+var VERSION = "v837";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• A red × now appears on the right of the map whenever observations are plotted — one tap clears them all, and the × disappears.",
   "• Tap a species name and the menu now has “Show only this species” — it isolates that species' observations on the map (and the detections list). Tap it again on the same species to bring the rest back.",
   "• When a data source fails or times out during a fetch, its name now shows in red in the status line — tap it to see exactly why (and a shortcut to add a missing free API key). No more surprise pop-ups.",
   "• Saved routes reload properly: tick a saved route in the Points panel (or reopen the app with one shown) and its stops come back numbered on the map with the route bar at the bottom, ready to navigate. Route lists are marked with a ➤ badge, and their 🧭 button opens Google Maps directions through the stops directly (other lists still export as pins).",
-  "• Tidier detections list (☰): the header now has a ＋➤ “add to route/tour” button next to Navigate, the Save button shows a points icon, and the copy-coordinates button sits in front of the place name. The “Filter species” box is narrower with the day / rarity / observer filters beside it on the same row.",
-  "• New shortcut link: open the app with ?location=here;radius=5;show=list;sortby=time_recent to geolocate (or ?location=60.123,32.001 for fixed coordinates) and jump straight to the species list (or map) for that spot — with the sightings radius, view, and sort (rarity or most-recent) all set from the URL. See the README for examples."
+  "• Tidier detections list (☰): the header now has a ＋➤ “add to route/tour” button next to Navigate, the Save button shows a points icon, and the copy-coordinates button sits in front of the place name. The “Filter species” box is narrower with the day / rarity / observer filters beside it on the same row."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs
