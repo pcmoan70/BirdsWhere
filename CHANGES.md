@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-08-04 — Species table respects the observation filters (no empty expands) (sw v847)
+
+- `applyAgeFilter` now applies the **global observation filters** (`detDatePasses` / `detObsPasses` /
+  `detPassesSrc`) to each model-species row: it counts only the passing records, updates the **n(d)**
+  count + days + **Last** cells to the filtered values, toggles the **expand caret** (`sp-has-det`) on the
+  filtered count, and **hides** a species that was observed but has zero passing records. So an expandable
+  row can no longer be empty, and the list respects filtering throughout (matching the map + record
+  views). Runs from the fetch path, filter changes, and sort.
+
 ## 2026-08-04 — Expandable species rows (sub-list of records) (sw v846)
 
 - Each model-species row in the table gains a **▸ expand caret** (`.sp-exp`, shown only on rows with

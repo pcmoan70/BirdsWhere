@@ -1339,7 +1339,25 @@
       var rareOk = !rareSet || (!extra && !!(key && rareSet[key]));
       // Build filters apply to model rows only (extras aren't star/list-tracked).
       var buildOk = !anyBuild || extra || (!!key && passSpeciesFilter(key));
-      tr.style.display = (ageOk && rareOk && buildOk) ? "" : "none";
+      // Respect the GLOBAL observation filters (date/observer/source) on the table too:
+      // count only the species' records that pass, drive the n(d)/last/caret from that,
+      // and HIDE a species that WAS observed but now has nothing left after filtering —
+      // so it can't sit there with an empty expander.
+      var obsFilteredOut = false;
+      if (!extra && entry && entry.rows) {
+        var fc = 0, flatest = 0;
+        entry.rows.forEach(function (r) {
+          if (!detDatePasses(r.date) || !detObsPasses(r) || !detPassesSrc(r)) return;
+          var n = parseInt(r.count, 10); fc += (isFinite(n) && n > 0) ? n : 1;
+          var ts = r.date ? Date.parse(r.date + "T00:00:00") : 0; if (ts && ts > flatest) flatest = ts;
+        });
+        tr.classList.toggle("sp-has-det", fc > 0);
+        var ndBtn = tr.querySelector(".det-nd .det-count-btn"); if (ndBtn) ndBtn.textContent = fc;
+        var ndDays = tr.querySelector(".det-nd .det-d"); if (ndDays) ndDays.textContent = flatest ? "(" + Math.max(0, Math.round((now - flatest) / 86400000)) + ")" : "";
+        var lastTd = tr.querySelector(".sp-last"); if (lastTd) { lastTd.textContent = flatest ? lastDateLabel(flatest) : ""; if (flatest) tr.setAttribute("data-last", flatest); else tr.removeAttribute("data-last"); }
+        obsFilteredOut = !!(entry.count) && fc === 0;
+      }
+      tr.style.display = (ageOk && rareOk && buildOk && !obsFilteredOut) ? "" : "none";
     });
     refreshSpExpansions();   // keep expanded detail sub-rows under their (visible) species
   }
@@ -2215,6 +2233,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v847", date: "2026-08-04", text: "The species list now respects the active observation filters throughout: each species' n(d) count and last-seen date reflect only the records that pass the current date / source / observer filters, and a species whose records are all filtered out drops out of the list entirely — so an expanded row is never empty." },
     { v: "v846", date: "2026-08-04", text: "Species rows in the list are now expandable: species with observations show a ▸ caret — tap it to open a sub-list of that species' individual records (observer, source, count, date, each clickable), sorted to match your active column sort (e.g. by distance or last-seen date)." },
     { v: "v845", date: "2026-08-04", text: "The fetched species list is consolidated into two layouts: the Species-list table (multi-column, sortable — now with a Last-seen-date column alongside probability, count and distance) and Per observation (detailed records grouped by date → observer → location). The separate By-species/count/rarity/distance layouts are folded into the table's sortable columns." },
     { v: "v842", date: "2026-08-04", text: "The fetched species list is now the hub for filtering + layout, so the pop-up detections list (from tapping a plotted dot) is slimmed to a focused one-place view: place name, copy-coordinates, Save / Navigate / Add-to-route and the layout sort — no filter bar or search. The whole-map ☰ list button is gone (use the fetch list's By observation instead). Also: the 2nd-name column in the species list is now sortable." },
