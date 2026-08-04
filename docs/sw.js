@@ -21,17 +21,16 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v840";
+var VERSION = "v841";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• The fetched species list gains a layout dropdown: keep the prediction table, or switch to the full detailed observations — By observation (grouped by date), By species, By count, By rarity or By distance — with the day/mode/observer filters right there. The detailed views show observer, source, count and date, all clickable.",
   "• Filter observations by source or by date straight from the list: tap a record's source (eBird, GBIF…) for Only / Hide / All sources, or tap a date header for On / Before / After that date. Map, legend and list all follow.",
   "• A red × now appears on the right of the map whenever observations are plotted — one tap clears them all, and the × disappears.",
   "• Tap a species name and the menu now has “Show only this species” — it isolates that species' observations on the map (and the detections list). Tap it again on the same species to bring the rest back.",
-  "• When a data source fails or times out during a fetch, its name now shows in red in the status line — tap it to see exactly why (and a shortcut to add a missing free API key). No more surprise pop-ups.",
-  "• Saved routes reload properly: tick a saved route in the Points panel (or reopen the app with one shown) and its stops come back numbered on the map with the route bar at the bottom, ready to navigate. Route lists are marked with a ➤ badge, and their 🧭 button opens Google Maps directions through the stops directly (other lists still export as pins).",
-  "• Tap a species name → “Show only this species” isolates its observations on the map + list."
+  "• When a data source fails or times out during a fetch, its name now shows in red in the status line — tap it to see exactly why (and a shortcut to add a missing free API key). No more surprise pop-ups."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets
 var DATA_CACHE = "data-" + VERSION;     // model / labels / taxonomy / vendor libs

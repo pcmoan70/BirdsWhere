@@ -1,5 +1,22 @@
 # Changes
 
+## 2026-08-04 — Fetch list gains layout dropdown + detailed record views (sw v841)
+
+- **Shared record renderer**: extracted the detlist body into `buildRecordListHtml(rows, layout, openMap)`
+  + `wireRecordList(body, reRender)` (layouts: `date`/observation, `name`/species, `name2`, `count`,
+  `rarity`, and a new flat `distance`). `renderDetListModal` now uses them (no behaviour change).
+- **Fetch list (`#species-panel`)** gained a **layout `<select>`** (`sp-layout`: Species list · By
+  observation · By species · By count · By rarity · By distance) and, for the record layouts, the
+  **observation filter bar** (`renderSpControls`/`renderSpFilterBar`/`renderSpBody` + `#sp-controls`,
+  `#sp-filters-bar`, `#sp-filters-wrap`, `#sp-records`). Record views scope to all plotted observations
+  (`collectVisibleDetections`) and respect the global filters; the prediction table keeps its own flag
+  columns. Gated to list/historic modes (`speciesPanelPopulated`).
+- **Unified filter refresh**: `detFiltersRefresh()` now re-renders the popup AND the fetch list;
+  `wireDetFilters` routes through it (`reRenderFilterBar` for panel-open toggles); `clearAllFilters` too.
+- New i18n `splay.*` + `detlist.expandHint` in all 15 languages. CSS for `#sp-controls`/`#sp-records`.
+- Still to come (plan): slim the popup to per-location + remove the whole-map ☰; table n(d) filter-
+  awareness / retire the age cycle; full hover-tooltip pass.
+
 ## 2026-08-04 — Filter by data source (click a source in the list) (sw v840)
 
 - **New global source filter** `detSrcFilter` (Set of source labels, or null = all) + `detPassesSrc(r)`,

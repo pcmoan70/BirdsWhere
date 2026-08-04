@@ -1038,6 +1038,13 @@
   // ranking (prob desc, set by the render function). Clicking the Scientific
   // name or # column header overrides it and toggles asc/desc.
   var speciesListSort = { col: "", dir: "" };
+  // Fetch-list layout: the model-prediction "table", or a detailed record layout.
+  var spLayout = "table";
+  var SP_LAYOUTS = [
+    ["table", "splay.table"], ["observation", "splay.observation"], ["species", "splay.species"],
+    ["count", "splay.count"], ["rarity", "splay.rarity"], ["distance", "splay.distance"]
+  ];
+  function spRecordLayout() { return spLayout === "species" ? "name" : spLayout === "observation" ? "date" : spLayout; }
   var menuKey = null, menuName = "", menuSci = "";  // species the menu targets
 
   function isHidden(key) { return !!hiddenSpecies[key]; }
@@ -2143,6 +2150,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v841", date: "2026-08-04", text: "The fetched species list can now switch layout: a dropdown offers the model prediction table, or the full detailed observations — By observation (grouped by date, like the pop-up), By species, By count, By rarity, or By distance. The detailed views carry the day / mode / observer filter bar and show observer, source, count and date on each record (all clickable to filter). This is the fetch list taking over the filtering + layout controls." },
     { v: "v840", date: "2026-08-04", text: "Filter observations by data source right from the list: tap a record's source (eBird, GBIF, iNaturalist…) and choose Only this source, Hide it, or All sources — the map, legend and list all follow, and it sticks until you clear filters. Pairs with the date-header shortcut (On/Before/After). Part of moving filtering onto the fetched list with as few extra controls as possible." },
     { v: "v839", date: "2026-08-04", text: "In the detections list, the date headers are now clickable: tap a date and choose On this date / Before this date / After this date to set the date-range filter instantly (map + list + legend follow). A fast way to jump to a day's records. First step of a larger move to put filtering and layout controls onto the fetched species list." },
     { v: "v837", date: "2026-08-04", text: "A red × now sits on the right-hand side of the map whenever you have observations plotted. One tap clears every plotted point off the map (the same as the legend's clear), and the × disappears once nothing's left. A quick way to wipe the map before a fresh look." },
@@ -4768,8 +4776,14 @@
             '<h3 id="sp-title" data-i18n="panel.spTitle">Recent Observations</h3>' +
           '</div>' +
           '<div class="sp-coords" id="sp-coords"></div>' +
+          '<div id="sp-controls" style="display:none">' +
+            '<select id="sp-layout" class="detlist-sort-sel" aria-label="Layout"></select>' +
+            '<div id="sp-filters-bar"></div>' +
+          '</div>' +
+          '<div id="sp-filters-wrap"></div>' +
           '<div class="hist-progress" id="sp-hist-prog" style="display:none"><div class="hist-progress-fill hist-progress-indet" id="sp-hist-prog-fill"></div></div>' +
           '<div class="sp-loading" id="sp-loading" style="display:none"></div>' +
+          '<div id="sp-records" style="display:none"></div>' +
           '<table id="species-list-table">' +
             '<thead><tr>' +
             SP_FILTER_KEYS.map(function (f) {
@@ -7462,6 +7476,14 @@
     saveLegendState(); rebuildDetLayers(); updateDetLegend();
     var dm = document.getElementById("detlist-modal");
     if (dm && dm.style.display === "flex" && typeof renderDetListModal === "function") renderDetListModal();
+    if (typeof speciesPanelPopulated === "function" && speciesPanelPopulated()) renderSpControls();
+  }
+  // Re-render just the filter bar on whichever surface currently hosts it (the popup,
+  // or the fetch list) — for panel-open toggles that don't change the data.
+  function reRenderFilterBar() {
+    var dm = document.getElementById("detlist-modal");
+    if (dm && dm.style.display === "flex") { renderDetListModal(); return; }
+    if (typeof speciesPanelPopulated === "function" && speciesPanelPopulated()) renderSpControls();
   }
   // A clickable source label in a record row → opens the source-filter menu.
   function srcClickHtml(label) {
@@ -7503,6 +7525,116 @@
     el.appendChild(drmBtn(t("date.before"), function () { closeDetRowMenu(); setDetDateFilter("", dateStr); }));
     el.appendChild(drmBtn(t("date.after"), function () { closeDetRowMenu(); setDetDateFilter(dateStr, ""); }));
     positionAnchoredMenu(el, x, y);
+  }
+  // Build the grouped/flat record-list HTML from a set of detection rows. `layout`:
+  // "date" (group by date/observer — the detailed "By observation" view), "name" /
+  // "name2" / "count" / "rarity" (collapsible per-species groups), or "distance"
+  // (flat, nearest-first from the current point). `openMap` = which species are expanded.
+  function buildRecordListHtml(rows, layout, openMap) {
+    openMap = openMap || detListOpenSp;
+    if (layout === "distance") {
+      var oLat = currentSpView ? +currentSpView.lat : NaN, oLon = currentSpView ? +currentSpView.lon : NaN;
+      var haveO = isFinite(oLat) && isFinite(oLon);
+      var withD = rows.map(function (d) {
+        var km = (haveO && isFinite(+d.lat) && isFinite(+d.lon)) ? haversineKm(oLat, oLon, +d.lat, +d.lon) : Infinity;
+        return { d: d, km: km };
+      });
+      withD.sort(function (a, b) { return a.km - b.km; });
+      return withD.map(function (x) { return detRowHtml(x.d, true); }).join("");
+    }
+    if (layout !== "date") {
+      var bySp = {}, spOrder = [];
+      rows.forEach(function (d) { if (!bySp[d.key]) { bySp[d.key] = { name: d.name, color: d.color, items: [] }; spOrder.push(d.key); } bySp[d.key].items.push(d); });
+      spOrder.forEach(function (k) {
+        var g = bySp[k], last = "", sum = 0;
+        g.items.forEach(function (d) { if ((d.date || "") > last) last = d.date || ""; var n = parseInt(d.count, 10); sum += (isFinite(n) && n > 0) ? n : 1; });
+        g.last = last; g.sum = sum;
+      });
+      var byNm = function (a, b) { return bySp[a].name.localeCompare(bySp[b].name); };
+      spOrder.sort(function (a, b) {
+        if (layout === "name") return byNm(a, b);
+        if (layout === "name2") return (detName2(a) || bySp[a].name).localeCompare(detName2(b) || bySp[b].name) || byNm(a, b);
+        if (layout === "count") return bySp[b].sum - bySp[a].sum || byNm(a, b);
+        if (layout === "rarity") { var pa = (a in detProb && detProb[a] >= 0) ? detProb[a] : Infinity, pb = (b in detProb && detProb[b] >= 0) ? detProb[b] : Infinity; return pa - pb || byNm(a, b); }
+        return bySp[b].last.localeCompare(bySp[a].last) || byNm(a, b);
+      });
+      return spOrder.map(function (k) {
+        var g = bySp[k], last = g.last, open = !!openMap[k];
+        var head = '<button type="button" class="dl-sp-head' + (open ? " open" : "") + '" data-key="' + escapeHtml(k) + '" title="' + escapeHtml(t("detlist.expandHint")) + '">' +
+          detSwatch(g.color || "#888", isInteresting(k), detIsRare(k), k) +
+          '<span class="dl-sp">' + escapeHtml(detListName(k, g.name)) + "</span>" +
+          '<span class="dl-meta">' + escapeHtml(fmtDate(last)) + "</span>" +
+          '<span class="dl-ct" title="' + escapeHtml(t("detlist.sumIndiv")) + '">' + g.sum + "</span>" +
+          '<span class="dl-caret">' + (open ? "▾" : "▸") + "</span></button>";
+        var subSort = (layout === "rarity")
+          ? function (a, b) { var pa = (a.prob >= 0) ? a.prob : Infinity, pb = (b.prob >= 0) ? b.prob : Infinity; return (pa - pb) || (b.date || "").localeCompare(a.date || ""); }
+          : function (a, b) { return (b.date || "").localeCompare(a.date || ""); };
+        var sub = open ? '<div class="dl-sp-body">' + g.items.slice().sort(subSort).map(function (d) { return detRowHtml(d, true); }).join("") + "</div>" : "";
+        return '<div class="dl-sp-group">' + head + sub + "</div>";
+      }).join("");
+    }
+    var byDate = {}, dates = [];
+    rows.forEach(function (d) { var k = d.date || ""; if (!byDate[k]) { byDate[k] = []; dates.push(k); } byDate[k].push(d); });
+    dates.sort(function (a, b) { return b.localeCompare(a); });
+    return dates.map(function (dt) {
+      var byObs = {}, obs = [];
+      byDate[dt].forEach(function (d) { var o = (d.src === "BirdWeather" ? (d.place || "") : (d.observer || "")).trim(); if (!(o in byObs)) { byObs[o] = []; obs.push(o); } byObs[o].push(d); });
+      obs.sort(function (a, b) { if (!a !== !b) return a ? -1 : 1; return a.localeCompare(b); });
+      var dateLbl = escapeHtml(fmtDate(dt) || t("detlist.noDate"));
+      return obs.map(function (o) {
+        var items = byObs[o].slice().sort(function (a, b) {
+          var pa = (a.prob >= 0) ? a.prob : Infinity, pb = (b.prob >= 0) ? b.prob : Infinity;
+          return (pa - pb) || a.name.localeCompare(b.name);
+        });
+        var isBW = items[0] && items[0].src === "BirdWeather";
+        var obsSpan = !o ? "" : (isBW
+          ? ' <span class="dl-obs">· ' + escapeHtml(o) + "</span>"
+          : ' <span class="dl-obs dl-obs-add" role="button" data-obs="' + escapeHtml(o) + '" title="' + escapeHtml(t("obs.addToList")) + '">· ' + escapeHtml(o) + "</span>");
+        var datePart = dt ? '<span class="dl-date-click" role="button" data-date="' + escapeHtml(dt) + '" title="' + escapeHtml(t("detlist.dateFilterHint")) + '">' + dateLbl + "</span>" : dateLbl;
+        var full = (fmtDate(dt) || t("detlist.noDate")) + (o ? " · " + o : "");
+        return '<div class="dl-date-head"><span class="dl-date-lbl" title="' + escapeHtml(full) + '">' + datePart + obsSpan + '</span><span class="dl-ct">' + items.length + "</span></div>" +
+          items.map(function (d) { return detRowHtml(d, false); }).join("");
+      }).join("");
+    }).join("");
+  }
+  // Wire the interactions on a rendered record list. `reRender` re-renders whichever
+  // surface hosts it (the popup, or the fetch list) after an expand toggle.
+  function wireRecordList(body, reRender) {
+    Array.prototype.forEach.call(body.querySelectorAll(".dl-sp-head"), function (b) {
+      b.addEventListener("click", function () { var k = this.getAttribute("data-key"); if (detListOpenSp[k]) delete detListOpenSp[k]; else detListOpenSp[k] = true; reRender(); });
+    });
+    Array.prototype.forEach.call(body.querySelectorAll(".dl-obs-add"), function (s) {
+      s.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); observerClickMenu(this.getAttribute("data-obs"), this); });
+    });
+    Array.prototype.forEach.call(body.querySelectorAll(".dl-date-click"), function (s) {
+      s.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); showDateFilterMenu(this.getAttribute("data-date"), e.clientX, e.clientY); });
+    });
+    Array.prototype.forEach.call(body.querySelectorAll(".dl-src-click"), function (s) {
+      s.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); showSrcFilterMenu(this.getAttribute("data-src"), e.clientX, e.clientY); });
+    });
+    function detRowData(b) {
+      return {
+        key: b.getAttribute("data-key"), name: b.getAttribute("data-name"),
+        lat: parseFloat(b.getAttribute("data-lat")), lon: parseFloat(b.getAttribute("data-lon")),
+        url: b.getAttribute("data-url"), date: b.getAttribute("data-date"),
+        act: b.getAttribute("data-act"), note: b.getAttribute("data-note"),
+        listName: b.getAttribute("data-listname"), mpId: b.getAttribute("data-mpid")
+      };
+    }
+    Array.prototype.forEach.call(body.querySelectorAll(".dl-row-menu"), function (b) {
+      b.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); showDetRowMenu(detRowData(b), e.clientX, e.clientY); });
+    });
+    Array.prototype.forEach.call(body.querySelectorAll(".dl-focus"), function (s) {
+      s.addEventListener("click", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        var lat = parseFloat(this.getAttribute("data-lat")), lon = parseFloat(this.getAttribute("data-lon"));
+        if (!isFinite(lat) || !isFinite(lon) || !map) return;
+        closeDetRowMenu();
+        try { navClose("detlist"); } catch (e2) {}
+        mapClickGuardUntil = Date.now() + 250;
+        map.setView([lat, lon], Math.max(map.getZoom() || 0, 14));
+      });
+    });
   }
   function renderDetListModal() {
     var body = document.getElementById("detlist-body");
@@ -7577,142 +7709,8 @@
     var saveBtn = document.getElementById("detlist-save"); if (saveBtn) saveBtn.disabled = !rows.length;
     var navBtn = document.getElementById("detlist-nav"); if (navBtn) navBtn.disabled = !rows.length;
     if (!rows.length) { body.innerHTML = '<div class="dl-empty">' + escapeHtml(emptyMsg) + "</div>"; return; }
-    var html;
-    if (detListSort !== "date") {
-      // One summary line per species (most-recent date + count); tap to expand
-      // that species' individual records (each linking to its source). The chosen
-      // sort key orders the species.
-      var bySp = {}, spOrder = [];
-      rows.forEach(function (d) { if (!bySp[d.key]) { bySp[d.key] = { name: d.name, color: d.color, items: [] }; spOrder.push(d.key); } bySp[d.key].items.push(d); });
-      // Per species: most-recent date + summed individual count (a record with no
-      // count value counts as 1). "By count" orders on that summed total.
-      spOrder.forEach(function (k) {
-        var g = bySp[k], last = "", sum = 0;
-        g.items.forEach(function (d) {
-          if ((d.date || "") > last) last = d.date || "";
-          var n = parseInt(d.count, 10); sum += (isFinite(n) && n > 0) ? n : 1;
-        });
-        g.last = last; g.sum = sum;
-      });
-      var byNm = function (a, b) { return bySp[a].name.localeCompare(bySp[b].name); };
-      spOrder.sort(function (a, b) {
-        if (detListSort === "name") return byNm(a, b);
-        if (detListSort === "name2") return (detName2(a) || bySp[a].name).localeCompare(detName2(b) || bySp[b].name) || byNm(a, b);
-        if (detListSort === "count") return bySp[b].sum - bySp[a].sum || byNm(a, b);
-        if (detListSort === "rarity") {   // rarest species first = its lowest per-obs probability; unknown last
-          var pa = (a in detProb && detProb[a] >= 0) ? detProb[a] : Infinity, pb = (b in detProb && detProb[b] >= 0) ? detProb[b] : Infinity;
-          return pa - pb || byNm(a, b);
-        }
-        return bySp[b].last.localeCompare(bySp[a].last) || byNm(a, b);   // safety fallback: newest first
-      });
-      html = spOrder.map(function (k) {
-        var g = bySp[k];
-        var last = g.last;
-        var open = !!detListOpenSp[k];
-        var head = '<button type="button" class="dl-sp-head' + (open ? " open" : "") + '" data-key="' + escapeHtml(k) + '">' +
-          detSwatch(g.color || "#888", isInteresting(k), detIsRare(k), k) +
-          '<span class="dl-sp">' + escapeHtml(detListName(k, g.name)) + "</span>" +
-          '<span class="dl-meta">' + escapeHtml(fmtDate(last)) + "</span>" +
-          '<span class="dl-ct" title="' + escapeHtml(t("detlist.sumIndiv")) + '">' + g.sum + "</span>" +   // collapsed species row → total individuals
-          '<span class="dl-caret">' + (open ? "▾" : "▸") + "</span></button>";
-        var subSort = (detListSort === "rarity")
-          ? function (a, b) { var pa = (a.prob >= 0) ? a.prob : Infinity, pb = (b.prob >= 0) ? b.prob : Infinity; return (pa - pb) || (b.date || "").localeCompare(a.date || ""); }   // rarest obs first
-          : function (a, b) { return (b.date || "").localeCompare(a.date || ""); };   // newest first
-        var sub = open ? '<div class="dl-sp-body">' + g.items.slice().sort(subSort).map(function (d) { return detRowHtml(d, true); }).join("") + "</div>" : "";
-        return '<div class="dl-sp-group">' + head + sub + "</div>";
-      }).join("");
-    } else {
-      // Group by date (newest first), then by OBSERVER within a date: each
-      // observer gets the date header repeated with their name and their species
-      // rows (A→Z) underneath. Records with no observer fall under a plain date
-      // header (sorted last within the date).
-      var byDate = {}, dates = [];
-      rows.forEach(function (d) { var k = d.date || ""; if (!byDate[k]) { byDate[k] = []; dates.push(k); } byDate[k].push(d); });
-      dates.sort(function (a, b) { return b.localeCompare(a); });
-      html = dates.map(function (dt) {
-        var byObs = {}, obs = [];
-        // Group label sits next to the date: the observer for most sources, but the
-        // STATION name/#id for BirdWeather (its detections carry no observer).
-        byDate[dt].forEach(function (d) { var o = (d.src === "BirdWeather" ? (d.place || "") : (d.observer || "")).trim(); if (!(o in byObs)) { byObs[o] = []; obs.push(o); } byObs[o].push(d); });
-        obs.sort(function (a, b) { if (!a !== !b) return a ? -1 : 1; return a.localeCompare(b); });   // named observers first, blank last
-        var dateLbl = escapeHtml(fmtDate(dt) || t("detlist.noDate"));
-        return obs.map(function (o) {
-          // Within a date/observer group: rarest OBSERVATION first (lowest per-obs
-          // habitat probability), commonest at the bottom; unknown (non-model) last.
-          var items = byObs[o].slice().sort(function (a, b) {
-            var pa = (a.prob >= 0) ? a.prob : Infinity, pb = (b.prob >= 0) ? b.prob : Infinity;
-            return (pa - pb) || a.name.localeCompare(b.name);
-          });
-          // BirdWeather groups by station name (not an observer) → not clickable.
-          var isBW = items[0] && items[0].src === "BirdWeather";
-          var obsSpan = !o ? "" : (isBW
-            ? ' <span class="dl-obs">· ' + escapeHtml(o) + "</span>"
-            : ' <span class="dl-obs dl-obs-add" data-obs="' + escapeHtml(o) + '" title="' + escapeHtml(t("obs.addToList")) + '">· ' + escapeHtml(o) + "</span>");
-          // The date itself is a shortcut to date-filtering: tap it for On / Before / After.
-          var datePart = dt ? '<span class="dl-date-click" role="button" data-date="' + escapeHtml(dt) + '" title="' + escapeHtml(t("detlist.dateFilterHint")) + '">' + dateLbl + "</span>" : dateLbl;
-          var head = datePart + obsSpan;
-          var full = (fmtDate(dt) || t("detlist.noDate")) + (o ? " · " + o : "");   // plain text → full name(s) on hover when truncated
-          return '<div class="dl-date-head"><span class="dl-date-lbl" title="' + escapeHtml(full) + '">' + head + '</span><span class="dl-ct">' + items.length + "</span></div>" +
-            items.map(function (d) { return detRowHtml(d, false); }).join("");
-        }).join("");
-      }).join("");
-    }
-    body.innerHTML = html;
-    Array.prototype.forEach.call(body.querySelectorAll(".dl-sp-head"), function (b) {
-      b.addEventListener("click", function () { var k = this.getAttribute("data-key"); if (detListOpenSp[k]) delete detListOpenSp[k]; else detListOpenSp[k] = true; renderDetListModal(); });
-    });
-    // Click an observer header → add them to an observer list (a picker of the
-    // individual names first when the observation has several observers).
-    Array.prototype.forEach.call(body.querySelectorAll(".dl-obs-add"), function (s) {
-      s.addEventListener("click", function (e) {
-        e.preventDefault(); e.stopPropagation();
-        observerClickMenu(this.getAttribute("data-obs"), this);
-      });
-    });
-    // Click a date header → On / Before / After that date (sets the date filter).
-    Array.prototype.forEach.call(body.querySelectorAll(".dl-date-click"), function (s) {
-      s.addEventListener("click", function (e) {
-        e.preventDefault(); e.stopPropagation();
-        showDateFilterMenu(this.getAttribute("data-date"), e.clientX, e.clientY);
-      });
-    });
-    // Click a record's source → filter by source (only this / hide this / all).
-    Array.prototype.forEach.call(body.querySelectorAll(".dl-src-click"), function (s) {
-      s.addEventListener("click", function (e) {
-        e.preventDefault(); e.stopPropagation();
-        showSrcFilterMenu(this.getAttribute("data-src"), e.clientX, e.clientY);
-      });
-    });
-    function detRowData(b) {
-      return {
-        key: b.getAttribute("data-key"), name: b.getAttribute("data-name"),
-        lat: parseFloat(b.getAttribute("data-lat")), lon: parseFloat(b.getAttribute("data-lon")),
-        url: b.getAttribute("data-url"), date: b.getAttribute("data-date"),
-        act: b.getAttribute("data-act"), note: b.getAttribute("data-note"),
-        listName: b.getAttribute("data-listname"), mpId: b.getAttribute("data-mpid")
-      };
-    }
-    // One tap on a detection row → the unified species menu (info + this
-    // observation + your actions).
-    Array.prototype.forEach.call(body.querySelectorAll(".dl-row-menu"), function (b) {
-      b.addEventListener("click", function (e) {
-        e.preventDefault(); e.stopPropagation();
-        showDetRowMenu(detRowData(b), e.clientX, e.clientY);
-      });
-    });
-    // The 🎯 shortcut: focus the map on this record (stop the click so the row's
-    // menu doesn't also open behind it).
-    Array.prototype.forEach.call(body.querySelectorAll(".dl-focus"), function (s) {
-      s.addEventListener("click", function (e) {
-        e.preventDefault(); e.stopPropagation();
-        var lat = parseFloat(this.getAttribute("data-lat")), lon = parseFloat(this.getAttribute("data-lon"));
-        if (!isFinite(lat) || !isFinite(lon) || !map) return;
-        closeDetRowMenu();
-        try { navClose("detlist"); } catch (e2) {}
-        mapClickGuardUntil = Date.now() + 250;
-        map.setView([lat, lon], Math.max(map.getZoom() || 0, 14));
-      });
-    });
+    body.innerHTML = buildRecordListHtml(rows, detListSort, detListOpenSp);
+    wireRecordList(body, renderDetListModal);
   }
   // Clicking a plotted dot opens the list scoped to that spot (co-located
   // detections within 50 m), still honouring the legend's filters.
@@ -8241,9 +8239,7 @@
     setDetObsFilter(null);                                                   // observer → all
     detSrcFilter = null;                                                     // source → all
     window.GeoState.save({ detRecencyDays: 0, detDateRange: null, detMonths: [] });   // days + range + months → All
-    saveLegendState(); rebuildDetLayers(); updateDetLegend();
-    var dm = document.getElementById("detlist-modal");
-    if (dm && dm.style.display === "flex" && typeof renderDetListModal === "function") renderDetListModal();
+    detFiltersRefresh();                                                     // map + legend + open list(s)
   }
   // The red × clears the WHOLE map of plotted points: fetched dots, plus every
   // shown saved list / detection set (un-ticked so nothing is re-injected — the
@@ -9114,9 +9110,9 @@
   // Wire the filter bar + subwindows inside the detections-list popup box `el`.
   // Changes save + refresh the map/legend, then re-render the popup.
   function wireDetFilters(el) {
-    var refresh = function () { saveLegendState(); rebuildDetLayers(); updateDetLegend(); renderDetListModal(); };
+    var refresh = detFiltersRefresh;
     var daysTog = el.querySelector(".det-days-tog");
-    if (daysTog) daysTog.addEventListener("click", function (e) { e.stopPropagation(); openDetPanel("days"); renderDetListModal(); });
+    if (daysTog) daysTog.addEventListener("click", function (e) { e.stopPropagation(); openDetPanel("days"); reRenderFilterBar(); });
     el.querySelectorAll(".det-days-chip").forEach(function (chip) {
       chip.addEventListener("click", function (e) { e.stopPropagation(); window.GeoState.save({ detRecencyDays: +this.getAttribute("data-days"), detDateRange: null }); refresh(); });
     });
@@ -9136,7 +9132,7 @@
       });
     });
     var modeTog = el.querySelector(".det-mode-tog");
-    if (modeTog) modeTog.addEventListener("click", function (e) { e.stopPropagation(); openDetPanel("mode"); renderDetListModal(); });
+    if (modeTog) modeTog.addEventListener("click", function (e) { e.stopPropagation(); openDetPanel("mode"); reRenderFilterBar(); });
     el.querySelectorAll(".det-mode-row").forEach(function (row) {
       row.addEventListener("click", function (e) {
         e.stopPropagation();
@@ -9146,7 +9142,7 @@
       });
     });
     var obsTog = el.querySelector(".det-obs-tog");
-    if (obsTog) obsTog.addEventListener("click", function (e) { e.stopPropagation(); openDetPanel("obs"); renderDetListModal(); });
+    if (obsTog) obsTog.addEventListener("click", function (e) { e.stopPropagation(); openDetPanel("obs"); reRenderFilterBar(); });
     el.querySelectorAll(".det-obs-cb").forEach(function (cb) {
       cb.addEventListener("change", function (e) {
         e.stopPropagation();
@@ -9154,7 +9150,7 @@
         var boxes = el.querySelectorAll(".det-obs-cb"), checked = [], allOn = true;
         Array.prototype.forEach.call(boxes, function (b) { if (b.checked) checked.push(b.getAttribute("data-obs")); else allOn = false; });
         setDetObsFilter(allOn ? null : new Set(checked)); refresh();
-        var lst1 = document.querySelector("#detlist-filters-wrap .det-obs-list"); if (lst1) lst1.scrollTop = st;   // el was replaced by refresh()
+        var lst1 = document.querySelector("#detlist-filters-wrap .det-obs-list") || document.querySelector("#sp-filters-wrap .det-obs-list"); if (lst1) lst1.scrollTop = st;   // el was replaced by refresh()
       });
     });
     var canHoverObs = !window.matchMedia || window.matchMedia("(hover: hover)").matches;
@@ -9166,11 +9162,11 @@
       }
     });
     var obsCycle = el.querySelector(".det-obs-cycle");
-    if (obsCycle) obsCycle.addEventListener("click", function (e) { e.stopPropagation(); cycleObsFilter(); renderDetListModal(); });
+    if (obsCycle) obsCycle.addEventListener("click", function (e) { e.stopPropagation(); cycleObsFilter(); reRenderFilterBar(); });
     var edLists = el.querySelector(".det-obs-editlists");
     if (edLists) edLists.addEventListener("click", function (e) { e.stopPropagation(); openObserverEditor(); });
     var clrSel = el.querySelector(".det-clear-sel");
-    if (clrSel) clrSel.addEventListener("click", function (e) { e.stopPropagation(); clearAllFilters(); renderDetListModal(); });
+    if (clrSel) clrSel.addEventListener("click", function (e) { e.stopPropagation(); clearAllFilters(); });
   }
 
   // ---- Map points (user-added pins + named lists) ---------------------------
@@ -11906,6 +11902,8 @@
       renderFieldChecklist(ll.lat, ll.lng);
     });
     document.getElementById("sp-pdf-btn").addEventListener("click", exportSpeciesPdf);
+    var spLayoutSel = document.getElementById("sp-layout");
+    if (spLayoutSel) spLayoutSel.addEventListener("change", function () { spLayout = this.value; renderSpControls(); });
     var vtBtn = document.getElementById("viewtoggle-btn");
     if (vtBtn) vtBtn.addEventListener("click", function () { if (onListView()) goToMapView(); else showListView(); });
 
@@ -15502,6 +15500,55 @@
     collapseHistRange(from, to);   // fetch started → tuck the date picker away
     await renderSpeciesList(lat, lon, { from: from, to: to, range: from + "," + to, months: histMonths.slice() });
   }
+  // ---- Fetch-list controls (filter bar + layout) ---------------------------
+  function speciesPanelPopulated() {
+    var sp = document.getElementById("species-panel");
+    return !!(sp && (currentMode === "list" || currentMode === "historic") &&
+      currentSpView && isFinite(+currentSpView.lat) && isFinite(+currentSpView.lon));
+  }
+  function renderSpLayoutSelect() {
+    var sel = document.getElementById("sp-layout"); if (!sel) return;
+    sel.innerHTML = SP_LAYOUTS.map(function (o) {
+      return '<option value="' + o[0] + '"' + (spLayout === o[0] ? " selected" : "") + ">" + escapeHtml(t(o[1])) + "</option>";
+    }).join("");
+  }
+  function renderSpFilterBar() {
+    var bar = document.getElementById("sp-filters-bar"); if (bar) bar.innerHTML = detFilterTogglesHtml();
+    var fw = document.getElementById("sp-filters-wrap"); if (fw) fw.innerHTML = detFilterPanelsHtml();
+    wireDetFilters(document.getElementById("species-panel"));
+  }
+  // The fetch-list body: the model-prediction table, or a detailed record layout
+  // (the same renderer the popup uses), scoped to all plotted observations.
+  function renderSpBody() {
+    var tbl = document.getElementById("species-list-table"), rec = document.getElementById("sp-records");
+    if (!tbl || !rec) return;
+    if (spLayout === "table") {
+      rec.style.display = "none"; tbl.style.display = "";
+      applyAgeFilter();
+      if (speciesListSort.col) sortSpeciesList();
+    } else {
+      tbl.style.display = "none"; rec.style.display = "";
+      var rows = collectVisibleDetections(null, true);
+      rec.innerHTML = rows.length ? buildRecordListHtml(rows, spRecordLayout(), detListOpenSp)
+        : '<div class="dl-empty">' + escapeHtml(t("detlist.empty")) + "</div>";
+      wireRecordList(rec, renderSpBody);
+    }
+  }
+  function renderSpControls() {
+    var ctrls = document.getElementById("sp-controls");
+    if (!speciesPanelPopulated()) { if (ctrls) ctrls.style.display = "none"; return; }
+    if (ctrls) ctrls.style.display = "";
+    renderSpLayoutSelect();
+    // The observation filter bar (day/date · mode · observer) applies to the detailed
+    // record layouts; the prediction table keeps its own flag columns + age cycle.
+    if (spLayout === "table") {
+      var bar = document.getElementById("sp-filters-bar"); if (bar) bar.innerHTML = "";
+      var fw = document.getElementById("sp-filters-wrap"); if (fw) fw.innerHTML = "";
+    } else {
+      renderSpFilterBar();
+    }
+    renderSpBody();
+  }
   async function renderSpeciesList(lat, lon, hist) {
     // `hist` (optional) = { from, to, range }: Historic-observations mode. The
     // model inference (Probability + stat columns) is identical — only the n(d)
@@ -15627,6 +15674,7 @@
       }
       document.getElementById("barchart-panel").style.display = "none";
       updateViewToggle();   // a fresh list → the header List⇄Map switch applies now
+      renderSpControls();   // filter bar + layout dropdown + (records view if not the table)
       setStatus(t("status.spResult", { n: results.length, p: (pmin * 100).toFixed(0), lat: lat.toFixed(2), lon: lon.toFixed(2) }));
 
       // Build CSV for species list (includes 2nd-name + comparison columns when active)
