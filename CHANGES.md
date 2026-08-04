@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-04 — Hover tooltips on the record list's active elements (sw v843)
+
+- Explanatory `title` tooltips on the detailed record list: the record row (`detlist.rowHint` — "Species
+  info & actions"), plus the existing date-header (filter by date), source (filter by source), observer
+  (add to list), and species-group (expand) hints. Completes the hover-explanation pass for the
+  fetch-list/popup record views.
+
 ## 2026-08-04 — Slim the popup to per-location; remove whole-map ☰; 2nd-name sortable (sw v842)
 
 - **Detections popup is now per-location only**: removed its filter toggle bar, the species search box and

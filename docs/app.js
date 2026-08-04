@@ -7139,7 +7139,7 @@
     // An always-visible 🎯 that focuses the map on this record (a span, not a
     // nested button — the row itself is the button that opens the full menu).
     var focusBtn = hasLoc ? '<span class="dl-focus" role="button" title="' + escapeHtml(t("detmenu.focusMap")) + '" aria-label="' + escapeHtml(t("detmenu.focusMap")) + '" data-lat="' + d.lat + '" data-lon="' + d.lon + '">' + ico("target") + "</span>" : "";
-    return '<button type="button" class="dl-row dl-row-menu"' + attrs + ">" + inner + focusBtn +
+    return '<button type="button" class="dl-row dl-row-menu" title="' + escapeHtml(t("detlist.rowHint")) + '"' + attrs + ">" + inner + focusBtn +
       '<span class="dl-go">' + (d.url ? "↗" : "⋯") + "</span></button>";
   }
   // Add a map point to a named point-list (creating the list if needed). When the
