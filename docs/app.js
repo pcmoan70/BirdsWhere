@@ -5733,6 +5733,10 @@
     });
 
     setupAreaOverlays();   // protected/priority-area overlay toggles (off by default)
+    // Leaflet stacks top-right controls in add order; the overlay-toggles control was
+    // just added ABOVE the clear-× (added earlier). Re-append the × so it sits BELOW
+    // both the download and overlay-toggle icons, not between them.
+    if (clearPtsCtrlEl && clearPtsCtrlEl.parentNode) clearPtsCtrlEl.parentNode.appendChild(clearPtsCtrlEl);
     loadDetections();      // restore any "Show in map" detection points
     restoreFetchedAreas(); // ...and their fetched-area outlines (per-area red × needs them)
     loadMapPoints();       // user-added pins + saved named lists (from localStorage)

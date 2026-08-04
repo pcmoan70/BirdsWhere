@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-08-04 — Clear-× sits below the other right-side map icons (sw v838)
+
+- The red clear-× is now re-appended below the download + overlay-toggle controls (it was added before
+  the overlay-toggles control, so Leaflet stacked it between them); it now sits at the bottom of the
+  top-right column.
+
 ## 2026-08-04 — Red × on the right of the map clears all plotted points (sw v837)
 
 - **New `ClearPointsControl`** (Leaflet control, `position: "topright"`): a red × shown only while
