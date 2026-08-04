@@ -1244,6 +1244,51 @@
     }).join("");
     return '<table class="sp-detail-tbl"><tbody>' + body + "</tbody></table>";
   }
+  // "Per observation": the same columns table, but records stay grouped per
+  // date × observer × location (the triple). Each group's rows show species · 2nd
+  // name · probability · distance (date/observer/location live in the group header,
+  // where date + observer are clickable to filter).
+  function spGroupTableHtml(items) {
+    var oLat = currentSpView ? +currentSpView.lat : NaN, oLon = currentSpView ? +currentSpView.lon : NaN;
+    var haveO = isFinite(oLat) && isFinite(oLon), name2On = !!secondLang;
+    var body = items.slice().sort(function (a, b) {
+      var pa = (a.prob >= 0) ? a.prob : Infinity, pb = (b.prob >= 0) ? b.prob : Infinity;
+      return (pa - pb) || String(a.name).localeCompare(String(b.name));
+    }).map(function (d) {
+      var km = (haveO && isFinite(+d.lat) && isFinite(+d.lon)) ? escapeHtml(nearbyFmtDist(haversineKm(oLat, oLon, +d.lat, +d.lon))) : "";
+      var pct = (d.prob >= 0) ? Math.round(d.prob * 100) + "%" : "—";
+      return '<tr class="sp-d-row" data-lat="' + (d.lat == null ? "" : d.lat) + '" data-lon="' + (d.lon == null ? "" : d.lon) + '">' +
+        '<td class="sp-d-name">' + escapeHtml(detListName(d.key, d.name)) + "</td>" +
+        (name2On ? '<td class="name2">' + escapeHtml(detName2(d.key) || "") + "</td>" : "") +
+        '<td class="num">' + pct + "</td>" +
+        '<td class="num">' + km + "</td></tr>";
+    }).join("");
+    return '<table class="sp-detail-tbl"><tbody>' + body + "</tbody></table>";
+  }
+  function buildSpObsHtml(rows) {
+    var byDate = {}, dates = [];
+    rows.forEach(function (d) { var k = d.date || ""; if (!byDate[k]) { byDate[k] = []; dates.push(k); } byDate[k].push(d); });
+    dates.sort(function (a, b) { return b.localeCompare(a); });
+    return dates.map(function (dt) {
+      var byG = {}, gkeys = [];
+      byDate[dt].forEach(function (d) {
+        var obsv = (d.src === "BirdWeather" ? "" : (d.observer || "")).trim(), loc = (d.place || "").trim();
+        var key = obsv + "␟" + loc;
+        if (!(key in byG)) { byG[key] = { obs: obsv, loc: loc, items: [] }; gkeys.push(key); }
+        byG[key].items.push(d);
+      });
+      gkeys.sort(function (a, b) { var A = byG[a], B = byG[b]; if (!A.obs !== !B.obs) return A.obs ? -1 : 1; return (A.obs || "").localeCompare(B.obs || "") || (A.loc || "").localeCompare(B.loc || ""); });
+      var dateLbl = escapeHtml(fmtDate(dt) || t("detlist.noDate"));
+      var datePart = dt ? '<span class="dl-date-click" role="button" data-date="' + escapeHtml(dt) + '" title="' + escapeHtml(t("detlist.dateFilterHint")) + '">' + dateLbl + "</span>" : dateLbl;
+      return gkeys.map(function (key) {
+        var g = byG[key];
+        var obsSpan = g.obs ? ' · <span class="sp-obs-filter" role="button" data-obs="' + escapeHtml(g.obs) + '" title="' + escapeHtml(t("obs.filterHint")) + '">' + escapeHtml(g.obs) + "</span>" : "";
+        var locSpan = g.loc ? ' <span class="dl-loc">· ' + escapeHtml(g.loc) + "</span>" : "";
+        return '<div class="sp-obs-group"><div class="sp-obs-head">' + datePart + obsSpan + locSpan + '<span class="dl-ct">' + g.items.length + "</span></div>" +
+          spGroupTableHtml(g.items) + "</div>";
+      }).join("");
+    }).join("");
+  }
   function wireSpDetail(container) {
     Array.prototype.forEach.call(container.querySelectorAll(".dl-date-click"), function (s) {
       s.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); showDateFilterMenu(this.getAttribute("data-date"), e.clientX, e.clientY); });
@@ -2272,6 +2317,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v849", date: "2026-08-04", text: "The list filters now also filter the map: the ★/◉/🟠/🟡 flag columns and the n(d) day filter narrow the plotted dots too (n(d) ≤1d = today/yesterday only; year-list/life-list/rarity show only those). The list⇄map view only changes when you tap the toggle now. And “Per observation” uses the same columns table, grouped by date × observer × location." },
     { v: "v848", date: "2026-08-04", text: "Expanding a species row now lays its individual records out as a columns table matching the list: species name, 2nd name, probability at that location, date, distance and observer. The date and the observer are clickable to filter (Only / All), and tapping a record row jumps the map to it." },
     { v: "v847", date: "2026-08-04", text: "The species list now respects the active observation filters throughout: each species' n(d) count and last-seen date reflect only the records that pass the current date / source / observer filters, and a species whose records are all filtered out drops out of the list entirely — so an expanded row is never empty." },
     { v: "v846", date: "2026-08-04", text: "Species rows in the list are now expandable: species with observations show a ▸ caret — tap it to open a sub-list of that species' individual records (observer, source, count, date, each clickable), sorted to match your active column sort (e.g. by distance or last-seen date)." },
@@ -8280,8 +8326,10 @@
       var bounds = L.latLngBounds([]);
       entries.forEach(function (e) { (e.rows || []).forEach(function (r) { if (r && isFinite(+r.lat) && isFinite(+r.lon)) bounds.extend([+r.lat, +r.lon]); }); });
       if (bounds.isValid() && !autoOpenPlotting && !plotNoFit) { try { map.fitBounds(bounds.pad(0.2)); } catch (e3) {} }
-      // Surface the map so the user sees the plotted points.
-      if (!autoOpenPlotting) { document.getElementById("species-panel").style.display = "none"; updateViewToggle(); }
+      // Don't auto-switch the list⇄map view here — that only changes when the user taps
+      // the header toggle. (The map-first flow already hid the list; re-plots on filter
+      // changes must NOT yank the user off the list.) Just refresh the toggle icon.
+      if (!autoOpenPlotting) updateViewToggle();
       if (map) map.invalidateSize();
       // Per-source breakdown (raw records each source returned) so it's clear
       // which databases actually contributed — e.g. whether eBird downloaded.
@@ -12057,6 +12105,10 @@
       var seq = [0, -1, 1, 3, 7, 14, 21, 28];   // off → >0 → ≤1d → … → ≤4w → off
       speciesAgeFilterDays = seq[(seq.indexOf(speciesAgeFilterDays) + 1) % seq.length];
       this.textContent = ageHeadLabel();
+      // Drive the GLOBAL recency window so the MAP dots + legend narrow to the same
+      // days (≤1d = today/yesterday, etc.). ">0"/off → no day window (0 = all).
+      window.GeoState.save({ detRecencyDays: speciesAgeFilterDays > 0 ? speciesAgeFilterDays : 0, detDateRange: null });
+      saveLegendState(); rebuildDetLayers(); updateDetLegend();
       applyAgeFilter();
     });
 
@@ -12070,8 +12122,16 @@
       var th = document.getElementById("sp-f-" + f); if (!th) return;
       var toggle = function () {
         spFilters[f] = !spFilters[f];
+        // Mirror ★ / ◉ / 🟠 / 🟡 to the GLOBAL detection filters so the MAP dots + legend
+        // + record views also narrow to those species (🚫 hidden stays list-only).
+        if (f === "star") detStarFilter = spFilters.star;
+        else if (f === "rare") detRareFilter = spFilters.rare;
+        else if (f === "year") detYearFilter = spFilters.year;
+        else if (f === "life") detLifeFilter = spFilters.life;
+        if (f !== "hidden") saveLegendState();
         syncFlagsHead();
         keepListScroll = true;      // a filter toggle should not jump the list to the top
+        if (f !== "hidden") { rebuildDetLayers(); updateDetLegend(); }   // map + legend follow the filter
         // ◉ is a row-hiding pass over the already-rendered rows, so it applies
         // without a re-render; the others change which rows exist.
         if (f === "rare") applyAgeFilter(); else refreshCurrentView();
@@ -15645,9 +15705,9 @@
     } else {
       tbl.style.display = "none"; rec.style.display = "";
       var rows = collectVisibleDetections(null, true);
-      rec.innerHTML = rows.length ? buildRecordListHtml(rows, spRecordLayout(), detListOpenSp)
+      rec.innerHTML = rows.length ? buildSpObsHtml(rows)
         : '<div class="dl-empty">' + escapeHtml(t("detlist.empty")) + "</div>";
-      wireRecordList(rec, renderSpBody);
+      wireSpDetail(rec);
     }
   }
   function renderSpControls() {
@@ -15673,6 +15733,9 @@
     var keepScroll = keepListScroll; keepListScroll = false;   // consume one-shot flag
     var myGen = ++spListGen;   // supersede any older in-flight render (see spListGen)
     spMapFetch = false;   // reset; set true below only for the map-first point flow
+    // Keep the list's ★/◉/🟠/🟡 flag filters in step with the global detection filters
+    // (so a fresh fetch's list narrows the same way the map does).
+    spFilters.star = detStarFilter; spFilters.rare = detRareFilter; spFilters.year = detYearFilter; spFilters.life = detLifeFilter;
     currentSpView = hist
       ? { mode: "historic", lat: lat, lon: lon, from: hist.from, to: hist.to, range: hist.range, months: hist.months || [] }
       : { mode: "point", lat: lat, lon: lon };

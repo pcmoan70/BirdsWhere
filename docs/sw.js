@@ -21,16 +21,16 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v848";
+var VERSION = "v849";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• The list's ★/◉/🟠/🟡 flag filters and the n(d) day filter now also filter the MAP: e.g. n(d) ≤1d shows only today/yesterday's dots, and the year-list / life-list / rarity filters show only those species on the map too. The list⇄map view now only switches when you tap the toggle — a fetch or filter no longer flips it.",
+  "• “Per observation” now uses the same columns table, with records grouped by date × observer × location.",
   "• Expanding a species row now shows its records as a tidy columns table — species, 2nd name, probability at that spot, date, distance and observer — with the date and observer clickable to filter, and each row tapping through to the map.",
   "• The species list now fully respects the active filters (date / source / observer): a species' count reflects only the matching records, and a species with nothing left after filtering drops out of the list — so an expanded row is never empty.",
-  "• In the Species-list table, species that have observations now show a ▸ caret — tap it to expand the row into that species' individual records (observer · source · count · date), sorted to match the column you're sorting by.",
-  "• The fetched species list now has just two layouts: the sortable Species-list table (now with a “Last” seen-date column) and “Per observation” (records grouped by date → observer → location). The old By-species/count/rarity/distance layouts are folded into the table's sortable columns.",
-  "• The pop-up detections list (from tapping a dot) is now a focused one-place view — filtering has moved to the fetched species list, which is the hub for filters + layouts. The 2nd-name column there is now sortable too.",
+  "• The fetched species list has two layouts — the sortable Species-list table (with a “Last” seen column) and “Per observation” — and is the hub for filters + layout. The pop-up detections list (tapping a dot) is a focused one-place view.",
   "• Filter observations by source, date or observer straight from the list — tap the value for Only / All."
 ].join("\n");
 var SHELL_CACHE = "shell-" + VERSION;   // app code + small assets

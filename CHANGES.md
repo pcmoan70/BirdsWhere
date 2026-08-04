@@ -1,5 +1,19 @@
 # Changes
 
+## 2026-08-04 — List filters drive the map; no auto view-switch; Per-obs tabular (sw v849)
+
+- **Flag columns → global filters**: toggling ★/◉/🟠/🟡 now mirrors to `detStarFilter`/`detRareFilter`/
+  `detYearFilter`/`detLifeFilter` (+ `rebuildDetLayers`/`updateDetLegend`), so the MAP dots + legend +
+  record views narrow to those species too (🚫 hidden stays list-only). `renderSpeciesList` syncs the flag
+  state from the global filters on each fetch.
+- **n(d) day filter → global recency**: the n(d) header cycle now sets `detRecencyDays` (+ clears the date
+  range) so the map narrows to the same window (≤1d = today/yesterday, …).
+- **No auto view-switch**: `plotSightingsResult` no longer hides the species panel — the list⇄map view only
+  changes when the user taps the header toggle (a re-plot on filter change won't yank you off the list).
+- **"Per observation" tabular**: new `buildSpObsHtml` + `spGroupTableHtml` — records grouped by
+  date × observer × location, each group a columns table (species · 2nd name · prob · distance); the group
+  header's date + observer are clickable to filter.
+
 ## 2026-08-04 — Expanded species records as a columns table (sw v848)
 
 - The expand sub-list is now a **columns table** (`spDetailTableHtml` + `wireSpDetail`, replacing the
