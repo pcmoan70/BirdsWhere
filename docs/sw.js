@@ -21,11 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v862";
+var VERSION = "v863";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• The expanded / Per-observation record tables now have a Source column (e.g. Observation.org[GBIF]) — sortable, and tap a source to filter to / hide it.",
   "• “Show on map” (from an observation's menu / records) now drops the map pointer on that location and reveals the map — closing the list or records view so you land right on the spot.",
   "• New Season column in the Species-list table: for each species it shows where you are in its year here — arriving ↑, at peak ●, leaving ↓ or off-season · — as a coloured bar (now vs its yearly peak). Sortable, so you can put the species that are peaking right now on top.",
   "• Faster re-queries: the model's predictions for a location are now kept in memory (per map cell, all weeks), so re-sorting, switching layout and the Season column reuse them instead of recomputing.",

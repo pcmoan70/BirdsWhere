@@ -1274,6 +1274,7 @@
     if (col === "dist") return sgn * (spRecDistKm(a) - spRecDistKm(b));
     if (col === "obs") return sgn * String(a.observer || "").localeCompare(String(b.observer || ""));
     if (col === "loc") return sgn * String(a.place || "").localeCompare(String(b.place || ""));
+    if (col === "src") return sgn * srcLabel(a).localeCompare(srcLabel(b));
     var pa2 = a.prob >= 0 ? a.prob : Infinity, pb2 = b.prob >= 0 ? b.prob : Infinity;   // default: rarest first
     return (pa2 - pb2) || String(a.name || "").localeCompare(String(b.name || ""));
   }
@@ -1313,6 +1314,7 @@
       (opts.loc ? '<td class="sp-d-loc">' + (d.place ? '<span class="sp-loc-click" role="button" title="' + escapeHtml(t("locmenu.hint")) + '">' + escapeHtml(d.place) + "</span>" : "") + "</td>" : "") +
       '<td class="num">' + km + "</td>" +
       '<td class="num">' + cnt + "</td>" +
+      (opts.src ? '<td class="sp-d-src">' + srcClickHtml(srcLabel(d)) + "</td>" : "") +
       (opts.obs ? '<td class="sp-d-obs">' + obsCell + "</td>" : "") + "</tr>";
   }
   // The expanded sub-list for one species: full columns, sorted by spObsSort.
@@ -1323,18 +1325,18 @@
       spObsHeadCell("prob", t("th.prob"), true) + spObsHeadCell("date", t("th.date")) +
       spObsHeadCell("loc", t("th.location")) +
       spObsHeadCell("dist", t("th.dist"), true) + spObsHeadCell("count", t("th.count"), true) +
-      spObsHeadCell("obs", t("th.obs")) + "</tr></thead>";
-    var body = rows.slice().sort(spObsCmp).map(function (d) { return spRecRowHtml(d, { name: false, date: true, loc: true, obs: true }); }).join("");
+      spObsHeadCell("src", t("th.source")) + spObsHeadCell("obs", t("th.obs")) + "</tr></thead>";
+    var body = rows.slice().sort(spObsCmp).map(function (d) { return spRecRowHtml(d, { name: false, date: true, loc: true, src: true, obs: true }); }).join("");
     return '<table class="sp-detail-tbl">' + hdr + "<tbody>" + body + "</tbody></table>";
   }
   // "Per observation": ONE columns table with the records grouped by date × observer ×
   // location (a spanning group-separator row per triple); columns sort WITHIN each group.
   function buildSpObsHtml(rows) {
-    var name2On = !!secondLang, ncols = 3 + (name2On ? 1 : 0) + 1;   // name [name2] prob dist count
+    var name2On = !!secondLang, ncols = 4 + (name2On ? 1 : 0) + 1;   // name [name2] prob dist count src
     var hdr = "<thead><tr>" + spObsHeadCell("name", t("th.species")) +
       (name2On ? spObsHeadCell("name2", window.GeoI18N.langByCode(secondLang).name) : "") +
       spObsHeadCell("prob", t("th.prob"), true) + spObsHeadCell("dist", t("th.dist"), true) +
-      spObsHeadCell("count", t("th.count"), true) + "</tr></thead>";
+      spObsHeadCell("count", t("th.count"), true) + spObsHeadCell("src", t("th.source")) + "</tr></thead>";
     var byDate = {}, dates = [];
     rows.forEach(function (d) { var k = d.date || ""; if (!byDate[k]) { byDate[k] = []; dates.push(k); } byDate[k].push(d); });
     dates.sort(function (a, b) { return b.localeCompare(a); });
@@ -1354,7 +1356,7 @@
         var obsSpan = g.obs ? ' · <span class="sp-obs-filter" role="button" data-obs="' + escapeHtml(g.obs) + '" title="' + escapeHtml(t("obs.filterHint")) + '">' + escapeHtml(g.obs) + "</span>" : "";
         var locSpan = g.loc ? ' <span class="dl-loc">· ' + escapeHtml(g.loc) + "</span>" : "";
         var headRow = '<tr class="sp-obs-grp"><td colspan="' + ncols + '">' + datePart + obsSpan + locSpan + '<span class="dl-ct">' + g.items.length + "</span></td></tr>";
-        return headRow + g.items.slice().sort(spObsCmp).map(function (d) { return spRecRowHtml(d, { name2: name2On, date: false, obs: false }); }).join("");
+        return headRow + g.items.slice().sort(spObsCmp).map(function (d) { return spRecRowHtml(d, { name2: name2On, date: false, src: true, obs: false }); }).join("");
       }).join("");
     }).join("");
     return '<table class="sp-detail-tbl sp-obs-tbl">' + hdr + "<tbody>" + body + "</tbody></table>";
@@ -1377,6 +1379,9 @@
     Array.prototype.forEach.call(container.querySelectorAll(".sp-obs-filter"), function (s) {
       s.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); observerClickMenu(this.getAttribute("data-obs"), this); });
     });
+    Array.prototype.forEach.call(container.querySelectorAll(".dl-src-click"), function (s) {
+      s.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); showSrcFilterMenu(this.getAttribute("data-src"), e.clientX, e.clientY); });
+    });
     Array.prototype.forEach.call(container.querySelectorAll(".sp-loc-click"), function (s) {
       s.addEventListener("click", function (e) {
         e.preventDefault(); e.stopPropagation();
@@ -1391,7 +1396,7 @@
         // A click on the species name (or another active cell) is handled by that
         // element — the name opens the species menu and STAYS in the list; only a
         // map action inside the menu jumps to the map. Don't also fire the row jump.
-        if (e.target.closest && e.target.closest(".sp-link, .dl-date-click, .sp-obs-filter, .sp-loc-click")) return;
+        if (e.target.closest && e.target.closest(".sp-link, .dl-date-click, .sp-obs-filter, .sp-loc-click, .dl-src-click")) return;
         var la = parseFloat(this.getAttribute("data-lat")), lo = parseFloat(this.getAttribute("data-lon"));
         if (isPerObs) {
           // Per observation: a background click (not on the name) shows the point on

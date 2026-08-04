@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-04 — Source column in the record tables (sortable + filterable) (sw v863)
+
+- The expanded per-species records and the "Per observation" table now have a **Source** column
+  (`srcLabel(d)`, e.g. `Observation.org[GBIF]`): a new `src` option in `spRecRowHtml`, a `spObsHeadCell("src")`
+  header in both tables (`spDetailTableHtml` / `buildSpObsHtml`, ncols +1), and a `src` case in `spObsCmp`
+  for sorting. Each source is a clickable `.dl-src-click` chip → `showSrcFilterMenu` (only / hide / all),
+  wired in `wireSpDetail` and added to the row-click guard. Reuses the existing `th.source` string.
+
 ## 2026-08-04 — GBIF records show their originating platform + [GBIF] (sw v862)
 
 - `srcLabel(r)` now renders a GBIF record's source as `<platform>[GBIF]` (e.g. `Observation.org[GBIF]`)
