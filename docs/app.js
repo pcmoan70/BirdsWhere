@@ -4471,9 +4471,8 @@
       var html = rows.map(function (r) {
         var place = r.place || "(map)";
         var cell = r.url ? '<a href="' + escapeHtml(safeHref(r.url)) + '" target="_blank" rel="noopener">' + escapeHtml(place) + "</a>" : escapeHtml(place);
-        // GBIF aggregates many datasets — badge such rows by their origin dataset.
-        var label = (r.src === "GBIF" && r.origin) ? shortOrigin(r.origin) : r.src;
-        var badge = '<span class="rc-src rc-src-' + srcSlug(r.src) + '" title="' + escapeHtml(r.origin || r.src) + '">' + escapeHtml(label || "") + "</span>";
+        // GBIF aggregates many datasets — badge such rows by their origin platform + [GBIF].
+        var badge = '<span class="rc-src rc-src-' + srcSlug(r.src) + '" title="' + escapeHtml(r.origin || r.src) + '">' + escapeHtml(srcLabel(r) || "") + "</span>";
         var clsBadge = r.cls ? '<span class="rc-cls" title="' + escapeHtml(r.cls) + '">' + classGlyph(r.cls) + "</span> " : "";
         return '<tr><td class="rc-date">' + escapeHtml(fmtDate(r.date)) + '</td><td class="rc-srccell">' + badge + '</td><td class="rc-place">' + clsBadge + cell + '</td><td class="rc-who">' + escapeHtml(r.who) + "</td></tr>";
       }).join("");
@@ -7152,7 +7151,15 @@
   }
   // Source label for a row: the GBIF origin dataset (shortened) when present,
   // else the raw source tag (eBird / iNaturalist / Checklist …).
-  function srcLabel(r) { return (r.src === "GBIF" && r.origin) ? shortOrigin(r.origin) : (r.src || ""); }
+  // GBIF aggregates records from other platforms; show the originating platform with a
+  // "[GBIF]" tag so it's clear it came via GBIF — e.g. "Observation.org[GBIF]".
+  function srcLabel(r) {
+    if (r.src === "GBIF") {
+      var o = r.origin ? shortOrigin(r.origin) : "";
+      return (o && o !== "GBIF") ? o + "[GBIF]" : "GBIF";
+    }
+    return r.src || "";
+  }
   // Whether the user can actually query a source — used to flag records in a shared
   // map that came from a source the recipient has no access to (a keyed source with
   // no key set). Open sources (GBIF / iNaturalist / Observation.org …) are always
@@ -10457,8 +10464,8 @@
         var pop = "<b>" + escapeHtml(nm) + "</b>" +
           (meta.length ? "<div class='area-tip-sub'>" + escapeHtml(meta.join(" · ")) + "</div>" : "") +
           (r.src ? "<div class='dset-src'>" + (r.url
-            ? '<a href="' + escapeHtml(safeHref(r.url)) + '" target="_blank" rel="noopener">' + escapeHtml(r.src) + " ↗</a>"
-            : escapeHtml(r.src)) + "</div>" : "");
+            ? '<a href="' + escapeHtml(safeHref(r.url)) + '" target="_blank" rel="noopener">' + escapeHtml(srcLabel(r)) + " ↗</a>"
+            : escapeHtml(srcLabel(r))) + "</div>" : "");
         // A larger, near-invisible hit circle so a 5 px trip dot is easy to TAP.
         var hit = L.circleMarker([r.lat, r.lon], { radius: 12, stroke: false, fillColor: "#000", fillOpacity: 0.01, renderer: detRenderer() });
         hit.bindTooltip(escapeHtml(nm), { direction: "top", className: "det-hover-tip" });

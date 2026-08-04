@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-04 — GBIF records show their originating platform + [GBIF] (sw v862)
+
+- `srcLabel(r)` now renders a GBIF record's source as `<platform>[GBIF]` (e.g. `Observation.org[GBIF]`)
+  using the origin dataset → platform map (`shortOrigin`), instead of just the platform name. Falls back
+  to plain `GBIF` when the origin is unknown / is GBIF itself. Applied everywhere `srcLabel` is used
+  (record rows, source-filter chips) plus the recent-sightings badge and the map-point popup.
+
 ## 2026-08-04 — Points panel: shorter "Load" label + dots icon on Save points (sw v861)
 
 - The Points panel's "Import shared file" button now shows the short label **Load** (reusing the existing
