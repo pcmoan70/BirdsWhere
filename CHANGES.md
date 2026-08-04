@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-08-04 — Expanded species records as a columns table (sw v848)
+
+- The expand sub-list is now a **columns table** (`spDetailTableHtml` + `wireSpDetail`, replacing the
+  freeform `detRowHtml` rows): **species name · 2nd name · probability (per-record `_prob` at that
+  location) · date · distance · observer**. Date (`.dl-date-click`) and observer (`.sp-obs-filter`) are
+  clickable to filter; tapping a record row jumps the map to it.
+- New `showObsFilterMenu` (Only this observer / All observers → `setDetObsFilter`); i18n `obs.only` /
+  `obs.all` / `obs.filterHint` (15 langs). CSS `.sp-detail-tbl`.
+
 ## 2026-08-04 — Species table respects the observation filters (no empty expands) (sw v847)
 
 - `applyAgeFilter` now applies the **global observation filters** (`detDatePasses` / `detObsPasses` /

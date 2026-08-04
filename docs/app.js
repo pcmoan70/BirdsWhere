@@ -1215,10 +1215,49 @@
       if (!recs.length) return;
       var tr = document.createElement("tr"); tr.className = "sp-detail-row";
       var td = document.createElement("td"); td.colSpan = row.children.length; td.className = "sp-detail-cell";
-      td.innerHTML = recs.map(function (d) { return detRowHtml(d, true); }).join("");
+      td.innerHTML = spDetailTableHtml(key, recs);
       tr.appendChild(td);
       row.parentNode.insertBefore(tr, row.nextSibling);
-      wireRecordList(td, function () {});
+      wireSpDetail(td);
+    });
+  }
+  // The expanded sub-list as a columns table matching the species list: species name ·
+  // 2nd name · probability (at the record's location) · date (click = filter) · distance
+  // · observer (click = filter).
+  function spDetailTableHtml(key, rows) {
+    var oLat = currentSpView ? +currentSpView.lat : NaN, oLon = currentSpView ? +currentSpView.lon : NaN;
+    var haveO = isFinite(oLat) && isFinite(oLon);
+    var name2On = !!secondLang, nm2 = name2On ? escapeHtml(detName2(key) || "") : "";
+    var body = rows.map(function (d) {
+      var km = (haveO && isFinite(+d.lat) && isFinite(+d.lon)) ? escapeHtml(nearbyFmtDist(haversineKm(oLat, oLon, +d.lat, +d.lon))) : "";
+      var pct = (d.prob >= 0) ? Math.round(d.prob * 100) + "%" : "—";
+      var dateCell = d.date ? '<span class="dl-date-click" role="button" data-date="' + escapeHtml(d.date) + '" title="' + escapeHtml(t("detlist.dateFilterHint")) + '">' + escapeHtml(fmtDate(d.date)) + "</span>" : "";
+      var obs = detObsRealNames(d.observer);
+      var obsCell = obs.map(function (n) { return '<span class="sp-obs-filter" role="button" data-obs="' + escapeHtml(n) + '" title="' + escapeHtml(t("obs.filterHint")) + '">' + escapeHtml(n) + "</span>"; }).join(", ");
+      return '<tr class="sp-d-row" data-lat="' + (d.lat == null ? "" : d.lat) + '" data-lon="' + (d.lon == null ? "" : d.lon) + '">' +
+        '<td class="sp-d-name">' + escapeHtml(detListName(key, d.name)) + "</td>" +
+        (name2On ? '<td class="name2">' + nm2 + "</td>" : "") +
+        '<td class="num">' + pct + "</td>" +
+        '<td class="sp-d-date">' + dateCell + "</td>" +
+        '<td class="num">' + km + "</td>" +
+        '<td class="sp-d-obs">' + obsCell + "</td></tr>";
+    }).join("");
+    return '<table class="sp-detail-tbl"><tbody>' + body + "</tbody></table>";
+  }
+  function wireSpDetail(container) {
+    Array.prototype.forEach.call(container.querySelectorAll(".dl-date-click"), function (s) {
+      s.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); showDateFilterMenu(this.getAttribute("data-date"), e.clientX, e.clientY); });
+    });
+    Array.prototype.forEach.call(container.querySelectorAll(".sp-obs-filter"), function (s) {
+      s.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); showObsFilterMenu(this.getAttribute("data-obs"), e.clientX, e.clientY); });
+    });
+    Array.prototype.forEach.call(container.querySelectorAll(".sp-d-row"), function (r) {
+      r.addEventListener("click", function () {
+        var la = parseFloat(this.getAttribute("data-lat")), lo = parseFloat(this.getAttribute("data-lon"));
+        if (!isFinite(la) || !isFinite(lo) || !map) return;
+        try { navClose("detlist"); } catch (e2) {}
+        mapClickGuardUntil = Date.now() + 250; map.setView([la, lo], Math.max(map.getZoom() || 0, 14));
+      });
     });
   }
   function toggleSpExpand(key) {
@@ -2233,6 +2272,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v848", date: "2026-08-04", text: "Expanding a species row now lays its individual records out as a columns table matching the list: species name, 2nd name, probability at that location, date, distance and observer. The date and the observer are clickable to filter (Only / All), and tapping a record row jumps the map to it." },
     { v: "v847", date: "2026-08-04", text: "The species list now respects the active observation filters throughout: each species' n(d) count and last-seen date reflect only the records that pass the current date / source / observer filters, and a species whose records are all filtered out drops out of the list entirely — so an expanded row is never empty." },
     { v: "v846", date: "2026-08-04", text: "Species rows in the list are now expandable: species with observations show a ▸ caret — tap it to open a sub-list of that species' individual records (observer, source, count, date, each clickable), sorted to match your active column sort (e.g. by distance or last-seen date)." },
     { v: "v845", date: "2026-08-04", text: "The fetched species list is consolidated into two layouts: the Species-list table (multi-column, sortable — now with a Last-seen-date column alongside probability, count and distance) and Per observation (detailed records grouped by date → observer → location). The separate By-species/count/rarity/distance layouts are folded into the table's sortable columns." },
@@ -7598,6 +7638,16 @@
       closeDetRowMenu(); setDetSrcFilter(new Set(present.filter(function (s) { return s !== label; })));
     }));
     if (detSrcFilter) el.appendChild(drmBtn(t("src.all"), function () { closeDetRowMenu(); setDetSrcFilter(null); }));
+    positionAnchoredMenu(el, x, y);
+  }
+  // Menu off a clicked observer name: only this observer · all · add to a list.
+  function showObsFilterMenu(name, x, y) {
+    if (!name) return;
+    var el = openAnchoredMenu("detrow-menu");
+    el.innerHTML = "";
+    var h = document.createElement("div"); h.className = "detrow-menu-hdr"; h.textContent = name; el.appendChild(h);
+    el.appendChild(drmBtn(t("obs.only", { name: name }), function () { closeDetRowMenu(); setDetObsFilter(new Set([name])); saveLegendState(); detFiltersRefresh(); }));
+    if (detObsFilter) el.appendChild(drmBtn(t("obs.all"), function () { closeDetRowMenu(); setDetObsFilter(null); saveLegendState(); detFiltersRefresh(); }));
     positionAnchoredMenu(el, x, y);
   }
   // Set the global date-range filter (clears the month-of-year filter so the chosen
