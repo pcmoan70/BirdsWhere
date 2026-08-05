@@ -115,7 +115,9 @@ probability. Options:
   mean, **% of annual max**, or **Annual Top**.
 - With live sources enabled, each row fills in a **recent-observation count** and a
   **"days since most recent"** age (*n(d)*), updating progressively as each source returns.
-  Click a count to open the merged **Recent detections** modal (CSV-downloadable, plottable).
+  Click a count to open the merged recent-observations modal (CSV-downloadable, plottable) — the
+  same panel as **"More of these"** in a species menu, which fetches recent sightings of that
+  species within **50 km** (eBird / GBIF / iNaturalist).
 - Species the model doesn't cover but that the sources reported are appended below the
   predicted rows, tagged with a class glyph.
 

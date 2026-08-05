@@ -4573,11 +4573,12 @@
     if (customRange) { var cr = String(customRange).split(","); d1 = cr[0]; d2 = cr[1] || fmtD(new Date()); }   // Historic mode passes its own range
     else { var to = new Date(), from = new Date(); from.setMonth(from.getMonth() - 3); d1 = fmtD(from); d2 = fmtD(to); }
     var range = d1 + "," + d2;
+    var rkm = 50;   // "More of these" searches a fixed 50 km radius around the point
 
     var inatWeb = "https://www.inaturalist.org/observations?taxon_name=" + encodeURIComponent(sci) +
-      "&lat=" + lat.toFixed(4) + "&lng=" + lon.toFixed(4) + "&radius=25&d1=" + d1 + "&d2=" + d2 + "&order_by=observed_on&order=desc";
+      "&lat=" + lat.toFixed(4) + "&lng=" + lon.toFixed(4) + "&radius=" + rkm + "&d1=" + d1 + "&d2=" + d2 + "&order_by=observed_on&order=desc";
     var gbifBase = "https://www.gbif.org/occurrence/search?q=" + encodeURIComponent(sci) +
-      "&geometry=" + encodeURIComponent(AppFetch.gbifGeometry(lat, lon, 12.5));
+      "&geometry=" + encodeURIComponent(AppFetch.gbifGeometry(lat, lon, rkm));
     var countryParam = "";
     var ebLink = (key && isBirdKey(key)) ? '<a href="' + escapeHtml(ebirdUrl(key, sci)) + '" target="_blank" rel="noopener">eBird</a> · ' : "";
     var links = function () {
@@ -4610,14 +4611,13 @@
         var clsBadge = r.cls ? '<span class="rc-cls" title="' + escapeHtml(r.cls) + '">' + classGlyph(r.cls) + "</span> " : "";
         return '<tr><td class="rc-date">' + escapeHtml(fmtDate(r.date)) + '</td><td class="rc-srccell">' + badge + '</td><td class="rc-place">' + clsBadge + cell + '</td><td class="rc-who">' + escapeHtml(r.who) + "</td></tr>";
       }).join("");
-      body.innerHTML = '<div class="recent-head"><span class="recent-src">' + escapeHtml(cap + " · " + fmtDate(d1) + " – " + fmtDate(d2) + " · " + radiusLabel()) + "</span>" +
+      body.innerHTML = '<div class="recent-head"><span class="recent-src">' + escapeHtml(cap + " · " + fmtDate(d1) + " – " + fmtDate(d2) + " · " + radiusLabel(rkm)) + "</span>" +
         '<span class="recent-head-btns"><button type="button" id="recent-map">' + escapeHtml(t("btn.showInMap")) + "</button>" +
         '<button type="button" id="recent-dl">' + escapeHtml(t("recent.download")) + "</button></span></div>" + warn +
         '<table class="recent-table"><tbody>' + html + "</tbody></table>" + links();
     }
 
     try {
-      var rkm = recentRadiusKm();
       // eBird's API only reaches 30 days back, so it can't honor a historic
       // range — skip it there (GBIF + iNaturalist cover the window) to avoid
       // injecting out-of-range recent records into a historic popup.
@@ -7949,12 +7949,14 @@
         el.appendChild(drmBtn(t("menu.apprange"), function () { closeDetRowMenu(); showSpeciesRange(key, d && d.date); }));
         el.appendChild(drmBtn(t("menu.appmig"), function () { closeDetRowMenu(); showSpeciesMigration(key, d && d.date); }));
       }
-      el.appendChild(drmBtn(t("menu.recent"), function () {
+      var moreBtn = drmBtn(t("menu.recent"), function () {
         closeDetRowMenu();
         var la = hasLoc ? +d.lat : (marker ? marker.getLatLng().lat : map.getCenter().lat);
         var lo = hasLoc ? +d.lon : (marker ? marker.getLatLng().lng : map.getCenter().lng);
         showRecent(name, sci, la, lo, key);
-      }));
+      });
+      moreBtn.title = t("menu.recentHint");   // hover description
+      el.appendChild(moreBtn);
       if (lbl) el.appendChild(drmBtn(t("menu.distmap"), function () { closeDetRowMenu(); showDistMap(name, sci, key); }));
       el.appendChild(drmBtn(t("menu.wiki"), function () { closeDetRowMenu(); openWikipedia(sci); }));
       if (isBird && experimentalOn()) el.appendChild(drmBtn(t("menu.birdlife"), function () { closeDetRowMenu(); openBirdLife((lbl && lbl.common) || name, sci); }));   // BirdLife DataZone → Experimental

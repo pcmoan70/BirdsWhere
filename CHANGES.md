@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-05 — "More of these" (was Recent detections): 50 km + hover hint (sw v909)
+
+- Renamed the `menu.recent` item from "Recent detections" to **"More of these"** (all 15 languages).
+- `showRecent` now searches a fixed **50 km** radius (was the global Sightings-radius setting): the
+  GBIF/iNaturalist/eBird fetch, the external links, and the radius label all use `rkm = 50`.
+- Added a hover description (`menu.recentHint`, 15 languages) on the menu item via `moreBtn.title`.
+
 ## 2026-08-05 — Observation menu: drop the emoji before the green icons (sw v908)
 
 - In the "this observation" menu, "Show on map" and "Add point to list…" showed a colour emoji
