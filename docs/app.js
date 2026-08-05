@@ -1286,7 +1286,7 @@
   // Refresh the sort-arrow indicator on the sortable column headers. Class-based
   // (▲/▼ via CSS ::after) so it doesn't disturb the headers' dynamic labels.
   function updateSortIndicators() {
-    var cols = { "sp-species-head": "name", "sp-name2-head": "name2", "sp-sci-head": "sci", "sp-nd-head": "count", "sp-last-head": "last", "sp-prob-head": "prob", "sp-dist-head": "dist", "sp-season-head": "season", "sp-delta-head": "cmp" };
+    var cols = { "sp-species-head": "name", "sp-name2-head": "name2", "sp-sci-head": "sci", "sp-nd-head": "total", "sp-last-head": "last", "sp-prob-head": "prob", "sp-dist-head": "dist", "sp-season-head": "season", "sp-delta-head": "cmp" };
     Object.keys(cols).forEach(function (id) {
       var el = document.getElementById(id); if (!el) return;
       var on = speciesListSort.col === cols[id];
@@ -1569,6 +1569,12 @@
         if (ka === -Infinity) return 1; if (kb === -Infinity) return -1;   // always last
         var ld = ka < kb ? -1 : ka > kb ? 1 : 0;
         return speciesListSort.dir === "asc" ? ld : -ld;
+      } else if (col === "total") {
+        // Total specimens shown in the Total cell (the de-duplicated, in-window count).
+        ka = parseInt(a.getAttribute("data-total"), 10) || 0; kb = parseInt(b.getAttribute("data-total"), 10) || 0;
+      } else if (col === "pairs") {
+        // Number of observations = distinct observer×date pairs (the "(n)" in the Total cell).
+        ka = parseInt(a.getAttribute("data-pairs"), 10) || 0; kb = parseInt(b.getAttribute("data-pairs"), 10) || 0;
       } else if (col === "recent") {
         // Most-recent observation first (desc). No detection → 0 sinks to the bottom.
         var ra = a.querySelector(".sp-link"), rb = b.querySelector(".sp-link");
@@ -1651,13 +1657,16 @@
         });
         tr.classList.toggle("sp-has-det", fc > 0);
         var ndBtn = tr.querySelector(".det-nd .det-count-btn"); if (ndBtn) ndBtn.textContent = fc;
-        setPairsSuffix(tr.querySelector(".det-nd"), fc > 0 ? distinctObsDatePairs(winRows) : 0);
+        var pairs = fc > 0 ? distinctObsDatePairs(winRows) : 0;
+        setPairsSuffix(tr.querySelector(".det-nd"), pairs);
+        tr.setAttribute("data-total", fc); tr.setAttribute("data-pairs", pairs);   // Total-panel sort keys
         var lastTd = tr.querySelector(".sp-last"); if (lastTd) lastCellSet(lastTd, flatest);
         if (flatest) tr.setAttribute("data-last", flatest); else tr.removeAttribute("data-last");
         obsFilteredOut = !!(entry.count) && fc === 0;
       } else if (extra) {
         fc = parseInt(tr.getAttribute("data-count"), 10) || 0;
         flatest = parseInt(tr.getAttribute("data-last"), 10) || 0;
+        tr.setAttribute("data-total", fc); tr.setAttribute("data-pairs", parseInt(tr.getAttribute("data-pairs"), 10) || 0);
         var lastTdE = tr.querySelector(".sp-last"); if (lastTdE) lastCellSet(lastTdE, flatest);
       }
       // Last-column recency filter (≤N days back). Unlimited (0) keeps everything.
@@ -16430,15 +16439,24 @@
   }
   // A Sort row (▲ asc / ▼ desc / ✕ off) shared by every header panel. `col` is the
   // sortSpeciesList column key for that header.
+  function spSortBtnHtml(col, dir, glyph, title) {
+    var on = speciesListSort.col === col && speciesListSort.dir === dir;
+    return '<button type="button" class="sp-sort-btn' + (on ? " on" : "") + '" data-col="' + col + '" data-dir="' + dir + '" title="' + escapeHtml(title) + '">' + glyph + "</button>";
+  }
+  function spSortOffHtml() {
+    return '<button type="button" class="sp-sort-btn' + (!speciesListSort.col ? " on" : "") + '" data-col="" data-dir="off" title="' + escapeHtml(t("sort.off")) + '">✕</button>';
+  }
   function spSortRowHtml(col) {
-    var on = speciesListSort.col === col;
-    var asc = on && speciesListSort.dir === "asc", desc = on && speciesListSort.dir === "desc";
-    function b(dir, glyph, title) {
-      var active = dir === "off" ? !on : (dir === "asc" ? asc : desc);
-      return '<button type="button" class="sp-sort-btn' + (active ? " on" : "") + '" data-col="' + col + '" data-dir="' + dir + '" title="' + escapeHtml(title) + '">' + glyph + "</button>";
+    return '<div class="sp-head-sort"><span class="sp-head-sort-lbl">' + escapeHtml(t("sort.label")) + "</span>" +
+      spSortBtnHtml(col, "asc", "▲", t("sort.asc")) + spSortBtnHtml(col, "desc", "▼", t("sort.desc")) + spSortOffHtml() + "</div>";
+  }
+  // Total panel: sort by total specimens OR by number of observations (the "(n)").
+  function spSortRowTotalHtml() {
+    function grp(col, label) {
+      return '<span class="sp-sort-grp">' + escapeHtml(label) + spSortBtnHtml(col, "asc", "▲", t("sort.asc")) + spSortBtnHtml(col, "desc", "▼", t("sort.desc")) + "</span>";
     }
     return '<div class="sp-head-sort"><span class="sp-head-sort-lbl">' + escapeHtml(t("sort.label")) + "</span>" +
-      b("asc", "▲", t("sort.asc")) + b("desc", "▼", t("sort.desc")) + b("off", "✕", t("sort.off")) + "</div>";
+      grp("total", t("th.total")) + grp("pairs", t("sort.obs")) + spSortOffHtml() + "</div>";
   }
   function spHeadPanelHtml() {
     if (spLayout !== "table" || !spHeadPanel) return "";
@@ -16469,7 +16487,7 @@
     return html + "</div>";
   }
   function spTotalPanelHtml() {
-    return '<div class="sp-head-panel">' + spSortRowHtml("count") +
+    return '<div class="sp-head-panel">' + spSortRowTotalHtml() +
       '<div class="sp-bound-row">' +
         '<label>≥ <input type="number" min="0" step="1" class="sp-cnt-min" value="' + (spCountMin == null ? "" : spCountMin) + '" /></label>' +
         '<label>≤ <input type="number" min="0" step="1" class="sp-cnt-max" value="' + (spCountMax == null ? "" : spCountMax) + '" /></label>' +

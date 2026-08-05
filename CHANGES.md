@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-05 — Total panel sorts by total count or number of observations (sw v903)
+
+- The Total header panel's sort now offers two metrics: **Total** (the de-duplicated specimen count shown
+  in the cell) and **Observations** (the "(n)" distinct observer×date pairs), each asc/desc, plus Off.
+- `applyAgeFilter` stamps `data-total`/`data-pairs` on each row; `sortSpeciesList` gained `total` and
+  `pairs` columns (was sorting by raw record count). Added `sort.obs` i18n for all 15 languages.
+
 ## 2026-08-05 — Column-header filter + sort panels (sw v902)
 
 Chosen interaction: clicking a header opens a panel with BOTH filter controls and a sort option.
