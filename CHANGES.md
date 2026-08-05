@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-05 — Fix Annual-max/top comparison blowing past 100% (Svalbard "9000%") (sw v892)
+
+- The current-week probability uses the grid-snapped prediction cache (v856), but `computeComparison` ran
+  the annual 48-week pass at the EXACT lat/lon — so `current ÷ peak` compared two different locations and
+  could exceed 1 (e.g. Svalbard showed "9000%"). `computeComparison` now uses `predictAllWeeks(lat,lon)` (the
+  same grid-snapped cell, shared with the Season column's cache), so the peak always includes the current
+  week and the ratio is ≤ 100%. Added a defensive `Math.min(1, …)` clamp on the ratio too.
+
 ## 2026-08-05 — Checklist button visible again (sw v891)
 
 - Reverted v868: the Checklist button (foot of the species list) is a standard feature again, always shown

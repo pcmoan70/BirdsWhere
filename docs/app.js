@@ -14427,15 +14427,18 @@
       return { probs: out, refLabel: weekText(cw), kind: "delta" };
     }
     if (mode === "mean" || mode === "annualmax" || mode === "annualtop") {
-      var inputs = new Float32Array(48 * 3);
-      for (var w = 0; w < 48; w++) { inputs[w * 3] = lat; inputs[w * 3 + 1] = lon; inputs[w * 3 + 2] = w + 1; }
-      var all = await runInference(inputs, 48);
+      // Use the SAME grid-snapped 48-week cell as the current-week probability (shared
+      // with the Season column's cache). Running the annual pass at the exact lat/lon
+      // while the current-week prob is grid-snapped made current ÷ peak exceed 1 (e.g.
+      // Svalbard "9000%"): peak here now always includes the current week, so the ratio
+      // can't exceed 100%.
+      var cell = await predictAllWeeks(lat, lon);
       var agg = new Float32Array(nSpecies), s, wk, v;
       if (mode === "annualmax") {
         // Per-species peak probability; the list shows current ÷ peak (ratio).
         for (s = 0; s < nSpecies; s++) {
           var mx = 0;
-          for (wk = 0; wk < 48; wk++) { v = all[wk * nSpecies + s]; if (v > mx) mx = v; }
+          for (wk = 1; wk <= 48; wk++) { v = cell[wk] ? cell[wk][s] : 0; if (v > mx) mx = v; }
           agg[s] = mx;
         }
         return { probs: agg, refLabel: t("compare.max"), kind: "ratio" };
@@ -14445,14 +14448,14 @@
         var scratch = new Float32Array(48);
         for (s = 0; s < nSpecies; s++) {
           var mxt = 0;
-          for (wk = 0; wk < 48; wk++) { v = all[wk * nSpecies + s]; scratch[wk] = v; if (v > mxt) mxt = v; }
+          for (wk = 0; wk < 48; wk++) { v = cell[wk + 1] ? cell[wk + 1][s] : 0; scratch[wk] = v; if (v > mxt) mxt = v; }
           agg[s] = window.GeoAnalysis.focusSeries(scratch, mxt)[wkIdx];
         }
         return { probs: agg, refLabel: t("compare.annualtop"), kind: "focus" };
       }
       for (s = 0; s < nSpecies; s++) {
         var sum = 0;
-        for (wk = 0; wk < 48; wk++) sum += all[wk * nSpecies + s];
+        for (wk = 1; wk <= 48; wk++) sum += cell[wk] ? cell[wk][s] : 0;
         agg[s] = sum / 48;
       }
       return { probs: agg, refLabel: t("compare.mean"), kind: "delta" };
@@ -16331,7 +16334,7 @@
           if (out[i] >= pmin && out[i] <= pmax && inGroup(i) && passSpeciesFilter(labels[i].key)) {
             var cval = 0;
             if (hasCompare) {
-              cval = kind === "ratio" ? (cmp.probs[i] > 0 ? out[i] / cmp.probs[i] : 0)
+              cval = kind === "ratio" ? (cmp.probs[i] > 0 ? Math.min(1, out[i] / cmp.probs[i]) : 0)   // current ÷ peak ≤ 1 (100%)
                    : kind === "focus" ? cmp.probs[i]
                    : (out[i] - cmp.probs[i]);
             }
