@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-06 — Date pane: On/Before/After collapsed into one cycling button (sw v919)
+
+- The three On / Before / After buttons (relative to a tapped date) are now a single button that cycles
+  **none (–) → on → before → after → none** on each click. `dateRelRowHtml` renders the current state;
+  `cycleDateRel` advances it (via `setDetDateFilter`). Wired in both the table Last panel and the
+  Per-observation date pane.
+
 ## 2026-08-06 — Date pane: no "all" chip; legend shows all plotted by default (sw v918)
 
 - Removed the "all" chip from the date pane's recency grid — clear the date filter with the funnel-red-×

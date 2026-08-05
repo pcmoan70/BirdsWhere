@@ -9924,14 +9924,29 @@
   }
   // The date-relative row (On / Before / After a clicked date) — shared by the table's
   // Last panel and the "Per observation" date pane.
+  // ONE cycling button relative to the clicked date `d`: none → on → before → after →
+  // none. The label shows the current state; clicking advances it (see cycleDateRel).
+  var DATE_REL_ORDER = ["none", "on", "before", "after"];
+  function dateRelState(d) {
+    var rg = detDateRange(); if (!rg) return "none";
+    var from = rg.from || "", to = rg.to || "";
+    if (from === d && to === d) return "on";
+    if (from === "" && to === d) return "before";
+    if (from === d && to === "") return "after";
+    return "none";   // some other range → not one of the three
+  }
   function dateRelRowHtml(d) {
-    var rg = detDateRange() || {};
-    function db(labelKey, from, to) {
-      var active = (rg.from || "") === from && (rg.to || "") === to && !!detDateRange();
-      return '<button type="button" class="sp-date-rel' + (active ? " on" : "") + '" data-from="' + from + '" data-to="' + to + '">' + escapeHtml(t(labelKey)) + "</button>";
-    }
+    var st = dateRelState(d);
+    var label = st === "on" ? t("date.on") : st === "before" ? t("date.before") : st === "after" ? t("date.after") : "–";
     return '<div class="sp-date-rel-row"><span class="sp-head-sort-lbl">' + escapeHtml(fmtDate(d) || d) + "</span>" +
-      db("date.on", d, d) + db("date.before", "", d) + db("date.after", d, "") + "</div>";
+      '<button type="button" class="sp-date-rel' + (st !== "none" ? " on" : "") + '" data-date="' + escapeHtml(d) + '" data-state="' + st + '" title="' + escapeHtml(t("date.on") + " / " + t("date.before") + " / " + t("date.after")) + '">' + escapeHtml(label) + "</button></div>";
+  }
+  function cycleDateRel(dateStr, state) {
+    var next = DATE_REL_ORDER[(DATE_REL_ORDER.indexOf(state) + 1) % DATE_REL_ORDER.length];
+    if (next === "on") setDetDateFilter(dateStr, dateStr);
+    else if (next === "before") setDetDateFilter("", dateStr);
+    else if (next === "after") setDetDateFilter(dateStr, "");
+    else setDetDateFilter("", "");   // none
   }
   // `dateForRel` (Per-observation) wraps the open days panel with a clear-× and the
   // On/Before/After row for the clicked date.
@@ -10006,7 +10021,7 @@
     // "Per observation" date pane: On/Before/After the clicked date + a green × that
     // clears every date filter and closes the pane.
     el.querySelectorAll(".sp-date-rel").forEach(function (b) {
-      b.addEventListener("click", function (e) { e.stopPropagation(); setDetDateFilter(this.getAttribute("data-from"), this.getAttribute("data-to")); });
+      b.addEventListener("click", function (e) { e.stopPropagation(); cycleDateRel(this.getAttribute("data-date"), this.getAttribute("data-state")); });
     });
     var dclr = el.querySelector(".sp-date-clear");
     if (dclr) dclr.addEventListener("click", function (e) { e.stopPropagation(); closeDatePane(); });
@@ -16717,7 +16732,7 @@
       var clrf = container.querySelector(".sp-date-clearfilters");
       if (clrf) clrf.addEventListener("click", function (e) { e.stopPropagation(); clearDateFilters(); });
       container.querySelectorAll(".sp-date-rel").forEach(function (b) {
-        b.addEventListener("click", function (e) { e.stopPropagation(); setDetDateFilter(this.getAttribute("data-from"), this.getAttribute("data-to")); });
+        b.addEventListener("click", function (e) { e.stopPropagation(); cycleDateRel(this.getAttribute("data-date"), this.getAttribute("data-state")); });
       });
       wireDetFilters(document.getElementById("species-panel"));   // recency chips / range inputs / month chips
     }
