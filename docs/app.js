@@ -12160,9 +12160,12 @@
         var nm = (lastRecentMeta && lastRecentMeta.name) || "sightings";
         downloadCsv("sightings_" + String(nm).replace(/[^\w-]+/g, "_") + ".csv", recentCsv());
       } else if (e.target.closest("#recent-map")) {
-        if (!lastRecentRows.length || !lastRecentMeta) return;
-        plotDetections(lastRecentMeta.key, lastRecentMeta.name, lastRecentRows, true);   // plot + zoom to points
-        navClose("recent");
+        var mapBtn = e.target.closest("#recent-map");
+        if (!lastRecentRows.length || !lastRecentMeta || mapBtn.disabled) return;
+        plotDetections(lastRecentMeta.key, lastRecentMeta.name, lastRecentRows, true);   // copy the points to the map (+ fit)
+        // Keep the panel open; disable the button so the points can't be copied twice.
+        mapBtn.disabled = true;
+        mapBtn.classList.add("recent-map-done");
       }
     });
     // Pop-up reference links: Wikipedia uses the locale→English fallback;

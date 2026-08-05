@@ -2439,6 +2439,12 @@ table.recent-table .rc-srccell { white-space: nowrap; }
 #recent-dl:hover { border-color: var(--brand); color: var(--brand-strong, var(--brand)); }
 #recent-map { border-color: var(--brand); background: var(--brand-soft, #eef3ff); color: var(--brand-strong, var(--brand)); font-weight: 600; }
 #recent-map:hover { background: var(--brand); color: #fff; }
+/* After the points are copied: disabled, greyed, and un-clickable (no second copy). */
+#recent-map:disabled, #recent-map.recent-map-done {
+  cursor: default; opacity: 0.55; font-weight: 600;
+  background: var(--surface, #f5f5f5); color: var(--ink-muted, #777); border-color: var(--border, #ccc);
+}
+#recent-map.recent-map-done:hover { background: var(--surface, #f5f5f5); color: var(--ink-muted, #777); }
 
 /* Country list: clickable column header for cycling the aggregation. */
 th.clickable-head { cursor: pointer; user-select: none; }

@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-08-05 — "More of these": copy-to-map keeps the panel open, button disables (sw v910)
+
+- The panel's "Show in map" button copied the points but then closed the panel (`navClose("recent")`).
+  Now it keeps the panel open and **disables the button** after copying (guards on `disabled`) so the
+  points can't be copied twice. Added a greyed `#recent-map:disabled / .recent-map-done` style.
+
 ## 2026-08-05 — "More of these" (was Recent detections): 50 km + hover hint (sw v909)
 
 - Renamed the `menu.recent` item from "Recent detections" to **"More of these"** (all 15 languages).
