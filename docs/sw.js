@@ -21,11 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v894";
+var VERSION = "v895";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• Offline maps now cover every map type and place-name labels. Downloading an area stores its labels too, and offline the map shows raster place names (the vector overlay is online-only) — so names still appear with no network.",
   "• Sharper place names: the “More place names” overlay (Settings → Map) now renders vector labels (MapLibre GL / OpenFreeMap) over the Voyager and Satellite maps — local names surface smoothly as you zoom in, without overlapping, the way yr.no does it.",
   "• Tapping a date shows a red × on the currently-active date filter — tap the × to remove just that filter. And Settings' “Reload to update” button now lights up whenever your version differs from the one on the server.",
   "• The Total column now reads e.g. “31(3)” — 31 specimens across 3 distinct observations (observer × date) — and the specimen total is counted after de-duplication.",

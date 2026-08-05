@@ -2527,6 +2527,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v895", date: "2026-08-05", text: "Offline maps now work with every map type and with place-name labels. When you download an area, its place names are stored alongside the tiles, so they still show when you're offline. (The smooth vector-label overlay needs a network, so offline the map falls back to the cached raster labels — same names, just placed at fixed zoom steps.) Re-downloading a purged area restores its labels too." },
     { v: "v894", date: "2026-08-05", text: "Sharper place names on the map. The “More place names” overlay (Settings → Map) now draws vector labels (MapLibre GL over OpenFreeMap's OpenMapTiles data, no API key) on the Voyager and Satellite maps: names are placed live by zoom and importance with collision avoidance, so local names — villages, then hamlets, then farm/neighbourhood names — surface smoothly as you zoom in, without doubling up. This mirrors how yr.no renders its map. Falls back to the previous raster labels where WebGL isn't available." },
     { v: "v858", date: "2026-08-04", text: "“Show on map” from an observation (the record menu, the expanded records' location, and the 🎯 focus button) now drops the map pointer on that location and reveals the map — it closes the full-screen list or the records modal so you land directly on the spot, marker in place." },
     { v: "v856", date: "2026-08-04", text: "New Season column in the Species-list table: a coloured now-vs-peak bar telling you where you are in each species' year at this point — arriving ↑, at peak ●, leaving ↓ or off-season ·. Sortable, so the species peaking right now can go on top. It's powered by a new prediction cache: the model returns the whole species vector per query, so those values are kept in memory per map cell (all 48 weeks), and re-sorting / layout switches / the Season computation reuse them instead of recomputing." },
@@ -6244,8 +6245,9 @@
   // Base tile URL for a basemap, swapping CARTO Voyager to its _nolabels variant
   // while the labels overlay is active (so the overlay is the ONLY set of place
   // names — no duplication — and its density can exceed the baked-in labels).
-  function baseUrlFor(which) {
-    var labelsOn = labelsMode() !== "off";
+  function baseUrlFor(which, labelsModeOverride) {
+    var lm = labelsModeOverride != null ? labelsModeOverride : labelsMode();
+    var labelsOn = lm !== "off";
     if (labelsOn && which === "voyager") return "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png";
     return (BASEMAPS[which] || BASEMAPS.streets).url;
   }
@@ -6326,28 +6328,57 @@
       ]
     };
   }
+  // Raster place-name labels (CARTO) as a cacheable Leaflet tile layer. The live map
+  // prefers the MapLibre vector overlay when online, but vector tiles/glyphs are
+  // network-only and can't be pre-cached — so offline downloads store these aligned
+  // raster label tiles instead, and the map renders them when offline. Used for both
+  // caching (offlineLayers) and rendering, so names still show for any label-capable
+  // basemap offline. Aligned 256px (no zoom-offset) so the cached grid always matches.
+  function rasterLabelsUrl(bm) {
+    var style = (bm === "satellite") ? "dark_only_labels" : "light_only_labels";   // dark labels read best on imagery; light on Voyager
+    return "https://{s}.basemaps.cartocdn.com/" + style + "/{z}/{x}/{y}{r}.png";
+  }
+  function rasterLabelsLayer(bm) {
+    return L.tileLayer(rasterLabelsUrl(bm), { attribution: "", subdomains: "abcd", maxZoom: MAX_ZOOM, maxNativeZoom: 20, noWrap: true, zIndex: 350 });
+  }
+  // Offline = no network for vector tiles/glyphs. Treat a dead/captive connection
+  // (tiles erroring despite navigator.onLine) the same, so labels don't blank out.
+  function isOfflineNow() { return (navigator.onLine === false) || offlineTilesFailing; }
+  var labelsRenderedOffline = null;   // connectivity the current label layer was built for
   function applyLabelsOverlay() {
     if (labelsOverlay) { try { map.removeLayer(labelsOverlay); } catch (e) {} labelsOverlay = null; }
     var mode = labelsMode();
     if (!map || mode === "off") return;
     var bm = window.GeoState.get("basemap", "streets");
     if (!labelsSupported(bm)) return;   // streets/topo/etc. bake their names in — don't print a second set
-    // Preferred: MapLibre GL vector labels — zoom-smooth, collision-managed, richer
-    // local names. Rendered into a dedicated pane between the base tiles and the data
-    // dots. Falls back to the raster CARTO labels if MapLibre isn't available.
-    if (window.maplibregl && L.maplibreGL) {
+    var offline = isOfflineNow();
+    labelsRenderedOffline = offline;
+    // Online: MapLibre GL vector labels — zoom-smooth, collision-managed, richer local
+    // names. Rendered into a dedicated pane between the base tiles and the data dots.
+    // Offline (or if MapLibre is unavailable): the raster CARTO labels, which offline
+    // downloads cache — so names still show without a network.
+    if (!offline && window.maplibregl && L.maplibreGL) {
       try {
         if (!map.getPane("labelsPane")) { map.createPane("labelsPane"); var lp = map.getPane("labelsPane"); lp.style.zIndex = 350; lp.style.pointerEvents = "none"; }
         labelsOverlay = L.maplibreGL({ style: vectorLabelsStyle(mode), interactive: false, pane: "labelsPane", attribution: '&copy; <a href="https://openfreemap.org">OpenFreeMap</a> &copy; OpenMapTiles' }).addTo(map);
         return;
       } catch (e) { try { if (labelsOverlay) map.removeLayer(labelsOverlay); } catch (e2) {} labelsOverlay = null; }   // fall through to raster
     }
-    var style = (bm === "satellite") ? "dark_only_labels" : "light_only_labels";   // dark labels read best on imagery; light on Voyager
     var opts = { attribution: "", subdomains: "abcd", maxZoom: MAX_ZOOM, maxNativeZoom: 20, noWrap: true, zIndex: 350 };
     var off = LABEL_LEVEL_OFFSET[mode] || 0;
-    if (off > 0) { opts.zoomOffset = off; opts.tileSize = 256 / Math.pow(2, off); }   // deeper zoom's (denser) labels, geo-aligned
-    labelsOverlay = L.tileLayer("https://{s}.basemaps.cartocdn.com/" + style + "/{z}/{x}/{y}{r}.png", opts).addTo(map);
+    // "more" pulls the next zoom's denser labels via a zoom-offset — but those tiles
+    // don't match the cached (aligned) grid, so only use it online; offline stays aligned.
+    if (off > 0 && !offline) { opts.zoomOffset = off; opts.tileSize = 256 / Math.pow(2, off); }
+    labelsOverlay = L.tileLayer(rasterLabelsUrl(bm), opts).addTo(map);
     try { labelsOverlay.bringToFront(); } catch (e) {}   // above basemap tiles, below data markers
+  }
+  // Swap the label layer vector↔raster when connectivity flips — but only on an actual
+  // change (these fire on every pan/zoom via the offline checks), so we don't tear down
+  // and rebuild the MapLibre overlay needlessly.
+  function syncLabelsConnectivity() {
+    if (!map || labelsMode() === "off") return;
+    if (isOfflineNow() === labelsRenderedOffline) return;
+    applyLabelsOverlay();
   }
 
   // ---- Offline map areas ----------------------------------------------------
@@ -6400,10 +6431,12 @@
   }
   function offlineLayers() {
     var arr = [baseLayer].concat(activeOverlayLayers());
-    // With labels "on" the CARTO base is the labels-FREE variant, so the names come
-    // from the overlay — cache it too (it's aligned, 256px). "more" uses a zoom-offset
-    // trick whose tiles don't match the download grid, so it's left online-only.
-    if (labelsOverlay && labelsMode() === "on") arr.push(labelsOverlay);
+    // Labels: the live overlay may be vector (MapLibre), whose tiles can't be cached.
+    // Cache the aligned raster labels instead so names show offline for any label-
+    // capable basemap, in both "on" and "more" modes. (With labels active the CARTO
+    // base is already the labels-FREE variant, so no duplication.)
+    var bm = window.GeoState.get("basemap", "streets");
+    if (labelsMode() !== "off" && labelsSupported(bm)) arr.push(rasterLabelsLayer(bm));
     return arr.filter(Boolean);
   }
   // Generate the exact tile URL Leaflet would request for (x,y,z) — set the
@@ -6483,6 +6516,7 @@
       if (aborted()) { return caches.delete("pinned-" + id).then(function () { return -1; }); }
       var areas = getOfflineAreas();
       areas.push({ id: id, name: name, basemap: window.GeoState.get("basemap", "streets"),
+                   labels: labelsMode(),   // so a refill re-fetches the raster labels + the matching base variant
                    bbox: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
                    zStart: zStart, zMax: zMax, tiles: ok, bytes: ok * OFFLINE_TILE_BYTES, createdAt: Date.now() });
       saveOfflineAreas(areas);
@@ -6498,16 +6532,18 @@
   }
   // A tile layer for an arbitrary basemap (not necessarily the live one), used to
   // rebuild the exact tile URLs when re-downloading a purged area.
-  function offlineLayerFor(basemap) {
+  function offlineLayerFor(basemap, labelsModeOverride) {
     var cfg = BASEMAPS[basemap] || BASEMAPS.streets || BASEMAPS[Object.keys(BASEMAPS)[0]];
-    return L.tileLayer(baseUrlFor(basemap), { maxZoom: MAX_ZOOM, maxNativeZoom: cfg.maxNativeZoom || MAX_ZOOM, subdomains: cfg.subdomains || "abc", noWrap: true });   // match the live base variant (CARTO _nolabels when labels are on)
+    return L.tileLayer(baseUrlFor(basemap, labelsModeOverride), { maxZoom: MAX_ZOOM, maxNativeZoom: cfg.maxNativeZoom || MAX_ZOOM, subdomains: cfg.subdomains || "abc", noWrap: true });   // match the base variant used at download (CARTO _nolabels when labels were on)
   }
   // Re-fetch a recorded area's tiles back into its OWN pinned cache (same id), e.g.
   // after the browser evicted them. Rebuilds URLs from the stored bbox/zoom/basemap.
   function refillOfflineArea(area, onProgress, isAborted) {
     var bb = area && area.bbox; if (!bb || bb.length < 4) return Promise.resolve(-1);
     var bounds = L.latLngBounds([[bb[1], bb[0]], [bb[3], bb[2]]]);
-    var urls = buildOfflineUrls(bounds, area.zStart || 0, area.zMax || area.zStart || 0, [offlineLayerFor(area.basemap)]);
+    var layers = [offlineLayerFor(area.basemap, area.labels)];
+    if (area.labels && area.labels !== "off" && labelsSupported(area.basemap)) layers.push(rasterLabelsLayer(area.basemap));
+    var urls = buildOfflineUrls(bounds, area.zStart || 0, area.zMax || area.zStart || 0, layers);
     function aborted() { return !!(isAborted && isAborted()); }
     return caches.open("pinned-" + area.id).then(function (cache) {
       return new Promise(function (resolve) {
@@ -6717,6 +6753,7 @@
       baseLayer.options.maxNativeZoom = cap;
       baseLayer.redraw();
     }
+    syncLabelsConnectivity();   // flip labels vector↔raster if connectivity changed (guarded: no-op otherwise)
   }
   function scheduleOfflineCheck() {
     refreshOfflineZoomCap();   // immediate: upscale cached tiles rather than fetch missing ones

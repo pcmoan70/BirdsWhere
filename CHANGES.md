@@ -1,5 +1,20 @@
 # Changes
 
+## 2026-08-05 — Offline maps: all basemaps + place-name labels (sw v895)
+
+- The vector-label overlay (v894) is network-only (vector tiles + glyphs), so it can't be pre-cached.
+  Made offline coverage complete without it:
+  - New `rasterLabelsUrl(bm)` / `rasterLabelsLayer(bm)` — the aligned CARTO raster labels as a cacheable
+    Leaflet tile layer. `applyLabelsOverlay` now renders the **vector** overlay when online and these
+    **raster** labels when offline (`isOfflineNow()` = `navigator.onLine === false` or tiles erroring);
+    `syncLabelsConnectivity()` swaps them on an actual connectivity flip (guarded — no needless rebuilds).
+  - `offlineLayers()` caches the raster labels (for both "on" and "more") for any label-capable basemap,
+    instead of trying to cache the un-cacheable vector overlay.
+  - Downloaded areas now record `labels` (the mode at download). `refillOfflineArea` re-fetches the raster
+    labels + the matching base variant (`baseUrlFor`/`offlineLayerFor` gained an optional labels override).
+  - Base tiles already covered every raster basemap; labels now do too — so offline shows names on all
+    supported map types.
+
 ## 2026-08-05 — Vector place-name labels (MapLibre GL), yr.no-style (sw v894)
 
 - Studied yr.no's map: it renders **vector tiles** with **MapLibre GL** (OpenMapTiles schema) + Kartverket
