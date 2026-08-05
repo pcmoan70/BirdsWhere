@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-08-05 — Species list: status on the dot, not in columns (sw v905)
+
+- Removed the five per-cue status columns (★/◉/🟠/🟡/🚫) from the Species-list table. The colour dot
+  before the name now carries the state via the map's `detSwatch` (★ interesting, centre-dot rare-here,
+  bronze/yellow need-ring for year/life), plus a red slash for blocked — new `spListDot` / `paintSpDot`.
+- Dots repaint in `applyAgeFilter` (rare-here comes from the fetched obs; star/year/life/blocked from live
+  state), and on cue toggles via `refreshCueCellsInPlace` (now just calls `applyAgeFilter(true)`).
+- Removed `spFlagCells`, the flag-column headers + click handlers, the rare-cell fill, and the dead
+  `.spf-head`/`.spf-c` CSS; `spRareSet` now reads rows via `.sp-link`; `sortSpeciesList` sci index fixed
+  (columns shifted). Filtering by status remains in the Species header panel.
+
 ## 2026-08-05 — Last column shows "days back" under a relative recency window (sw v904)
 
 - When a "last N days/weeks/months" recency filter is active (relative — not an absolute from–to range),

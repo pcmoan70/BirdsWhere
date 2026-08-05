@@ -119,23 +119,22 @@ probability. Options:
 - Species the model doesn't cover but that the sources reported are appended below the
   predicted rows, tagged with a class glyph.
 
-**Five status columns** sit left of the species name — each header is its own **filter toggle**
-(greyed when off, coloured when on), and they **combine**:
+**The colour dot** before each species name carries its **status**, the same way the map
+marker does — no separate status columns:
 
-| icon | meaning |
+| dot cue | meaning |
 |---|---|
-| **★** | starred / interesting |
-| **◉** | rare here |
-| **🟠** | not on this year's list |
-| **🟡** | not on your life list |
-| **🚫** | blocked |
+| **★** (in the species colour) | starred / interesting |
+| centre dot | rare here |
+| bronze ring | not on this year's list |
+| yellow ring | not on your life list |
+| red slash | blocked |
 
-So ★ + 🟡 lists starred species still missing from your life list. **"Rare here" (◉)** means
-the **habitat model** gives the species at most the *Rare species threshold* probability at
-that point (Settings, default 10 %) — it is **not** a count of reports, so a much-reported
-vagrant still counts as rare and a well-modelled common bird never does. Clicking **Species**
-sorts A–Z / Z–A; the **n(d)** header cycles a "days since" age filter. Toggling a cue repaints
-the affected rows in place — no re-fetch.
+**"Rare here"** means the **habitat model** gives the species at most the *Rare species
+threshold* probability at that point (Settings, default 10 %) — it is **not** a count of
+reports, so a much-reported vagrant still counts as rare and a well-modelled common bird
+never does. **Filtering** by these states (and clearing them) lives in the **Species header
+panel**; clicking a column header opens that column's filter + sort panel (see below).
 
 ---
 

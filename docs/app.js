@@ -1182,34 +1182,10 @@
   // "★ " prefix for species the user has tagged as interesting (lists/cards).
   // Wrapped in a styled span so the star is visually distinct from the name.
   function interestingStar(key) { return isInteresting(key) ? '<span class="int-star" aria-label="interesting">★</span> ' : ""; }
-  // The five status columns of the species list, one narrow <td> each so every
-  // cue gets its own filter header: ★ tagged interesting · ◉ rare here · 🟠 not
-  // on this year's list · 🟡 not on the life list · 🚫 blocked (yellow = lifer,
-  // bronze = year tick, the same convention as the map edges — see NEED_*_COLOR).
-  // A life miss is also a year miss, so 🟡 wins and only one of the two is drawn,
-  // matching detNeedColor on the map. Only the ◉ cell changes after the render
-  // (it needs the fetched observations), so that one carries the data-key.
+  // Status glyphs (★ interesting · ◉ rare here · 🟠 this-year · 🟡 life · 🚫 blocked)
+  // — used by the Species header panel's filter chips. The species-list dot conveys the
+  // same states visually (see spListDot / detSwatch), replacing the old status columns.
   var SP_FLAG_GLYPH = { star: "★", rare: "◉", year: "🟠", life: "🟡", hidden: "🚫" };
-  function spFlagCells(key, rare) {
-    // The two list cues are INDEPENDENT here, unlike on the map. A map marker can
-    // carry only one ring, so detNeedTier picks the stronger and a lifer never
-    // shows the year colour. A table has a column each, so both light up: a lifer
-    // is missing from this year's list too, and gets 🟡 and 🟠.
-    //
-    // This also makes each column agree with its own filter header —
-    // passSpeciesFilter already treats them independently, so previously the 🟠
-    // filter matched lifers while the 🟠 column left them blank, which made the
-    // column look empty (most rows in a 200-species list ARE lifers).
-    var tracking = lifeListActive() || yearListActive();
-    var life = !!key && tracking && !inLifeList(key);
-    var year = !!key && tracking && !inYearList(key);
-    var on = { star: !!key && isInteresting(key), rare: !!rare, year: year, life: life, hidden: !!key && isHidden(key) };
-    return SP_FILTER_KEYS.map(function (f) {
-      return '<td class="spf-c spf-c-' + f + '"' + (f === "rare" && key ? ' data-key="' + escapeHtml(key) + '"' : "") + ">" +
-        (on[f] ? '<i class="spf spf-' + f + '" title="' + escapeHtml(t("flag." + f)) + '">' + SP_FLAG_GLYPH[f] + "</i>" : "") +
-        "</td>";
-    }).join("");
-  }
   // "Rare here" for the species list — the same verdict the map legend reaches
   // (isRareProb), just sourced differently: the row already carries the model
   // probability in data-prob, so no extra inference is needed. Restricted to
@@ -1219,24 +1195,19 @@
   function spRareSet(agg, tbody) {
     var set = Object.create(null);
     if (!agg || !tbody) return set;
-    Array.prototype.forEach.call(tbody.querySelectorAll("td.spf-c-rare[data-key]"), function (td) {
-      var k = td.getAttribute("data-key"), e = agg[k];
+    Array.prototype.forEach.call(tbody.querySelectorAll("tr"), function (tr) {
+      var sl = tr.querySelector(".sp-link[data-key]"), k = sl && sl.getAttribute("data-key");
+      if (!k) return;
+      var e = agg[k];
       if (!e || !(e.count > 0)) return;                       // not observed here → not "rare here"
-      var tr = td.parentNode;
       if (isRareProb(parseFloat(tr.getAttribute("data-prob")))) set[k] = 1;
     });
     return set;
   }
-  // Paint the five status-column headers: each shows its own icon, greyed out
-  // when its filter is off and coloured when on (the .on class drives it).
-  // Re-applied on every render so a language change picks the tooltips up.
+  // The status flag columns were removed (state rides on the species dot). This just
+  // keeps the Species header's tooltip current; kept as a no-op-friendly hook that the
+  // render/toggle paths still call.
   function syncFlagsHead() {
-    SP_FILTER_KEYS.forEach(function (f) {
-      var th = document.getElementById("sp-f-" + f); if (!th) return;
-      th.classList.toggle("on", !!spFilters[f]);
-      th.title = t("filter." + f);
-      th.setAttribute("aria-pressed", spFilters[f] ? "true" : "false");
-    });
     var sh = document.getElementById("sp-species-head");
     if (sh) sh.title = t("th.speciesSort");
   }
@@ -1355,9 +1326,26 @@
     if (typeof detPlot !== "undefined" && detPlot[key] && detPlot[key].color) return detPlot[key].color;
     try { return "hsl(" + keyHue(key) + ", 35%, 52%)"; } catch (e) { return "#888"; }
   }
-  // A plain species-colour dot — used in BOTH the species list and the record tables
-  // so the colouring matches (status ★/◉ is shown by the flag columns / elsewhere).
+  // A plain species-colour dot — used in the record tables (By observation) where
+  // status isn't shown.
   function spColorDot(key, color) { return '<span class="det-sw sp-cdot" style="background:' + (color || speciesColor(key)) + '"></span>'; }
+  // The Species-list dot: it now carries the species' STATE the way the map marker does
+  // — interesting (★), rare-here (centre dot), missing-from-this-year/life (need ring),
+  // and blocked (a red slash). `rare` comes from the fetched observations, so the dot is
+  // repainted by paintSpDot once they arrive and whenever a cue is toggled. Wrapped in a
+  // stable .sp-dot holder (data-key) so paintSpDot can re-render it in place.
+  function spListDot(key, rare) {
+    var color = (typeof detPlot !== "undefined" && detPlot[key] && detPlot[key].color) || speciesColor(key);
+    return '<span class="sp-dot' + (key && isHidden(key) ? " blocked" : "") + '" data-key="' + escapeHtml(key || "") + '">' +
+      detSwatch(color, !!key && isInteresting(key), !!rare, key) + "</span>";
+  }
+  function paintSpDot(holder, rare) {
+    if (!holder) return;
+    var key = holder.getAttribute("data-key"); if (!key) return;
+    var color = (typeof detPlot !== "undefined" && detPlot[key] && detPlot[key].color) || speciesColor(key);
+    holder.className = "sp-dot" + (isHidden(key) ? " blocked" : "");
+    holder.innerHTML = detSwatch(color, isInteresting(key), !!rare, key);
+  }
   function spRecDistKm(d) {
     var oLat = currentSpView ? +currentSpView.lat : NaN, oLon = currentSpView ? +currentSpView.lon : NaN;
     return (isFinite(oLat) && isFinite(oLon) && isFinite(+d.lat) && isFinite(+d.lon)) ? haversineKm(oLat, oLon, +d.lat, +d.lon) : Infinity;
@@ -1539,8 +1527,8 @@
       var ka, kb;
       if (!col) return (+b.getAttribute("data-prob") || 0) - (+a.getAttribute("data-prob") || 0);
       if (col === "sci") {
-        ka = (a.children[7].textContent || "").toLowerCase();   // 5 status cells · name · name2 · sci
-        kb = (b.children[7].textContent || "").toLowerCase();
+        ka = (a.children[2].textContent || "").toLowerCase();   // name · name2 · sci
+        kb = (b.children[2].textContent || "").toLowerCase();
       } else if (col === "name") {
         ka = a.getAttribute("data-name") || ""; kb = b.getAttribute("data-name") || "";
       } else if (col === "name2") {
@@ -1631,7 +1619,8 @@
     var tbody = document.getElementById("sp-tbody");
     if (!tbody) return;
     var agg = tbody._sightingsAgg, days = speciesAgeFilterDays;
-    var rareSet = spFilters.rare ? tbody._rareSet : null;
+    var rareAll = tbody._rareSet;                              // rare-here set (for the dot), independent of the filter
+    var rareSet = spFilters.rare ? rareAll : null;
     var anyBuild = withBuild && (spFilters.star || spFilters.year || spFilters.life || spFilters.hidden);
     var now = Date.now();
     Array.prototype.forEach.call(tbody.querySelectorAll("tr"), function (tr) {
@@ -1639,6 +1628,8 @@
       var extra = tr.classList.contains("sp-extra");
       var sl = tr.querySelector(".sp-link"), key = sl && sl.getAttribute("data-key");
       tr.classList.toggle("sp-deleted", !!(key && deletedSpecies[key]));   // grey a species removed from the map
+      // Repaint the species dot with its live state (★ / rare-here / year·life need / blocked).
+      if (!extra && key) { var _dot = tr.querySelector(".sp-dot"); if (_dot) paintSpDot(_dot, !!(rareAll && rareAll[key])); }
       var entry = (!extra && key && agg) ? agg[key] : null;
       // ◉ rare: species outside the model ("extras") never carry the marker.
       var rareOk = !rareSet || (!extra && !!(key && rareSet[key]));
@@ -1708,20 +1699,10 @@
     var tbody = document.getElementById("sp-tbody");
     if (!panel || panel.style.display === "none" || !tbody) return false;
     if (!currentSpView || (currentSpView.mode !== "point" && currentSpView.mode !== "historic")) return false;
-    // Year/life cells depend on whether ANY list is being tracked (empty ↔ non-empty
-    // flips every row), so repaint all model rows, not just the toggled one.
-    var tracking = lifeListActive() || yearListActive();
-    Array.prototype.forEach.call(tbody.querySelectorAll("tr"), function (tr) {
-      if (tr.classList.contains("sp-extra")) return;   // extras carry no model cues
-      var sl = tr.querySelector(".sp-link[data-key]"), key = sl && sl.getAttribute("data-key");
-      if (!key) return;
-      var st = { star: isInteresting(key), year: tracking && !inYearList(key), life: tracking && !inLifeList(key), hidden: isHidden(key) };
-      ["star", "year", "life", "hidden"].forEach(function (f) {
-        var td = tr.querySelector("td.spf-c-" + f); if (!td) return;
-        td.innerHTML = st[f] ? '<i class="spf spf-' + f + '" title="' + escapeHtml(t("flag." + f)) + '">' + SP_FLAG_GLYPH[f] + "</i>" : "";
-      });
-    });
-    applyAgeFilter(true);   // re-apply build + age + rare visibility (no rebuild, no refetch)
+    // The status now rides on the species dot; applyAgeFilter repaints every dot (★ /
+    // rare-here / year·life need / blocked) and re-applies the build + age + rare
+    // visibility in one pass — no rebuild, no refetch.
+    applyAgeFilter(true);
     return true;
   }
   // Clickable species-name span (opens the species menu). Prepends ★ when the
@@ -2569,6 +2550,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v905", date: "2026-08-05", text: "The Species list drops its five status columns (★ interesting, ◉ rare here, this-year, life list, blocked). Instead, the colour dot before each species name now reflects that state exactly like the map marker: a ★ in the species colour for interesting, a dark centre-dot for rare-here, a bronze/yellow ring for missing-from-this-year / life list, and a red slash for blocked. It's less cluttered and reads the same as the map. Filtering and clearing those statuses lives in the Species column-header panel." },
     { v: "v902", date: "2026-08-05", text: "Filter (and sort) each column from its header. In the Species list, click the Species, Total, Last or Probability header to open a panel between the header and the rows: Total takes a lower/upper count, Probability a min–max slider, Species lists the active species filters with a “clear all”, and Last offers the date range plus This/Before/After a tapped date. Every panel also has a sort control (ascending / descending / off). A funnel icon marks any column that currently has a filter. In the “By observation” view, funnels mark the Species, Probability and Source headers, and clicking Source opens an on/off list of all data sources." },
     { v: "v899", date: "2026-08-05", text: "New installs now default to the Voyager map with “More place names” switched on, so detailed local names are visible from the start. Your own map/label choice (if you've set one) is preserved — change it any time under Settings → Map." },
     { v: "v898", date: "2026-08-05", text: "The Species-list table gains the same date-range selection as the “By observation” view. Click the “Last” column header (or a date in the list) to open a panel — between the header and the first rows — where you can pick a recency window (days/weeks/months), an exact from–to range, or specific months. The window also filters the table's Total and Last columns, so the list reflects the same dates as the map." },
@@ -4018,7 +4000,6 @@
       var entry = agg[key], row = td.parentNode;
       if (row) {
         row.classList.toggle("sp-has-det", !!(entry && entry.count));   // caret shows only when there's something to expand
-        var dot = row.querySelector(".sp-cdot"); if (dot && detPlot[key] && detPlot[key].color) dot.style.background = detPlot[key].color;   // match the map colour once plotted
       }
       if (!entry || !entry.count) { if (isFinal) td.textContent = ""; return; }   // partial: leave the hourglass for not-yet-arrived data
       // Pure total (applyAgeFilter recomputes it as filtered SPECIMENS right after).
@@ -4043,13 +4024,9 @@
       lastCellSet(td, ts);   // date, or days-back while the recency filter is active
       if (tr) tr.setAttribute("data-last", ts);
     });
-    // We now know WHICH species were seen here, so the status column can mark the
-    // ones the model considers unlikely at this spot.
-    var rareSet = tbody._rareSet = spRareSet(agg, tbody);
-    tbody.querySelectorAll("td.spf-c-rare[data-key]").forEach(function (td) {
-      var k = td.getAttribute("data-key");
-      td.innerHTML = rareSet[k] ? '<i class="spf spf-rare" title="' + escapeHtml(t("flag.rare")) + '">' + SP_FLAG_GLYPH.rare + "</i>" : "";
-    });
+    // We now know WHICH species were seen here, so the dot can mark the ones the model
+    // considers unlikely at this spot (rare-here) — applyAgeFilter repaints the dots.
+    tbody._rareSet = spRareSet(agg, tbody);
     prependExtraSightings(tbody, extras);
     // Re-apply the active age/rare filters and sort as data arrives.
     applyAgeFilter();
@@ -4142,7 +4119,7 @@
       if (e.latestTs) tr.setAttribute("data-last", e.latestTs);
       if (exKm != null) tr.setAttribute("data-dist", exKm);
       var clsBadge = e.cls ? '<span class="sp-extra-cls" title="' + escapeHtml(e.cls) + '">' + classGlyph(e.cls) + "</span> " : "";
-      tr.innerHTML = spFlagCells(null, false) +   // not a model species → no list/star status to show
+      tr.innerHTML =   // not a model species → no list/star status to show
         '<td>' + clsBadge + '<span class="sp-extra-name" title="' + escapeHtml(t("sp.extraHint")) + '">' + escapeHtml(name) + '</span></td>' +
         '<td class="name2"></td>' +
         '<td class="sci">' + escapeHtml(e.sci) + '</td>' +
@@ -5260,9 +5237,8 @@
           '<div id="sp-records" style="display:none"></div>' +
           '<table id="species-list-table">' +
             '<thead><tr>' +
-            SP_FILTER_KEYS.map(function (f) {
-              return '<th id="sp-f-' + f + '" class="spf-head" role="button" tabindex="0"><span>' + SP_FLAG_GLYPH[f] + '</span></th>';
-            }).join("") +
+            // Status (★/◉/🟠/🟡/🚫) rides on the species dot now (see spListDot), not in
+            // its own columns; filtering by status lives in the Species header panel.
             '<th id="sp-species-head" class="clickable-head" data-i18n="th.species">Species</th><th class="name2 clickable-head" id="sp-name2-head"></th><th id="sp-sci-head" class="clickable-head" data-i18n="th.sci">Scientific name</th><th id="sp-nd-head" class="num clickable-head" data-i18n="th.total">Total</th><th id="sp-last-head" class="num clickable-head" data-i18n="th.last">Last</th><th id="sp-dist-head" class="num clickable-head" data-i18n="th.dist">Dist</th><th id="sp-prob-head" class="clickable-head" data-i18n="th.prob">Probability</th><th id="sp-season-head" class="season-cell clickable-head" data-i18n="th.season">Season</th><th id="sp-delta-head"></th></tr></thead>' +
             '<tbody id="sp-tbody"></tbody>' +
           '</table>' +
@@ -12688,19 +12664,8 @@
     // between the header and the first rows. Click again to collapse.
     document.getElementById("sp-last-head").addEventListener("click", function () { openSpHeadPanel("last"); });
 
-    // Click the "Species" column header to cycle the list through five states:
-    // default (natural prob order) → only ★ starred → only 🚫 blocked →
-    // alphabetic A→Z → alphabetic Z→A → default. Combines the species filter
-    // Click the status (⚑) column header to cycle the filter over exactly the
-    // mini-icons that column draws: all → ★ starred → ◉ rare here → 🟡 not on
-    // this year's list → 🟠 not on life list → 🚫 blocked → all.
-    SP_FILTER_KEYS.forEach(function (f) {
-      var th = document.getElementById("sp-f-" + f); if (!th) return;
-      var toggle = function () { toggleSpFlag(f); };   // shared with the Species header panel's chips
-      th.addEventListener("click", toggle);
-      th.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
-    });
-
+    // The status flag columns are gone (state rides on the species dot); filtering by
+    // status is done from the Species header panel's chips (toggleSpFlag).
     // "Species" header → the species filter+sort panel (point/historic); country view
     // keeps a plain name sort.
     document.getElementById("sp-species-head").addEventListener("click", function () {
@@ -16226,7 +16191,7 @@
         else if (r.inModel && r.inList) chip = '<span class="src-chip src-both" title="' + escapeHtml(t("src.both")) + '">✓</span>';
         else if (r.inModel) chip = '<span class="src-chip src-model" title="' + escapeHtml(t("src.modelOnly")) + '">?</span>';
         else chip = '<span class="src-chip src-list" title="' + escapeHtml(t("src.listOnly")) + '">●</span>';
-        return "<tr" + (!r.inModel ? ' class="row-list-only"' : "") + '>' + spFlagCells(r.label.key, false) + "<td>" + nameLinkHtml(r.label, true) + "</td>" + name2Cell + '<td class="sci">' + escapeHtml(r.label.sci) + '</td><td class="num det-nd"></td><td class="num sp-last"></td><td class="num sp-dist"></td>' + probCell + '<td class="season-cell"></td><td>' + chip + "</td></tr>";
+        return "<tr" + (!r.inModel ? ' class="row-list-only"' : "") + '>' + "<td>" + spListDot(r.label.key) + nameLinkHtml(r.label, true) + "</td>" + name2Cell + '<td class="sci">' + escapeHtml(r.label.sci) + '</td><td class="num det-nd"></td><td class="num sp-last"></td><td class="num sp-dist"></td>' + probCell + '<td class="season-cell"></td><td>' + chip + "</td></tr>";
       }).join("");
       var sp = document.getElementById("species-panel");
       sp.classList.toggle("as-page", currentMode === "list");
@@ -16716,8 +16681,8 @@
         var dKey = escapeHtml(r.label.key);
         var pct = Math.round(r.prob * 100);
         var sortAttrs = ' data-name="' + escapeHtml(speciesName(r.label).toLowerCase()) + '" data-prob="' + r.prob + '"' + (hasCompare ? ' data-cmp="' + r.cmpVal + '"' : "");
-        return '<tr' + sortAttrs + '>' + spFlagCells(r.label.key, false) +
-               '<td>' + spColorDot(r.label.key) + nameLinkHtml(r.label, true) + '</td>' + name2Cell + '<td class="sci">' +
+        return '<tr' + sortAttrs + '>' +
+               '<td>' + spListDot(r.label.key) + nameLinkHtml(r.label, true) + '</td>' + name2Cell + '<td class="sci">' +
                escapeHtml(r.label.sci) + '</td>' +
                '<td class="num det-nd" data-key="' + dKey + '"><span class="det-wait" title="' + escapeHtml(t("status.loadingDet")) + '"></span></td>' +
                '<td class="num sp-last" data-key="' + dKey + '"></td>' +

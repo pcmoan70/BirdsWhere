@@ -629,43 +629,8 @@ input:focus-visible {
   background: var(--brand-soft);
 }
 
-/* Status columns — one narrow column per per-species cue (★ starred, ◉ rare
-   here, 🟡 year-list miss, 🟠 life-list miss, 🚫 blocked). Each header icon is
-   its own filter toggle: greyed out when off, full colour when on. */
-#species-list-table th.spf-head,
-#species-list-table td.spf-c {
-  width: 1%;
-  white-space: nowrap;
-  text-align: center;
-  padding-left: 2px;
-  padding-right: 2px;
-}
-/* The first status column keeps the table's normal left inset. */
-#species-list-table th.spf-head:first-child,
-#species-list-table td.spf-c:first-child { padding-left: 6px; }
-/* No lane markers between the status columns — they read as one group. */
-#species-list-table th.spf-head,
-#species-list-table td.spf-c { border-right: 0; }
-#species-list-table th#sp-f-hidden,
-#species-list-table td.spf-c-hidden { border-right: 1px solid var(--md-default-fg-color--lightest, rgba(0,0,0,.06)); }
-
-#species-list-table th.spf-head { cursor: pointer; user-select: none; font-size: 0.8rem; }
-#species-list-table th.spf-head > span {
-  display: inline-block;
-  filter: grayscale(1);
-  opacity: 0.4;
-  transition: opacity 0.12s, filter 0.12s;
-}
-#species-list-table th.spf-head:hover > span { opacity: 0.7; }
-#species-list-table th.spf-head.on > span { filter: none; opacity: 1; }
-/* ★ has no intrinsic colour, so give it one to grayscale away when inactive. */
-#species-list-table th.spf-head#sp-f-star > span { color: #f0a020; }
-#species-list-table th.spf-head#sp-f-rare > span { color: var(--ink, #16302b); }
-#species-list-table th.spf-head.on { background: var(--brand-soft); }
-
-.spf { font-style: normal; font-size: 0.72rem; line-height: 1; }
-.spf-star { color: #f0a020; font-weight: 700; font-size: 0.82rem; }
-.spf-rare { color: var(--ink, #16302b); font-size: 0.82rem; }
+/* (The old per-cue status columns were removed — the species dot now carries the
+   state, like the map marker; see .sp-dot / .det-sw in app.js.) */
 
 #species-list-table .sci { font-style: italic; }
 #species-list-table.hide-sci .sci,
@@ -2748,6 +2713,11 @@ tr.sp-open { background: var(--surface-2, rgba(0,0,0,.05)); }
 .sp-obs-tbl .sp-obs-grp .dl-loc { font-weight: 400; font-style: italic; color: var(--ink-muted, #888); }
 /* Species colour swatch inline before the name (species list + record tables). */
 .sp-cdot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: middle; flex: 0 0 auto; }
+/* Species-list dot holder — carries the map-style state swatch (colour + ★ / rare /
+   need-ring via .det-sw*). Blocked species get a red slash across the dot. */
+.sp-dot { position: relative; display: inline-flex; align-items: center; justify-content: center; margin-right: 5px; vertical-align: middle; flex: 0 0 auto; }
+.sp-dot.blocked .det-sw { opacity: 0.45; }
+.sp-dot.blocked::after { content: ""; position: absolute; left: 50%; top: 50%; width: 15px; height: 2px; background: #c0392b; border-radius: 1px; transform: translate(-50%, -50%) rotate(-45deg); }
 /* Date + observer label: truncate with an ellipsis; the full name(s) stay
    available via the title tooltip on hover. */
 .dl-date-head .dl-date-lbl { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
