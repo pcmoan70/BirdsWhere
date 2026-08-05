@@ -1271,14 +1271,17 @@
   // Count filter test shared by the list rows and the map dots: specimens within
   // [min, max] (either bound null = open on that side).
   function countInBounds(n) { return (spCountMin == null || n >= spCountMin) && (spCountMax == null || n <= spCountMax); }
-  // "Last" cell: the observation date, or — while the recency filter is active — the
-  // number of DAYS BACK (so the column reads against the ≤Nd window on its header).
+  // A "last N days/weeks/months" recency window is active (relative, not an absolute
+  // from–to range). While it is, the Last cell reads as DAYS BACK rather than a date.
+  function daysBackActive() { return !detDateRange() && detRecencyDays() > 0; }
+  // "Last" cell: the observation date, or — while a relative recency window is active —
+  // the number of DAYS BACK since that observation.
   function lastCellSet(td, ts) {
     if (!td) return;
     if (!ts) { td.innerHTML = ""; return; }
-    if (speciesAgeFilterDays > 0) {
+    if (daysBackActive()) {
       // Showing "days back", but keep it a clickable date chip (same as the plain date)
-      // so the full On/Before/After/Range filter menu still opens from the Last column.
+      // so clicking still opens the date filter+sort panel for the Last column.
       var db = Math.max(0, Math.round((Date.now() - ts) / 86400000)), iso = localISODate(ts);
       td.innerHTML = '<span class="dl-date-click sp-daysback" role="button" data-date="' + iso + '" title="' + escapeHtml(t("detlist.dateFilterHint")) + '">' + db + "d</span>";
     } else td.innerHTML = lastDateCellHtml(ts);

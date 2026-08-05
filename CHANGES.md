@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-05 — Last column shows "days back" under a relative recency window (sw v904)
+
+- When a "last N days/weeks/months" recency filter is active (relative — not an absolute from–to range),
+  the Last column now reads as days-back (e.g. "5d") instead of the date. New `daysBackActive()` =
+  `!detDateRange() && detRecencyDays() > 0`, used by `lastCellSet` (replaces the retired
+  `speciesAgeFilterDays` trigger). Absolute date range / all-time still show the date.
+
 ## 2026-08-05 — Total panel sorts by total count or number of observations (sw v903)
 
 - The Total header panel's sort now offers two metrics: **Total** (the de-duplicated specimen count shown
