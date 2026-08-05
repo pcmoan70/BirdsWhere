@@ -3959,7 +3959,6 @@
     var tbody = document.getElementById("sp-tbody");
     if (tbody) tbody.dataset.sightingsToken = token;   // supersede if another click arrives
     var mapFetch = spMapFetch;   // this fetch intended to drop dots on the map (map-first point flow)
-    fetchDotsAdd();   // a period appears on the map the moment this fetch is queued
     hideSourceCounts();   // clear any prior location's "Loaded: …" line before this fetch
     var onPartial = function (partial) { applySightings(tbody, token, partial, false); };   // live-fill rows as each source returns (recent) / each month batch (historic)
     var fetchP = histRange ? fetchHistoricSightingsAt(lat, lon, histRange, onProg, onPartial) : fetchAllSightingsAt(lat, lon, onPartial);
@@ -3988,7 +3987,7 @@
       if (tbody && tbody.dataset.sightingsToken === token) {
         tbody.querySelectorAll(".det-nd .det-wait").forEach(function (s) { if (s.parentNode) s.parentNode.textContent = ""; });
       }
-    }).then(function () { fetchDotsDone(); });   // fetch settled (ok or fail) → remove one period
+    });
   }
   // Append species the model doesn't cover (matched only via GBIF/iNat/eBird
   // sci-name) BELOW the model rows so the prediction-ranked species stay at the
@@ -16104,6 +16103,12 @@
     // instead of the recent all-source fetch.
     var keepScroll = keepListScroll; keepListScroll = false;   // consume one-shot flag
     var myGen = ++spListGen;   // supersede any older in-flight render (see spListGen)
+    // Count this fetch from the moment it's QUEUED (now — through the inference /
+    // list build) until it settles, so the status-line dots show queued + in-progress
+    // fetches, not just those with a network request in flight. Release exactly once.
+    fetchDotsAdd();
+    var dotReleased = false;
+    var releaseDot = function () { if (!dotReleased) { dotReleased = true; fetchDotsDone(); } };
     spMapFetch = false;   // reset; set true below only for the map-first point flow
     // Keep the list's ★/◉/🟠/🟡 flag filters in step with the global detection filters
     // (so a fresh fetch's list narrows the same way the map does).
@@ -16140,7 +16145,7 @@
       // Superseded while awaiting inference (mode switch / newer point) — bail out
       // BEFORE rendering or firing the sightings fetch. This is the fix for a recent
       // fetch firing when the user switches Recent → Historic mid-render.
-      if (myGen !== spListGen) return;
+      if (myGen !== spListGen) { releaseDot(); return; }
       var hasCompare = !!cmp.probs;
       var kind = cmp.kind;   // "delta" | "ratio" | "focus"
       function buildResults() {
@@ -16279,7 +16284,7 @@
         }).then(function () {
           if (!currentSpView || currentSpView.range !== histTok) return;   // a newer search owns the bar
           var p = document.getElementById("sp-hist-prog"); if (p) p.style.display = "none";
-        });
+        }).then(releaseDot, releaseDot);   // fetch settled → drop this fetch's status-line dot
       } else {
         var fetchGen = myGen;   // guard against a newer point / mode switch mid-fetch
         // Map-first: the dots are dropped progressively from applySightings as each
@@ -16287,7 +16292,7 @@
         // the flag once the fetch settles so later plots use the normal (fit) path.
         augmentRowsWithSightings(lat, lon).then(function () {
           if (spListGen === fetchGen) spMapFetch = false;
-        });
+        }).then(releaseDot, releaseDot);   // fetch settled → drop this fetch's status-line dot
       }
       lastSpeciesPdf = {
         name2Head: secondLang ? window.GeoI18N.langByCode(secondLang).name : "",
@@ -16303,7 +16308,7 @@
         }),
       };
       showCsvBtn();
-    } catch (e) { setStatus(t("status.error", { msg: e.message })); console.error(e); }
+    } catch (e) { releaseDot(); setStatus(t("status.error", { msg: e.message })); console.error(e); }
   }
 
   // ---- Computing overlay ---------------------------------------------------

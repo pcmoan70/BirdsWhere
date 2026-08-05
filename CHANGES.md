@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-05 — Status dots count queued + in-progress fetches (sw v878)
+
+- The fetch-queue dots now count a fetch from the moment it's **queued** (start of `renderSpeciesList`,
+  through the inference / list build) until it settles — not only while the network request is in flight.
+  Moved the `fetchDotsAdd()`/`fetchDotsDone()` out of `augmentRowsWithSightings` and into `renderSpeciesList`
+  with a single-release ticket (`releaseDot`) fired on the supersede bail, the catch, or the fetch promise
+  settling. So a period appears the instant you trigger a fetch and the count reflects queued + in-progress.
+
 ## 2026-08-05 — Blinking in-flight-fetch dots in the status line (sw v877)
 
 - The blinking fetch-queue dots now live in the **status field above the map** (`#status-dots` appended to
