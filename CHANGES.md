@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-08-05 — Observer menu tidy-up (sw v889)
+
+- When "Remove from observer filter" is shown (observer is in the active filter), "Show only this observer"
+  is hidden (redundant). And the clear-filter option now reads "Remove all observer filters" (`obs.removeAll`,
+  15 langs) whenever a filter is set, instead of "All observers". Guarded the (now-optional) only-button handler.
+
 ## 2026-08-05 — Observer menu: remove an observer from the active filter (sw v888)
 
 - `observerActionMenu`: when the clicked observer is part of the active observer filter, a new "Remove from
