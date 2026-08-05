@@ -1,5 +1,10 @@
 # Changes
 
+## 2026-08-05 — Checklist button visible again (sw v891)
+
+- Reverted v868: the Checklist button (foot of the species list) is a standard feature again, always shown
+  (`applyExperimentalUi` no longer hides it). Removed the Checklist mention from the Experimental hint (en/sv).
+
 ## 2026-08-05 — Species filter menu mirrors the observer pattern (sw v890)
 
 - The species menu's selection filter (`drmRenderMain`, `detSelected`) now works like the observer menu:

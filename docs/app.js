@@ -6283,10 +6283,11 @@
   // any future try-it-out links/features.
   function experimentalOn() { return !!window.GeoState.get("experimental", false); }
   // Show/hide the experimental-gated UI that lives in static HTML (re-run on the
-  // toggle). The Checklist button is experimental-only; menu links are gated at render.
+  // toggle). The Checklist button is a standard feature again — always shown; the
+  // experimental menu links are gated at render time.
   function applyExperimentalUi() {
     var b = document.getElementById("sp-checklist-btn");
-    if (b) b.style.display = experimentalOn() ? "" : "none";
+    if (b) b.style.display = "";   // always visible (was experimental-gated in v868)
   }
   function applyLabelsOverlay() {
     if (labelsOverlay) { try { map.removeLayer(labelsOverlay); } catch (e) {} labelsOverlay = null; }
