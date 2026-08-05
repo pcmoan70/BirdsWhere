@@ -1,5 +1,20 @@
 # Changes
 
+## 2026-08-06 — Filter by observer list + species lists (sw v917)
+
+- **Observer-list filter:** the observer popup gains "Filter by observer list ▸" — pick a saved observer
+  list and it applies as the filter (`setDetObsFilter`). Restores the scope that was on the old 👤 checklist.
+- **Species lists:** new saved species lists (`speciesLists` = [{name, keys}]).
+  - Build a selection: the species menu now offers **Add to species filter** (alongside Show only) to
+    accumulate multiple species (`detSelected`).
+  - The **Species** header panel shows saved species lists as chips (tap to apply / tap again or × to
+    clear-delete) and a **Save selection as list** button. `applySpeciesList` selects the list's species
+    that are observed here; `saveCurrentSpeciesList` prompts for a name.
+  - The species **selection now also narrows the species table** (`applyAgeFilter` gained `selOk`), so an
+    applied list filters the table, map, legend and By-observation together. `speciesFilterActive()` +
+    the Species-header funnel track it.
+- i18n: `obs.filterByList`, `menu.addSpFilter`, `sp.speciesLists`, `sp.saveAsList`, `sp.saveListPrompt` (15 langs).
+
 ## 2026-08-06 — Observer filtering moved into the observer popup (sw v916)
 
 - Removed the standalone 👤 observer toggle + checklist panel from the "By observation" filter bar

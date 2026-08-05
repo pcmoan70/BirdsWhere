@@ -1634,6 +1634,7 @@
     var rareAll = tbody._rareSet;                              // rare-here set (for the dot), independent of the filter
     var rareSet = spFilters.rare ? rareAll : null;
     var anyBuild = withBuild && (spFilters.star || spFilters.year || spFilters.life || spFilters.hidden);
+    var hasSel = Object.keys(detSelected).length > 0;   // a species selection / applied species list narrows the table too
     var now = Date.now();
     Array.prototype.forEach.call(tbody.querySelectorAll("tr"), function (tr) {
       if (tr.classList.contains("sp-detail-row")) return;   // handled by refreshSpExpansions below
@@ -1679,7 +1680,9 @@
       var recencyOk = !(days > 0) || (!!flatest && Math.round((now - flatest) / 86400000) <= days);
       // Total-column count filter: specimens within [min, max] (either null = open).
       var countOk = countInBounds(fc);
-      tr.style.display = (recencyOk && countOk && rareOk && buildOk && !obsFilteredOut) ? "" : "none";
+      // Species selection / applied species list: keep only the selected species.
+      var selOk = !hasSel || (!!key && !!detSelected[key]);
+      tr.style.display = (recencyOk && countOk && rareOk && buildOk && !obsFilteredOut && selOk) ? "" : "none";
     });
     refreshSpExpansions();   // keep expanded detail sub-rows under their (visible) species
     updateRecencyNote();
@@ -8003,6 +8006,9 @@
           el.appendChild(drmBtn(t("menu.removeSpFilter"), function () { closeDetRowMenu(); delete detSelected[key]; refreshSel(); }));
         } else {
           el.appendChild(drmBtn(t("menu.filterSp"), function () { closeDetRowMenu(); detSelected = {}; detSelected[key] = true; refreshSel(); }));
+          // Add to (rather than replace) the current selection — build a multi-species
+          // filter that can be saved as a species list.
+          if (detSelectionActive()) el.appendChild(drmBtn(t("menu.addSpFilter"), function () { closeDetRowMenu(); detSelected[key] = true; refreshSel(); }));
         }
         if (detSelectionActive()) el.appendChild(drmBtn(t("menu.removeAllSp"), function () { closeDetRowMenu(); detSelected = {}; refreshSel(); }));
       }
@@ -9162,6 +9168,39 @@
   // Saved sets of observer names (to filter by).
   function getObserverLists() { return window.GeoState.get("observerLists", []) || []; }
   function saveObserverLists(a) { window.GeoState.save({ observerLists: a }); }
+  // Named species lists — saved sets of species keys. Applying one filters the plotted
+  // detections (map / legend / By-observation) down to those species, via the same
+  // detSelected mechanism as "Show only this species". Build a selection first (Show
+  // only + Add to species filter), then Save selection as list.
+  function getSpeciesLists() { return window.GeoState.get("speciesLists", []) || []; }
+  function saveSpeciesLists(a) { window.GeoState.save({ speciesLists: a }); }
+  function sameKeySet(selObj, arr) {
+    var keys = Object.keys(selObj); if (!arr || keys.length !== arr.length) return false;
+    for (var i = 0; i < arr.length; i++) if (!selObj[arr[i]]) return false;
+    return true;
+  }
+  // Apply saved species list #i as the species selection filter (only species that are
+  // actually plotted can be selected).
+  function applySpeciesList(i) {
+    var l = getSpeciesLists()[i]; if (!l) return;
+    var plotted = (l.keys || []).filter(function (k) { return detPlot[k]; });   // list species observed here
+    var cleared = sameKeySet(detSelected, plotted);   // tapping the active list again clears it
+    detSelected = {};
+    if (!cleared) plotted.forEach(function (k) { detSelected[k] = true; });
+    saveLegendState(); rebuildDetLayers(); updateDetLegend();
+    refreshCueCellsInPlace();   // repaint the list in place (species panel is up)
+    renderSpControls();          // re-render the panel (chip highlight + selection list)
+  }
+  // Save the current species selection as a named list.
+  function saveCurrentSpeciesList() {
+    var keys = Object.keys(detSelected).filter(function (k) { return detPlot[k]; });
+    if (!keys.length) return;
+    modalPrompt(t("sp.saveListPrompt"), "").then(function (name) {
+      name = (name || "").trim(); if (!name) return;
+      var a = getSpeciesLists(); a.push({ name: name, keys: keys }); saveSpeciesLists(a);
+      if (typeof speciesPanelPopulated === "function" && speciesPanelPopulated()) renderSpControls();
+    });
+  }
   // Observers that currently have observations plotted (the pool you can add from).
   function allKnownObservers() {
     var set = Object.create(null);
@@ -9309,6 +9348,7 @@
                 : '<button type="button" class="obs-addmenu-item obs-act-filter">' + escapeHtml(t("obs.filterOnly")) + "</button>" +
                   (detObsFilter ? '<button type="button" class="obs-addmenu-item obs-act-addfilter">' + escapeHtml(t("obs.addToFilter")) + "</button>" : "")) +
       (detObsFilter ? '<button type="button" class="obs-addmenu-item obs-act-all">' + escapeHtml(t("obs.removeAll")) + "</button>" : "") +
+      (getObserverLists().length ? '<button type="button" class="obs-addmenu-item obs-act-bylist">' + escapeHtml(t("obs.filterByList")) + " ▸</button>" : "") +
       '<button type="button" class="obs-addmenu-item obs-act-add">' + escapeHtml(t("obs.addToListAct")) + "</button>" +
       '<button type="button" class="obs-addmenu-item obs-act-editlists">' + escapeHtml(t("obs.editLists")) + "</button>";
     positionAnchoredMenu(menu, r.left, r.bottom + 2);
@@ -9334,6 +9374,22 @@
     });
     var allBtn = menu.querySelector(".obs-act-all");
     if (allBtn) allBtn.addEventListener("click", function (e) { e.stopPropagation(); closeAnchoredMenu(); setDetObsFilter(null); saveLegendState(); detFiltersRefresh(); });
+    var byListBtn = menu.querySelector(".obs-act-bylist");
+    if (byListBtn) byListBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var lists = getObserverLists();
+      menu.innerHTML = '<div class="obs-addmenu-head">' + escapeHtml(t("obs.filterByList")) + "</div>" +
+        lists.map(function (l, i) { return '<button type="button" class="obs-addmenu-item obs-bylist-item" data-i="' + i + '">' + escapeHtml(l.name) + " (" + ((l.observers || []).length) + ")</button>"; }).join("");
+      positionAnchoredMenu(menu, r.left, r.bottom + 2);
+      menu.querySelectorAll(".obs-bylist-item").forEach(function (b) {
+        b.addEventListener("click", function (ev) {
+          ev.stopPropagation(); closeAnchoredMenu();
+          var l = lists[+this.getAttribute("data-i")];
+          setDetObsFilter(new Set(l.observers || []));   // apply the saved observer list as the filter
+          saveLegendState(); detFiltersRefresh();
+        });
+      });
+    });
     menu.querySelector(".obs-act-add").addEventListener("click", function (e) {
       e.stopPropagation(); closeAnchoredMenu();
       showAddToListMenu(name, r);
@@ -16462,7 +16518,7 @@
   // ---- Species-list column-header filter+sort panels ------------------------
   // Whether each column currently has an active (narrowing) filter — drives the
   // funnel indicator on the header and the "clear" buttons in the panels.
-  function speciesFilterActive() { return anySpFilter() || detSelectionActive() || !!spNameQuery.trim(); }
+  function speciesFilterActive() { return anySpFilter() || Object.keys(detSelected).length > 0 || !!spNameQuery.trim(); }
   function totalFilterActive() { return spCountMin != null || spCountMax != null; }
   function lastFilterActive() { return !!detDateRange() || detMonths().length > 0 || (detRecencyDays() !== 0 && detRecencyDays() !== 30); }
   function probFilterActive() { var lo = +document.getElementById("prob-min").value, hi = +document.getElementById("prob-max").value; return lo > 0 || hi < 100; }
@@ -16537,6 +16593,19 @@
       }).join("") + "</div>";
     }
     if (speciesFilterActive()) html += '<button type="button" class="sp-spf-clear demo-btn demo-btn-light">' + escapeHtml(t("menu.removeAllSp")) + "</button>";
+    // Saved species lists: tap to filter the plotted detections down to that list; ×
+    // deletes. Plus "Save selection as list" when a species selection is active.
+    var spLists = getSpeciesLists();
+    if (spLists.length || sel.length) {
+      html += '<div class="sp-splist-head">' + escapeHtml(t("sp.speciesLists")) + "</div>";
+      if (spLists.length) {
+        html += '<div class="sp-splist-chips">' + spLists.map(function (l, i) {
+          var active = sel.length && sameKeySet(detSelected, (l.keys || []).filter(function (k) { return detPlot[k]; }));
+          return '<span class="sp-splist-chip' + (active ? " on" : "") + '"><button type="button" class="sp-splist-apply" data-i="' + i + '">' + escapeHtml(l.name) + " (" + ((l.keys || []).length) + ')</button><button type="button" class="sp-splist-del" data-i="' + i + '" aria-label="' + escapeHtml(t("offline.delete")) + '">×</button></span>';
+        }).join("") + "</div>";
+      }
+      if (sel.length) html += '<button type="button" class="sp-splist-save demo-btn demo-btn-light">' + escapeHtml(t("sp.saveAsList")) + "</button>";
+    }
     return html + "</div>";
   }
   function spTotalPanelHtml() {
@@ -16593,6 +16662,15 @@
       container.querySelectorAll(".sp-spf-del").forEach(function (x) {
         x.addEventListener("click", function (e) { e.stopPropagation(); delete detSelected[this.getAttribute("data-key")]; saveLegendState(); rebuildDetLayers(); updateDetLegend(); renderSpControls(); });
       });
+      // Saved species lists: apply / delete / save-current.
+      container.querySelectorAll(".sp-splist-apply").forEach(function (b) {
+        b.addEventListener("click", function (e) { e.stopPropagation(); applySpeciesList(+this.getAttribute("data-i")); });
+      });
+      container.querySelectorAll(".sp-splist-del").forEach(function (b) {
+        b.addEventListener("click", function (e) { e.stopPropagation(); var a = getSpeciesLists(); a.splice(+this.getAttribute("data-i"), 1); saveSpeciesLists(a); renderSpControls(); });
+      });
+      var spListSave = container.querySelector(".sp-splist-save");
+      if (spListSave) spListSave.addEventListener("click", function (e) { e.stopPropagation(); saveCurrentSpeciesList(); });
       var clr = container.querySelector(".sp-spf-clear");
       if (clr) clr.addEventListener("click", function (e) {
         e.stopPropagation();

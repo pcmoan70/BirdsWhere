@@ -21,11 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v916";
+var VERSION = "v917";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• Filter by lists. Observer popup → “Filter by observer list” applies a saved observer list. And new species lists: in a species menu, “Show only” then “Add to species filter” to build a set, then “Save selection as list” in the Species panel — tap a saved list to narrow the map, legend and species table to those species.",
   "• Observer filtering moved into the observer popup: tap an observer's name in a record to Show only / Add to (build a multi-observer filter) / Remove, plus Add to list and the list editor. The separate 👤 button in the “By observation” bar is gone.",
   "• Species list search: click the Species column header and type in the “Filter species…” box in the panel to narrow the list by name — reliable on phones and in the full-screen list, where the browser's own Ctrl-F can't scroll to matches. A funnel on the Species header shows when a filter is on.",
   "• The Species list is cleaner: the five status columns (★ interesting, ◉ rare, this-year, life, blocked) are gone — the colour dot before each name now shows the state the way the map marker does (★, rare centre-dot, year/life ring, a red slash for blocked). Filtering by status stays in the Species header panel.",
