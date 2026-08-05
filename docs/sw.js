@@ -21,13 +21,13 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v884";
+var VERSION = "v885";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
   "• Cycling the species-list column headers (sort/filter) no longer bounces you back to the map — that now happens only via the map icon top-right.",
-  "• A funnel-with-red-× button appears on the right of the map (and in the legend) whenever a filter is active; tap it to clear all filters at once.",
+  "• A funnel-with-red-× button (right of the map, just below the clear-observations ×, and in the legend) appears whenever a filter is active; tap it to clear all filters. The Total-column count filter (>0/>1/>5) now narrows the map dots too.",
   "• Species list columns: the count column is now “Total” (total specimens) with a tap-to-cycle filter — any / >0 / >1 / >5. The “Last” column header now cycles a recency filter (≤1d / 3 / 7 / 14 / 21 days / unlimited) that also narrows the map; while it's active the column shows “days back” instead of the date.",
   "• Fixed the species-list counts (n(d)) — they now consistently show the TOTAL number of specimens (a record with no count = 1); and fixed a date off-by-one where the “Last” date could show a day early in +UTC time zones. New icons: a green map-pin for “Show on map”, a nav-arrow-with-+ for “Add to route”, and a +/dots icon for “Add to list”.",
   "• Startup note: this map only shows what others have carefully reported — to contribute your own sightings, register with a national (Artportalen.se, Artsobservasjoner.no …) or international (eBird.org, Observation.org …) service.",

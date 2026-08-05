@@ -320,30 +320,31 @@
   }
   var animCtrlEl = null;   // the on-map migration-animation control container
   var h3CtrlEl = null;     // the on-map H3 detail (+/-) control container
-  var clearPtsCtrlEl = null;   // the on-map red × that clears all plotted observations
-  var filterClearCtrlEl = null;   // the on-map funnel-× that clears all detection filters
-  // Show the funnel-× (right of the map) only while a detection filter is active.
-  function updateFilterClearBtn() {
-    if (!filterClearCtrlEl) return;
-    filterClearCtrlEl.style.display = (typeof detHasFilter === "function" && detHasFilter()) ? "" : "none";
-  }
-  // Show the red × (right of the map) only while observations are plotted; a tap
-  // clears them all. Kept in sync from updateDetLegend (runs on every plot/clear).
-  function updateClearPtsBtn() {
-    if (!clearPtsCtrlEl) return;
-    var has = typeof detPlot !== "undefined" && Object.keys(detPlot).length > 0;
-    clearPtsCtrlEl.style.display = has ? "" : "none";
-    // Reflect the shared arm-and-delete state (same as the legend's red ×): armed →
-    // "click again to clear"; else "arm per-area delete" when there are areas, plain
-    // "clear all" otherwise.
-    var a = clearPtsCtrlEl.querySelector(".clearpts-btn");
+  var clearGroupEl = null;   // the on-map bar: red × (clear observations) + funnel-× (clear filters)
+  // Show the clear-observations × only while observations are plotted, and the
+  // clear-filters funnel only while a filter is active; hide the whole bar when
+  // neither applies. Kept in sync from updateDetLegend (runs on every plot/clear).
+  function updateClearGroup() {
+    if (!clearGroupEl) return;
+    var hasPts = typeof detPlot !== "undefined" && Object.keys(detPlot).length > 0;
+    var hasFilt = typeof detHasFilter === "function" && detHasFilter();
+    var a = clearGroupEl.querySelector(".clearpts-btn");
     if (a) {
+      a.style.display = hasPts ? "" : "none";
+      // Reflect the shared arm-and-delete state: armed → "click again to clear"; else
+      // "arm per-area delete" when there are areas, plain "clear all" otherwise.
       var armed = !!detAreaDeleteMode;
       a.classList.toggle("armed", armed);
       var title = armed ? t("det.delAreaHint") : (fetchedAreas.length ? t("det.delAreaArm") : t("ctrl.clearPoints"));
       a.title = title; a.setAttribute("aria-label", title);
     }
+    var f = clearGroupEl.querySelector(".filterclear-btn");
+    if (f) f.style.display = hasFilt ? "" : "none";
+    clearGroupEl.style.display = (hasPts || hasFilt) ? "" : "none";
   }
+  // Back-compat aliases (call sites elsewhere).
+  function updateClearPtsBtn() { updateClearGroup(); }
+  function updateFilterClearBtn() { updateClearGroup(); }
   // Step the H3 detail offset (range/richness overlay) finer/coarser, -2..+2.
   function adjustH3Detail(delta) {
     var v = Math.max(-2, Math.min(2, (hiResFactor | 0) + delta));
@@ -6099,9 +6100,10 @@
     });
     map.addControl(new DownloadControl());
 
-    // A red × on the right of the map, shown only while observations are plotted;
-    // one tap clears them all (same as the legend's clear-the-map ×), then it hides.
-    var ClearPointsControl = L.Control.extend({
+    // One leaflet-bar on the right, holding (top) a red × that clears all plotted
+    // observations and (below it) a funnel-with-red-× that clears all detection
+    // filters. Each button shows only when it applies; the bar hides when neither does.
+    var ClearControl = L.Control.extend({
       options: { position: "topright" },
       onAdd: function () {
         var c = L.DomUtil.create("div", "leaflet-bar leaflet-control clearpts-ctrl");
@@ -6117,40 +6119,24 @@
           // to pick from; the next click (or when there are none) clears everything.
           if (!detAreaDeleteMode && fetchedAreas.length) { enterAreaDeleteMode(); updateDetLegend(); }
           else clearDetections();
-          updateClearPtsBtn();
+          updateClearGroup();
         });
-        clearPtsCtrlEl = c;
-        c.style.display = "none";   // updateClearPtsBtn reveals it once points exist
-        setTimeout(updateClearPtsBtn, 0);
-        return c;
-      }
-    });
-    map.addControl(new ClearPointsControl());
-
-    // A large funnel-with-red-× on the right of the map, shown ONLY while a detection
-    // filter is active; one tap clears every filter (same as the legend's clear-filters
-    // button). Sits below the clear-points ×.
-    var FilterClearControl = L.Control.extend({
-      options: { position: "topright" },
-      onAdd: function () {
-        var c = L.DomUtil.create("div", "leaflet-bar leaflet-control filterclear-ctrl");
-        L.DomEvent.disableClickPropagation(c);
-        var a = L.DomUtil.create("a", "filterclear-btn", c);
-        a.href = "#"; a.title = t("det.clearFilters"); a.setAttribute("aria-label", t("det.clearFilters"));
-        a.innerHTML = filterXSvg(26);
-        L.DomEvent.on(a, "click", function (e) {
+        var f = L.DomUtil.create("a", "filterclear-btn", c);   // below the × (same bar)
+        f.href = "#"; f.title = t("det.clearFilters"); f.setAttribute("aria-label", t("det.clearFilters"));
+        f.innerHTML = filterXSvg(18);
+        L.DomEvent.on(f, "click", function (e) {
           L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e);
           mapClickGuardUntil = Date.now() + 250;
           clearAllFilters();
-          updateFilterClearBtn();
+          updateClearGroup();
         });
-        filterClearCtrlEl = c;
-        c.style.display = "none";   // updateFilterClearBtn reveals it when a filter is active
-        setTimeout(updateFilterClearBtn, 0);
+        clearGroupEl = c;
+        c.style.display = "none";
+        setTimeout(updateClearGroup, 0);
         return c;
       }
     });
-    map.addControl(new FilterClearControl());
+    map.addControl(new ClearControl());
 
     // Live position (blue "follow" state): keep the plus marker on the current
     // location. On the first fix, centre the map and populate the click-driven modes
@@ -6190,7 +6176,7 @@
     // Leaflet stacks top-right controls in add order; the overlay-toggles control was
     // just added ABOVE the clear-× (added earlier). Re-append the × so it sits BELOW
     // both the download and overlay-toggle icons, not between them.
-    if (clearPtsCtrlEl && clearPtsCtrlEl.parentNode) clearPtsCtrlEl.parentNode.appendChild(clearPtsCtrlEl);
+    if (clearGroupEl && clearGroupEl.parentNode) clearGroupEl.parentNode.appendChild(clearGroupEl);
     loadDetections();      // restore any "Show in map" detection points
     restoreFetchedAreas(); // ...and their fetched-area outlines (per-area red × needs them)
     loadMapPoints();       // user-added pins + saved named lists (from localStorage)
@@ -7052,6 +7038,20 @@
     return false;
   }
   function detPassesStar(k) { return !detStarFilter || isInteresting((detPlot[k] && detPlot[k].key) || k); }
+  // Total-column count filter, applied to the MAP too: a species passes only when its
+  // total specimens (over the rows that pass the date/observer/source filters) exceed
+  // the threshold (>0 / >1 / >5). null = no count filter.
+  function detSpeciesCount(k) {
+    var e = detPlot[k]; if (!e || !e.rows) return 0;
+    var c = 0;
+    for (var i = 0; i < e.rows.length; i++) {
+      var r = e.rows[i];
+      if (!detDatePasses(r.date) || !detObsPasses(r) || !detPassesSrc(r)) continue;
+      var n = parseInt(r.count, 10); c += (isFinite(n) && n > 0) ? n : 1;
+    }
+    return c;
+  }
+  function detPassesCount(k) { return spCountMin == null || detSpeciesCount(k) > spCountMin; }
   function detPassesYear(k) { return !detYearFilter || !inYearList((detPlot[k] && detPlot[k].key) || k); }
   function detPassesLife(k) { return !detLifeFilter || !inLifeList((detPlot[k] && detPlot[k].key) || k); }
   // "Rare here": a species observed at this spot that the HABITAT MODEL says is
@@ -7097,7 +7097,7 @@
   // in, instead of this re-scanning all selected keys for every species.
   function detIsVisible(key, selActive) {
     if (selActive === undefined) selActive = detSelectionActive();
-    return !isHidden((detPlot[key] && detPlot[key].key) || key) && detPassesStar(key) && detPassesGroup(key) && detPassesRare(key) && detPassesYear(key) && detPassesLife(key) && (!selActive || !!detSelected[key]);
+    return !isHidden((detPlot[key] && detPlot[key].key) || key) && detPassesStar(key) && detPassesGroup(key) && detPassesRare(key) && detPassesYear(key) && detPassesLife(key) && detPassesCount(key) && (!selActive || !!detSelected[key]);
   }
   // Dots are always shown in their species colour (no grey overview mode) — so
   // "all"/"1 day"/etc. all render coloured. Visibility (above) does the filtering.
@@ -8709,7 +8709,7 @@
   // recency days / date range.) Drives the black × (clear all) in both the legend
   // and the detections-list filter bar.
   function detHasFilter() {
-    return detSelectionActive() || detStarFilter || detRareFilter || detYearFilter || detLifeFilter || !!detObsFilter || !!detSrcFilter || (detRecencyDays() !== 0) || !!detDateRange() || detMonths().length > 0;
+    return detSelectionActive() || detStarFilter || detRareFilter || detYearFilter || detLifeFilter || !!detObsFilter || !!detSrcFilter || (detRecencyDays() !== 0) || !!detDateRange() || detMonths().length > 0 || spCountMin != null;
   }
   // Reset every legend filter at once (the black ×): the species selection, the
   // ★/◉/🟡 mode filter, the observer filter, and the recency (days) window → All.
@@ -9428,7 +9428,7 @@
     legendViewBounds = (legendInView() && map) ? map.getBounds() : null;
     var visCount = Object.create(null);
     allKeys.forEach(function (k) { visCount[k] = detVisibleCount(k); });
-    var keys = allKeys.filter(function (k) { return detPassesStar(k) && detPassesGroup(k) && detPassesRare(k) && detPassesYear(k) && detPassesLife(k) && detPassesSearch(k) && visCount[k] > 0; });
+    var keys = allKeys.filter(function (k) { return detPassesStar(k) && detPassesGroup(k) && detPassesRare(k) && detPassesYear(k) && detPassesLife(k) && detPassesCount(k) && detPassesSearch(k) && visCount[k] > 0; });
     // Legend hover/hold-isolate: if the focused row is no longer in the legend (a
     // filter/refresh removed it), clear the focus so the map doesn't stay stuck
     // isolated to one species after its row's mouseleave never fired.
@@ -12447,6 +12447,7 @@
       var seq = [null, 0, 1, 5];   // any → >0 → >1 → >5 → any
       spCountMin = seq[(seq.indexOf(spCountMin) + 1) % seq.length];
       this.textContent = countHeadLabel();
+      rebuildDetLayers(); updateDetLegend();   // the count filter now narrows the MAP dots + legend too
       applyAgeFilter();
     });
     // "Last" column header cycles a RECENCY filter: unlimited → ≤1d → ≤3d → ≤7d → ≤14d →

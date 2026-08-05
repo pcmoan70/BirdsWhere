@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-08-05 — Clear controls in one bar; count filter affects the map (sw v885)
+
+- The clear-observations × and clear-filters funnel-× are now one leaflet-bar (`ClearControl`): the funnel
+  sits directly **below** the ×, both at the standard control size (dropped the oversized 40px funnel).
+  Merged `updateClearPtsBtn`/`updateFilterClearBtn` into `updateClearGroup` (thin aliases kept); fixed the
+  stale `clearPtsCtrlEl` re-append reference to `clearGroupEl`.
+- **Total-column count filter now narrows the MAP too.** New `detPassesCount(k)` / `detSpeciesCount(k)`
+  added to `detIsVisible` and the legend species filter; the Total header cycle rebuilds the map dots +
+  legend; `detHasFilter` includes `spCountMin` (so the funnel-× shows and clears it).
+
 ## 2026-08-05 — Column headers don't jump to map; funnel-× clear-filters button (sw v884)
 
 - **No view jump from headers.** Cycling a sort header to OFF called `refreshCurrentView()` → `renderSpeciesList`,
