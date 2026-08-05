@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-05 — Species name search moved into the Species filter panel (sw v914)
+
+- The "Filter species…" search box moved from the always-visible `#sp-controls` bar into the **Species**
+  column-header panel (`spSpeciesPanelHtml`), where the other species filters live. Wired in
+  `wireSpHeadPanel` (filters on `input` via `filterSpRows`, no panel rebuild → keeps focus); `spNameQuery`
+  now stores raw text (lowercased at compare time) so the box shows what you typed. `speciesFilterActive()`
+  includes it (funnel on the Species header + the "clear all" button clears it too).
+
 ## 2026-08-05 — Total-column filter applies as you type (sw v913)
 
 - The Total column's lower/upper bound inputs now filter on `input` (as you type / on mobile without

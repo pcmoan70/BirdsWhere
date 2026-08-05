@@ -1126,7 +1126,7 @@
   //  • Total column → count: null (any) → >0 → >1 → >5 (total specimens per species).
   var speciesAgeFilterDays = 0;
   var spCountMin = null, spCountMax = null;   // Total-column lower/upper bounds (specimens, inclusive; null = open)
-  var spNameQuery = "";                       // species-list name filter (the in-app search box; lowercased)
+  var spNameQuery = "";                       // species-list name filter (raw text; lowercased at compare time)
   var spHeadPanel = null;                     // which table-header panel is open: "species"|"total"|"last"|"prob"|null
   var spHeadPanelDate = null;                 // the clicked date, so the Last panel can offer This/Before/After
   // Active sort for the per-point species list. Default is the natural model
@@ -1691,7 +1691,7 @@
   // text (name / 2nd name / scientific name), so it works for every list mode.
   function filterSpRows() {
     var tb = document.getElementById("sp-tbody"); if (!tb) return;
-    var q = spNameQuery;
+    var q = spNameQuery.trim().toLowerCase();
     Array.prototype.forEach.call(tb.querySelectorAll("tr"), function (tr) {
       if (tr.classList.contains("sp-detail-row")) return;   // sub-rows follow their species
       tr.classList.toggle("sp-hide-search", !!q && (tr.textContent || "").toLowerCase().indexOf(q) < 0);
@@ -5253,7 +5253,6 @@
           '<div class="sp-coords" id="sp-coords"></div>' +
           '<div id="sp-controls" style="display:none">' +
             '<select id="sp-layout" class="detlist-sort-sel" aria-label="Layout"></select>' +
-            '<input type="search" id="sp-search" class="sp-search" data-i18n-ph="ph.filter" placeholder="Filter species…" aria-label="Filter species" autocomplete="off" autocorrect="off" spellcheck="false" />' +
             '<div id="sp-filters-bar"></div>' +
           '</div>' +
           '<div id="sp-filters-wrap"></div>' +
@@ -12666,8 +12665,6 @@
     document.getElementById("sp-pdf-btn").addEventListener("click", exportSpeciesPdf);
     var spLayoutSel = document.getElementById("sp-layout");
     if (spLayoutSel) spLayoutSel.addEventListener("change", function () { spLayout = this.value; renderSpControls(); });
-    var spSearchEl = document.getElementById("sp-search");
-    if (spSearchEl) spSearchEl.addEventListener("input", function () { spNameQuery = (this.value || "").trim().toLowerCase(); filterSpRows(); });
     var vtBtn = document.getElementById("viewtoggle-btn");
     if (vtBtn) vtBtn.addEventListener("click", function () { if (onListView()) goToMapView(); else showListView(); });
 
@@ -16432,10 +16429,6 @@
     if (!speciesPanelPopulated()) { if (ctrls) ctrls.style.display = "none"; return; }
     if (ctrls) ctrls.style.display = "";
     renderSpLayoutSelect();
-    // The name search filters the prediction table (rows). Hide it for the record
-    // ("By observation") layout, which is grouped and has its own filters.
-    var spSearch = document.getElementById("sp-search");
-    if (spSearch) spSearch.style.display = (spLayout === "table") ? "" : "none";
     // The observation filter bar (day/date · mode · observer) applies to the detailed
     // record layouts; the prediction table keeps its own flag columns + age cycle.
     if (spLayout === "table") {
@@ -16454,7 +16447,7 @@
   // ---- Species-list column-header filter+sort panels ------------------------
   // Whether each column currently has an active (narrowing) filter — drives the
   // funnel indicator on the header and the "clear" buttons in the panels.
-  function speciesFilterActive() { return anySpFilter() || detSelectionActive(); }
+  function speciesFilterActive() { return anySpFilter() || detSelectionActive() || !!spNameQuery.trim(); }
   function totalFilterActive() { return spCountMin != null || spCountMax != null; }
   function lastFilterActive() { return !!detDateRange() || detMonths().length > 0 || (detRecencyDays() !== 0 && detRecencyDays() !== 30); }
   function probFilterActive() { var lo = +document.getElementById("prob-min").value, hi = +document.getElementById("prob-max").value; return lo > 0 || hi < 100; }
@@ -16510,6 +16503,8 @@
   }
   function spSpeciesPanelHtml() {
     var html = '<div class="sp-head-panel">' + spSortRowHtml("name");
+    // Name search — narrows the list by species name (name / 2nd name / scientific).
+    html += '<input type="search" class="sp-search sp-name-filter" placeholder="' + escapeHtml(t("ph.filter")) + '" aria-label="' + escapeHtml(t("ph.filter")) + '" autocomplete="off" autocorrect="off" spellcheck="false" value="' + escapeHtml(spNameQuery) + '" />';
     // Active status-flag filters as toggle chips (mirror the flag columns).
     var spfTip = { star: t("det.starred"), rare: t("det.rare"), year: t("det.needsYear", { year: curYear() }), life: t("det.needsLife"), hidden: t("menu.hidden") };
     var modes = [["star", SP_FLAG_GLYPH.star], ["rare", SP_FLAG_GLYPH.rare], ["year", SP_FLAG_GLYPH.year], ["life", SP_FLAG_GLYPH.life], ["hidden", SP_FLAG_GLYPH.hidden]];
@@ -16566,6 +16561,14 @@
       });
     });
     if (spHeadPanel === "species") {
+      var nameInp = container.querySelector(".sp-name-filter");
+      if (nameInp) nameInp.addEventListener("input", function (e) {
+        e.stopPropagation();
+        spNameQuery = this.value || "";
+        filterSpRows();                                   // filters rows in place — no panel rebuild, keeps focus
+        var sh = document.getElementById("sp-species-head");   // keep the header funnel in sync live
+        if (sh) sh.innerHTML = escapeHtml(t("th.species")) + (speciesFilterActive() ? ' <span class="sp-head-funnel" aria-hidden="true">' + ico("funnel") + "</span>" : "");
+      });
       container.querySelectorAll(".sp-spf-chip").forEach(function (c) {
         c.addEventListener("click", function (e) { e.stopPropagation(); toggleSpFlag(this.getAttribute("data-flag")); renderSpControls(); });
       });
@@ -16575,10 +16578,11 @@
       var clr = container.querySelector(".sp-spf-clear");
       if (clr) clr.addEventListener("click", function (e) {
         e.stopPropagation();
-        clearSpFilters(); detSelected = {};
+        clearSpFilters(); detSelected = {}; spNameQuery = "";
         detStarFilter = detRareFilter = detYearFilter = detLifeFilter = false;
         syncFlagsHead(); saveLegendState(); rebuildDetLayers(); updateDetLegend();
         if (!refreshCueCellsInPlace()) applyAgeFilter();
+        filterSpRows();
         renderSpControls();
       });
     } else if (spHeadPanel === "total") {

@@ -2659,13 +2659,14 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
 #sp-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin: 4px 0 8px; }
 #sp-controls #sp-layout { flex: 0 0 auto; }
 #sp-controls #sp-filters-bar { flex: 1 1 auto; min-width: 0; }
-/* In-app species-list name filter (a reliable alternative to browser find-in-page). */
-#sp-controls .sp-search {
-  flex: 0 1 220px; min-width: 120px; font: inherit; font-size: 0.85rem;
-  padding: 4px 9px; border: 1px solid var(--border, #ccc); border-radius: 6px;
+/* Species-list name filter — lives in the Species header panel (a reliable alternative
+   to browser find-in-page). */
+.sp-head-panel .sp-search {
+  width: 100%; box-sizing: border-box; font: inherit; font-size: 0.85rem;
+  padding: 5px 10px; border: 1px solid var(--border, #ccc); border-radius: 6px;
   background: var(--surface, #fff); color: var(--ink, inherit);
 }
-#sp-controls .sp-search:focus { outline: none; border-color: var(--brand); }
+.sp-head-panel .sp-search:focus { outline: none; border-color: var(--brand); }
 /* Rows filtered out by the name search — !important so it wins over applyAgeFilter's
    inline display, letting the two filters compose (a row shows only if it passes both). */
 tr.sp-hide-search { display: none !important; }
