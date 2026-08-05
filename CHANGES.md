@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-05 — Map clear-× uses the legend's arm-and-delete sequence (sw v879)
+
+- The on-map red × (top-right `clearpts-btn`) cleared all detections in one click. It now mirrors the
+  legend's red ×: first click **arms** per-area delete (a red × on each fetched area) when there are areas
+  to pick from; the next click (or when there are none) clears everything. `updateClearPtsBtn` reflects the
+  shared `detAreaDeleteMode` (armed → pulsing red fill + "click again" title, same `detClearPulse` as the
+  legend). CSS `.clearpts-btn.armed`.
+
 ## 2026-08-05 — Status dots count queued + in-progress fetches (sw v878)
 
 - The fetch-queue dots now count a fetch from the moment it's **queued** (start of `renderSpeciesList`,

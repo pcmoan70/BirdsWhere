@@ -323,6 +323,16 @@
     if (!clearPtsCtrlEl) return;
     var has = typeof detPlot !== "undefined" && Object.keys(detPlot).length > 0;
     clearPtsCtrlEl.style.display = has ? "" : "none";
+    // Reflect the shared arm-and-delete state (same as the legend's red ×): armed →
+    // "click again to clear"; else "arm per-area delete" when there are areas, plain
+    // "clear all" otherwise.
+    var a = clearPtsCtrlEl.querySelector(".clearpts-btn");
+    if (a) {
+      var armed = !!detAreaDeleteMode;
+      a.classList.toggle("armed", armed);
+      var title = armed ? t("det.delAreaHint") : (fetchedAreas.length ? t("det.delAreaArm") : t("ctrl.clearPoints"));
+      a.title = title; a.setAttribute("aria-label", title);
+    }
   }
   // Step the H3 detail offset (range/richness overlay) finer/coarser, -2..+2.
   function adjustH3Detail(delta) {
@@ -6056,8 +6066,13 @@
         a.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
         L.DomEvent.on(a, "click", function (e) {
           L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e);
-          clearDetections();
-          updateClearPtsBtn();   // nothing plotted now → hide the ×
+          mapClickGuardUntil = Date.now() + 250;
+          // Same two-stage arm-and-delete as the legend's red ×: the first click arms
+          // per-area delete (a red × appears on each fetched area) when there are areas
+          // to pick from; the next click (or when there are none) clears everything.
+          if (!detAreaDeleteMode && fetchedAreas.length) { enterAreaDeleteMode(); updateDetLegend(); }
+          else clearDetections();
+          updateClearPtsBtn();
         });
         clearPtsCtrlEl = c;
         c.style.display = "none";   // updateClearPtsBtn reveals it once points exist
