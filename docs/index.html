@@ -17,6 +17,8 @@
 
   <!-- Leaflet (map) — vendored locally for offline use -->
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
+  <!-- MapLibre GL (vector labels overlay) -->
+  <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css" />
 
   <link rel="stylesheet" href="app.css" />
 
@@ -65,6 +67,11 @@
 
   <!-- H3 hexagonal grid (Uber h3-js, vendored) for the map overlays -->
   <script src="vendor/h3-js.js"></script>
+
+  <!-- MapLibre GL + Leaflet bridge (vendored) — the vector place-name labels overlay.
+       Tiles come from OpenFreeMap at runtime (online-only enhancement). -->
+  <script src="vendor/maplibre/maplibre-gl.js"></script>
+  <script src="vendor/maplibre/leaflet-maplibre-gl.js"></script>
 
   <!-- Main app (loads ONNX Runtime Web inside inference-worker.js) -->
   <script src="app.js"></script>

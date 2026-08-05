@@ -2527,6 +2527,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v894", date: "2026-08-05", text: "Sharper place names on the map. The “More place names” overlay (Settings → Map) now draws vector labels (MapLibre GL over OpenFreeMap's OpenMapTiles data, no API key) on the Voyager and Satellite maps: names are placed live by zoom and importance with collision avoidance, so local names — villages, then hamlets, then farm/neighbourhood names — surface smoothly as you zoom in, without doubling up. This mirrors how yr.no renders its map. Falls back to the previous raster labels where WebGL isn't available." },
     { v: "v858", date: "2026-08-04", text: "“Show on map” from an observation (the record menu, the expanded records' location, and the 🎯 focus button) now drops the map pointer on that location and reveals the map — it closes the full-screen list or the records modal so you land directly on the spot, marker in place." },
     { v: "v856", date: "2026-08-04", text: "New Season column in the Species-list table: a coloured now-vs-peak bar telling you where you are in each species' year at this point — arriving ↑, at peak ●, leaving ↓ or off-season ·. Sortable, so the species peaking right now can go on top. It's powered by a new prediction cache: the model returns the whole species vector per query, so those values are kept in memory per map cell (all 48 weeks), and re-sorting / layout switches / the Season computation reuse them instead of recomputing." },
     { v: "v855", date: "2026-08-04", text: "More actions in a species' expanded records: tap an observation's Location for map actions (Find on map · Add as point · Add to route); tap an observer's name to filter by them OR add them to an observer list; and tap the row background for the full species + location menu. The species name reopens the species menu in Per observation, and the records now show the probability as a coloured bar (black text on white) matching the Species-list table." },
@@ -6291,12 +6292,56 @@
     var b = document.getElementById("sp-checklist-btn");
     if (b) b.style.display = "";   // always visible (was experimental-gated in v868)
   }
+  // A labels-ONLY MapLibre GL style (OpenMapTiles vector tiles via OpenFreeMap, no
+  // key). Rendered client-side, so place names appear/disappear smoothly by zoom and
+  // rank with collision avoidance (small local names surface as you zoom in) — the
+  // same approach yr.no uses. "more" lifts each layer's min-zoom by one so names come
+  // in a little earlier. Local names preferred (`name`), latin fallback.
+  function vectorLabelsStyle(mode) {
+    var lift = mode === "more" ? 1 : 0;
+    function place(id, classes, minz, sizeStops, color) {
+      return { id: id, type: "symbol", source: "omt", "source-layer": "place",
+        minzoom: Math.max(0, minz - lift),
+        filter: ["match", ["get", "class"], classes, true, false],
+        layout: { "text-field": ["coalesce", ["get", "name"], ["get", "name:latin"]],
+          "text-font": ["Noto Sans Regular"], "text-size": sizeStops, "text-max-width": 8,
+          "text-padding": 2, "symbol-sort-key": ["to-number", ["get", "rank"], 20] },
+        paint: { "text-color": color || "#141414", "text-halo-color": "#ffffff", "text-halo-width": 1.7, "text-halo-blur": 0.4 } };
+    }
+    return {
+      version: 8,
+      glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
+      sources: { omt: { type: "vector", url: "https://tiles.openfreemap.org/planet" } },
+      layers: [
+        place("lbl-city", ["city", "town"], 4, ["interpolate", ["linear"], ["zoom"], 4, 11, 10, 15]),
+        place("lbl-village", ["village", "hamlet"], 10, ["interpolate", ["linear"], ["zoom"], 10, 10, 14, 13], "#222"),
+        place("lbl-suburb", ["suburb", "quarter", "neighbourhood"], 12, ["interpolate", ["linear"], ["zoom"], 12, 10, 15, 12], "#333"),
+        place("lbl-locality", ["isolated_dwelling", "farm", "locality", "island"], 13, ["interpolate", ["linear"], ["zoom"], 13, 10, 16, 12], "#444"),
+        { id: "lbl-water", type: "symbol", source: "omt", "source-layer": "water_name", minzoom: Math.max(0, 9 - lift),
+          layout: { "text-field": ["coalesce", ["get", "name"], ["get", "name:latin"]], "text-font": ["Noto Sans Italic"], "text-size": 12, "text-max-width": 8 },
+          paint: { "text-color": "#134d73", "text-halo-color": "#ffffff", "text-halo-width": 1.4 } },
+        { id: "lbl-peak", type: "symbol", source: "omt", "source-layer": "mountain_peak", minzoom: Math.max(0, 11 - lift),
+          layout: { "text-field": ["coalesce", ["get", "name"], ["get", "name:latin"]], "text-font": ["Noto Sans Regular"], "text-size": 11, "text-max-width": 8 },
+          paint: { "text-color": "#6a4a2a", "text-halo-color": "#ffffff", "text-halo-width": 1.4 } }
+      ]
+    };
+  }
   function applyLabelsOverlay() {
     if (labelsOverlay) { try { map.removeLayer(labelsOverlay); } catch (e) {} labelsOverlay = null; }
     var mode = labelsMode();
     if (!map || mode === "off") return;
     var bm = window.GeoState.get("basemap", "streets");
     if (!labelsSupported(bm)) return;   // streets/topo/etc. bake their names in — don't print a second set
+    // Preferred: MapLibre GL vector labels — zoom-smooth, collision-managed, richer
+    // local names. Rendered into a dedicated pane between the base tiles and the data
+    // dots. Falls back to the raster CARTO labels if MapLibre isn't available.
+    if (window.maplibregl && L.maplibreGL) {
+      try {
+        if (!map.getPane("labelsPane")) { map.createPane("labelsPane"); var lp = map.getPane("labelsPane"); lp.style.zIndex = 350; lp.style.pointerEvents = "none"; }
+        labelsOverlay = L.maplibreGL({ style: vectorLabelsStyle(mode), interactive: false, pane: "labelsPane", attribution: '&copy; <a href="https://openfreemap.org">OpenFreeMap</a> &copy; OpenMapTiles' }).addTo(map);
+        return;
+      } catch (e) { try { if (labelsOverlay) map.removeLayer(labelsOverlay); } catch (e2) {} labelsOverlay = null; }   // fall through to raster
+    }
     var style = (bm === "satellite") ? "dark_only_labels" : "light_only_labels";   // dark labels read best on imagery; light on Voyager
     var opts = { attribution: "", subdomains: "abcd", maxZoom: MAX_ZOOM, maxNativeZoom: 20, noWrap: true, zIndex: 350 };
     var off = LABEL_LEVEL_OFFSET[mode] || 0;

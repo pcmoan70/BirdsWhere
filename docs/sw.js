@@ -21,11 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v893";
+var VERSION = "v894";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• Sharper place names: the “More place names” overlay (Settings → Map) now renders vector labels (MapLibre GL / OpenFreeMap) over the Voyager and Satellite maps — local names surface smoothly as you zoom in, without overlapping, the way yr.no does it.",
   "• Tapping a date shows a red × on the currently-active date filter — tap the × to remove just that filter. And Settings' “Reload to update” button now lights up whenever your version differs from the one on the server.",
   "• The Total column now reads e.g. “31(3)” — 31 specimens across 3 distinct observations (observer × date) — and the specimen total is counted after de-duplication.",
   "• In a species' records, tapping a Location → “Add as point” now opens the full point editor (name it, file it into a list, pick a colour) instead of dropping a loose pin.",
@@ -122,6 +123,9 @@ var SHELL = [
   "apple-touch-icon.png",
   "vendor/leaflet/leaflet.css",
   "vendor/leaflet/leaflet.js",
+  "vendor/maplibre/maplibre-gl.js",
+  "vendor/maplibre/maplibre-gl.css",
+  "vendor/maplibre/leaflet-maplibre-gl.js",
   "vendor/h3-js.js",
   "vendor/leaflet/images/marker-icon.png",
   "vendor/leaflet/images/marker-icon-2x.png",

@@ -55,7 +55,10 @@ A Leaflet map with a **Mode** selector in the header:
 
 **Base maps:** Voyager, Streets, CyclOSM, Topographic, Esri Topo, Satellite — deep zoom (down to ~0.25°
 cells) with bilinear smoothing on the model layers. A **Resolution** control trades finer
-detail for speed.
+detail for speed. **More place names** (Settings → Map) renders vector labels (MapLibre GL over
+OpenFreeMap's OpenMapTiles data, no key) on the Voyager and Satellite maps, so local names surface
+smoothly by zoom + importance with collision avoidance (yr.no-style); it falls back to raster labels
+where WebGL is unavailable.
 
 **Species-group filter** (Settings → *Species group*): **All · Birds · Mammals · Amphibians ·
 Insects · Plants · Fungi**. It restricts every view — model layers, the species list, the

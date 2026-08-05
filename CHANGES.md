@@ -1,5 +1,19 @@
 # Changes
 
+## 2026-08-05 — Vector place-name labels (MapLibre GL), yr.no-style (sw v894)
+
+- Studied yr.no's map: it renders **vector tiles** with **MapLibre GL** (OpenMapTiles schema) + Kartverket
+  `stadnamn` overrides, so names appear/disappear by zoom + rank with collision avoidance (local names
+  surface as you zoom in). Adopted the same idea for the "More place names" overlay:
+  - Vendored **MapLibre GL 4.7.1** + `maplibre-gl-leaflet` (`docs/vendor/maplibre/`), loaded after Leaflet.
+  - New `vectorLabelsStyle(mode)` — a labels-ONLY style (place / water_name / mountain_peak symbol layers,
+    zoom-stepped min-zooms, local `name` with latin fallback, white halo) over **OpenFreeMap** vector tiles
+    (no API key). `applyLabelsOverlay` now renders this via `L.maplibreGL` into a dedicated `labelsPane`
+    (z 350, above base tiles, below data dots) for label-free bases (Voyager `_nolabels`, Satellite), and
+    falls back to the raster CARTO labels when MapLibre is unavailable. "more" lifts min-zooms by 1.
+  - Tiles/glyphs are network (online-only enhancement, like the old raster labels); the library is precached
+    for offline shell. CSP already permits `https:` connect + `blob:` workers, so no CSP change.
+
 ## 2026-08-05 — Species-list "Last" date opens the full filter menu even as "days back" (sw v893)
 
 - The species list's Last date already opened the full date-filter menu (On/Before/After/Range + active ×)
