@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-08-05 — Observation menu: drop the emoji before the green icons (sw v908)
+
+- In the "this observation" menu, "Show on map" and "Add point to list…" showed a colour emoji
+  (🎯 / 📍) next to their green line icon. Switched those two `drmBtn` labels to `tLabel()` so the
+  leading emoji is stripped — only the green icon remains. (The strings keep the emoji for tooltips.)
+
 ## 2026-08-05 — "Per observation": date pane opens from a date click (sw v907)
 
 - Removed the standalone date/days button from the "Per observation" filter bar

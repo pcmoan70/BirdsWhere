@@ -7933,11 +7933,11 @@
       head("menu.secObs");
       if (d.url) el.appendChild(drmBtn(t("det.openSource"), function () { closeDetRowMenu(); openExternal(d.url); }));
       if (hasLoc) {
-        el.appendChild(drmBtn(t("detmenu.focusMap"), function () { focusPointOnMap(+d.lat, +d.lon); }, "pin"));
+        el.appendChild(drmBtn(tLabel("detmenu.focusMap"), function () { focusPointOnMap(+d.lat, +d.lon); }, "pin"));   // green pin icon only (strip the 🎯 emoji)
         el.appendChild(drmBtn(t("nav.here"), function () { closeDetRowMenu(); navigatePoints([{ lat: +d.lat, lon: +d.lon }]); }, "nav"));
         el.appendChild(drmBtn(tLabel("route.add"), function () { closeDetRowMenu(); addToRoute(+d.lat, +d.lon, name); }, "navplus"));
       }
-      el.appendChild(drmBtn(t("detmenu.addList"), function () { drmRenderLists(el, d); }, "dotsplus"));
+      el.appendChild(drmBtn(tLabel("detmenu.addList"), function () { drmRenderLists(el, d); }, "dotsplus"));   // green dots+ icon only (strip the 📍 emoji)
       if (d.mpId && d.listName) el.appendChild(drmBtn(t("detmenu.removeFromList"), function () { closeDetRowMenu(); removeListPoint(d.listName, d.mpId); redraw(); }, "block"));
     }
     // 2) Information — learn about the species. Model species get the full set
