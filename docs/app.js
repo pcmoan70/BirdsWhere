@@ -643,6 +643,18 @@
     var el = document.getElementById("demo-status");
     if (el) el.textContent = msg;
   }
+  // Blinking "queue length" dots on the map: one blinking "." per in-flight fetch.
+  // fetchDotsAdd() bumps it the moment a fetch starts (a period appears immediately);
+  // fetchDotsDone() removes one when a fetch settles.
+  var mapFetchPending = 0;
+  function renderFetchDots() {
+    var el = document.getElementById("fetch-dots"); if (!el) return;
+    if (mapFetchPending <= 0) { el.style.display = "none"; el.textContent = ""; return; }
+    el.textContent = new Array(mapFetchPending + 1).join(".");   // one "." per in-flight fetch
+    el.style.display = "";
+  }
+  function fetchDotsAdd() { mapFetchPending++; renderFetchDots(); }
+  function fetchDotsDone() { mapFetchPending = Math.max(0, mapFetchPending - 1); renderFetchDots(); }
   // Status with limited inline markup (only app-controlled HTML, e.g. the
   // blinking fetch fraction — never user input).
   function setStatusHtml(html) {
@@ -3942,6 +3954,7 @@
     var tbody = document.getElementById("sp-tbody");
     if (tbody) tbody.dataset.sightingsToken = token;   // supersede if another click arrives
     var mapFetch = spMapFetch;   // this fetch intended to drop dots on the map (map-first point flow)
+    fetchDotsAdd();   // a period appears on the map the moment this fetch is queued
     hideSourceCounts();   // clear any prior location's "Loaded: …" line before this fetch
     var onPartial = function (partial) { applySightings(tbody, token, partial, false); };   // live-fill rows as each source returns (recent) / each month batch (historic)
     var fetchP = histRange ? fetchHistoricSightingsAt(lat, lon, histRange, onProg, onPartial) : fetchAllSightingsAt(lat, lon, onPartial);
@@ -3970,7 +3983,7 @@
       if (tbody && tbody.dataset.sightingsToken === token) {
         tbody.querySelectorAll(".det-nd .det-wait").forEach(function (s) { if (s.parentNode) s.parentNode.textContent = ""; });
       }
-    });
+    }).then(function () { fetchDotsDone(); });   // fetch settled (ok or fail) → remove one period
   }
   // Append species the model doesn't cover (matched only via GBIF/iNat/eBird
   // sci-name) BELOW the model rows so the prediction-ranked species stay at the
@@ -5093,6 +5106,7 @@
         '</div>' +
         '<div id="demo-map-wrap">' +
           '<div id="demo-map"></div>' +
+          '<div id="fetch-dots" aria-hidden="true" style="display:none"></div>' +
           '<div id="demo-computing" style="display:none">' +
             '<div class="spinner"></div>' +
             '<div id="computing-text">Computing\u2026</div>' +

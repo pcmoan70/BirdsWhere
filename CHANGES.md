@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-05 — Blinking in-flight-fetch dots on the map (sw v876)
+
+- New `#fetch-dots` overlay (top-centre of the map): one blinking "." per in-flight fetch. `fetchDotsAdd()`
+  appends a period the instant a fetch is queued (start of `augmentRowsWithSightings`); `fetchDotsDone()`
+  removes one when it settles (ok or fail). So the dot count = number of incomplete fetches, and triggering
+  more appends periods immediately. CSS `#fetch-dots` + `fetch-dots-blink` keyframes.
+
 ## 2026-08-05 — GBIF origin: read associatedReferences (Artsobservasjoner) (sw v875)
 
 - Artsobservasjoner via GBIF carries no `datasetName`, a bare-UUID `occurrenceID`, and its

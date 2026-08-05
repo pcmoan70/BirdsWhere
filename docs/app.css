@@ -510,6 +510,24 @@ input:focus-visible {
 }
 .nb-empty { padding: 24px 16px; color: var(--ink); opacity: .7; }
 
+/* Blinking "queue length" dots: one middot per in-flight fetch, top-centre of the
+   map (a period is appended the moment a fetch is queued). Pure activity cue. */
+#fetch-dots {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 600;
+  pointer-events: none;
+  font-size: 2.4rem;
+  line-height: 1;
+  letter-spacing: 3px;
+  font-weight: 900;
+  color: var(--brand, #3a7bd5);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  animation: fetch-dots-blink 1s steps(1, end) infinite;
+}
+@keyframes fetch-dots-blink { 50% { opacity: 0.12; } }
 #demo-computing {
   position: absolute;
   inset: 0;
