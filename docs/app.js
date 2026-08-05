@@ -1096,9 +1096,13 @@
   var SP_FILTER_KEYS = ["star", "rare", "year", "life", "hidden"];
   function anySpFilter() { return SP_FILTER_KEYS.some(function (k) { return spFilters[k]; }); }
   function clearSpFilters() { SP_FILTER_KEYS.forEach(function (k) { spFilters[k] = false; }); }
-  // Age threshold (days since most recent detection) for the species list, cycled
-  // by clicking the "Age" column header: 0 (off) → 1 → 3 → 7 → 14 → 21 → 28 → 0.
+  // Species-list column filters, each cycled by clicking its header:
+  //  • Last (date) column → recency: 0 (unlimited) → 1 → 3 → 7 → 14 → 21 days. When
+  //    active it also drives the global map/legend recency window, and the Last cell
+  //    shows "days back" instead of the date.
+  //  • Total column → count: null (any) → >0 → >1 → >5 (total specimens per species).
   var speciesAgeFilterDays = 0;
+  var spCountMin = null;
   // Active sort for the per-point species list. Default is the natural model
   // ranking (prob desc, set by the render function). Clicking the Scientific
   // name or # column header overrides it and toggles asc/desc.
@@ -1222,15 +1226,23 @@
     if (spFilters.life && inLifeList(key)) return false;
     return true;
   }
-  // Header label for the "Age" column reflecting the current threshold.
-  function ageHeadLabel() {
-    if (speciesAgeFilterDays === -1) return ">0 ▾";   // any species with an observation
-    return speciesAgeFilterDays ? "≤" + speciesAgeFilterDays + "d ▾" : t("th.nd");
+  // Header labels reflecting each column's current filter.
+  function recencyHeadLabel() { return speciesAgeFilterDays > 0 ? "≤" + speciesAgeFilterDays + "d ▾" : t("th.last"); }
+  function countHeadLabel() { return spCountMin == null ? t("th.total") : ">" + spCountMin + " ▾"; }
+  // "Last" cell: the observation date, or — while the recency filter is active — the
+  // number of DAYS BACK (so the column reads against the ≤Nd window on its header).
+  function lastCellSet(td, ts) {
+    if (!td) return;
+    if (!ts) { td.innerHTML = ""; return; }
+    if (speciesAgeFilterDays > 0) {
+      var db = Math.max(0, Math.round((Date.now() - ts) / 86400000));
+      td.innerHTML = '<span class="sp-daysback">' + db + "d</span>";
+    } else td.innerHTML = lastDateCellHtml(ts);
   }
   // Refresh the sort-arrow indicator on the sortable column headers. Class-based
   // (▲/▼ via CSS ::after) so it doesn't disturb the headers' dynamic labels.
   function updateSortIndicators() {
-    var cols = { "sp-species-head": "name", "sp-name2-head": "name2", "sp-sci-head": "sci", "sp-prob-head": "prob", "sp-last-head": "last", "sp-dist-head": "dist", "sp-season-head": "season", "sp-delta-head": "cmp" };
+    var cols = { "sp-species-head": "name", "sp-name2-head": "name2", "sp-sci-head": "sci", "sp-prob-head": "prob", "sp-dist-head": "dist", "sp-season-head": "season", "sp-delta-head": "cmp" };
     Object.keys(cols).forEach(function (id) {
       var el = document.getElementById(id); if (!el) return;
       var on = speciesListSort.col === cols[id];
@@ -1552,7 +1564,7 @@
   function applyAgeFilter(withBuild) {
     var tbody = document.getElementById("sp-tbody");
     if (!tbody) return;
-    var agg = tbody._sightingsAgg, days = speciesAgeFilterDays;
+    var agg = tbody._sightingsAgg, days = speciesAgeFilterDays, minC = spCountMin;
     var rareSet = spFilters.rare ? tbody._rareSet : null;
     var anyBuild = withBuild && (spFilters.star || spFilters.year || spFilters.life || spFilters.hidden);
     var now = Date.now();
@@ -1562,37 +1574,35 @@
       var sl = tr.querySelector(".sp-link"), key = sl && sl.getAttribute("data-key");
       tr.classList.toggle("sp-deleted", !!(key && deletedSpecies[key]));   // grey a species removed from the map
       var entry = (!extra && key && agg) ? agg[key] : null;
-      var ageOk = true;
-      if (days && agg) {
-        // ">0": keep only species that have at least one observation (any age).
-        if (days === -1) ageOk = extra || !!(entry && entry.count > 0);   // extras are observed by definition
-        // sp-extra rows carry their age directly (no sp-link / agg entry).
-        else if (extra) { var d = parseInt(tr.getAttribute("data-age-days"), 10); ageOk = !isNaN(d) && d <= days; }
-        else ageOk = !!(entry && entry.latestTs) && Math.round((now - entry.latestTs) / 86400000) <= days;
-      }
       // ◉ rare: species outside the model ("extras") never carry the marker.
       var rareOk = !rareSet || (!extra && !!(key && rareSet[key]));
       // Build filters apply to model rows only (extras aren't star/list-tracked).
       var buildOk = !anyBuild || extra || (!!key && passSpeciesFilter(key));
-      // Respect the GLOBAL observation filters (date/observer/source) on the table too:
-      // count only the species' records that pass, drive the n(d)/last/caret from that,
-      // and HIDE a species that WAS observed but now has nothing left after filtering —
-      // so it can't sit there with an empty expander.
-      var obsFilteredOut = false;
+      // fc = total SPECIMENS in the window; flatest = most recent observation (for the
+      // Last cell + recency filter). Model rows recompute from their records honouring
+      // the global date/observer/source filters; extras carry both on data-* attrs.
+      var fc = 0, flatest = 0, obsFilteredOut = false;
       if (!extra && entry && entry.rows) {
-        var fc = 0, flatest = 0;
         entry.rows.forEach(function (r) {
           if (!detDatePasses(r.date) || !detObsPasses(r) || !detPassesSrc(r)) return;
-          var n = parseInt(r.count, 10); fc += (isFinite(n) && n > 0) ? n : 1;   // n(d) = total SPECIMENS in the window (a record with no count = 1)
+          var n = parseInt(r.count, 10); fc += (isFinite(n) && n > 0) ? n : 1;   // a record with no count = 1 specimen
           var ts = r.date ? Date.parse(r.date + "T00:00:00") : 0; if (ts && ts > flatest) flatest = ts;
         });
         tr.classList.toggle("sp-has-det", fc > 0);
         var ndBtn = tr.querySelector(".det-nd .det-count-btn"); if (ndBtn) ndBtn.textContent = fc;
-        var ndDays = tr.querySelector(".det-nd .det-d"); if (ndDays) ndDays.textContent = flatest ? "(" + Math.max(0, Math.round((now - flatest) / 86400000)) + ")" : "";
-        var lastTd = tr.querySelector(".sp-last"); if (lastTd) { lastTd.innerHTML = flatest ? lastDateCellHtml(flatest) : ""; if (flatest) tr.setAttribute("data-last", flatest); else tr.removeAttribute("data-last"); }
+        var lastTd = tr.querySelector(".sp-last"); if (lastTd) lastCellSet(lastTd, flatest);
+        if (flatest) tr.setAttribute("data-last", flatest); else tr.removeAttribute("data-last");
         obsFilteredOut = !!(entry.count) && fc === 0;
+      } else if (extra) {
+        fc = parseInt(tr.getAttribute("data-count"), 10) || 0;
+        flatest = parseInt(tr.getAttribute("data-last"), 10) || 0;
+        var lastTdE = tr.querySelector(".sp-last"); if (lastTdE) lastCellSet(lastTdE, flatest);
       }
-      tr.style.display = (ageOk && rareOk && buildOk && !obsFilteredOut) ? "" : "none";
+      // Last-column recency filter (≤N days back). Unlimited (0) keeps everything.
+      var recencyOk = !(days > 0) || (!!flatest && Math.round((now - flatest) / 86400000) <= days);
+      // Total-column count filter (>0 / >1 / >5). null = any.
+      var countOk = (minC == null) || (fc > minC);
+      tr.style.display = (recencyOk && countOk && rareOk && buildOk && !obsFilteredOut) ? "" : "none";
     });
     refreshSpExpansions();   // keep expanded detail sub-rows under their (visible) species
     updateRecencyNote();
@@ -3931,9 +3941,8 @@
         var dot = row.querySelector(".sp-cdot"); if (dot && detPlot[key] && detPlot[key].color) dot.style.background = detPlot[key].color;   // match the map colour once plotted
       }
       if (!entry || !entry.count) { if (isFinal) td.textContent = ""; return; }   // partial: leave the hourglass for not-yet-arrived data
-      var days = entry.latestTs ? Math.max(0, Math.round((now - entry.latestTs) / 86400000)) : null;
-      td.innerHTML = '<button type="button" class="det-count-btn" data-key="' + escapeHtml(key) + '">' + entry.count + "</button>" +
-        (days != null ? '<span class="det-d">(' + days + ")</span>" : "");
+      // Pure total (applyAgeFilter recomputes it as filtered SPECIMENS right after).
+      td.innerHTML = '<button type="button" class="det-count-btn" data-key="' + escapeHtml(key) + '">' + entry.count + "</button>";
     });
     // Distance column: how far the NEAREST detection of each species is from this
     // list's point. (Sortable — replaces the old "Close by" map list.)
@@ -3951,7 +3960,7 @@
       var entry = agg[td.getAttribute("data-key")], tr = td.parentNode;
       var ts = entry && entry.latestTs;
       if (!ts) { if (isFinal) td.textContent = ""; if (tr) tr.removeAttribute("data-last"); return; }
-      td.innerHTML = lastDateCellHtml(ts);
+      lastCellSet(td, ts);   // date, or days-back while the recency filter is active
       if (tr) tr.setAttribute("data-last", ts);
     });
     // We now know WHICH species were seen here, so the status column can mark the
@@ -4049,6 +4058,7 @@
       var tr = document.createElement("tr");
       tr.className = "sp-extra";
       tr.setAttribute("data-age-days", days != null ? days : "");
+      tr.setAttribute("data-count", eSpec);   // total specimens — for the Total-column count filter
       if (e.latestTs) tr.setAttribute("data-last", e.latestTs);
       if (exKm != null) tr.setAttribute("data-dist", exKm);
       var clsBadge = e.cls ? '<span class="sp-extra-cls" title="' + escapeHtml(e.cls) + '">' + classGlyph(e.cls) + "</span> " : "";
@@ -5173,7 +5183,7 @@
             SP_FILTER_KEYS.map(function (f) {
               return '<th id="sp-f-' + f + '" class="spf-head" role="button" tabindex="0"><span>' + SP_FLAG_GLYPH[f] + '</span></th>';
             }).join("") +
-            '<th id="sp-species-head" class="clickable-head" data-i18n="th.species">Species</th><th class="name2 clickable-head" id="sp-name2-head"></th><th id="sp-sci-head" class="clickable-head" data-i18n="th.sci">Scientific name</th><th id="sp-nd-head" class="num clickable-head" data-i18n="th.nd">n(d)</th><th id="sp-last-head" class="num clickable-head" data-i18n="th.last">Last</th><th id="sp-dist-head" class="num clickable-head" data-i18n="th.dist">Dist</th><th id="sp-prob-head" class="clickable-head" data-i18n="th.prob">Probability</th><th id="sp-season-head" class="season-cell clickable-head" data-i18n="th.season">Season</th><th id="sp-delta-head"></th></tr></thead>' +
+            '<th id="sp-species-head" class="clickable-head" data-i18n="th.species">Species</th><th class="name2 clickable-head" id="sp-name2-head"></th><th id="sp-sci-head" class="clickable-head" data-i18n="th.sci">Scientific name</th><th id="sp-nd-head" class="num clickable-head" data-i18n="th.total">Total</th><th id="sp-last-head" class="num clickable-head" data-i18n="th.last">Last</th><th id="sp-dist-head" class="num clickable-head" data-i18n="th.dist">Dist</th><th id="sp-prob-head" class="clickable-head" data-i18n="th.prob">Probability</th><th id="sp-season-head" class="season-cell clickable-head" data-i18n="th.season">Season</th><th id="sp-delta-head"></th></tr></thead>' +
             '<tbody id="sp-tbody"></tbody>' +
           '</table>' +
           '<div class="sp-actions sp-actions-dl">' +
@@ -12378,24 +12388,28 @@
     // natural Probability-descending ranking).
     document.getElementById("sp-sci-head").addEventListener("click", function () { cycleSpeciesListSort("sci"); });
     var n2h = document.getElementById("sp-name2-head"); if (n2h) n2h.addEventListener("click", function () { cycleSpeciesListSort("name2"); });
-    var lh = document.getElementById("sp-last-head"); if (lh) lh.addEventListener("click", function () { cycleSpeciesListSort("last"); });
     document.getElementById("sp-dist-head").addEventListener("click", function () { cycleSpeciesListSort("dist"); });
     document.getElementById("sp-season-head").addEventListener("click", function () { cycleSpeciesListSort("season"); });
     document.getElementById("sp-prob-head").addEventListener("click", function () { cycleSpeciesListSort("prob"); });
     document.getElementById("sp-delta-head").addEventListener("click", function () { cycleSpeciesListSort("cmp"); });
-    // Click the combined "n(d)" column header to cycle a filter:
-    // off → >0 (any observation) → 1d → 3d → 1w → 2w → 3w → 4w → off. Applies live against the
-    // cached sightings aggregation (no re-fetch). Filtering is the only
-    // interaction on this column now — count-sort was retired with the
-    // separate # column.
+    // "Total" column header cycles a COUNT filter over the total specimens per species:
+    // any → >0 → >1 → >5 → any. List-only (no map effect); applied live, no re-fetch.
     document.getElementById("sp-nd-head").addEventListener("click", function () {
       if (!currentSpView || (currentSpView.mode !== "point" && currentSpView.mode !== "historic")) return;
-      var seq = [0, -1, 1, 3, 7, 14, 21, 28];   // off → >0 → ≤1d → … → ≤4w → off
+      var seq = [null, 0, 1, 5];   // any → >0 → >1 → >5 → any
+      spCountMin = seq[(seq.indexOf(spCountMin) + 1) % seq.length];
+      this.textContent = countHeadLabel();
+      applyAgeFilter();
+    });
+    // "Last" column header cycles a RECENCY filter: unlimited → ≤1d → ≤3d → ≤7d → ≤14d →
+    // ≤21d → unlimited. It ALSO drives the global map/legend recency window, and switches
+    // the Last cells to "days back" while active (see lastCellSet).
+    document.getElementById("sp-last-head").addEventListener("click", function () {
+      if (!currentSpView || (currentSpView.mode !== "point" && currentSpView.mode !== "historic")) return;
+      var seq = [0, 1, 3, 7, 14, 21];   // unlimited → 1 → 3 → 7 → 14 → 21 → unlimited
       speciesAgeFilterDays = seq[(seq.indexOf(speciesAgeFilterDays) + 1) % seq.length];
-      this.textContent = ageHeadLabel();
-      // Drive the GLOBAL recency window so the MAP dots + legend narrow to the same
-      // days (≤1d = today/yesterday, etc.). ">0"/off → no day window (0 = all).
-      window.GeoState.save({ detRecencyDays: speciesAgeFilterDays > 0 ? speciesAgeFilterDays : 0, detDateRange: null });
+      this.textContent = recencyHeadLabel();
+      window.GeoState.save({ detRecencyDays: speciesAgeFilterDays, detDateRange: null });   // map dots + legend follow
       saveLegendState(); rebuildDetLayers(); updateDetLegend();
       applyAgeFilter();
     });
@@ -16164,7 +16178,9 @@
     if (ph0) { ph0.textContent = t("th.prob"); ph0.title = ""; ph0.classList.remove("clickable-head"); }
     syncFlagsHead();
     var ah0 = document.getElementById("sp-nd-head");
-    if (ah0) ah0.textContent = ageHeadLabel();
+    if (ah0) ah0.textContent = countHeadLabel();
+    var lh0 = document.getElementById("sp-last-head");
+    if (lh0) lh0.textContent = recencyHeadLabel();
     updateSortIndicators();
     var week = +document.getElementById("week-select").value;
     var pmin = +document.getElementById("prob-min").value / 100;

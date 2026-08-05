@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-08-05 — Split the n(d) column into Total (count filter) + Last (recency filter) (sw v883)
+
+- The old combined **n(d)** header (which cycled a day filter) is split into two independent column filters:
+  - **Total** (renamed, `th.total`): a pure total-specimens count with a header cycle **any → >0 → >1 → >5**
+    (`spCountMin`). List-only. Removed the "(days)" suffix from the cell.
+  - **Last**: the header now cycles a **recency** filter **unlimited → ≤1d → ≤3d → ≤7d → ≤14d → ≤21d**
+    (`speciesAgeFilterDays` re-scoped), which also drives the global map/legend recency window. While active,
+    the Last cells show **days back** (`lastCellSet` → `.sp-daysback`) instead of the date. (The Last column
+    is no longer a sort target — it's a filter now.)
+- `applyAgeFilter` restructured to apply both filters from `fc` (total specimens) + `flatest` (model rows) or
+  `data-count`/`data-last` (extras, which now carry `data-count`). i18n `th.total` (15 langs); CSS `.sp-daysback`.
+
 ## 2026-08-05 — Counts = total specimens; add-to-list icon; green Show-on-map pin (sw v882)
 
 - **Counts (n(d)) = total specimens.** Corrects v880's direction: the per-species count is the SUM of
