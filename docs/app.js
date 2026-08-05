@@ -7333,7 +7333,7 @@
     return '<span class="det-sw' + need + '" style="background:' + color + '"></span>';
   }
   // Recency filter (days) for plotted detections. 0 = no filter.
-  function detRecencyDays() { return +window.GeoState.get("detRecencyDays", 30); }
+  function detRecencyDays() { return +window.GeoState.get("detRecencyDays", 0); }   // default 0 = ALL time: show every fetched observation (no hidden 30-day window). Clearing a date filter reveals them all.
   function recentEnough(dateStr, maxDays) {
     if (!maxDays) return true;            // 0/"All" = no filter
     if (!dateStr) return false;           // unknown date → exclude when filtering

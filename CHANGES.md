@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-06 — Recency window defaults to All (no hidden 30-day filter) (sw v920)
+
+- `detRecencyDays()` now defaults to **0 (all time)** instead of 30. The map, legend and lists showed only
+  the last 30 days by default, hiding older fetched observations (the "23/50" in the legend) — and clearing
+  an absolute date range fell back to that hidden window. Now every fetched observation shows unless you
+  explicitly pick a recency window; clearing a date filter reveals them all.
+- (Existing users who had explicitly set a recency keep it — clear filters once to reset to All.)
+
 ## 2026-08-06 — Date pane: On/Before/After collapsed into one cycling button (sw v919)
 
 - The three On / Before / After buttons (relative to a tapped date) are now a single button that cycles
