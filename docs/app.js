@@ -1388,7 +1388,9 @@
       ? '<td class="prob-cell"><span class="prob-num">' + pct + '%</span><div class="prob-bar" style="width:' + pct + '%;background:' + probHueColor(d.prob) + '"></div></td>'
       : '<td class="prob-cell prob-na">—</td>';
     var cnt = (d.count != null && d.count !== "") ? escapeHtml(String(d.count)) : "";
-    var sw = spColorDot(d.key, d.color);
+    // Same state dot as the map / species table: colour + ★ interesting + rare-here
+    // centre dot + year/life need-ring (+ blocked slash), via spListDot / detSwatch.
+    var sw = spListDot(d.key, detIsRare(d.key));
     var dateCell = d.date ? '<span class="dl-date-click" role="button" data-date="' + escapeHtml(d.date) + '" title="' + escapeHtml(t("detlist.dateFilterHint")) + '">' + escapeHtml(fmtDate(d.date)) + "</span>" : "";
     var obs = detObsRealNames(d.observer);
     var obsCell = obs.map(function (n) { return '<span class="sp-obs-filter" role="button" data-obs="' + escapeHtml(n) + '" title="' + escapeHtml(t("obs.filterHint")) + '">' + escapeHtml(n) + "</span>"; }).join(", ");

@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-08-06 — "By observation" rows use the state dot (sw v921)
+
+- `spRecRowHtml` (the "By observation" record rows) now draws the species dot via `spListDot` /
+  `detSwatch` — the same shapes as the map marker and the species table (★ interesting, rare-here centre
+  dot, year/life need-ring, blocked slash) — instead of a plain colour dot.
+
 ## 2026-08-06 — Recency window defaults to All (no hidden 30-day filter) (sw v920)
 
 - `detRecencyDays()` now defaults to **0 (all time)** instead of 30. The map, legend and lists showed only
