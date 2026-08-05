@@ -1261,8 +1261,10 @@
     if (!td) return;
     if (!ts) { td.innerHTML = ""; return; }
     if (speciesAgeFilterDays > 0) {
-      var db = Math.max(0, Math.round((Date.now() - ts) / 86400000));
-      td.innerHTML = '<span class="sp-daysback">' + db + "d</span>";
+      // Showing "days back", but keep it a clickable date chip (same as the plain date)
+      // so the full On/Before/After/Range filter menu still opens from the Last column.
+      var db = Math.max(0, Math.round((Date.now() - ts) / 86400000)), iso = localISODate(ts);
+      td.innerHTML = '<span class="dl-date-click sp-daysback" role="button" data-date="' + iso + '" title="' + escapeHtml(t("detlist.dateFilterHint")) + '">' + db + "d</span>";
     } else td.innerHTML = lastDateCellHtml(ts);
   }
   // Refresh the sort-arrow indicator on the sortable column headers. Class-based

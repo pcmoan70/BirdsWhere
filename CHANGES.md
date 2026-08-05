@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-05 — Species-list "Last" date opens the full filter menu even as "days back" (sw v893)
+
+- The species list's Last date already opened the full date-filter menu (On/Before/After/Range + active ×)
+  via the `sp-tbody` `.dl-date-click` handler — but only while showing a date. When the recency filter is
+  active the cell shows "days back", which wasn't clickable; `lastCellSet` now wraps it in the same
+  `.dl-date-click` chip (with the record's date), so the full menu opens there too.
+
 ## 2026-08-05 — Fix Annual-max/top comparison blowing past 100% (Svalbard "9000%") (sw v892)
 
 - The current-week probability uses the grid-snapped prediction cache (v856), but `computeComparison` ran
