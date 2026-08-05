@@ -9302,11 +9302,15 @@
     var r = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;
     var menu = openAnchoredMenu("obs-addmenu");
     var inFilter = !!detObsFilter && detObsFilter.has(name);   // this observer is part of the active filter
+    // The observer popup is now the full observer filter: Show only / Add to (build a
+    // multi-observer filter) / Remove — plus Add to list and the list editor.
     menu.innerHTML = '<div class="obs-addmenu-head">' + escapeHtml(name) + "</div>" +
       (inFilter ? '<button type="button" class="obs-addmenu-item obs-act-unfilter">' + escapeHtml(t("obs.removeFilter")) + "</button>"
-                : '<button type="button" class="obs-addmenu-item obs-act-filter">' + escapeHtml(t("obs.filterOnly")) + "</button>") +
+                : '<button type="button" class="obs-addmenu-item obs-act-filter">' + escapeHtml(t("obs.filterOnly")) + "</button>" +
+                  (detObsFilter ? '<button type="button" class="obs-addmenu-item obs-act-addfilter">' + escapeHtml(t("obs.addToFilter")) + "</button>" : "")) +
       (detObsFilter ? '<button type="button" class="obs-addmenu-item obs-act-all">' + escapeHtml(t("obs.removeAll")) + "</button>" : "") +
-      '<button type="button" class="obs-addmenu-item obs-act-add">' + escapeHtml(t("obs.addToListAct")) + "</button>";
+      '<button type="button" class="obs-addmenu-item obs-act-add">' + escapeHtml(t("obs.addToListAct")) + "</button>" +
+      '<button type="button" class="obs-addmenu-item obs-act-editlists">' + escapeHtml(t("obs.editLists")) + "</button>";
     positionAnchoredMenu(menu, r.left, r.bottom + 2);
     var unBtn = menu.querySelector(".obs-act-unfilter");
     if (unBtn) unBtn.addEventListener("click", function (e) {
@@ -9321,11 +9325,22 @@
       setDetObsFilter(name ? new Set([name]) : null);   // show only this observer's records
       saveLegendState(); detFiltersRefresh();
     });
+    var addFBtn = menu.querySelector(".obs-act-addfilter");
+    if (addFBtn) addFBtn.addEventListener("click", function (e) {
+      e.stopPropagation(); closeAnchoredMenu();
+      var next = new Set(detObsFilter); next.add(name);   // add this observer to the existing filter (multi-select)
+      setDetObsFilter(next);
+      saveLegendState(); detFiltersRefresh();
+    });
     var allBtn = menu.querySelector(".obs-act-all");
     if (allBtn) allBtn.addEventListener("click", function (e) { e.stopPropagation(); closeAnchoredMenu(); setDetObsFilter(null); saveLegendState(); detFiltersRefresh(); });
     menu.querySelector(".obs-act-add").addEventListener("click", function (e) {
       e.stopPropagation(); closeAnchoredMenu();
       showAddToListMenu(name, r);
+    });
+    menu.querySelector(".obs-act-editlists").addEventListener("click", function (e) {
+      e.stopPropagation(); closeAnchoredMenu();
+      openObserverEditor();
     });
   }
   // Clicking an observer name: a single observer opens its chooser directly; a record
@@ -9843,10 +9858,11 @@
     var modeOn = detStarFilter || detRareFilter || detYearFilter || detLifeFilter;
     var modeLbl = detStarFilter ? "★" : detRareFilter ? "◉" : detYearFilter ? "🟠" : detLifeFilter ? "🟡" : "–";
     var modeTip = detStarFilter ? t("det.starred") : detRareFilter ? t("det.rare") : detYearFilter ? t("det.needsYear", { year: curYear() }) : detLifeFilter ? t("det.needsLife") : t("det.allSpecies");
+    // Observer filtering now lives in the observer popup (click an observer name), so
+    // there's no standalone 👤 toggle here.
     return '<div class="detlist-filters">' +
         (showDays ? '<button type="button" class="det-tog det-days-tog' + (daysOn ? " on" : "") + (detDaysPanelOpen ? " open" : "") + '" title="' + escapeHtml(t("det.recency")) + '">' + escapeHtml(daysLbl) + "</button>" : "") +
         '<button type="button" class="det-tog det-mode-tog' + (modeOn ? " on" : "") + (detModePanelOpen ? " open" : "") + '" title="' + escapeHtml(modeTip) + '">' + escapeHtml(modeLbl) + "</button>" +
-        '<button type="button" class="det-tog det-obs-tog ico-btn' + (detObsFilter ? " on" : "") + (detObsPanelOpen ? " open" : "") + '" title="' + escapeHtml(t("det.observers")) + '" aria-label="' + escapeHtml(t("det.observers")) + '">' + ico("user") + "</button>" +
         (detHasFilter() ? '<button type="button" class="det-clear-sel" title="' + escapeHtml(t("det.clearFilters")) + '" aria-label="' + escapeHtml(t("det.clearFilters")) + '">' + filterXSvg(15) + '</button>' : "") +
       "</div>";
   }
@@ -9870,7 +9886,7 @@
         ? '<div class="sp-head-panel">' + dateClearCloseBtns() + dateRelRowHtml(dateForRel) + detDaysPanelHtml() + "</div>"
         : detDaysPanelHtml();
     }
-    return out + (detModePanelOpen ? detModePanelHtml() : "") + (detObsPanelOpen ? detObsPanelHtml() : "");
+    return out + (detModePanelOpen ? detModePanelHtml() : "");   // observer checklist moved to the observer popup
   }
   // Wire the filter bar + subwindows inside the detections-list popup box `el`.
   // Changes save + refresh the map/legend, then re-render the popup.
@@ -9906,8 +9922,7 @@
         refresh();
       });
     });
-    var obsTog = el.querySelector(".det-obs-tog");
-    if (obsTog) obsTog.addEventListener("click", function (e) { e.stopPropagation(); openDetPanel("obs"); reRenderFilterBar(); });
+    // (The 👤 observer toggle + checklist moved to the observer popup — no wiring here.)
     el.querySelectorAll(".det-obs-cb").forEach(function (cb) {
       cb.addEventListener("change", function (e) {
         e.stopPropagation();

@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-06 — Observer filtering moved into the observer popup (sw v916)
+
+- Removed the standalone 👤 observer toggle + checklist panel from the "By observation" filter bar
+  (`detFilterTogglesHtml` / `detFilterPanelsHtml`). Observer filtering is now done from the observer
+  popup (tap an observer's name): `observerActionMenu` gained **Add to observer filter** (build a
+  multi-observer filter alongside Show only / Remove / Remove all) and **Observer lists** (opens
+  `openObserverEditor`), plus the existing Add-to-list. New i18n `obs.addToFilter` / `obs.editLists` (15 langs).
+
 ## 2026-08-05 — Sort: one tri-state button instead of two (sw v915)
 
 - The panels' two sort buttons (▲ asc / ▼ desc) are now a single tri-state button that cycles
