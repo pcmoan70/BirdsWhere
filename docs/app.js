@@ -1469,8 +1469,19 @@
         if (container.id === "sp-records") renderSpBody(); else refreshSpExpansions();
       });
     });
+    // In the "Per observation" list, clicking a date opens the inline date pane (with
+    // On/Before/After that date). Elsewhere (a table's expanded record sub-rows) it
+    // keeps the compact floating On/Before/After/Range menu.
+    var inRecords = container.id === "sp-records" || !!(container.closest && container.closest("#sp-records"));
     Array.prototype.forEach.call(container.querySelectorAll(".dl-date-click"), function (s) {
-      s.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); showDateFilterMenu(this.getAttribute("data-date"), e.clientX, e.clientY); });
+      s.addEventListener("click", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        if (inRecords) {
+          obsDatePanelDate = this.getAttribute("data-date");
+          detDaysPanelOpen = true; detModePanelOpen = false; detObsPanelOpen = false;   // show the date pane
+          reRenderFilterBar(); scrollSpFiltersIntoView();
+        } else showDateFilterMenu(this.getAttribute("data-date"), e.clientX, e.clientY);
+      });
     });
     Array.prototype.forEach.call(container.querySelectorAll(".sp-obs-filter"), function (s) {
       s.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); observerClickMenu(this.getAttribute("data-obs"), this); });
@@ -7110,6 +7121,7 @@
   var detObsAllowNone = false;          // is "(no observer)" selected
   var detObsPanelOpen = false;          // is the observer checklist showing (transient)
   var detDaysPanelOpen = false;         // is the time-window (days/range) subwindow showing
+  var obsDatePanelDate = null;          // "Per observation": date clicked to open the date pane (drives On/Before/After)
   var detModePanelOpen = false;         // is the species (★/◉/🟡) subwindow showing
   // The three legend subwindows are mutually exclusive — opening one closes the
   // others so they don't stack on top of the small legend.
@@ -9806,23 +9818,43 @@
   // The filter toggle bar (days / rarity+year-list / observer) — sits to the right of
   // the "Filter species" box. Its open subwindows render separately (detFilterPanelsHtml)
   // so they can drop full-width below the search row instead of squeezing in beside it.
-  function detFilterTogglesHtml() {
+  // `showDays` (default true) toggles the standalone date/days button. In the "Per
+  // observation" list it's omitted — the date pane opens by clicking a date instead.
+  function detFilterTogglesHtml(showDays) {
+    showDays = showDays !== false;
     var daysLbl = detDaysLabel();
     var daysOn = detRecencyDays() !== 0 || !!detDateRange() || detMonths().length > 0;
     var modeOn = detStarFilter || detRareFilter || detYearFilter || detLifeFilter;
     var modeLbl = detStarFilter ? "★" : detRareFilter ? "◉" : detYearFilter ? "🟠" : detLifeFilter ? "🟡" : "–";
     var modeTip = detStarFilter ? t("det.starred") : detRareFilter ? t("det.rare") : detYearFilter ? t("det.needsYear", { year: curYear() }) : detLifeFilter ? t("det.needsLife") : t("det.allSpecies");
     return '<div class="detlist-filters">' +
-        '<button type="button" class="det-tog det-days-tog' + (daysOn ? " on" : "") + (detDaysPanelOpen ? " open" : "") + '" title="' + escapeHtml(t("det.recency")) + '">' + escapeHtml(daysLbl) + "</button>" +
+        (showDays ? '<button type="button" class="det-tog det-days-tog' + (daysOn ? " on" : "") + (detDaysPanelOpen ? " open" : "") + '" title="' + escapeHtml(t("det.recency")) + '">' + escapeHtml(daysLbl) + "</button>" : "") +
         '<button type="button" class="det-tog det-mode-tog' + (modeOn ? " on" : "") + (detModePanelOpen ? " open" : "") + '" title="' + escapeHtml(modeTip) + '">' + escapeHtml(modeLbl) + "</button>" +
         '<button type="button" class="det-tog det-obs-tog ico-btn' + (detObsFilter ? " on" : "") + (detObsPanelOpen ? " open" : "") + '" title="' + escapeHtml(t("det.observers")) + '" aria-label="' + escapeHtml(t("det.observers")) + '">' + ico("user") + "</button>" +
         (detHasFilter() ? '<button type="button" class="det-clear-sel" title="' + escapeHtml(t("det.clearFilters")) + '" aria-label="' + escapeHtml(t("det.clearFilters")) + '">' + filterXSvg(15) + '</button>' : "") +
       "</div>";
   }
-  function detFilterPanelsHtml() {
-    return (detDaysPanelOpen ? detDaysPanelHtml() : "") +
-      (detModePanelOpen ? detModePanelHtml() : "") +
-      (detObsPanelOpen ? detObsPanelHtml() : "");
+  // The date-relative row (On / Before / After a clicked date) — shared by the table's
+  // Last panel and the "Per observation" date pane.
+  function dateRelRowHtml(d) {
+    var rg = detDateRange() || {};
+    function db(labelKey, from, to) {
+      var active = (rg.from || "") === from && (rg.to || "") === to && !!detDateRange();
+      return '<button type="button" class="sp-date-rel' + (active ? " on" : "") + '" data-from="' + from + '" data-to="' + to + '">' + escapeHtml(t(labelKey)) + "</button>";
+    }
+    return '<div class="sp-date-rel-row"><span class="sp-head-sort-lbl">' + escapeHtml(fmtDate(d) || d) + "</span>" +
+      db("date.on", d, d) + db("date.before", "", d) + db("date.after", d, "") + "</div>";
+  }
+  // `dateForRel` (Per-observation) wraps the open days panel with a clear-× and the
+  // On/Before/After row for the clicked date.
+  function detFilterPanelsHtml(dateForRel) {
+    var out = "";
+    if (detDaysPanelOpen) {
+      out += dateForRel
+        ? '<div class="sp-head-panel"><button type="button" class="sp-date-clear" title="' + escapeHtml(t("date.clearAll")) + '" aria-label="' + escapeHtml(t("date.clearAll")) + '">' + X_MARK_SVG + "</button>" + dateRelRowHtml(dateForRel) + detDaysPanelHtml() + "</div>"
+        : detDaysPanelHtml();
+    }
+    return out + (detModePanelOpen ? detModePanelHtml() : "") + (detObsPanelOpen ? detObsPanelHtml() : "");
   }
   // Wire the filter bar + subwindows inside the detections-list popup box `el`.
   // Changes save + refresh the map/legend, then re-render the popup.
@@ -9884,6 +9916,13 @@
     if (edLists) edLists.addEventListener("click", function (e) { e.stopPropagation(); openObserverEditor(); });
     var clrSel = el.querySelector(".det-clear-sel");
     if (clrSel) clrSel.addEventListener("click", function (e) { e.stopPropagation(); clearAllFilters(); });
+    // "Per observation" date pane: On/Before/After the clicked date + a green × that
+    // clears every date filter and closes the pane.
+    el.querySelectorAll(".sp-date-rel").forEach(function (b) {
+      b.addEventListener("click", function (e) { e.stopPropagation(); setDetDateFilter(this.getAttribute("data-from"), this.getAttribute("data-to")); });
+    });
+    var dclr = el.querySelector(".sp-date-clear");
+    if (dclr) dclr.addEventListener("click", function (e) { e.stopPropagation(); clearDateFilters(); });
   }
 
   // ---- Map points (user-added pins + named lists) ---------------------------
@@ -16342,8 +16381,9 @@
     if (fw && fw.firstChild && fw.scrollIntoView) { try { fw.scrollIntoView({ block: "nearest" }); } catch (e) { fw.scrollIntoView(); } }
   }
   function renderSpFilterBar() {
-    var bar = document.getElementById("sp-filters-bar"); if (bar) bar.innerHTML = detFilterTogglesHtml();
-    var fw = document.getElementById("sp-filters-wrap"); if (fw) fw.innerHTML = detFilterPanelsHtml();
+    // No standalone date button — the date pane opens by clicking a date in the list.
+    var bar = document.getElementById("sp-filters-bar"); if (bar) bar.innerHTML = detFilterTogglesHtml(false);
+    var fw = document.getElementById("sp-filters-wrap"); if (fw) fw.innerHTML = detFilterPanelsHtml(obsDatePanelDate);
     wireDetFilters(document.getElementById("species-panel"));
   }
   // The fetch-list body: the model-prediction table, or a detailed record layout
@@ -16475,16 +16515,8 @@
     // A green × in the corner clears EVERY date filter (recency + range + months) and
     // closes the panel.
     var html = '<div class="sp-head-panel"><button type="button" class="sp-date-clear" title="' + escapeHtml(t("date.clearAll")) + '" aria-label="' + escapeHtml(t("date.clearAll")) + '">' + X_MARK_SVG + "</button>" + spSortRowHtml("last");
-    // When opened from a specific date cell, offer This date / Before / After it.
-    if (spHeadPanelDate) {
-      var d = spHeadPanelDate, rg = detDateRange() || {};
-      function db(labelKey, from, to) {
-        var active = (rg.from || "") === from && (rg.to || "") === to && (!!detDateRange());
-        return '<button type="button" class="sp-date-rel' + (active ? " on" : "") + '" data-from="' + from + '" data-to="' + to + '">' + escapeHtml(t(labelKey)) + "</button>";
-      }
-      html += '<div class="sp-date-rel-row"><span class="sp-head-sort-lbl">' + escapeHtml(fmtDate(d) || d) + "</span>" +
-        db("date.on", d, d) + db("date.before", "", d) + db("date.after", d, "") + "</div>";
-    }
+    // When opened from a specific date cell, offer On / Before / After it.
+    if (spHeadPanelDate) html += dateRelRowHtml(spHeadPanelDate);
     // The full recency / range / months panel (reused from "By observation").
     return html + detDaysPanelHtml() + "</div>";
   }
@@ -16557,7 +16589,8 @@
   // → off) and close the Last panel.
   function clearDateFilters() {
     window.GeoState.save({ detRecencyDays: 0, detDateRange: null, detMonths: [] });
-    spHeadPanel = null; spHeadPanelDate = null;
+    spHeadPanel = null; spHeadPanelDate = null;              // close the table's Last panel
+    detDaysPanelOpen = false; obsDatePanelDate = null;       // close the Per-observation date pane
     detFiltersRefresh();   // map + legend + list follow; renderSpControls closes the (now-empty) panel
   }
   // Toggle a status-flag filter (★/◉/🟠/🟡/🚫), mirroring ★/◉/🟠/🟡 to the global

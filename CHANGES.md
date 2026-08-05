@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-08-05 — "Per observation": date pane opens from a date click (sw v907)
+
+- Removed the standalone date/days button from the "Per observation" filter bar
+  (`detFilterTogglesHtml(false)`). The date pane now opens by **clicking a date** in the list.
+- Clicking a date opens the inline pane with **On / Before / After** that date (`dateRelRowHtml`,
+  shared with the table's Last panel) plus the recency/range/months panel and the green clear-×.
+- `detFilterPanelsHtml(dateForRel)` wraps the days panel; `wireSpDetail` opens the pane for records
+  (`#sp-records`) and keeps the floating menu for a table's expanded sub-rows; `obsDatePanelDate` state.
+
 ## 2026-08-05 — Date panel: green × clears all date filters + closes (sw v906)
 
 - Added a green × (top-right of the Last date panel) → `clearDateFilters()`: resets recency to All,
