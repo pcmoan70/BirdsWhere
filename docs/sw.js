@@ -21,12 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v896";
+var VERSION = "v897";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
-  "• The map-point popup is tidier: the national-portal, BirdLife and ornitho reference links (Artsobservasjoner, Artportalen, Laji, ornitho, BirdLife …) plus the Worldwide list now sit behind the Experimental toggle (Settings). The species list, Birding Places and Blogs stay put.",
+  "• The map-point popup is tidier: all the external reference links — national portals (Artsobservasjoner, Artportalen, Laji, ornitho, BirdLife …), the BirdLife factsheet, Birding Places, Blogs and the Worldwide list — now sit behind the Experimental toggle (Settings). Only the species list stays by default.",
   "• Offline maps now cover every map type and place-name labels. Downloading an area stores its labels too, and offline the map shows raster place names (the vector overlay is online-only) — so names still appear with no network.",
   "• Sharper place names: the “More place names” overlay (Settings → Map) now renders vector labels (MapLibre GL / OpenFreeMap) over the Voyager and Satellite maps — local names surface smoothly as you zoom in, without overlapping, the way yr.no does it.",
   "• Tapping a date shows a red × on the currently-active date filter — tap the × to remove just that filter. And Settings' “Reload to update” button now lights up whenever your version differs from the one on the server.",

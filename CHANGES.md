@@ -1,12 +1,13 @@
 # Changes
 
-## 2026-08-05 — Map-point popup: gate national/BirdLife/ornitho links behind Experimental (sw v896)
+## 2026-08-05 — Map-point popup: gate all external reference links behind Experimental (sw v896–v897)
 
 - In the map-point popup (`bindPointPopup`), the external reference links now require the Experimental
   toggle (Settings): the national portals from `natServicesFor` (Artsobservasjoner, Artportalen, Laji,
-  ornitho, BirdLife orgs, the eBird-region fallback), the BirdLife country factsheet button, and the
-  "Worldwide" continent submenu (`continentServices` — BirdLife DataZone, EuroBirdPortal, …).
-- Always-visible (unchanged): the species list, Birding Places, and the country Blogs button.
+  ornitho, BirdLife orgs, the eBird-region fallback), the BirdLife country factsheet button, the
+  "Worldwide" continent submenu (`continentServices` — BirdLife DataZone, EuroBirdPortal, …), and
+  (v897) the Birding Places link and the country Blogs button.
+- Always-visible: the species list. With Experimental off, that's all the popup shows.
 
 ## 2026-08-05 — Offline maps: all basemaps + place-name labels (sw v895)
 

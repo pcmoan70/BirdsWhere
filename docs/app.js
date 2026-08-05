@@ -2527,7 +2527,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
-    { v: "v896", date: "2026-08-05", text: "The map-point popup is less cluttered. The external national-database and organisation links (Artsobservasjoner, Artportalen, Laji, ornitho, BirdLife country factsheet) and the “Worldwide” list are now shown only when Experimental features are enabled (Settings). The species list, Birding Places and Blogs links are always there." },
+    { v: "v896", date: "2026-08-05", text: "The map-point popup is less cluttered. All the external reference links — national databases (Artsobservasjoner, Artportalen, Laji, ornitho…), the BirdLife country factsheet, Birding Places, Blogs and the “Worldwide” list — are now shown only when Experimental features are enabled (Settings). By default the popup keeps just the species list." },
     { v: "v895", date: "2026-08-05", text: "Offline maps now work with every map type and with place-name labels. When you download an area, its place names are stored alongside the tiles, so they still show when you're offline. (The smooth vector-label overlay needs a network, so offline the map falls back to the cached raster labels — same names, just placed at fixed zoom steps.) Re-downloading a purged area restores its labels too." },
     { v: "v894", date: "2026-08-05", text: "Sharper place names on the map. The “More place names” overlay (Settings → Map) now draws vector labels (MapLibre GL over OpenFreeMap's OpenMapTiles data, no API key) on the Voyager and Satellite maps: names are placed live by zoom and importance with collision avoidance, so local names — villages, then hamlets, then farm/neighbourhood names — surface smoothly as you zoom in, without doubling up. This mirrors how yr.no renders its map. Falls back to the previous raster labels where WebGL isn't available." },
     { v: "v858", date: "2026-08-04", text: "“Show on map” from an observation (the record menu, the expanded records' location, and the 🎯 focus button) now drops the map pointer on that location and reveals the map — it closes the full-screen list or the records modal so you land directly on the spot, marker in place." },
@@ -14458,7 +14458,8 @@
     wrap.appendChild(makePopupBtn(t("mode.list"), "", function () { mk.closePopup(); renderSpeciesList(lat, lon); }));
     // Save location / Share link / Copy coordinates now live in the right-click
     // (long-press) map menu — see showMapContextMenu.
-    wrap.appendChild(makePopupBtn(t("link.birdingplaces") + " ↗", "demo-btn-light", function () {
+    // Birding Places is an external link, so it too sits behind the Experimental gate.
+    if (experimentalOn()) wrap.appendChild(makePopupBtn(t("link.birdingplaces") + " ↗", "demo-btn-light", function () {
       mk.closePopup(); openExternal(birdingPlacesUrl(lat, lon));
     }));
     // Country resources for the clicked point — the national databases, then Blogs
@@ -14466,18 +14467,18 @@
     // for the point's continent. All the site links come from the National-databases
     // store (Settings → National databases), so any can be added / deleted / blocked.
     // Added once the country reverse-geocode resolves so the popup opens instantly.
-    // The external reference links (national portals — Artsobservasjoner / Artportalen /
-    // Laji / ornitho / BirdLife orgs — the BirdLife factsheet, and the Worldwide list)
-    // sit behind the Experimental gate to keep the popup uncluttered; Blogs stays.
+    // All these external reference links (national portals — Artsobservasjoner /
+    // Artportalen / Laji / ornitho / BirdLife orgs — the BirdLife factsheet, Blogs, and
+    // the Worldwide list) sit behind the Experimental gate to keep the popup uncluttered.
     AppGeo.countryInfo(lat, lon).then(function (info) {
       var cc = (info && info.cc) || "", cname = (info && info.name) || "";
       var exp = experimentalOn();
       if (exp) natServicesFor(cc).forEach(function (s) {
         wrap.appendChild(makePopupBtn(s.label + " ↗", "demo-btn-light", function () { mk.closePopup(); openExternal(s.url); }));
       });
-      if (cc) {
+      if (cc && exp) {
         wrap.appendChild(makePopupBtn(t("blogs.title") + " ▸", "demo-btn-light", function () { mk.closePopup(); openBlogs(cc, cname); }));
-        if (exp) wrap.appendChild(makePopupBtn(t("link.birdlife") + " ↗", "demo-btn-light", function () { mk.closePopup(); openExternal(birdLifeCountryUrl(cc, cname)); }));
+        wrap.appendChild(makePopupBtn(t("link.birdlife") + " ↗", "demo-btn-light", function () { mk.closePopup(); openExternal(birdLifeCountryUrl(cc, cname)); }));
       }
       var wide = exp ? continentServices(cc) : [], wlabel = categoryLabel(continentFor(cc));
       if (wide.length) {
