@@ -7854,19 +7854,22 @@
     // 3) Lists & actions — your data (any keyed species).
     if (key) {
       head("menu.secActions");
-      // Filter the plotted observations to just this species (isolate it on the map +
-      // detections list), or clear the filter if it's already the only one shown. Only
-      // when the species actually has observations plotted.
+      // Species selection filter (mirrors the observer menu): if this species IS part
+      // of the active filter, offer "Remove from species filter" (drop just it); else
+      // "Show only this species" (isolate). When any selection is active, also offer
+      // "Remove all species filters". Only when the species has observations plotted.
       if (typeof detPlot !== "undefined" && detPlot[key]) {
-        var onlyThis = !!detSelected[key] && Object.keys(detSelected).length === 1;
-        el.appendChild(drmBtn(onlyThis ? t("menu.showAllSp") : t("menu.filterSp"), function () {
-          closeDetRowMenu();
-          detSelected = {};
-          if (!onlyThis) detSelected[key] = true;   // isolate this species (toggle off → show all again)
+        var refreshSel = function () {
           saveLegendState(); rebuildDetLayers(); updateDetLegend();
           var dm = document.getElementById("detlist-modal");
           if (dm && dm.style.display === "flex" && typeof renderDetListModal === "function") renderDetListModal();
-        }));
+        };
+        if (detSelected[key]) {
+          el.appendChild(drmBtn(t("menu.removeSpFilter"), function () { closeDetRowMenu(); delete detSelected[key]; refreshSel(); }));
+        } else {
+          el.appendChild(drmBtn(t("menu.filterSp"), function () { closeDetRowMenu(); detSelected = {}; detSelected[key] = true; refreshSel(); }));
+        }
+        if (detSelectionActive()) el.appendChild(drmBtn(t("menu.removeAllSp"), function () { closeDetRowMenu(); detSelected = {}; refreshSel(); }));
       }
       // Each row is a toggle whose icon shows the current state in the app's
       // colours, so the menu reads the same way as the list columns and the map.

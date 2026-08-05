@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-05 — Species filter menu mirrors the observer pattern (sw v890)
+
+- The species menu's selection filter (`drmRenderMain`, `detSelected`) now works like the observer menu:
+  when the species is part of the active filter it shows **Remove from species filter** (drops just it) and
+  hides "Show only this species"; when any selection is active it also shows **Remove all species filters**.
+  i18n `menu.removeSpFilter` / `menu.removeAllSp` (15 langs).
+
 ## 2026-08-05 — Observer menu tidy-up (sw v889)
 
 - When "Remove from observer filter" is shown (observer is in the active filter), "Show only this observer"
