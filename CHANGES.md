@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-08-05 — Default map = Voyager, labels = More (sw v899)
+
+- Changed the unset defaults: `get("basemap", …)` now defaults to `"voyager"` (was `"streets"`) and
+  `labelsMode()` defaults to `"more"` (was `"off"`). New installs open on Voyager with the vector
+  place-name overlay on; users who already saved a basemap/label choice keep it (GeoState override wins).
+
 ## 2026-08-05 — Species-list: date-range selection (as in "By observation") (sw v898)
 
 - The Species-list (table) layout now offers the same date filtering as the "By observation" record view:

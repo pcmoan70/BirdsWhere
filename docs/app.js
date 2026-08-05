@@ -2531,6 +2531,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v899", date: "2026-08-05", text: "New installs now default to the Voyager map with “More place names” switched on, so detailed local names are visible from the start. Your own map/label choice (if you've set one) is preserved — change it any time under Settings → Map." },
     { v: "v898", date: "2026-08-05", text: "The Species-list table gains the same date-range selection as the “By observation” view. A days/date button sits next to the layout dropdown, and clicking a date in the list opens a panel — between the header and the first rows — where you can pick a recency window (days/weeks/months), an exact from–to range, or specific months. The window now also filters the table's Total and Last columns, so the list reflects the same dates as the map." },
     { v: "v896", date: "2026-08-05", text: "The map-point popup is less cluttered. All the external reference links — national databases (Artsobservasjoner, Artportalen, Laji, ornitho…), the BirdLife country factsheet, Birding Places, Blogs and the “Worldwide” list — are now shown only when Experimental features are enabled (Settings). By default the popup keeps just the species list." },
     { v: "v895", date: "2026-08-05", text: "Offline maps now work with every map type and with place-name labels. When you download an area, its place names are stored alongside the tiles, so they still show when you're offline. (The smooth vector-label overlay needs a network, so offline the map falls back to the cached raster labels — same names, just placed at fixed zoom steps.) Re-downloading a purged area restores its labels too." },
@@ -5881,7 +5882,7 @@
       map.setZoom(map.getZoom(), { animate: false });   // re-snap the initial view onto the phased grid (the constructor used Leaflet's un-phased rule)
     }
 
-    setBasemap(window.GeoState.get("basemap", "streets"));
+    setBasemap(window.GeoState.get("basemap", "voyager"));
 
     // Whenever the map is resized (invalidateSize from any source), make sure
     // you can still zoom out to the whole world on the current screen.
@@ -6288,7 +6289,7 @@
   // streets/topo, whose baked-in names can't be removed (would double up).
   var LABEL_LEVEL_OFFSET = { on: 0, more: 1 };   // zoom levels deeper than the view
   var labelsOverlay = null;
-  function labelsMode() { return window.GeoState.get("mapLabels", "off"); }
+  function labelsMode() { return window.GeoState.get("mapLabels", "more"); }
   // Experimental features gate (Settings) — off by default. Currently unlocks the
   // less-polished species-menu references (NBN Atlas, EuroBirdPortal); the home for
   // any future try-it-out links/features.
@@ -6355,7 +6356,7 @@
     if (labelsOverlay) { try { map.removeLayer(labelsOverlay); } catch (e) {} labelsOverlay = null; }
     var mode = labelsMode();
     if (!map || mode === "off") return;
-    var bm = window.GeoState.get("basemap", "streets");
+    var bm = window.GeoState.get("basemap", "voyager");
     if (!labelsSupported(bm)) return;   // streets/topo/etc. bake their names in — don't print a second set
     var offline = isOfflineNow();
     labelsRenderedOffline = offline;
@@ -6441,7 +6442,7 @@
     // Cache the aligned raster labels instead so names show offline for any label-
     // capable basemap, in both "on" and "more" modes. (With labels active the CARTO
     // base is already the labels-FREE variant, so no duplication.)
-    var bm = window.GeoState.get("basemap", "streets");
+    var bm = window.GeoState.get("basemap", "voyager");
     if (labelsMode() !== "off" && labelsSupported(bm)) arr.push(rasterLabelsLayer(bm));
     return arr.filter(Boolean);
   }
@@ -6521,7 +6522,7 @@
     }).then(function () {
       if (aborted()) { return caches.delete("pinned-" + id).then(function () { return -1; }); }
       var areas = getOfflineAreas();
-      areas.push({ id: id, name: name, basemap: window.GeoState.get("basemap", "streets"),
+      areas.push({ id: id, name: name, basemap: window.GeoState.get("basemap", "voyager"),
                    labels: labelsMode(),   // so a refill re-fetches the raster labels + the matching base variant
                    bbox: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
                    zStart: zStart, zMax: zMax, tiles: ok, bytes: ok * OFFLINE_TILE_BYTES, createdAt: Date.now() });
@@ -6752,7 +6753,7 @@
     if (!baseLayer) return;
     var cap = baseLayer._origMaxNative || MAX_ZOOM;
     if (!navigator.onLine || offlineTilesFailing) {
-      var here = coveringAreas(window.GeoState.get("basemap", "streets"));
+      var here = coveringAreas(window.GeoState.get("basemap", "voyager"));
       if (here.length) cap = here.reduce(function (m, a) { return Math.max(m, a.zMax || 0); }, 0);
     }
     if (baseLayer.options.maxNativeZoom !== cap) {
@@ -6771,7 +6772,7 @@
     if (navigator.onLine || offlinePromptBusy || !map || !window.caches) return;
     var covering = coveringAreas(null);
     if (!covering.length) return;
-    var curBase = window.GeoState.get("basemap", "streets");
+    var curBase = window.GeoState.get("basemap", "voyager");
     // The current basemap is downloaded here → its tiles upscale (handled by the
     // zoom cap); don't interrupt with a prompt. Only offer a switch when *only*
     // a different basemap covers this view.
@@ -6794,7 +6795,7 @@
         var a = getOfflineAreas().filter(function (x) { return x.id === this.getAttribute("data-id"); }.bind(this))[0];
         close();
         if (!a) return;
-        if (a.basemap && a.basemap !== window.GeoState.get("basemap", "streets")) setBasemap(a.basemap);
+        if (a.basemap && a.basemap !== window.GeoState.get("basemap", "voyager")) setBasemap(a.basemap);
         try { map.fitBounds([[a.bbox[1], a.bbox[0]], [a.bbox[3], a.bbox[2]]], { maxZoom: a.zMax }); } catch (e) {}
       });
     });
@@ -12067,7 +12068,7 @@
     var mapLabelsSel = document.getElementById("maplabels-select");
     if (mapLabelsSel) {
       mapLabelsSel.value = labelsMode();
-      mapLabelsSel.addEventListener("change", function () { window.GeoState.save({ mapLabels: this.value }); setBasemap(window.GeoState.get("basemap", "streets")); });   // re-apply base (CARTO swaps to _nolabels) + overlay
+      mapLabelsSel.addEventListener("change", function () { window.GeoState.save({ mapLabels: this.value }); setBasemap(window.GeoState.get("basemap", "voyager")); });   // re-apply base (CARTO swaps to _nolabels) + overlay
     }
 
     document.getElementById("perf-modal-ok").addEventListener("click", hidePerfModal);
