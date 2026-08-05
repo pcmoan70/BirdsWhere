@@ -21,12 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v881";
+var VERSION = "v882";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
-  "• Fixed the species-list counts (n(d)) — they now count OBSERVATIONS (records), consistently, instead of sometimes summing individuals; and fixed a date off-by-one where the “Last” date could show a day early in +UTC time zones.",
+  "• Fixed the species-list counts (n(d)) — they now consistently show the TOTAL number of specimens (a record with no count = 1); and fixed a date off-by-one where the “Last” date could show a day early in +UTC time zones. New icons: a green map-pin for “Show on map”, a nav-arrow-with-+ for “Add to route”, and a +/dots icon for “Add to list”.",
   "• Startup note: this map only shows what others have carefully reported — to contribute your own sightings, register with a national (Artportalen.se, Artsobservasjoner.no …) or international (eBird.org, Observation.org …) service.",
   "• The status line above the map shows blinking dots while fetching — one “.” per pending fetch (“...” = 3 still to finish), counted from the moment you trigger one (queued, then in progress), so you can see how many are still loading.",
   "• More GBIF sources: Italy (AIRONE wintering birds) and Austria (Salzburg) added as live national sources, plus France (Oiseaux des Jardins + Faune-Occitanie) for Historic date-range fetches. Toggle any in Settings → GBIF datasets.",

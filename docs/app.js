@@ -269,7 +269,9 @@
       share:    '<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8 15.8 6.2M8.2 13.2l7.6 4.6"/>',
       copy:     '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/>',
       // Scatter of dots — mirrors the header Points icon (the "points" concept).
-      dots:     '<circle cx="5" cy="7" r="2" fill="currentColor" stroke="none"/><circle cx="12.5" cy="4.5" r="2" fill="currentColor" stroke="none"/><circle cx="19" cy="9" r="2" fill="currentColor" stroke="none"/><circle cx="7.5" cy="15" r="2" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="2" fill="currentColor" stroke="none"/><circle cx="18.5" cy="19" r="2" fill="currentColor" stroke="none"/>'
+      dots:     '<circle cx="5" cy="7" r="2" fill="currentColor" stroke="none"/><circle cx="12.5" cy="4.5" r="2" fill="currentColor" stroke="none"/><circle cx="19" cy="9" r="2" fill="currentColor" stroke="none"/><circle cx="7.5" cy="15" r="2" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="2" fill="currentColor" stroke="none"/><circle cx="18.5" cy="19" r="2" fill="currentColor" stroke="none"/>',
+      // "+" followed by a scatter of dots — "add point to a list".
+      dotsplus: '<path d="M5 5.5v6M2 8.5h6"/><circle cx="13" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="19.5" cy="8" r="1.5" fill="currentColor" stroke="none"/><circle cx="14.5" cy="12.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="20.5" cy="15" r="1.5" fill="currentColor" stroke="none"/><circle cx="13" cy="18.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="19" cy="20" r="1.5" fill="currentColor" stroke="none"/>'
     };
     return '<svg class="btn-ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (P[name] || "") + "</svg>";
   }
@@ -1581,7 +1583,7 @@
         var fc = 0, flatest = 0;
         entry.rows.forEach(function (r) {
           if (!detDatePasses(r.date) || !detObsPasses(r) || !detPassesSrc(r)) return;
-          fc += 1;   // n(d) = number of OBSERVATIONS (records), matching agg.count / dedupTotal — not a sum of individuals
+          var n = parseInt(r.count, 10); fc += (isFinite(n) && n > 0) ? n : 1;   // n(d) = total SPECIMENS in the window (a record with no count = 1)
           var ts = r.date ? Date.parse(r.date + "T00:00:00") : 0; if (ts && ts > flatest) flatest = ts;
         });
         tr.classList.toggle("sp-has-det", fc > 0);
@@ -4039,6 +4041,9 @@
     var haveOrigin = isFinite(oLat) && isFinite(oLon);
     keys.forEach(function (k) {
       var e = extras[k], name = e.name || e.sci;
+      // n(d) = total SPECIMENS across this species' records (a record with no count = 1),
+      // matching the model rows' count (applyAgeFilter doesn't touch extras).
+      var eSpec = (e.rows || []).reduce(function (s, r) { var n = parseInt(r.count, 10); return s + ((isFinite(n) && n > 0) ? n : 1); }, 0);
       var days = e.latestTs ? Math.max(0, Math.round((now - e.latestTs) / 86400000)) : null;
       var exKm = haveOrigin ? nearestDetKm(oLat, oLon, e.rows) : null;
       var tr = document.createElement("tr");
@@ -4051,7 +4056,7 @@
         '<td>' + clsBadge + '<span class="sp-extra-name" title="' + escapeHtml(t("sp.extraHint")) + '">' + escapeHtml(name) + '</span></td>' +
         '<td class="name2"></td>' +
         '<td class="sci">' + escapeHtml(e.sci) + '</td>' +
-        '<td class="num det-nd"><button type="button" class="det-count-btn det-count-extra" data-sci="' + escapeHtml(e.sci) + '" data-name="' + escapeHtml(name) + '">' + e.count + '</button>' +
+        '<td class="num det-nd"><button type="button" class="det-count-btn det-count-extra" data-sci="' + escapeHtml(e.sci) + '" data-name="' + escapeHtml(name) + '">' + eSpec + '</button>' +
           (days != null ? '<span class="det-d">(' + days + ")</span>" : "") + '</td>' +
         '<td class="num sp-last">' + (e.latestTs ? lastDateCellHtml(e.latestTs) : "") + '</td>' +
         '<td class="num sp-dist">' + (exKm != null ? escapeHtml(nearbyFmtDist(exKm)) : "") + '</td>' +
@@ -7715,11 +7720,11 @@
       head("menu.secObs");
       if (d.url) el.appendChild(drmBtn(t("det.openSource"), function () { closeDetRowMenu(); openExternal(d.url); }));
       if (hasLoc) {
-        el.appendChild(drmBtn(t("detmenu.focusMap"), function () { focusPointOnMap(+d.lat, +d.lon); }));
+        el.appendChild(drmBtn(t("detmenu.focusMap"), function () { focusPointOnMap(+d.lat, +d.lon); }, "pin"));
         el.appendChild(drmBtn(t("nav.here"), function () { closeDetRowMenu(); navigatePoints([{ lat: +d.lat, lon: +d.lon }]); }, "nav"));
         el.appendChild(drmBtn(tLabel("route.add"), function () { closeDetRowMenu(); addToRoute(+d.lat, +d.lon, name); }, "navplus"));
       }
-      el.appendChild(drmBtn(t("detmenu.addList"), function () { drmRenderLists(el, d); }));
+      el.appendChild(drmBtn(t("detmenu.addList"), function () { drmRenderLists(el, d); }, "dotsplus"));
       if (d.mpId && d.listName) el.appendChild(drmBtn(t("detmenu.removeFromList"), function () { closeDetRowMenu(); removeListPoint(d.listName, d.mpId); redraw(); }, "block"));
     }
     // 2) Information — learn about the species. Model species get the full set
@@ -7918,7 +7923,7 @@
     var el = openAnchoredMenu("detrow-menu");
     el.innerHTML = "";
     var h = document.createElement("div"); h.className = "detrow-menu-hdr"; h.textContent = name || (lat.toFixed(4) + ", " + lon.toFixed(4)); el.appendChild(h);
-    el.appendChild(drmBtn(t("locmenu.find"), function () { focusPointOnMap(lat, lon); }, "nav"));
+    el.appendChild(drmBtn(t("locmenu.find"), function () { focusPointOnMap(lat, lon); }, "pin"));
     el.appendChild(drmBtn(t("locmenu.add"), function () {
       closeDetRowMenu();
       addMapPoint({ lat: lat, lon: lon, name: name || "", source: "manual" });
@@ -14098,7 +14103,7 @@
       var e = detections[k]; if (!e || !e.rows || !e.rows.length) return;
       var spKey = e.key || k, count = 0, latest = 0;
       e.rows.forEach(function (r) {
-        count += 1;   // observations (records), consistent with the fetch aggregation
+        var n = parseInt(r.count, 10); count += (isFinite(n) && n > 0) ? n : 1;   // total specimens (no count = 1)
         var ts = Date.parse(String(r.date || "").slice(0, 10) + "T00:00:00"); if (ts && ts > latest) latest = ts;   // local-midnight date
         if (isFinite(+r.lat) && isFinite(+r.lon)) ll.push([+r.lat, +r.lon]);
       });

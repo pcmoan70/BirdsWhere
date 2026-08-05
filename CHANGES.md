@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-08-05 — Counts = total specimens; add-to-list icon; green Show-on-map pin (sw v882)
+
+- **Counts (n(d)) = total specimens.** Corrects v880's direction: the per-species count is the SUM of
+  individual counts (a record with no count = 1), not the number of records. Reverted `applyAgeFilter` (`fc`)
+  and `plotSharedDetections` to sum specimens, and the extras rows now compute specimens from `e.rows`
+  (they aren't touched by `applyAgeFilter`). The `dedupTotal` / "unique: N" grand total stays a **record**
+  count (unique observations) — a different, correctly-labelled number.
+- **Add-to-list icon.** New `ico("dotsplus")` — a "+" with a scatter of dots — on the observation menu's
+  **Add to list…** (`detmenu.addList`).
+- **Show-on-map pin.** `detmenu.focusMap` and `locmenu.find` now use the green map-pin `ico("pin")` (inherits
+  the menu's `--brand` teal-green), instead of no icon / the nav arrow.
+
 ## 2026-08-05 — New "add to route" icon (nav arrow + plus) (sw v881)
 
 - New `ico("navplus")` — a navigation/send arrow with a "+" — for the **Add to route** action. Applied to
