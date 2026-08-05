@@ -21,11 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v900";
+var VERSION = "v901";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• The single-observation menu now uses the app's own line icons throughout — the interesting / this-year / life-list toggles are drawn as monochrome icons (star, calendar, sprout) instead of colour emoji, matching the other actions.",
   "• New installs now open on the Voyager map with “More place names” on by default, so local names show right away. If you've already picked a map, your choice is kept — switch any time in Settings → Map.",
   "• Click the “Last” column header in the Species list to open the date-range panel (recency, an exact from–to range, or specific months) between the header and the first rows — the same selection as “By observation”. The chosen window also narrows the table's Total and Last columns, so the list matches what's on the map.",
   "• The map-point popup is tidier: all the external reference links — national portals (Artsobservasjoner, Artportalen, Laji, ornitho, BirdLife …), the BirdLife factsheet, Birding Places, Blogs and the Worldwide list — now sit behind the Experimental toggle (Settings). Only the species list stays by default.",

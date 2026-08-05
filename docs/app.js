@@ -271,7 +271,13 @@
       // Scatter of dots — mirrors the header Points icon (the "points" concept).
       dots:     '<circle cx="5" cy="7" r="2" fill="currentColor" stroke="none"/><circle cx="12.5" cy="4.5" r="2" fill="currentColor" stroke="none"/><circle cx="19" cy="9" r="2" fill="currentColor" stroke="none"/><circle cx="7.5" cy="15" r="2" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="2" fill="currentColor" stroke="none"/><circle cx="18.5" cy="19" r="2" fill="currentColor" stroke="none"/>',
       // "+" followed by a scatter of dots — "add point to a list".
-      dotsplus: '<path d="M5 5.5v6M2 8.5h6"/><circle cx="13" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="19.5" cy="8" r="1.5" fill="currentColor" stroke="none"/><circle cx="14.5" cy="12.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="20.5" cy="15" r="1.5" fill="currentColor" stroke="none"/><circle cx="13" cy="18.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="19" cy="20" r="1.5" fill="currentColor" stroke="none"/>'
+      dotsplus: '<path d="M5 5.5v6M2 8.5h6"/><circle cx="13" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="19.5" cy="8" r="1.5" fill="currentColor" stroke="none"/><circle cx="14.5" cy="12.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="20.5" cy="15" r="1.5" fill="currentColor" stroke="none"/><circle cx="13" cy="18.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="19" cy="20" r="1.5" fill="currentColor" stroke="none"/>',
+      // Monochrome line icons for the record-menu status toggles (so the popup uses
+      // the app's own icon set, not colour emoji): star = interesting, calendar =
+      // this-year list, sprout = life list.
+      star:     '<path d="M12 3.5l2.7 5.47 6.05.88-4.38 4.26 1.03 6.02L12 17.25 6.58 20.13l1.03-6.02L3.23 9.85l6.05-.88z"/>',
+      calendar: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 9.5h16M8.5 3.3v3.4M15.5 3.3v3.4"/>',
+      sprout:   '<path d="M12 21v-7.5"/><path d="M12 13.5c0-3.3 2.6-5.8 6-5.8 0 3.3-2.6 5.8-6 5.8z"/><path d="M12 13.5c0-2.7-2.1-4.8-4.8-4.8 0 2.7 2.1 4.8 4.8 4.8z"/>'
     };
     return '<svg class="btn-ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (P[name] || "") + "</svg>";
   }
@@ -7963,13 +7969,14 @@
         }
         if (detSelectionActive()) el.appendChild(drmBtn(t("menu.removeAllSp"), function () { closeDetRowMenu(); detSelected = {}; refreshSel(); }));
       }
-      // Each row is a toggle whose icon shows the current state in the app's
-      // colours, so the menu reads the same way as the list columns and the map.
-      el.appendChild(drmToggle(SP_FLAG_GLYPH.star, isInteresting(key), t("menu.interesting"),
+      // Each row is a toggle drawn with the app's own monochrome line icons (not the
+      // colour emoji the list columns use); the active state reads via the icon's
+      // full-strength (vs dimmed) rendering — see .drm-toggle .drm-ico-svg.
+      el.appendChild(drmToggle({ html: ico("star") }, isInteresting(key), t("menu.interesting"),
         function () { toggleInteresting(key); closeDetRowMenu(); redraw(); }));
-      el.appendChild(drmToggle(SP_FLAG_GLYPH.year, inYearList(key), t("menu.yearlist", { year: curYear() }),
+      el.appendChild(drmToggle({ html: ico("calendar") }, inYearList(key), t("menu.yearlist", { year: curYear() }),
         function () { toggleYearList(key); closeDetRowMenu(); redraw(); }));
-      el.appendChild(drmToggle(SP_FLAG_GLYPH.life, inLifeList(key), t("menu.lifelist"),
+      el.appendChild(drmToggle({ html: ico("sprout") }, inLifeList(key), t("menu.lifelist"),
         function () { toggleLifeList(key); closeDetRowMenu(); redraw(); }));
       // Hidden toggles both ways — reachable because the list's 🚫 filter can
       // show blocked species. Its icon previews the ACTION rather than the state:

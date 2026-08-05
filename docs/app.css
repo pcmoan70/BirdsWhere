@@ -2753,6 +2753,14 @@ a.dl-row:hover, .dl-row-menu:hover { background: var(--surface-2, rgba(0,0,0,.05
    species, green when it will bring it back. */
 .drm-ico-svg { display: inline-flex; align-items: center; justify-content: center; filter: none; opacity: 1; }
 .drm-ico-svg .btn-ico { width: 15px; height: 15px; color: inherit; }
+/* Status toggles drawn with our own line icons: dim when off, full when on/hover
+   (the monochrome equivalent of the emoji's grayscale/opacity states above). The
+   Hidden row keeps opacity 1 via its drm-will-* colour rules below. */
+.drm-toggle .drm-ico-svg { opacity: 0.4; }
+.drm-toggle.on .drm-ico-svg,
+.drm-toggle:hover .drm-ico-svg,
+.drm-toggle.drm-will-hide .drm-ico-svg,
+.drm-toggle.drm-will-show .drm-ico-svg { opacity: 1; }
 .drm-toggle.drm-will-hide .drm-ico,
 .drm-toggle.drm-will-show .drm-ico { filter: none; opacity: 1; }
 .drm-toggle.drm-will-hide { color: var(--danger, #c0392b); }

@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-08-05 — Single-observation menu: self-designed icons for status toggles (sw v901)
+
+- The record menu (`drmRenderMain`, opened from a dot/pin/row = the "single observation" popup) drew its
+  interesting / this-year / life-list toggles with colour emoji (★ 🟠 🟡). Replaced with monochrome line
+  icons from `ico()` — new `star`, `calendar`, `sprout` — so the whole popup uses the app's own icon set.
+- `.drm-toggle .drm-ico-svg` now dims (0.4) when off and is full on/hover (the monochrome equivalent of the
+  emoji's grayscale/opacity states). The Hidden row keeps its red/green via the existing `drm-will-*` rules.
+- `SP_FLAG_GLYPH` (list flag columns, legend, hover swatches) is unchanged — only the menu switched.
+
 ## 2026-08-05 — Species-list date panel opens from the "Last" header (sw v900)
 
 - Replaced the separate date toggle (v898) with a click on the **"Last" column header**: it now opens the
