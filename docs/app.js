@@ -2532,7 +2532,7 @@
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
     { v: "v899", date: "2026-08-05", text: "New installs now default to the Voyager map with “More place names” switched on, so detailed local names are visible from the start. Your own map/label choice (if you've set one) is preserved — change it any time under Settings → Map." },
-    { v: "v898", date: "2026-08-05", text: "The Species-list table gains the same date-range selection as the “By observation” view. A days/date button sits next to the layout dropdown, and clicking a date in the list opens a panel — between the header and the first rows — where you can pick a recency window (days/weeks/months), an exact from–to range, or specific months. The window now also filters the table's Total and Last columns, so the list reflects the same dates as the map." },
+    { v: "v898", date: "2026-08-05", text: "The Species-list table gains the same date-range selection as the “By observation” view. Click the “Last” column header (or a date in the list) to open a panel — between the header and the first rows — where you can pick a recency window (days/weeks/months), an exact from–to range, or specific months. The window also filters the table's Total and Last columns, so the list reflects the same dates as the map." },
     { v: "v896", date: "2026-08-05", text: "The map-point popup is less cluttered. All the external reference links — national databases (Artsobservasjoner, Artportalen, Laji, ornitho…), the BirdLife country factsheet, Birding Places, Blogs and the “Worldwide” list — are now shown only when Experimental features are enabled (Settings). By default the popup keeps just the species list." },
     { v: "v895", date: "2026-08-05", text: "Offline maps now work with every map type and with place-name labels. When you download an area, its place names are stored alongside the tiles, so they still show when you're offline. (The smooth vector-label overlay needs a network, so offline the map falls back to the cached raster labels — same names, just placed at fixed zoom steps.) Re-downloading a purged area restores its labels too." },
     { v: "v894", date: "2026-08-05", text: "Sharper place names on the map. The “More place names” overlay (Settings → Map) now draws vector labels (MapLibre GL over OpenFreeMap's OpenMapTiles data, no API key) on the Voyager and Satellite maps: names are placed live by zoom and importance with collision avoidance, so local names — villages, then hamlets, then farm/neighbourhood names — surface smoothly as you zoom in, without doubling up. This mirrors how yr.no renders its map. Falls back to the previous raster labels where WebGL isn't available." },
@@ -9788,18 +9788,6 @@
       (detModePanelOpen ? detModePanelHtml() : "") +
       (detObsPanelOpen ? detObsPanelHtml() : "");
   }
-  // The Species-list (table) layout keeps its own flag columns + age cycle, so it
-  // doesn't need the mode/observer toggles — but it now offers the SAME date-range
-  // selection as "By observation": just the days/date toggle. Its panel drops inline
-  // in #sp-filters-wrap, between the header and the first rows. (Clicking a date cell
-  // opens it too — see the sp-tbody handler.)
-  function spTableFilterBarHtml() {
-    var daysOn = detRecencyDays() !== 0 || !!detDateRange() || detMonths().length > 0;
-    return '<div class="detlist-filters">' +
-        '<button type="button" class="det-tog det-days-tog' + (daysOn ? " on" : "") + (detDaysPanelOpen ? " open" : "") + '" title="' + escapeHtml(t("det.recency")) + '">' + escapeHtml(detDaysLabel()) + "</button>" +
-        (detHasFilter() ? '<button type="button" class="det-clear-sel" title="' + escapeHtml(t("det.clearFilters")) + '" aria-label="' + escapeHtml(t("det.clearFilters")) + '">' + filterXSvg(15) + '</button>' : "") +
-      "</div>";
-  }
   // Wire the filter bar + subwindows inside the detections-list popup box `el`.
   // Changes save + refresh the map/legend, then re-render the popup.
   function wireDetFilters(el) {
@@ -12641,17 +12629,12 @@
       rebuildDetLayers(); updateDetLegend();   // the count filter now narrows the MAP dots + legend too
       applyAgeFilter();
     });
-    // "Last" column header cycles a RECENCY filter: unlimited → ≤1d → ≤3d → ≤7d → ≤14d →
-    // ≤21d → unlimited. It ALSO drives the global map/legend recency window, and switches
-    // the Last cells to "days back" while active (see lastCellSet).
+    // "Last" column header opens the date-range selection panel (recency presets, an
+    // exact from–to range, or specific months) inline between the header and the first
+    // rows — the same panel "By observation" uses. Click again to collapse it.
     document.getElementById("sp-last-head").addEventListener("click", function () {
       if (!currentSpView || (currentSpView.mode !== "point" && currentSpView.mode !== "historic")) return;
-      var seq = [0, 1, 3, 7, 14, 21];   // unlimited → 1 → 3 → 7 → 14 → 21 → unlimited
-      speciesAgeFilterDays = seq[(seq.indexOf(speciesAgeFilterDays) + 1) % seq.length];
-      this.textContent = recencyHeadLabel();
-      window.GeoState.save({ detRecencyDays: speciesAgeFilterDays, detDateRange: null });   // map dots + legend follow
-      saveLegendState(); rebuildDetLayers(); updateDetLegend();
-      applyAgeFilter();
+      openDetPanel("days"); reRenderFilterBar(); scrollSpFiltersIntoView();
     });
 
     // Click the "Species" column header to cycle the list through five states:
@@ -16387,10 +16370,10 @@
     // The observation filter bar (day/date · mode · observer) applies to the detailed
     // record layouts; the prediction table keeps its own flag columns + age cycle.
     if (spLayout === "table") {
-      // Same date-range selection as "By observation", but date-only (the table has its
-      // own flag columns + Last-column age cycle). The panel opens in #sp-filters-wrap,
-      // between the header and the first rows.
-      var bar = document.getElementById("sp-filters-bar"); if (bar) bar.innerHTML = spTableFilterBarHtml();
+      // The date-range selection is opened from the "Last" column header (click it to
+      // expand) — no separate toggle button. Just render its panel inline in
+      // #sp-filters-wrap (between the header and the first rows) when open, and wire it.
+      var bar = document.getElementById("sp-filters-bar"); if (bar) bar.innerHTML = "";
       var fw = document.getElementById("sp-filters-wrap"); if (fw) fw.innerHTML = detDaysPanelOpen ? detDaysPanelHtml() : "";
       wireDetFilters(document.getElementById("species-panel"));
     } else {

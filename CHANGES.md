@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-05 — Species-list date panel opens from the "Last" header (sw v900)
+
+- Replaced the separate date toggle (v898) with a click on the **"Last" column header**: it now opens the
+  date-range panel (`openDetPanel("days")` → inline in `#sp-filters-wrap`) instead of cycling the old
+  `speciesAgeFilterDays` recency. Removed `spTableFilterBarHtml()`; `#sp-filters-bar` is empty in the
+  table layout again. Clicking a date cell in the list still opens the same panel.
+
 ## 2026-08-05 — Default map = Voyager, labels = More (sw v899)
 
 - Changed the unset defaults: `get("basemap", …)` now defaults to `"voyager"` (was `"streets"`) and
