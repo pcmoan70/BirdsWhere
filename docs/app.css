@@ -2904,6 +2904,13 @@ tr.sp-deleted .sp-link { color: var(--md-default-fg-color--light, #7a7a7a); font
    click clears everything. */
 .leaflet-bar a.clearpts-btn.armed { color: #fff; background: var(--danger, #c0392b); animation: detClearPulse 1.1s ease-in-out infinite; }
 .clearpts-btn svg { display: block; }
+/* Funnel-with-red-× control (clear all detection filters) — larger than the other
+   map controls, shown only while a filter is active. Funnel = button colour, × = red. */
+.leaflet-bar a.filterclear-btn { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; color: var(--brand-deep, #0b3a3a); background: #fff; }
+.leaflet-bar a.filterclear-btn:hover { background: var(--surface-2, #eef2f0); }
+.filterx-ico { display: block; }
+/* Same funnel-× in the legend's clear-filters button (small, inline). */
+.det-clear-sel .filterx-ico { display: block; }
 /* Crosshair control has 3 states: off (grey) → follow (blue, filled) → read (red,
    filled). The filled states make the current mode unmistakable. */
 .leaflet-bar a.geo-locate-btn { color: #8a8a8a; }

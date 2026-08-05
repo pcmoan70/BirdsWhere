@@ -321,6 +321,12 @@
   var animCtrlEl = null;   // the on-map migration-animation control container
   var h3CtrlEl = null;     // the on-map H3 detail (+/-) control container
   var clearPtsCtrlEl = null;   // the on-map red × that clears all plotted observations
+  var filterClearCtrlEl = null;   // the on-map funnel-× that clears all detection filters
+  // Show the funnel-× (right of the map) only while a detection filter is active.
+  function updateFilterClearBtn() {
+    if (!filterClearCtrlEl) return;
+    filterClearCtrlEl.style.display = (typeof detHasFilter === "function" && detHasFilter()) ? "" : "none";
+  }
   // Show the red × (right of the map) only while observations are plotted; a tap
   // clears them all. Kept in sync from updateDetLegend (runs on every plot/clear).
   function updateClearPtsBtn() {
@@ -806,6 +812,14 @@
   // A geometric × (two crossing lines) for the red delete-circle map markers —
   // perfectly centred, unlike the "×" glyph whose baseline sits off-centre.
   var X_MARK_SVG = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"><path d="M7 7 L17 17 M17 7 L7 17"/></svg>';
+  // A funnel (filter) with a red × over it — "clear all filters". Two colours, so
+  // it's a dedicated SVG, not an ico(): the funnel inherits the button colour, the ×
+  // is always the danger red.
+  function filterXSvg(px) {
+    return '<svg class="filterx-ico" viewBox="0 0 24 24" width="' + px + '" height="' + px + '" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M22 4H2l8 9.2V18l4 2.4v-7.2L22 4z" stroke="currentColor" stroke-width="1.7"/>' +
+      '<path d="M8.5 8.5l7 7M15.5 8.5l-7 7" stroke="var(--danger, #b42318)" stroke-width="2.4"/></svg>';
+  }
   // Drop (or move) the single location pin so the map always shows which point
   // the Species List / Migration page is computed for. No-op if it's already
   // there, so click-driven renders don't flicker the marker.
@@ -1124,12 +1138,14 @@
   function hideSpecies(key) {
     if (!key) return;
     hiddenSpecies[key] = true;
-    persistHidden(); refreshHiddenUI(); refreshCurrentView();
+    persistHidden(); refreshHiddenUI();
+    if (!refreshCueCellsInPlace()) { keepListScroll = true; refreshCurrentView(); }   // stay on the list (no jump to map)
     if (typeof detPlot !== "undefined" && detPlot[key]) { rebuildDetLayers(); updateDetLegend(); }   // drop its dots too
   }
   function unhideSpecies(key) {
     delete hiddenSpecies[key];
-    persistHidden(); refreshHiddenUI(); refreshCurrentView();
+    persistHidden(); refreshHiddenUI();
+    if (!refreshCueCellsInPlace()) { keepListScroll = true; refreshCurrentView(); }
     if (typeof detPlot !== "undefined" && detPlot[key]) { rebuildDetLayers(); updateDetLegend(); }   // restore its dots
   }
 
@@ -1469,7 +1485,7 @@
   }
   function sortSpeciesList() {
     var tbody = document.getElementById("sp-tbody");
-    if (!tbody || !speciesListSort.col) return;
+    if (!tbody) return;
     var agg = tbody._sightingsAgg || {};
     // Drop any expanded detail sub-rows before reordering; re-added (re-sorted) after.
     Array.prototype.slice.call(tbody.querySelectorAll(".sp-detail-row")).forEach(function (tr) { if (tr.parentNode) tr.parentNode.removeChild(tr); });
@@ -1477,9 +1493,10 @@
     var all = Array.prototype.slice.call(tbody.children);
     var extras = all.filter(function (tr) { return tr.classList.contains("sp-extra"); });
     var rows = all.filter(function (tr) { return !tr.classList.contains("sp-extra"); });
-    var col = speciesListSort.col;
+    var col = speciesListSort.col;   // "" = sort OFF → natural ranking (model probability, desc)
     rows.sort(function (a, b) {
       var ka, kb;
+      if (!col) return (+b.getAttribute("data-prob") || 0) - (+a.getAttribute("data-prob") || 0);
       if (col === "sci") {
         ka = (a.children[7].textContent || "").toLowerCase();   // 5 status cells · name · name2 · sci
         kb = (b.children[7].textContent || "").toLowerCase();
@@ -1549,8 +1566,10 @@
       speciesListSort.dir = defaultDir;
     }
     updateSortIndicators();
-    if (speciesListSort.col) sortSpeciesList();
-    else refreshCurrentView();   // off → re-render gives the natural prob desc ranking
+    // Always reorder IN PLACE (sortSpeciesList now handles the "off" state as the
+    // natural probability ranking) — never re-render via refreshCurrentView, which
+    // would drop the user back to the map. The view only changes via the header toggle.
+    sortSpeciesList();
   }
   // Apply the count-driven filters to the per-point species list: the n(d) age
   // threshold and the status column's ◉ "rare here" mode. Both hide rows via the
@@ -6108,6 +6127,31 @@
     });
     map.addControl(new ClearPointsControl());
 
+    // A large funnel-with-red-× on the right of the map, shown ONLY while a detection
+    // filter is active; one tap clears every filter (same as the legend's clear-filters
+    // button). Sits below the clear-points ×.
+    var FilterClearControl = L.Control.extend({
+      options: { position: "topright" },
+      onAdd: function () {
+        var c = L.DomUtil.create("div", "leaflet-bar leaflet-control filterclear-ctrl");
+        L.DomEvent.disableClickPropagation(c);
+        var a = L.DomUtil.create("a", "filterclear-btn", c);
+        a.href = "#"; a.title = t("det.clearFilters"); a.setAttribute("aria-label", t("det.clearFilters"));
+        a.innerHTML = filterXSvg(26);
+        L.DomEvent.on(a, "click", function (e) {
+          L.DomEvent.preventDefault(e); L.DomEvent.stopPropagation(e);
+          mapClickGuardUntil = Date.now() + 250;
+          clearAllFilters();
+          updateFilterClearBtn();
+        });
+        filterClearCtrlEl = c;
+        c.style.display = "none";   // updateFilterClearBtn reveals it when a filter is active
+        setTimeout(updateFilterClearBtn, 0);
+        return c;
+      }
+    });
+    map.addControl(new FilterClearControl());
+
     // Live position (blue "follow" state): keep the plus marker on the current
     // location. On the first fix, centre the map and populate the click-driven modes
     // at that point. Later fixes move the plus and keep it AT LEAST 10% in from every
@@ -8676,8 +8720,11 @@
     detObsPanelOpen = false; detDaysPanelOpen = false; detModePanelOpen = false;
     setDetObsFilter(null);                                                   // observer → all
     detSrcFilter = null;                                                     // source → all
+    speciesAgeFilterDays = 0; spCountMin = null;                             // species-list Total/Last column filters → off
     window.GeoState.save({ detRecencyDays: 0, detDateRange: null, detMonths: [] });   // days + range + months → All
     detFiltersRefresh();                                                     // map + legend + open list(s)
+    var nh = document.getElementById("sp-nd-head"); if (nh) nh.textContent = countHeadLabel();     // refresh column header labels
+    var lh = document.getElementById("sp-last-head"); if (lh) lh.textContent = recencyHeadLabel();
   }
   // The red × clears the WHOLE map of plotted points: fetched dots, plus every
   // shown saved list / detection set (un-ticked so nothing is re-injected — the
@@ -9363,6 +9410,7 @@
   function updateDetLegend() {
     var allKeys = Object.keys(detPlot);
     updateClearPtsBtn();   // reveal/hide the red × with the plotted set (runs even on the empty early-return)
+    updateFilterClearBtn();   // reveal/hide the funnel-× with the active-filter state
     var delKeys = Object.keys(deletedSpecies);
     if (!allKeys.length && !delKeys.length) { if (detLegend) { map.removeControl(detLegend); detLegend = null; } return; }
     ensureDedup();
@@ -9443,7 +9491,7 @@
     var hasFilter = detHasFilter();   // any filter active → show the black × (clear all)
     el.innerHTML = '<div class="det-legend-head" data-help="maphelp.legend">' +
         '<button type="button" class="det-min" title="' + escapeHtml(t("det.minimise")) + '" aria-label="' + escapeHtml(t("det.minimise")) + '">−</button>' +
-        (hasFilter ? '<button type="button" class="det-clear-sel" title="' + escapeHtml(t("det.clearFilters")) + '" aria-label="' + escapeHtml(t("det.clearFilters")) + '">×</button>' : "") +
+        (hasFilter ? '<button type="button" class="det-clear-sel" title="' + escapeHtml(t("det.clearFilters")) + '" aria-label="' + escapeHtml(t("det.clearFilters")) + '">' + filterXSvg(15) + '</button>' : "") +
         '<button type="button" class="det-clear' + (detAreaDeleteMode ? " armed" : "") + '" title="' + escapeHtml(detAreaDeleteMode ? t("det.delAreaHint") : (fetchedAreas.length ? t("det.delAreaArm") : t("det.clearAll"))) + '" aria-label="' + escapeHtml(t("det.clearAll")) + '">' + X_MARK_SVG + '</button>' +
         (capped ? '<span class="det-cap-warn" role="img" title="' + escapeHtml(capTip) + '" aria-label="' + escapeHtml(capTip) + '">⚠</span>' : "") +
       "</div>" +
@@ -9560,7 +9608,7 @@
         '<button type="button" class="det-tog det-days-tog' + (daysOn ? " on" : "") + (detDaysPanelOpen ? " open" : "") + '" title="' + escapeHtml(t("det.recency")) + '">' + escapeHtml(daysLbl) + "</button>" +
         '<button type="button" class="det-tog det-mode-tog' + (modeOn ? " on" : "") + (detModePanelOpen ? " open" : "") + '" title="' + escapeHtml(modeTip) + '">' + escapeHtml(modeLbl) + "</button>" +
         '<button type="button" class="det-tog det-obs-tog ico-btn' + (detObsFilter ? " on" : "") + (detObsPanelOpen ? " open" : "") + '" title="' + escapeHtml(t("det.observers")) + '" aria-label="' + escapeHtml(t("det.observers")) + '">' + ico("user") + "</button>" +
-        (detHasFilter() ? '<button type="button" class="det-clear-sel" title="' + escapeHtml(t("det.clearFilters")) + '" aria-label="' + escapeHtml(t("det.clearFilters")) + '">×</button>' : "") +
+        (detHasFilter() ? '<button type="button" class="det-clear-sel" title="' + escapeHtml(t("det.clearFilters")) + '" aria-label="' + escapeHtml(t("det.clearFilters")) + '">' + filterXSvg(15) + '</button>' : "") +
       "</div>";
   }
   function detFilterPanelsHtml() {

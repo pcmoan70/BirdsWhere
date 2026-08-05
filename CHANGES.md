@@ -1,5 +1,18 @@
 # Changes
 
+## 2026-08-05 — Column headers don't jump to map; funnel-× clear-filters button (sw v884)
+
+- **No view jump from headers.** Cycling a sort header to OFF called `refreshCurrentView()` → `renderSpeciesList`,
+  which drops to the map-first view. `sortSpeciesList` now handles the "off" state as an in-place natural
+  (probability-desc) reorder, and `cycleSpeciesListSort` always sorts in place — never re-renders. Same fix
+  applied to `hideSpecies`/`unhideSpecies` (use `refreshCueCellsInPlace`). The list⇄map view only changes via
+  the top-right toggle now.
+- **Clear-filters funnel-×.** New `filterXSvg()` (a funnel with a red ×). A large one appears on the right of
+  the map (`filterclear-ctrl`, below the clear-points ×) and the legend's clear-filters button now uses the
+  same icon — both shown only while `detHasFilter()`. Tap clears every filter (`clearAllFilters`, which now
+  also resets the Total/Last column filters + refreshes their header labels). `updateFilterClearBtn` runs from
+  `updateDetLegend`. CSS `.filterclear-btn` / `.filterx-ico`.
+
 ## 2026-08-05 — Split the n(d) column into Total (count filter) + Last (recency filter) (sw v883)
 
 - The old combined **n(d)** header (which cycled a day filter) is split into two independent column filters:
