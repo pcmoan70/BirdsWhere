@@ -1126,6 +1126,7 @@
   //  • Total column → count: null (any) → >0 → >1 → >5 (total specimens per species).
   var speciesAgeFilterDays = 0;
   var spCountMin = null, spCountMax = null;   // Total-column lower/upper bounds (specimens, inclusive; null = open)
+  var spNameQuery = "";                       // species-list name filter (the in-app search box; lowercased)
   var spHeadPanel = null;                     // which table-header panel is open: "species"|"total"|"last"|"prob"|null
   var spHeadPanelDate = null;                 // the clicked date, so the Last panel can offer This/Before/After
   // Active sort for the per-point species list. Default is the natural model
@@ -1682,6 +1683,19 @@
     });
     refreshSpExpansions();   // keep expanded detail sub-rows under their (visible) species
     updateRecencyNote();
+    filterSpRows();          // re-apply the name search on top of the other filters
+  }
+  // In-app name search for the species-list table. Uses a CSS class (display:none
+  // !important) so it composes with applyAgeFilter's inline show/hide instead of
+  // fighting it — a row shows only when it passes BOTH. Matches anywhere in the row
+  // text (name / 2nd name / scientific name), so it works for every list mode.
+  function filterSpRows() {
+    var tb = document.getElementById("sp-tbody"); if (!tb) return;
+    var q = spNameQuery;
+    Array.prototype.forEach.call(tb.querySelectorAll("tr"), function (tr) {
+      if (tr.classList.contains("sp-detail-row")) return;   // sub-rows follow their species
+      tr.classList.toggle("sp-hide-search", !!q && (tr.textContent || "").toLowerCase().indexOf(q) < 0);
+    });
   }
   // When the date/recency window is hiding some fetched detections, spell that out
   // (what window is active + how many detections it's dropping) so a "short" list is
@@ -5239,6 +5253,7 @@
           '<div class="sp-coords" id="sp-coords"></div>' +
           '<div id="sp-controls" style="display:none">' +
             '<select id="sp-layout" class="detlist-sort-sel" aria-label="Layout"></select>' +
+            '<input type="search" id="sp-search" class="sp-search" data-i18n-ph="ph.filter" placeholder="Filter species…" aria-label="Filter species" autocomplete="off" autocorrect="off" spellcheck="false" />' +
             '<div id="sp-filters-bar"></div>' +
           '</div>' +
           '<div id="sp-filters-wrap"></div>' +
@@ -12650,6 +12665,8 @@
     document.getElementById("sp-pdf-btn").addEventListener("click", exportSpeciesPdf);
     var spLayoutSel = document.getElementById("sp-layout");
     if (spLayoutSel) spLayoutSel.addEventListener("change", function () { spLayout = this.value; renderSpControls(); });
+    var spSearchEl = document.getElementById("sp-search");
+    if (spSearchEl) spSearchEl.addEventListener("input", function () { spNameQuery = (this.value || "").trim().toLowerCase(); filterSpRows(); });
     var vtBtn = document.getElementById("viewtoggle-btn");
     if (vtBtn) vtBtn.addEventListener("click", function () { if (onListView()) goToMapView(); else showListView(); });
 
@@ -16237,6 +16254,7 @@
         else chip = '<span class="src-chip src-list" title="' + escapeHtml(t("src.listOnly")) + '">●</span>';
         return "<tr" + (!r.inModel ? ' class="row-list-only"' : "") + '>' + "<td>" + spListDot(r.label.key) + nameLinkHtml(r.label, true) + "</td>" + name2Cell + '<td class="sci">' + escapeHtml(r.label.sci) + '</td><td class="num det-nd"></td><td class="num sp-last"></td><td class="num sp-dist"></td>' + probCell + '<td class="season-cell"></td><td>' + chip + "</td></tr>";
       }).join("");
+      filterSpRows();   // apply any active name search to the country rows
       var sp = document.getElementById("species-panel");
       sp.classList.toggle("as-page", currentMode === "list");
       sp.style.display = "block";
@@ -16413,6 +16431,10 @@
     if (!speciesPanelPopulated()) { if (ctrls) ctrls.style.display = "none"; return; }
     if (ctrls) ctrls.style.display = "";
     renderSpLayoutSelect();
+    // The name search filters the prediction table (rows). Hide it for the record
+    // ("By observation") layout, which is grouped and has its own filters.
+    var spSearch = document.getElementById("sp-search");
+    if (spSearch) spSearch.style.display = (spLayout === "table") ? "" : "none";
     // The observation filter bar (day/date · mode · observer) applies to the detailed
     // record layouts; the prediction table keeps its own flag columns + age cycle.
     if (spLayout === "table") {

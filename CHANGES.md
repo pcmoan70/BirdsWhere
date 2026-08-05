@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-05 — Species-list name search (browser find-in-page workaround) (sw v911)
+
+- Added a "Filter species…" search box in `#sp-controls` (reuses `ph.filter`). Typing filters the
+  species-list table by row text (name / 2nd name / scientific). `spNameQuery` + `filterSpRows()` toggle
+  a `.sp-hide-search { display:none !important }` class so it composes with `applyAgeFilter`'s inline
+  show/hide (a row shows only if it passes both). Applied from `applyAgeFilter` and the country render;
+  shown only in the table layout. Reliable where the browser's Ctrl-F can't scroll a fixed overlay.
+
 ## 2026-08-05 — "More of these": copy-to-map keeps the panel open, button disables (sw v910)
 
 - The panel's "Show in map" button copied the points but then closed the panel (`navClose("recent")`).
