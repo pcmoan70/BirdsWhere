@@ -16412,7 +16412,8 @@
     return '<button type="button" class="sp-sort-btn' + (on ? " on" : "") + '" data-col="' + col + '" data-dir="' + dir + '" title="' + escapeHtml(title) + '">' + glyph + "</button>";
   }
   function spSortOffHtml() {
-    return '<button type="button" class="sp-sort-btn' + (!speciesListSort.col ? " on" : "") + '" data-col="" data-dir="off" title="' + escapeHtml(t("sort.off")) + '">✕</button>';
+    // "–" (no sort) rather than ✕, so it isn't mistaken for a clear-filter button.
+    return '<button type="button" class="sp-sort-btn' + (!speciesListSort.col ? " on" : "") + '" data-col="" data-dir="off" title="' + escapeHtml(t("sort.off")) + '">–</button>';
   }
   function spSortRowHtml(col) {
     return '<div class="sp-head-sort"><span class="sp-head-sort-lbl">' + escapeHtml(t("sort.label")) + "</span>" +
@@ -16471,7 +16472,9 @@
       '<div class="sp-prob-vals"><span class="sp-prob-lo">' + lo + '%</span> – <span class="sp-prob-hi">' + hi + "%</span></div></div>";
   }
   function spLastPanelHtml() {
-    var html = '<div class="sp-head-panel">' + spSortRowHtml("last");
+    // A green × in the corner clears EVERY date filter (recency + range + months) and
+    // closes the panel.
+    var html = '<div class="sp-head-panel"><button type="button" class="sp-date-clear" title="' + escapeHtml(t("date.clearAll")) + '" aria-label="' + escapeHtml(t("date.clearAll")) + '">' + X_MARK_SVG + "</button>" + spSortRowHtml("last");
     // When opened from a specific date cell, offer This date / Before / After it.
     if (spHeadPanelDate) {
       var d = spHeadPanelDate, rg = detDateRange() || {};
@@ -16542,11 +16545,20 @@
       lo.addEventListener("input", upd); hi.addEventListener("input", upd);
       lo.addEventListener("change", apply); hi.addEventListener("change", apply);
     } else if (spHeadPanel === "last") {
+      var clr = container.querySelector(".sp-date-clear");
+      if (clr) clr.addEventListener("click", function (e) { e.stopPropagation(); clearDateFilters(); });
       container.querySelectorAll(".sp-date-rel").forEach(function (b) {
         b.addEventListener("click", function (e) { e.stopPropagation(); setDetDateFilter(this.getAttribute("data-from"), this.getAttribute("data-to")); });
       });
       wireDetFilters(document.getElementById("species-panel"));   // recency chips / range inputs / month chips
     }
+  }
+  // Clear every date filter (recency window → All, absolute range → off, month-of-year
+  // → off) and close the Last panel.
+  function clearDateFilters() {
+    window.GeoState.save({ detRecencyDays: 0, detDateRange: null, detMonths: [] });
+    spHeadPanel = null; spHeadPanelDate = null;
+    detFiltersRefresh();   // map + legend + list follow; renderSpControls closes the (now-empty) panel
   }
   // Toggle a status-flag filter (★/◉/🟠/🟡/🚫), mirroring ★/◉/🟠/🟡 to the global
   // detection filters so the map + legend + record views follow (🚫 stays list-only).

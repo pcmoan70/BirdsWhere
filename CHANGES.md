@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-08-05 — Date panel: green × clears all date filters + closes (sw v906)
+
+- Added a green × (top-right of the Last date panel) → `clearDateFilters()`: resets recency to All,
+  clears the absolute range and the month-of-year filter, and closes the panel.
+- Changed the sort-row "off" glyph from ✕ to "–" so it isn't mistaken for a clear button.
+
 ## 2026-08-05 — Species list: status on the dot, not in columns (sw v905)
 
 - Removed the five per-cue status columns (★/◉/🟠/🟡/🚫) from the Species-list table. The colour dot
