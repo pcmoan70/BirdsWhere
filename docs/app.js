@@ -1244,6 +1244,15 @@
     return true;
   }
   // Header labels reflecting each column's current filter.
+  // Append/update the "(N)" distinct-observations suffix in a Total cell (after the
+  // count button). 0 → remove it.
+  function setPairsSuffix(td, pairs) {
+    if (!td) return;
+    var span = td.querySelector(".det-pairs");
+    if (!pairs) { if (span && span.parentNode) span.parentNode.removeChild(span); return; }
+    if (!span) { span = document.createElement("span"); span.className = "det-pairs"; td.appendChild(span); }
+    span.textContent = "(" + pairs + ")";
+  }
   function recencyHeadLabel() { return speciesAgeFilterDays > 0 ? "≤" + speciesAgeFilterDays + "d ▾" : t("th.last"); }
   function countHeadLabel() { return spCountMin == null ? t("th.total") : ">" + spCountMin + " ▾"; }
   // "Last" cell: the observation date, or — while the recency filter is active — the
@@ -1603,13 +1612,14 @@
       // the global date/observer/source filters; extras carry both on data-* attrs.
       var fc = 0, flatest = 0, obsFilteredOut = false;
       if (!extra && entry && entry.rows) {
+        fc = dedupedSpecimenTotal(entry.rows);   // total specimens AFTER de-duplication
         entry.rows.forEach(function (r) {
           if (!detDatePasses(r.date) || !detObsPasses(r) || !detPassesSrc(r)) return;
-          var n = parseInt(r.count, 10); fc += (isFinite(n) && n > 0) ? n : 1;   // a record with no count = 1 specimen
           var ts = r.date ? Date.parse(r.date + "T00:00:00") : 0; if (ts && ts > flatest) flatest = ts;
         });
         tr.classList.toggle("sp-has-det", fc > 0);
         var ndBtn = tr.querySelector(".det-nd .det-count-btn"); if (ndBtn) ndBtn.textContent = fc;
+        setPairsSuffix(tr.querySelector(".det-nd"), fc > 0 ? distinctObsDatePairs(entry.rows) : 0);
         var lastTd = tr.querySelector(".sp-last"); if (lastTd) lastCellSet(lastTd, flatest);
         if (flatest) tr.setAttribute("data-last", flatest); else tr.removeAttribute("data-last");
         obsFilteredOut = !!(entry.count) && fc === 0;
@@ -4070,9 +4080,9 @@
     var haveOrigin = isFinite(oLat) && isFinite(oLon);
     keys.forEach(function (k) {
       var e = extras[k], name = e.name || e.sci;
-      // n(d) = total SPECIMENS across this species' records (a record with no count = 1),
-      // matching the model rows' count (applyAgeFilter doesn't touch extras).
-      var eSpec = (e.rows || []).reduce(function (s, r) { var n = parseInt(r.count, 10); return s + ((isFinite(n) && n > 0) ? n : 1); }, 0);
+      // Total SPECIMENS (deduped) + distinct observations, matching the model rows.
+      var eSpec = dedupedSpecimenTotal(e.rows);
+      var ePairs = distinctObsDatePairs(e.rows);
       var days = e.latestTs ? Math.max(0, Math.round((now - e.latestTs) / 86400000)) : null;
       var exKm = haveOrigin ? nearestDetKm(oLat, oLon, e.rows) : null;
       var tr = document.createElement("tr");
@@ -4087,7 +4097,7 @@
         '<td class="name2"></td>' +
         '<td class="sci">' + escapeHtml(e.sci) + '</td>' +
         '<td class="num det-nd"><button type="button" class="det-count-btn det-count-extra" data-sci="' + escapeHtml(e.sci) + '" data-name="' + escapeHtml(name) + '">' + eSpec + '</button>' +
-          (days != null ? '<span class="det-d">(' + days + ")</span>" : "") + '</td>' +
+          (ePairs ? '<span class="det-pairs">(' + ePairs + ")</span>" : "") + '</td>' +
         '<td class="num sp-last">' + (e.latestTs ? lastDateCellHtml(e.latestTs) : "") + '</td>' +
         '<td class="num sp-dist">' + (exKm != null ? escapeHtml(nearbyFmtDist(exKm)) : "") + '</td>' +
         '<td class="prob-cell prob-na">—</td>' +
@@ -7041,15 +7051,45 @@
   // Total-column count filter, applied to the MAP too: a species passes only when its
   // total specimens (over the rows that pass the date/observer/source filters) exceed
   // the threshold (>0 / >1 / >5). null = no count filter.
-  function detSpeciesCount(k) {
-    var e = detPlot[k]; if (!e || !e.rows) return 0;
-    var c = 0;
-    for (var i = 0; i < e.rows.length; i++) {
-      var r = e.rows[i];
+  function specimensOf(r) { var n = parseInt(r.count, 10); return (isFinite(n) && n > 0) ? n : 1; }   // no count = 1
+  // Total specimens over a species' rows that pass the active date/observer/source
+  // filters, computed AFTER de-duplication: with the "Deduplicate detections" setting
+  // on, a cross-database duplicate (same observer/place/date/count from ≥2 sources) is
+  // counted ONCE. Used by the list Total, the map count filter and the extras rows so
+  // they always agree. (detDupHidden only marks the plotted copies, so we re-dedup here
+  // by the same key to cover the list's aggregation rows too.)
+  function dedupedSpecimenTotal(rows) {
+    var vis = [];
+    for (var i = 0; i < (rows || []).length; i++) { var r = rows[i]; if (detDatePasses(r.date) && detObsPasses(r) && detPassesSrc(r)) vis.push(r); }
+    if (!dedupDetections()) { var t = 0; for (var j = 0; j < vis.length; j++) t += specimensOf(vis[j]); return t; }
+    var groups = Object.create(null), order = [], total = 0;
+    vis.forEach(function (r) {
+      var dk = detDupKey(r);
+      if (!dk) { total += specimensOf(r); return; }   // no observer → can't match a duplicate; count it
+      if (!groups[dk]) { groups[dk] = []; order.push(dk); }
+      groups[dk].push(r);
+    });
+    order.forEach(function (dk) {
+      var g = groups[dk], srcs = Object.create(null);
+      g.forEach(function (r) { srcs[r.src || ""] = 1; });
+      if (Object.keys(srcs).length < 2) g.forEach(function (r) { total += specimensOf(r); });   // one source → keep all
+      else total += specimensOf(g[0]);   // cross-database duplicate → count once
+    });
+    return total;
+  }
+  function detSpeciesCount(k) { return dedupedSpecimenTotal((detPlot[k] || {}).rows || []); }
+  // Number of distinct observations behind the specimen total: distinct observer × date
+  // pairs (deduplicated records) over the rows that pass the active filters. Shown in
+  // the Total column as "31(3)" — 31 specimens across 3 observation events.
+  function distinctObsDatePairs(rows) {
+    var seen = Object.create(null), n = 0;
+    for (var i = 0; i < (rows || []).length; i++) {
+      var r = rows[i];
       if (!detDatePasses(r.date) || !detObsPasses(r) || !detPassesSrc(r)) continue;
-      var n = parseInt(r.count, 10); c += (isFinite(n) && n > 0) ? n : 1;
+      var key = (r.observer || "").toLowerCase().replace(/\s+/g, " ").trim() + "|" + String(r.date || "").slice(0, 10);
+      if (!seen[key]) { seen[key] = 1; n++; }
     }
-    return c;
+    return n;
   }
   function detPassesCount(k) { return spCountMin == null || detSpeciesCount(k) > spCountMin; }
   function detPassesYear(k) { return !detYearFilter || !inYearList((detPlot[k] && detPlot[k].key) || k); }
@@ -7979,10 +8019,11 @@
     var h = document.createElement("div"); h.className = "detrow-menu-hdr"; h.textContent = name || (lat.toFixed(4) + ", " + lon.toFixed(4)); el.appendChild(h);
     el.appendChild(drmBtn(t("locmenu.find"), function () { focusPointOnMap(lat, lon); }, "pin"));
     el.appendChild(drmBtn(t("locmenu.add"), function () {
-      closeDetRowMenu();
-      addMapPoint({ lat: lat, lon: lon, name: name || "", source: "manual" });
-      setStatus(t("locmenu.added"));
-    }));
+      // Reveal the map and open the full point editor at this spot, so the user can
+      // name it, file it into a point list and pick a colour before saving.
+      focusPointOnMap(lat, lon);
+      openPointEditor({ lat: lat, lon: lon, name: name || "" });
+    }, "dotsplus"));
     el.appendChild(drmBtn(tLabel("route.add"), function () { closeDetRowMenu(); addToRoute(lat, lon, name || ""); }, "navplus"));
     positionAnchoredMenu(el, x, y);
   }

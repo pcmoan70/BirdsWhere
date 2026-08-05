@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-08-05 — Total after dedup + "(N)" observations; Add-as-point editor (sw v886)
+
+- **Total after de-duplication.** New shared `dedupedSpecimenTotal(rows)` sums specimens (no count = 1)
+  over the filter-passing rows, counting a cross-database duplicate (same observer/place/date/count from
+  ≥2 sources) ONCE when the dedup setting is on. Used by the list Total, the map count filter
+  (`detSpeciesCount`) and the extras rows, so they agree — and it re-dedups the list's aggregation rows
+  (which `detDupHidden`, holding only the plotted copies, doesn't cover).
+- **"(N)" distinct observations.** The Total cell now reads `31(3)` — `distinctObsDatePairs(rows)` gives the
+  count of distinct observer × date pairs. `setPairsSuffix` renders the `.det-pairs` suffix (model + extras).
+- **Add-as-point → full editor.** The record-location menu's "Add as point" (now with the `dotsplus` icon)
+  opens `openPointEditor` at the spot (name / list picker / colour / save) instead of dropping a loose pin.
+
 ## 2026-08-05 — Clear controls in one bar; count filter affects the map (sw v885)
 
 - The clear-observations × and clear-filters funnel-× are now one leaflet-bar (`ClearControl`): the funnel

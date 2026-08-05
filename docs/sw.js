@@ -21,11 +21,13 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v885";
+var VERSION = "v886";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• The Total column now reads e.g. “31(3)” — 31 specimens across 3 distinct observations (observer × date) — and the specimen total is counted after de-duplication.",
+  "• In a species' records, tapping a Location → “Add as point” now opens the full point editor (name it, file it into a list, pick a colour) instead of dropping a loose pin.",
   "• Cycling the species-list column headers (sort/filter) no longer bounces you back to the map — that now happens only via the map icon top-right.",
   "• A funnel-with-red-× button (right of the map, just below the clear-observations ×, and in the legend) appears whenever a filter is active; tap it to clear all filters. The Total-column count filter (>0/>1/>5) now narrows the map dots too.",
   "• Species list columns: the count column is now “Total” (total specimens) with a tap-to-cycle filter — any / >0 / >1 / >5. The “Last” column header now cycles a recency filter (≤1d / 3 / 7 / 14 / 21 days / unlimited) that also narrows the map; while it's active the column shows “days back” instead of the date.",

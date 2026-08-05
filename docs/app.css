@@ -2257,6 +2257,8 @@ table.chk-table .chk-text { min-width: 100px; }
 /* Combined n(d) cell: count as a clickable button, (days) in a faint grey. */
 .det-nd { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .det-nd .det-d { color: var(--ink-muted, #5b6f69); font-size: 0.74rem; margin-left: 2px; }
+/* "(N)" distinct-observations suffix after the Total (e.g. 31(3)). */
+.det-nd .det-pairs { color: var(--ink-muted, #5b6f69); font-size: 0.74rem; margin-left: 2px; }
 /* "Last" column showing days-back while the recency filter is active. */
 .sp-daysback { color: var(--ink-muted, #5b6f69); font-variant-numeric: tabular-nums; }
 /* Cycling " .." → ". ." → ".. " shown in the N(D) cell while data is fetched.
