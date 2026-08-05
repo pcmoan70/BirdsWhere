@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-08-05 — Observer menu: remove an observer from the active filter (sw v888)
+
+- `observerActionMenu`: when the clicked observer is part of the active observer filter, a new "Remove from
+  observer filter" option drops just that observer (`detObsFilter.delete`, → All when it was the last one).
+  i18n `obs.removeFilter` (15 langs).
+
 ## 2026-08-05 — Date-filter red-× indicator; version-based update button (sw v887)
 
 - **Active date-filter × .** `showDateFilterMenu` now flags the option matching the active `detDateRange`

@@ -9142,11 +9142,20 @@
   function observerActionMenu(name, anchor) {
     var r = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;
     var menu = openAnchoredMenu("obs-addmenu");
+    var inFilter = !!detObsFilter && detObsFilter.has(name);   // this observer is part of the active filter
     menu.innerHTML = '<div class="obs-addmenu-head">' + escapeHtml(name) + "</div>" +
+      (inFilter ? '<button type="button" class="obs-addmenu-item obs-act-unfilter">' + escapeHtml(t("obs.removeFilter")) + "</button>" : "") +
       '<button type="button" class="obs-addmenu-item obs-act-filter">' + escapeHtml(t("obs.filterOnly")) + "</button>" +
       (detObsFilter ? '<button type="button" class="obs-addmenu-item obs-act-all">' + escapeHtml(t("obs.all")) + "</button>" : "") +
       '<button type="button" class="obs-addmenu-item obs-act-add">' + escapeHtml(t("obs.addToListAct")) + "</button>";
     positionAnchoredMenu(menu, r.left, r.bottom + 2);
+    var unBtn = menu.querySelector(".obs-act-unfilter");
+    if (unBtn) unBtn.addEventListener("click", function (e) {
+      e.stopPropagation(); closeAnchoredMenu();
+      var next = new Set(detObsFilter); next["delete"](name);   // drop just this observer (→ All when it was the last)
+      setDetObsFilter(next.size ? next : null);
+      saveLegendState(); detFiltersRefresh();
+    });
     menu.querySelector(".obs-act-filter").addEventListener("click", function (e) {
       e.stopPropagation(); closeAnchoredMenu();
       setDetObsFilter(name ? new Set([name]) : null);   // show only this observer's records
