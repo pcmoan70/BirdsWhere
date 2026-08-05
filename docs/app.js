@@ -1614,14 +1614,18 @@
       // the global date/observer/source filters; extras carry both on data-* attrs.
       var fc = 0, flatest = 0, obsFilteredOut = false;
       if (!extra && entry && entry.rows) {
-        fc = dedupedSpecimenTotal(entry.rows);   // total specimens AFTER de-duplication
-        entry.rows.forEach(function (r) {
-          if (!detDatePasses(r.date) || !detObsPasses(r) || !detPassesSrc(r)) return;
+        // Rows inside the active date window (range / months / recency) that also pass the
+        // observer + source filters. Total, pairs, the Last cell and row visibility all
+        // derive from this subset, so the date-range panel actually narrows the table
+        // (and the "N hidden" recency note matches what the Total now leaves out).
+        var winRows = entry.rows.filter(function (r) { return detDatePasses(r.date) && detObsPasses(r) && detPassesSrc(r); });
+        fc = dedupedSpecimenTotal(winRows);   // total specimens AFTER de-duplication, in-window
+        winRows.forEach(function (r) {
           var ts = r.date ? Date.parse(r.date + "T00:00:00") : 0; if (ts && ts > flatest) flatest = ts;
         });
         tr.classList.toggle("sp-has-det", fc > 0);
         var ndBtn = tr.querySelector(".det-nd .det-count-btn"); if (ndBtn) ndBtn.textContent = fc;
-        setPairsSuffix(tr.querySelector(".det-nd"), fc > 0 ? distinctObsDatePairs(entry.rows) : 0);
+        setPairsSuffix(tr.querySelector(".det-nd"), fc > 0 ? distinctObsDatePairs(winRows) : 0);
         var lastTd = tr.querySelector(".sp-last"); if (lastTd) lastCellSet(lastTd, flatest);
         if (flatest) tr.setAttribute("data-last", flatest); else tr.removeAttribute("data-last");
         obsFilteredOut = !!(entry.count) && fc === 0;
@@ -2527,6 +2531,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v898", date: "2026-08-05", text: "The Species-list table gains the same date-range selection as the “By observation” view. A days/date button sits next to the layout dropdown, and clicking a date in the list opens a panel — between the header and the first rows — where you can pick a recency window (days/weeks/months), an exact from–to range, or specific months. The window now also filters the table's Total and Last columns, so the list reflects the same dates as the map." },
     { v: "v896", date: "2026-08-05", text: "The map-point popup is less cluttered. All the external reference links — national databases (Artsobservasjoner, Artportalen, Laji, ornitho…), the BirdLife country factsheet, Birding Places, Blogs and the “Worldwide” list — are now shown only when Experimental features are enabled (Settings). By default the popup keeps just the species list." },
     { v: "v895", date: "2026-08-05", text: "Offline maps now work with every map type and with place-name labels. When you download an area, its place names are stored alongside the tiles, so they still show when you're offline. (The smooth vector-label overlay needs a network, so offline the map falls back to the cached raster labels — same names, just placed at fixed zoom steps.) Re-downloading a purged area restores its labels too." },
     { v: "v894", date: "2026-08-05", text: "Sharper place names on the map. The “More place names” overlay (Settings → Map) now draws vector labels (MapLibre GL over OpenFreeMap's OpenMapTiles data, no API key) on the Voyager and Satellite maps: names are placed live by zoom and importance with collision avoidance, so local names — villages, then hamlets, then farm/neighbourhood names — surface smoothly as you zoom in, without doubling up. This mirrors how yr.no renders its map. Falls back to the previous raster labels where WebGL isn't available." },
@@ -9782,6 +9787,18 @@
       (detModePanelOpen ? detModePanelHtml() : "") +
       (detObsPanelOpen ? detObsPanelHtml() : "");
   }
+  // The Species-list (table) layout keeps its own flag columns + age cycle, so it
+  // doesn't need the mode/observer toggles — but it now offers the SAME date-range
+  // selection as "By observation": just the days/date toggle. Its panel drops inline
+  // in #sp-filters-wrap, between the header and the first rows. (Clicking a date cell
+  // opens it too — see the sp-tbody handler.)
+  function spTableFilterBarHtml() {
+    var daysOn = detRecencyDays() !== 0 || !!detDateRange() || detMonths().length > 0;
+    return '<div class="detlist-filters">' +
+        '<button type="button" class="det-tog det-days-tog' + (daysOn ? " on" : "") + (detDaysPanelOpen ? " open" : "") + '" title="' + escapeHtml(t("det.recency")) + '">' + escapeHtml(detDaysLabel()) + "</button>" +
+        (detHasFilter() ? '<button type="button" class="det-clear-sel" title="' + escapeHtml(t("det.clearFilters")) + '" aria-label="' + escapeHtml(t("det.clearFilters")) + '">' + filterXSvg(15) + '</button>' : "") +
+      "</div>";
+  }
   // Wire the filter bar + subwindows inside the detections-list popup box `el`.
   // Changes save + refresh the map/legend, then re-render the popup.
   function wireDetFilters(el) {
@@ -12572,7 +12589,14 @@
     // Extras (not in model) have no species code → query by sci name only.
     document.getElementById("sp-tbody").addEventListener("click", function (e) {
       var dc = e.target.closest && e.target.closest(".dl-date-click");
-      if (dc) { e.preventDefault(); e.stopPropagation(); showDateFilterMenu(dc.getAttribute("data-date"), e.clientX, e.clientY); return; }
+      if (dc) {
+        e.preventDefault(); e.stopPropagation();
+        // A Last-column date on a species row opens the inline date-range panel (between
+        // the header and the rows), matching "By observation". A date inside an expanded
+        // record sub-row still opens the compact On/Before/After menu for that record.
+        if (dc.closest(".sp-detail-row")) { showDateFilterMenu(dc.getAttribute("data-date"), e.clientX, e.clientY); return; }
+        openDetPanel("days"); reRenderFilterBar(); scrollSpFiltersIntoView(); return;
+      }
       var btn = e.target.closest && e.target.closest(".det-count-btn");
       if (!btn) {
         // No caret any more: clicking anywhere on a species row (that has records)
@@ -16326,6 +16350,12 @@
       return '<option value="' + o[0] + '"' + (spLayout === o[0] ? " selected" : "") + ">" + escapeHtml(t(o[1])) + "</option>";
     }).join("");
   }
+  // Bring the just-opened inline date panel into view (it drops in above the table, so
+  // on a long list the rows may have scrolled it off the top).
+  function scrollSpFiltersIntoView() {
+    var fw = document.getElementById("sp-filters-wrap");
+    if (fw && fw.firstChild && fw.scrollIntoView) { try { fw.scrollIntoView({ block: "nearest" }); } catch (e) { fw.scrollIntoView(); } }
+  }
   function renderSpFilterBar() {
     var bar = document.getElementById("sp-filters-bar"); if (bar) bar.innerHTML = detFilterTogglesHtml();
     var fw = document.getElementById("sp-filters-wrap"); if (fw) fw.innerHTML = detFilterPanelsHtml();
@@ -16356,8 +16386,12 @@
     // The observation filter bar (day/date · mode · observer) applies to the detailed
     // record layouts; the prediction table keeps its own flag columns + age cycle.
     if (spLayout === "table") {
-      var bar = document.getElementById("sp-filters-bar"); if (bar) bar.innerHTML = "";
-      var fw = document.getElementById("sp-filters-wrap"); if (fw) fw.innerHTML = "";
+      // Same date-range selection as "By observation", but date-only (the table has its
+      // own flag columns + Last-column age cycle). The panel opens in #sp-filters-wrap,
+      // between the header and the first rows.
+      var bar = document.getElementById("sp-filters-bar"); if (bar) bar.innerHTML = spTableFilterBarHtml();
+      var fw = document.getElementById("sp-filters-wrap"); if (fw) fw.innerHTML = detDaysPanelOpen ? detDaysPanelHtml() : "";
+      wireDetFilters(document.getElementById("species-panel"));
     } else {
       renderSpFilterBar();
     }

@@ -21,11 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v897";
+var VERSION = "v898";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• The Species-list table now has the same date-range selection as “By observation”: a days/date button (and clicking a date in the list) opens the range panel between the header and the first rows. The chosen window now also narrows the table's Total and Last columns, so the list matches what's on the map.",
   "• The map-point popup is tidier: all the external reference links — national portals (Artsobservasjoner, Artportalen, Laji, ornitho, BirdLife …), the BirdLife factsheet, Birding Places, Blogs and the Worldwide list — now sit behind the Experimental toggle (Settings). Only the species list stays by default.",
   "• Offline maps now cover every map type and place-name labels. Downloading an area stores its labels too, and offline the map shows raster place names (the vector overlay is online-only) — so names still appear with no network.",
   "• Sharper place names: the “More place names” overlay (Settings → Map) now renders vector labels (MapLibre GL / OpenFreeMap) over the Voyager and Satellite maps — local names surface smoothly as you zoom in, without overlapping, the way yr.no does it.",

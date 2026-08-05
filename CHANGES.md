@@ -1,5 +1,19 @@
 # Changes
 
+## 2026-08-05 — Species-list: date-range selection (as in "By observation") (sw v898)
+
+- The Species-list (table) layout now offers the same date filtering as the "By observation" record view:
+  - `spTableFilterBarHtml()` adds a days/date toggle (date-only — the table keeps its flag columns +
+    Last-column age cycle) to `#sp-filters-bar`; its `detDaysPanelHtml()` panel drops into `#sp-filters-wrap`,
+    between the header controls and the first table rows. Wired via the existing `wireDetFilters`.
+  - Clicking a Last-column date in a species row opens that same inline panel (`openDetPanel("days")` +
+    `scrollSpFiltersIntoView`); a date inside an expanded record sub-row still opens the compact
+    On/Before/After menu for that record.
+  - `applyAgeFilter` now derives Total, the "(pairs)" suffix, the Last cell and row visibility from the
+    rows passing `detDatePasses` (+ observer/source filters) — so the chosen window actually narrows the
+    table, and the "N hidden" recency note matches the Total. Previously the Total counted all fetched
+    rows regardless of the window.
+
 ## 2026-08-05 — Map-point popup: gate all external reference links behind Experimental (sw v896–v897)
 
 - In the map-point popup (`bindPointPopup`), the external reference links now require the Experimental
