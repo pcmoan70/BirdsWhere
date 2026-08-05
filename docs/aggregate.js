@@ -153,7 +153,11 @@ window.AppAggregate = (function () {
       if (!key) return;
       if (!agg[key]) agg[key] = { count: 0, latestTs: 0, rows: [] };
       agg[key].count++; total++; pushRow(agg[key].rows, row);
-      var t = Date.parse(dt); if (!isNaN(t) && t > agg[key].latestTs) agg[key].latestTs = t;
+      // Latest-seen timestamp = the record's DATE at LOCAL midnight (day granularity).
+      // Parsing the raw dt (often a UTC instant, or a bare date = UTC midnight) then
+      // formatting it would shift the day in non-UTC zones — so normalise to the local
+      // date here and everywhere it's read (see localISODate).
+      var t = Date.parse(String(dt || "").slice(0, 10) + "T00:00:00"); if (!isNaN(t) && t > agg[key].latestTs) agg[key].latestTs = t;
     }
     function bumpExtra(sciName, commonName, dt, cls, row) {
       if (!sciName) return;
@@ -162,7 +166,7 @@ window.AppAggregate = (function () {
       if (!extras[k].name && commonName) extras[k].name = commonName;
       if (!extras[k].cls && cls) extras[k].cls = cls;
       extras[k].count++; total++; pushRow(extras[k].rows, row);
-      var t = Date.parse(dt); if (!isNaN(t) && t > extras[k].latestTs) extras[k].latestTs = t;
+      var t = Date.parse(String(dt || "").slice(0, 10) + "T00:00:00"); if (!isNaN(t) && t > extras[k].latestTs) extras[k].latestTs = t;   // local-midnight date (see bump)
     }
     // GBIF re-publishes the national databases (Artsobservasjoner, Artportalen,
     // eBird, iNaturalist), so the same sighting can arrive once natively and once

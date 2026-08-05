@@ -701,15 +701,23 @@
     try { return d.toLocaleDateString(lang, { year: "numeric", month: "2-digit", day: "2-digit" }); }
     catch (e) { return s; }
   }
+  // The LOCAL calendar date (YYYY-MM-DD) of a timestamp. Never toISOString() here —
+  // that's UTC, which shifts the day for any non-UTC timezone (e.g. a local-midnight
+  // ts reads as the previous day in UTC+ zones). The timestamps we format are the
+  // record's own date at local midnight, so the local components ARE the record's date.
+  function localISODate(ts) {
+    var d = new Date(ts);
+    return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2);
+  }
   // A localized short date from a timestamp (for the species list's "Last" column).
   function lastDateLabel(ts) {
     if (!ts) return "";
-    try { return fmtDate(new Date(ts).toISOString().slice(0, 10)); } catch (e) { return ""; }
+    try { return fmtDate(localISODate(ts)); } catch (e) { return ""; }
   }
   // "Last" cell content: the date, CLICKABLE to filter (On / Before / After).
   function lastDateCellHtml(ts) {
     if (!ts) return "";
-    var iso = ""; try { iso = new Date(ts).toISOString().slice(0, 10); } catch (e) {}
+    var iso = ""; try { iso = localISODate(ts); } catch (e) {}
     var lbl = escapeHtml(lastDateLabel(ts));
     return iso ? '<span class="dl-date-click" role="button" data-date="' + iso + '" title="' + escapeHtml(t("detlist.dateFilterHint")) + '">' + lbl + "</span>" : lbl;
   }
@@ -1571,7 +1579,7 @@
         var fc = 0, flatest = 0;
         entry.rows.forEach(function (r) {
           if (!detDatePasses(r.date) || !detObsPasses(r) || !detPassesSrc(r)) return;
-          var n = parseInt(r.count, 10); fc += (isFinite(n) && n > 0) ? n : 1;
+          fc += 1;   // n(d) = number of OBSERVATIONS (records), matching agg.count / dedupTotal — not a sum of individuals
           var ts = r.date ? Date.parse(r.date + "T00:00:00") : 0; if (ts && ts > flatest) flatest = ts;
         });
         tr.classList.toggle("sp-has-det", fc > 0);
@@ -3655,7 +3663,7 @@
       if (mset) { if (d.length < 7) return false; if (mset.indexOf(+d.slice(5, 7)) < 0) return false; }
       return true;
     }
-    function maxTs(rows) { var m = 0; for (var i = 0; i < rows.length; i++) { var t = Date.parse(rows[i].date); if (!isNaN(t) && t > m) m = t; } return m; }
+    function maxTs(rows) { var m = 0; for (var i = 0; i < rows.length; i++) { var t = Date.parse(String(rows[i].date || "").slice(0, 10) + "T00:00:00"); if (!isNaN(t) && t > m) m = t; } return m; }
     var agg = Object.create(null), extras = Object.create(null), total = 0, bySrc = Object.create(null);
     function addSrc(rows) { for (var i = 0; i < rows.length; i++) { var s = rows[i].src; if (s) bySrc[s] = (bySrc[s] || 0) + 1; } }
     Object.keys(out.agg || {}).forEach(function (k) {
@@ -5284,6 +5292,7 @@
         '<div id="perf-modal" style="display:none"><div id="perf-modal-box">' +
           '<h2 class="perf-title" data-i18n="popup.title">Species — distributions &amp; observations</h2>' +
           '<p class="perf-desc" data-i18n="popup.desc">Explore species’ ranges, migration timing and recent sightings — all in your browser: a neural habitat model (BirdNET) runs on your device, with live observations from eBird, GBIF, iNaturalist and more.</p>' +
+          '<p class="perf-report-note" data-i18n="popup.reportNote">This map only shows what other observers have carefully reported. To share your own sightings, consider registering with a national service (Artportalen.se, Artsobservasjoner.no …) or an international one (eBird.org, Observation.org …).</p>' +
           '<p class="perf-note" data-i18n="popup.keysShort">Fetching data from some sources requires free keys — see Settings → Data sources.</p>' +
           '<p class="perf-feedback"><span data-i18n="popup.feedback"></span> <button type="button" class="feedback-open ico-btn">' + ico("mail") + '<span class="ico-label" data-i18n="feedback.send">Message</span></button></p>' +
           '<div class="install-row"><button type="button" id="install-info" class="demo-btn demo-btn-light" hidden data-i18n="install.app">⤓ Offline mode</button><div class="install-steps cu-hint" hidden></div></div>' +
@@ -14087,8 +14096,8 @@
       var e = detections[k]; if (!e || !e.rows || !e.rows.length) return;
       var spKey = e.key || k, count = 0, latest = 0;
       e.rows.forEach(function (r) {
-        var n = parseInt(r.count, 10); count += (isFinite(n) && n > 0) ? n : 1;
-        var ts = Date.parse(r.date); if (ts && ts > latest) latest = ts;
+        count += 1;   // observations (records), consistent with the fetch aggregation
+        var ts = Date.parse(String(r.date || "").slice(0, 10) + "T00:00:00"); if (ts && ts > latest) latest = ts;   // local-midnight date
         if (isFinite(+r.lat) && isFinite(+r.lon)) ll.push([+r.lat, +r.lon]);
       });
       if (spKey.indexOf("x:") === 0 || !labelsByKey[spKey]) {   // non-model → extras (keyed by sci)

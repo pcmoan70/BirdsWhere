@@ -1,5 +1,21 @@
 # Changes
 
+## 2026-08-05 — Fix species-list counts + date off-by-one; startup reporting note (sw v880)
+
+- **Counts (n(d)).** `applyAgeFilter` (and the shared-map `plotSharedDetections`) summed INDIVIDUALS
+  (`parseInt(r.count)||1`) while the canonical `bump` / `filterHistAgg` / `dedupTotal` count RECORDS — so
+  the displayed n(d) jumped to a flock-inflated number. Both now count **records (observations)**, matching
+  everything else.
+- **Date off-by-one.** `lastDateLabel` / `lastDateCellHtml` formatted the "Last" timestamp with
+  `new Date(ts).toISOString()` (UTC), which shifts the day back one in +UTC zones (Norway UTC+2:
+  2026-07-27 → 2026-07-26). New `localISODate()` uses local calendar components; `bump` / `bumpExtra` /
+  `filterHistAgg maxTs` now store `latestTs` as the date's LOCAL midnight so display/sort/age all agree.
+  (Verified: Oslo now shows 2026-07-27; the old code showed 2026-07-26.)
+- **Startup note.** The intro splash (`#perf-modal`) now carries a highlighted line: this map only shows
+  what others have carefully reported — to contribute, register with a national (Artportalen.se,
+  Artsobservasjoner.no …) or international (eBird.org, Observation.org …) service. i18n `popup.reportNote`
+  (15 langs); CSS `.perf-report-note`.
+
 ## 2026-08-05 — Map clear-× uses the legend's arm-and-delete sequence (sw v879)
 
 - The on-map red × (top-right `clearpts-btn`) cleared all detections in one click. It now mirrors the

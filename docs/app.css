@@ -2308,6 +2308,14 @@ table.chk-table .chk-text { min-width: 100px; }
 #perf-modal-box p { margin: 0 0 16px; font-size: 0.95rem; line-height: 1.5; }
 #perf-modal-box .perf-desc { color: var(--ink); }
 #perf-modal-box .perf-note { font-size: 0.82rem; color: var(--ink-muted); }
+/* "This map only shows what others reported…" — a gently highlighted call to
+   contribute your own sightings via a national/international service. */
+#perf-modal-box .perf-report-note {
+  font-size: 0.86rem; line-height: 1.45; color: var(--ink);
+  background: var(--brand-soft, rgba(58,123,213,0.08));
+  border-left: 3px solid var(--brand, #3a7bd5);
+  border-radius: 6px; padding: 9px 12px;
+}
 #perf-modal-box .perf-version { font-size: 0.75rem; color: var(--ink-muted); margin: 0 0 10px; letter-spacing: 0.02em; }
 #perf-modal-box .perf-attrib {
   margin: 0 0 18px;
