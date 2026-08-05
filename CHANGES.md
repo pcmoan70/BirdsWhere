@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-06 — Date pane: no "all" chip; legend shows all plotted by default (sw v918)
+
+- Removed the "all" chip from the date pane's recency grid — clear the date filter with the funnel-red-×
+  (→ all time).
+- "Filter the legend to the map view" now defaults **OFF** (`legendInView` default `true`→`false`), so the
+  legend lists every plotted species and stays synced with the map (and the By-observation / ☰ lists,
+  which already show all) instead of narrowing as you pan/zoom. Still toggleable in Settings.
+
 ## 2026-08-06 — Filter by observer list + species lists (sw v917)
 
 - **Observer-list filter:** the observer popup gains "Filter by observer list ▸" — pick a saved observer

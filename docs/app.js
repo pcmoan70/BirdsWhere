@@ -7105,7 +7105,7 @@
   // "Filter legend to the current view" (default on): the legend lists only species
   // that have at least one plotted dot inside the map's visible bounds, and updates
   // as you pan/zoom. Off = list every plotted species regardless of the viewport.
-  function legendInView() { return window.GeoState.get("legendInView", true) !== false; }
+  function legendInView() { return window.GeoState.get("legendInView", false) === true; }   // default OFF: the legend/list shows ALL plotted species, synced with the map (not narrowed to the view)
   var legendViewBounds = null;   // set per updateDetLegend() call: the map bounds when the filter is on, else null
   var detLegend = null;
   // Legend-driven visibility: dots always draw in their species colour. Click a
@@ -9470,7 +9470,7 @@
       cells += '<span class="det-days-unit">' + escapeHtml(t("det." + grp.unit)) + "</span>";
       cells += grp.vals.map(function (v) { return chip(String(v[0]), !rg && days === v[1], v[1]); }).join("");
     });
-    cells += '<span class="det-days-unit"></span>' + chip(t("det.allTime"), !rg && days === 0, 0, "det-days-all");
+    // (No "all" chip — use the clear-× to remove the date filter → all time.)
     var rangeRow = '<div class="det-days-range">' +
       '<label>' + escapeHtml(t("det.dateFrom")) + '<input type="date" class="det-date-from" value="' + escapeHtml(rg ? rg.from : "") + '" /></label>' +
       '<label>' + escapeHtml(t("det.dateTo")) + '<input type="date" class="det-date-to" value="' + escapeHtml(rg ? rg.to : "") + '" /></label>' +
@@ -9730,8 +9730,8 @@
     // (★/◉/🟡/group) AND the days + observer filters (a species with nothing left
     // after those drops out, like its dots do on the map).
     // Filter the legend to species with a dot in the current view (setting; default
-    // on). Bounds captured once here so every detVisibleCount() call this render uses
-    // the same viewport.
+    // OFF — the legend lists every plotted species, synced with the map). Bounds
+    // captured once here so every detVisibleCount() call this render uses the same viewport.
     legendViewBounds = (legendInView() && map) ? map.getBounds() : null;
     var visCount = Object.create(null);
     allKeys.forEach(function (k) { visCount[k] = detVisibleCount(k); });
