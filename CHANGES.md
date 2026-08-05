@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-08-05 — Date-filter red-× indicator; version-based update button (sw v887)
+
+- **Active date-filter × .** `showDateFilterMenu` now flags the option matching the active `detDateRange`
+  (On / Before / After / Range) with a red × (`.drm-active` + `.drm-clear-x`); tapping the × clears just
+  that date filter (`setDetDateFilter("","")`), tapping the rest re-applies it.
+- **Update button on version mismatch.** `sw-register.js` now also does a DIRECT version check: it reads the
+  running SW version and fetches `sw.js` (`cache:no-store`), and whenever the server's `VERSION` differs it
+  lights up the Settings "Reload to update" button (and calls `reg.update()` to install the new SW). Runs on
+  load, focus/visibility and the 15-min interval. `SWUpdate.apply()` hardened to find a waiting worker (or
+  reload) when the button was lit before the install finished.
+
 ## 2026-08-05 — Total after dedup + "(N)" observations; Add-as-point editor (sw v886)
 
 - **Total after de-duplication.** New shared `dedupedSpecimenTotal(rows)` sums specimens (no count = 1)

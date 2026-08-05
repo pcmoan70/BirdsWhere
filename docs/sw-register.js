@@ -16,7 +16,18 @@ if ("serviceWorker" in navigator) {
     bannerEnabled: false,   // app.js sets from the user setting (default: no auto banner)
     onchange: null,         // app.js hooks this to refresh the Settings update button
     showBanner: function () {},
-    apply: function () { var w = SWUpdate.worker; if (w) { try { w.postMessage({ type: "skipWaiting" }); } catch (e) {} } }
+    apply: function () {
+      var w = SWUpdate.worker;
+      if (w) { try { w.postMessage({ type: "skipWaiting" }); } catch (e) {} return; }
+      // No captured waiting worker (button lit by the direct version check before the
+      // new SW finished installing): find a waiting one, else reload as a last resort.
+      if (navigator.serviceWorker.getRegistration) {
+        navigator.serviceWorker.getRegistration().then(function (reg) {
+          if (reg && reg.waiting) { try { reg.waiting.postMessage({ type: "skipWaiting" }); } catch (e) {} }
+          else { try { if (reg) reg.update(); } catch (e) {} window.location.reload(); }
+        }).catch(function () { window.location.reload(); });
+      } else window.location.reload();
+    }
   };
   window.addEventListener("load", function () {
     var reloaded = false;
@@ -90,6 +101,28 @@ if ("serviceWorker" in navigator) {
         if (reg.waiting && navigator.serviceWorker.controller) notifyWaiting(reg.waiting);
       }
       maybeShow();   // an update installed on a previous visit and is already waiting
+
+      // Direct version check: the "waiting worker" path above can miss cases (no
+      // controller yet, an install still in flight, a browser that hasn't installed
+      // the new SW), so ALSO compare the RUNNING version to the one on the server and
+      // light up the button whenever they differ — then pull the new SW in so the
+      // button's Reload can activate it.
+      var runningVer = "";
+      workerInfo(navigator.serviceWorker.controller).then(function (d) { runningVer = (d && d.version) || ""; });
+      function checkRemoteVersion() {
+        fetch("sw.js", { cache: "no-store" }).then(function (r) { return r.ok ? r.text() : ""; }).then(function (txt) {
+          var m = txt.match(/VERSION\s*=\s*"([^"]+)"/);
+          var remote = m && m[1];
+          if (remote && runningVer && remote !== runningVer) {
+            if (!SWUpdate.pending) {
+              SWUpdate.pending = true; SWUpdate.version = remote;
+              try { if (SWUpdate.onchange) SWUpdate.onchange(SWUpdate); } catch (e) {}
+            }
+            try { reg.update(); } catch (e) {}   // fetch + install the new SW so apply() can activate it
+          }
+        }).catch(function () {});
+      }
+      checkRemoteVersion();
       reg.addEventListener("updatefound", function () {
         var nw = reg.installing; if (!nw) return;
         nw.addEventListener("statechange", function () {
@@ -102,7 +135,7 @@ if ("serviceWorker" in navigator) {
       function checkForUpdate() {
         if (checking) return; checking = true;
         Promise.resolve(reg.update()).then(maybeShow).catch(function () {})
-          .then(function () { checking = false; });
+          .then(function () { checking = false; checkRemoteVersion(); });
       }
       checkForUpdate();
       document.addEventListener("visibilitychange", function () {

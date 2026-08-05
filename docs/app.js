@@ -8033,10 +8033,36 @@
     var el = openAnchoredMenu("detrow-menu");
     el.innerHTML = "";
     var h = document.createElement("div"); h.className = "detrow-menu-hdr"; h.textContent = fmtDate(dateStr) || dateStr; el.appendChild(h);
-    el.appendChild(drmBtn(t("date.on"), function () { closeDetRowMenu(); setDetDateFilter(dateStr, dateStr); }));
-    el.appendChild(drmBtn(t("date.before"), function () { closeDetRowMenu(); setDetDateFilter("", dateStr); }));
-    el.appendChild(drmBtn(t("date.after"), function () { closeDetRowMenu(); setDetDateFilter(dateStr, ""); }));
-    el.appendChild(drmBtn(t("date.range"), function () { closeDetRowMenu(); showDateRangeModal(dateStr); }));
+    var rg = detDateRange();   // the active date-range filter (or null)
+    // An option is "active" when the current filter equals it; that row then shows a
+    // red × — tapping the × removes the date filter (tapping the rest re-applies it).
+    function opt(labelKey, from, to) {
+      var active = !!rg && (rg.from || "") === from && (rg.to || "") === to;
+      var b = drmBtn(t(labelKey), function () { closeDetRowMenu(); setDetDateFilter(from, to); });
+      if (active) {
+        b.classList.add("drm-active");
+        var xb = document.createElement("span");
+        xb.className = "drm-clear-x"; xb.innerHTML = X_MARK_SVG; xb.title = t("det.clearFilters"); xb.setAttribute("role", "button");
+        xb.addEventListener("click", function (e) { e.stopPropagation(); closeDetRowMenu(); setDetDateFilter("", ""); });
+        b.appendChild(xb);
+      }
+      el.appendChild(b);
+    }
+    opt("date.on", dateStr, dateStr);
+    opt("date.before", "", dateStr);
+    opt("date.after", dateStr, "");
+    // "Range…" is active when a range is set that isn't one of the three above.
+    var rangeActive = !!rg && !((rg.from || "") === dateStr && (rg.to || "") === dateStr) &&
+      !((rg.from || "") === "" && (rg.to || "") === dateStr) && !((rg.from || "") === dateStr && (rg.to || "") === "");
+    var rb = drmBtn(t("date.range"), function () { closeDetRowMenu(); showDateRangeModal(dateStr); });
+    if (rangeActive) {
+      rb.classList.add("drm-active");
+      var rx = document.createElement("span");
+      rx.className = "drm-clear-x"; rx.innerHTML = X_MARK_SVG; rx.title = t("det.clearFilters"); rx.setAttribute("role", "button");
+      rx.addEventListener("click", function (e) { e.stopPropagation(); closeDetRowMenu(); setDetDateFilter("", ""); });
+      rb.appendChild(rx);
+    }
+    el.appendChild(rb);
     positionAnchoredMenu(el, x, y);
   }
   // A small popup to enter an explicit from–to date range (opened from the date menu).

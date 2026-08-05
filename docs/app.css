@@ -2728,6 +2728,11 @@ a.dl-row:hover, .dl-row-menu:hover { background: var(--surface-2, rgba(0,0,0,.05
   font: inherit; font-size: 0.85rem; color: var(--ink); cursor: pointer; border-radius: var(--radius-xs); white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; }
 .detrow-menu-item:hover { background: var(--surface-2); }
+/* Active date-filter row: label left, a red × on the right that removes the filter. */
+.detrow-menu-item.drm-active { display: flex; align-items: center; justify-content: space-between; font-weight: 700; }
+.drm-clear-x { display: inline-flex; align-items: center; margin-left: 10px; color: var(--danger, #b42318); cursor: pointer; flex: 0 0 auto; }
+.drm-clear-x svg { width: 14px; height: 14px; }
+.drm-clear-x:hover { color: var(--danger-strong, #911a12); }
 /* List-picker rows: the pin icon sits left of the list name, in brand green. */
 /* Toggle rows in the species menu (★ interesting / 🟠 year list / 🟡 life list /
    🚫 hidden). The icon greys out when the species is NOT in that set and takes
