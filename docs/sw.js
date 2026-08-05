@@ -21,12 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v876";
+var VERSION = "v877";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
-  "• The map now shows blinking dots while fetching — one “.” per in-flight fetch, appended the moment you trigger another, so you can see how many are still loading.",
+  "• The status line above the map now shows blinking dots while fetching — one “.” per in-flight fetch (“...” = 3 still to finish), appended the moment you trigger another, so you can see how many are still loading.",
   "• More GBIF sources: Italy (AIRONE wintering birds) and Austria (Salzburg) added as live national sources, plus France (Oiseaux des Jardins + Faune-Occitanie) for Historic date-range fetches. Toggle any in Settings → GBIF datasets.",
   "• New base maps: Light and Dark are replaced by Voyager (clean colour map), CyclOSM (trails + hillshade) and Esri Topo — alongside Streets, Topographic and Satellite.",
   "• Triggering several point fetches in a row no longer loses the earlier ones: each fetch now finishes and drops its dots on the map (they accumulate), instead of a newer fetch discarding the older one's results.",

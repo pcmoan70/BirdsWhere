@@ -642,25 +642,30 @@
   function setStatus(msg) {
     var el = document.getElementById("demo-status");
     if (el) el.textContent = msg;
+    renderStatusDots();   // keep the in-flight-fetch dots after a text update
   }
-  // Blinking "queue length" dots on the map: one blinking "." per in-flight fetch.
-  // fetchDotsAdd() bumps it the moment a fetch starts (a period appears immediately);
-  // fetchDotsDone() removes one when a fetch settles.
-  var mapFetchPending = 0;
-  function renderFetchDots() {
-    var el = document.getElementById("fetch-dots"); if (!el) return;
-    if (mapFetchPending <= 0) { el.style.display = "none"; el.textContent = ""; return; }
-    el.textContent = new Array(mapFetchPending + 1).join(".");   // one "." per in-flight fetch
-    el.style.display = "";
-  }
-  function fetchDotsAdd() { mapFetchPending++; renderFetchDots(); }
-  function fetchDotsDone() { mapFetchPending = Math.max(0, mapFetchPending - 1); renderFetchDots(); }
   // Status with limited inline markup (only app-controlled HTML, e.g. the
   // blinking fetch fraction — never user input).
   function setStatusHtml(html) {
     var el = document.getElementById("demo-status");
     if (el) el.innerHTML = html;
+    renderStatusDots();
   }
+  // Blinking "queue length" dots in the status field above the map: one blinking "."
+  // per in-flight fetch (e.g. "..." = 3 fetches still to complete). fetchDotsAdd()
+  // bumps it the moment a fetch starts (a period appears immediately); fetchDotsDone()
+  // removes one when a fetch settles. Re-appended after every status-text update.
+  var mapFetchPending = 0;
+  function renderStatusDots() {
+    var el = document.getElementById("demo-status"); if (!el) return;
+    var span = document.getElementById("status-dots");
+    if (mapFetchPending <= 0) { if (span && span.parentNode) span.parentNode.removeChild(span); return; }
+    if (!span) { span = document.createElement("span"); span.id = "status-dots"; span.setAttribute("aria-hidden", "true"); }
+    span.textContent = " " + new Array(mapFetchPending + 1).join(".");
+    el.appendChild(span);   // always the last child, so it survives textContent/innerHTML resets
+  }
+  function fetchDotsAdd() { mapFetchPending++; renderStatusDots(); }
+  function fetchDotsDone() { mapFetchPending = Math.max(0, mapFetchPending - 1); renderStatusDots(); }
 
   function weekText(w) {
     var months = window.GeoI18N.months(lang);
@@ -5106,7 +5111,6 @@
         '</div>' +
         '<div id="demo-map-wrap">' +
           '<div id="demo-map"></div>' +
-          '<div id="fetch-dots" aria-hidden="true" style="display:none"></div>' +
           '<div id="demo-computing" style="display:none">' +
             '<div class="spinner"></div>' +
             '<div id="computing-text">Computing\u2026</div>' +

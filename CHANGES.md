@@ -1,11 +1,12 @@
 # Changes
 
-## 2026-08-05 — Blinking in-flight-fetch dots on the map (sw v876)
+## 2026-08-05 — Blinking in-flight-fetch dots in the status line (sw v877)
 
-- New `#fetch-dots` overlay (top-centre of the map): one blinking "." per in-flight fetch. `fetchDotsAdd()`
-  appends a period the instant a fetch is queued (start of `augmentRowsWithSightings`); `fetchDotsDone()`
-  removes one when it settles (ok or fail). So the dot count = number of incomplete fetches, and triggering
-  more appends periods immediately. CSS `#fetch-dots` + `fetch-dots-blink` keyframes.
+- The blinking fetch-queue dots now live in the **status field above the map** (`#status-dots` appended to
+  `#demo-status`), not as a map overlay — one "." per in-flight fetch ("..." = 3 still to finish).
+  `renderStatusDots()` re-appends them after every `setStatus`/`setStatusHtml` so status-text updates don't
+  wipe them; `fetchDotsAdd()`/`fetchDotsDone()` bump the count on fetch start/settle. (Supersedes the v876
+  map overlay.)
 
 ## 2026-08-05 — GBIF origin: read associatedReferences (Artsobservasjoner) (sw v875)
 
