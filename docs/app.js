@@ -258,6 +258,8 @@
       edit:     '<path d="M4 20h4L18.5 9.5a2 2 0 0 0-2.8-2.8L5 17.2z"/><path d="M13.5 6.5l4 4"/>',
       user:     '<circle cx="12" cy="8" r="3.6"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/>',
       nav:      '<path d="M21 3 3 10.7l7.3 2.9 2.9 7.3z"/>',
+      // Navigation/send arrow with a "+" — "add to route".
+      navplus:  '<path d="M20 4 4 10.2l6.1 2.4 2.4 6.1z"/><path d="M18 15.5v6M15 18.5h6"/>',
       check:    '<path d="M5 12.5l4.5 4.5L19 7"/>',
       target:   '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
       save:     '<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7M8 20v-6h8v6"/>',
@@ -5346,7 +5348,7 @@
                   '<circle cx="7.5" cy="15" r="1.9"/><circle cx="15" cy="13" r="1.9"/><circle cx="18.5" cy="19" r="1.9"/></svg>' +
                 '<span class="ico-label" data-i18n="detlist.save">Save</span></button>' +
               '<button type="button" id="detlist-nav" class="detlist-save-btn ico-btn" data-i18n-title="nav.title" title="Navigate in Google Maps" aria-label="Navigate in Google Maps">' + ico("nav") + "</button>" +
-              '<button type="button" id="detlist-route" class="detlist-save-btn ico-btn" data-i18n-title="route.add" title="＋ Add to route" aria-label="＋ Add to route"><span class="detlist-plus">＋</span>' + ico("nav") + "</button>" +
+              '<button type="button" id="detlist-route" class="detlist-save-btn ico-btn" data-i18n-title="route.add" title="＋ Add to route" aria-label="＋ Add to route">' + ico("navplus") + "</button>" +
               '<select id="detlist-sort" class="detlist-sort-sel" aria-label="Sort"></select>' +
             '</div>' +
           '</div>' +
@@ -7715,7 +7717,7 @@
       if (hasLoc) {
         el.appendChild(drmBtn(t("detmenu.focusMap"), function () { focusPointOnMap(+d.lat, +d.lon); }));
         el.appendChild(drmBtn(t("nav.here"), function () { closeDetRowMenu(); navigatePoints([{ lat: +d.lat, lon: +d.lon }]); }, "nav"));
-        el.appendChild(drmBtn(t("route.add"), function () { closeDetRowMenu(); addToRoute(+d.lat, +d.lon, name); }));
+        el.appendChild(drmBtn(tLabel("route.add"), function () { closeDetRowMenu(); addToRoute(+d.lat, +d.lon, name); }, "navplus"));
       }
       el.appendChild(drmBtn(t("detmenu.addList"), function () { drmRenderLists(el, d); }));
       if (d.mpId && d.listName) el.appendChild(drmBtn(t("detmenu.removeFromList"), function () { closeDetRowMenu(); removeListPoint(d.listName, d.mpId); redraw(); }, "block"));
@@ -7922,7 +7924,7 @@
       addMapPoint({ lat: lat, lon: lon, name: name || "", source: "manual" });
       setStatus(t("locmenu.added"));
     }));
-    el.appendChild(drmBtn(t("route.add"), function () { closeDetRowMenu(); addToRoute(lat, lon, name || ""); }));
+    el.appendChild(drmBtn(tLabel("route.add"), function () { closeDetRowMenu(); addToRoute(lat, lon, name || ""); }, "navplus"));
     positionAnchoredMenu(el, x, y);
   }
   // The date-header shortcut menu: On / Before / After the tapped date.
@@ -10667,7 +10669,7 @@
       listSel +
       '<div class="mp-actions">' +
         '<button type="button" id="mp-save" class="demo-btn">' + esc(t("points.save")) + '</button>' +
-        '<button type="button" id="mp-route" class="demo-btn demo-btn-light" title="' + esc(t("route.add")) + '">' + esc(t("route.addShort")) + '</button>' +
+        '<button type="button" id="mp-route" class="demo-btn demo-btn-light ico-btn" title="' + esc(t("route.add")) + '">' + ico("navplus") + '<span class="ico-label">' + esc(tLabel("route.addShort")) + '</span></button>' +
         (isEdit ? '<button type="button" id="mp-del" class="demo-btn demo-btn-light">' + esc(t("btn.delete")) + '</button>' : "") +
       '</div>' +
     '</div>';

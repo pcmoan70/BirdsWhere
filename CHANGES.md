@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-05 — New "add to route" icon (nav arrow + plus) (sw v881)
+
+- New `ico("navplus")` — a navigation/send arrow with a "+" — for the **Add to route** action. Applied to
+  the observation menu (`drmRenderMain`), the record-location menu (`showLocPointMenu`), the single
+  map-point popup (`mp-route`) and the detections-list header (`#detlist-route`, which previously faked it
+  with a `＋` span next to the plain nav icon; removed the now-dead `.detlist-plus` CSS). Labels use
+  `tLabel(...)` so the icon isn't doubled by the string's leading "＋".
+
 ## 2026-08-05 — Fix species-list counts + date off-by-one; startup reporting note (sw v880)
 
 - **Counts (n(d)).** `applyAgeFilter` (and the shared-map `plotSharedDetections`) summed INDIVIDUALS
