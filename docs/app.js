@@ -16589,7 +16589,9 @@
         rebuildDetLayers(); updateDetLegend();   // the count filter narrows the map dots + legend too
         applyAgeFilter(); renderSpHeads();
       }
-      container.querySelectorAll(".sp-cnt-min, .sp-cnt-max").forEach(function (inp) { inp.addEventListener("change", function (e) { e.stopPropagation(); applyBounds(); }); });
+      // Filter as you type (input), not only on blur/Enter — applyBounds doesn't rebuild
+      // the panel, so the field keeps focus. Immediate on desktop and mobile alike.
+      container.querySelectorAll(".sp-cnt-min, .sp-cnt-max").forEach(function (inp) { inp.addEventListener("input", function (e) { e.stopPropagation(); applyBounds(); }); });
       var bc = container.querySelector(".sp-bound-clear");
       if (bc) bc.addEventListener("click", function (e) { e.stopPropagation(); spCountMin = null; spCountMax = null; rebuildDetLayers(); updateDetLegend(); applyAgeFilter(); renderSpControls(); });
     } else if (spHeadPanel === "prob") {

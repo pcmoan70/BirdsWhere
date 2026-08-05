@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-05 — Total-column filter applies as you type (sw v913)
+
+- The Total column's lower/upper bound inputs now filter on `input` (as you type / on mobile without
+  dismissing the keyboard) instead of only on `change` (blur/Enter). `applyBounds` doesn't rebuild the
+  panel, so the field keeps focus. Other filters (recency/month/mode/observer/source chips, the name
+  search, date pickers) already update immediately; the Prob slider stays on release because re-rendering
+  rebuilds the slider mid-drag.
+
 ## 2026-08-05 — Date pane controls, "More of these" backdrop, SE crow patch (sw v912)
 
 - **Sweden Artportalen crow fix.** Artportalen files the Swedish Hooded Crow ("kråka") under the lumped
