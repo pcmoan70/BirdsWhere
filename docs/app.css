@@ -2123,11 +2123,14 @@ button.dd-name:hover { text-decoration: underline; }
 }
 .sp-head-sort, .sp-date-rel-row, .sp-bound-row, .sp-spf-modes { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .sp-head-sort-lbl { font-size: 0.8rem; color: var(--ink-muted); }
-/* Green × in the date panel: clears every date filter and closes the panel. */
+/* Date-pane corner buttons: green × (close, top-right) and funnel-red-× (clear the
+   date filters, just left of it — shown only when a date filter is active). */
 .sp-head-panel { position: relative; }
 .sp-date-clear { position: absolute; top: 6px; right: 8px; border: none; background: transparent; cursor: pointer; color: var(--brand); display: inline-flex; align-items: center; padding: 2px; }
 .sp-date-clear svg { width: 16px; height: 16px; }
 .sp-date-clear:hover { color: var(--brand-strong, var(--brand)); }
+.sp-date-clearfilters { position: absolute; top: 6px; right: 34px; border: none; background: transparent; cursor: pointer; color: var(--ink-muted, #777); display: inline-flex; align-items: center; padding: 2px; }
+.sp-date-clearfilters svg { width: 17px; height: 17px; }
 .sp-sort-grp { display: inline-flex; align-items: center; gap: 3px; font-size: 0.8rem; color: var(--ink-muted); }
 .sp-sort-btn, .sp-spf-chip, .sp-date-rel {
   border: 1px solid var(--border); background: var(--surface, #fff);

@@ -1,5 +1,19 @@
 # Changes
 
+## 2026-08-05 — Date pane controls, "More of these" backdrop, SE crow patch (sw v912)
+
+- **Sweden Artportalen crow fix.** Artportalen files the Swedish Hooded Crow ("kråka") under the lumped
+  binomial *Corvus corone* (Carrion Crow), the same as Norway's "kråke". `fixNordicCrowVernacular`
+  remaps direct Artsobservasjoner + Artportalen records by vernacular (kråke/kråka → *Corvus cornix*);
+  `fixGbifNordicCrow` now also folds SE GBIF *Corvus corone* → *cornix* unless the vernacular says
+  "svartkråka" (real Carrion Crow in the far SW). Bumped `SIGHT_CACHE_VER` 6 → 7.
+- **Date pane controls.** Removed the sort "–" (off) button — clicking the active direction again turns
+  the sort off. The corner **green ×** now just closes the pane (like clicking its header again); a new
+  **funnel-red-×** (shown when a date filter is active) clears the date filters and keeps the pane open.
+  `clearDateFilters` (clear only) + `closeDatePane` (close only).
+- **"More of these" backdrop.** Removed backdrop-click-to-close on the recent-observations modal, so a
+  click on the darkened map behind it no longer collapses the view — close it with the ×.
+
 ## 2026-08-05 — Species-list name search (browser find-in-page workaround) (sw v911)
 
 - Added a "Filter species…" search box in `#sp-controls` (reuses `ph.filter`). Typing filters the

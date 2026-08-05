@@ -3550,7 +3550,7 @@
   function downloadDays() { var v = +window.GeoState.get("downloadDays", 0); return isFinite(v) && v > 0 ? v : 0; }
   // Bump when the aggregation/matching logic changes so results cached by the
   // previous code are ignored and the next fetch re-aggregates.
-  var SIGHT_CACHE_VER = 6;   // bumped: GBIF Norway "Corvus corone" (kråke) → Corvus cornix too
+  var SIGHT_CACHE_VER = 7;   // bumped: Sweden Artportalen "Corvus corone" (kråka) → Corvus cornix
   var persistedSightings = {};           // ck -> { ts, sig, ver, out }, loaded once at boot
   function sightCK(lat, lon, rkm, group, days) { return lat.toFixed(2) + "," + lon.toFixed(2) + ":" + rkm + ":" + group + (days > 0 ? ":d" + days : ""); }
   // Signature of the settings that change what a fetch returns; a mismatch means a
@@ -9868,7 +9868,7 @@
     var out = "";
     if (detDaysPanelOpen) {
       out += dateForRel
-        ? '<div class="sp-head-panel"><button type="button" class="sp-date-clear" title="' + escapeHtml(t("date.clearAll")) + '" aria-label="' + escapeHtml(t("date.clearAll")) + '">' + X_MARK_SVG + "</button>" + dateRelRowHtml(dateForRel) + detDaysPanelHtml() + "</div>"
+        ? '<div class="sp-head-panel">' + dateClearCloseBtns() + dateRelRowHtml(dateForRel) + detDaysPanelHtml() + "</div>"
         : detDaysPanelHtml();
     }
     return out + (detModePanelOpen ? detModePanelHtml() : "") + (detObsPanelOpen ? detObsPanelHtml() : "");
@@ -9939,7 +9939,9 @@
       b.addEventListener("click", function (e) { e.stopPropagation(); setDetDateFilter(this.getAttribute("data-from"), this.getAttribute("data-to")); });
     });
     var dclr = el.querySelector(".sp-date-clear");
-    if (dclr) dclr.addEventListener("click", function (e) { e.stopPropagation(); clearDateFilters(); });
+    if (dclr) dclr.addEventListener("click", function (e) { e.stopPropagation(); closeDatePane(); });
+    var dclrf = el.querySelector(".sp-date-clearfilters");
+    if (dclrf) dclrf.addEventListener("click", function (e) { e.stopPropagation(); clearDateFilters(); });
   }
 
   // ---- Map points (user-added pins + named lists) ---------------------------
@@ -12165,9 +12167,8 @@
       if (e.target === this) navClose("distmap");
     });
     document.getElementById("recent-close").addEventListener("click", function () { navClose("recent"); });
-    document.getElementById("recent-modal").addEventListener("click", function (e) {
-      if (e.target === this) navClose("recent");
-    });
+    // No backdrop-click-to-close: after copying points to the map, a click on the
+    // (darkened) map behind the panel used to close the whole thing. Close only via ×.
     document.getElementById("recent-modal").addEventListener("click", function (e) {
       if (!e.target.closest) return;
       if (e.target.closest("#recent-dl")) {
@@ -16478,13 +16479,11 @@
     var on = speciesListSort.col === col && speciesListSort.dir === dir;
     return '<button type="button" class="sp-sort-btn' + (on ? " on" : "") + '" data-col="' + col + '" data-dir="' + dir + '" title="' + escapeHtml(title) + '">' + glyph + "</button>";
   }
-  function spSortOffHtml() {
-    // "–" (no sort) rather than ✕, so it isn't mistaken for a clear-filter button.
-    return '<button type="button" class="sp-sort-btn' + (!speciesListSort.col ? " on" : "") + '" data-col="" data-dir="off" title="' + escapeHtml(t("sort.off")) + '">–</button>';
-  }
+  // No separate "off" button — clicking the active direction a second time turns the
+  // sort off (see the wireSpHeadPanel handler).
   function spSortRowHtml(col) {
     return '<div class="sp-head-sort"><span class="sp-head-sort-lbl">' + escapeHtml(t("sort.label")) + "</span>" +
-      spSortBtnHtml(col, "asc", "▲", t("sort.asc")) + spSortBtnHtml(col, "desc", "▼", t("sort.desc")) + spSortOffHtml() + "</div>";
+      spSortBtnHtml(col, "asc", "▲", t("sort.asc")) + spSortBtnHtml(col, "desc", "▼", t("sort.desc")) + "</div>";
   }
   // Total panel: sort by total specimens OR by number of observations (the "(n)").
   function spSortRowTotalHtml() {
@@ -16492,7 +16491,13 @@
       return '<span class="sp-sort-grp">' + escapeHtml(label) + spSortBtnHtml(col, "asc", "▲", t("sort.asc")) + spSortBtnHtml(col, "desc", "▼", t("sort.desc")) + "</span>";
     }
     return '<div class="sp-head-sort"><span class="sp-head-sort-lbl">' + escapeHtml(t("sort.label")) + "</span>" +
-      grp("total", t("th.total")) + grp("pairs", t("sort.obs")) + spSortOffHtml() + "</div>";
+      grp("total", t("th.total")) + grp("pairs", t("sort.obs")) + "</div>";
+  }
+  // Clear-filters (funnel + red ×, shown when a date filter is active) and Close (green
+  // ×) buttons for the top corner of a date pane.
+  function dateClearCloseBtns() {
+    return (lastFilterActive() ? '<button type="button" class="sp-date-clearfilters" title="' + escapeHtml(t("det.clearFilters")) + '" aria-label="' + escapeHtml(t("det.clearFilters")) + '">' + filterXSvg(15) + "</button>" : "") +
+      '<button type="button" class="sp-date-clear" title="' + escapeHtml(t("btn.close")) + '" aria-label="' + escapeHtml(t("btn.close")) + '">' + X_MARK_SVG + "</button>";
   }
   function spHeadPanelHtml() {
     if (spLayout !== "table" || !spHeadPanel) return "";
@@ -16541,7 +16546,7 @@
   function spLastPanelHtml() {
     // A green × in the corner clears EVERY date filter (recency + range + months) and
     // closes the panel.
-    var html = '<div class="sp-head-panel"><button type="button" class="sp-date-clear" title="' + escapeHtml(t("date.clearAll")) + '" aria-label="' + escapeHtml(t("date.clearAll")) + '">' + X_MARK_SVG + "</button>" + spSortRowHtml("last");
+    var html = '<div class="sp-head-panel">' + dateClearCloseBtns() + spSortRowHtml("last");
     // When opened from a specific date cell, offer On / Before / After it.
     if (spHeadPanelDate) html += dateRelRowHtml(spHeadPanelDate);
     // The full recency / range / months panel (reused from "By observation").
@@ -16554,7 +16559,8 @@
       b.addEventListener("click", function (e) {
         e.stopPropagation();
         var col = this.getAttribute("data-col"), dir = this.getAttribute("data-dir");
-        if (dir === "off") { speciesListSort.col = ""; speciesListSort.dir = ""; }
+        // Click the already-active direction again → turn the sort off.
+        if (speciesListSort.col === col && speciesListSort.dir === dir) { speciesListSort.col = ""; speciesListSort.dir = ""; }
         else { speciesListSort.col = col; speciesListSort.dir = dir; }
         updateSortIndicators(); sortSpeciesList(); renderSpControls();
       });
@@ -16605,7 +16611,9 @@
       lo.addEventListener("change", apply); hi.addEventListener("change", apply);
     } else if (spHeadPanel === "last") {
       var clr = container.querySelector(".sp-date-clear");
-      if (clr) clr.addEventListener("click", function (e) { e.stopPropagation(); clearDateFilters(); });
+      if (clr) clr.addEventListener("click", function (e) { e.stopPropagation(); closeDatePane(); });
+      var clrf = container.querySelector(".sp-date-clearfilters");
+      if (clrf) clrf.addEventListener("click", function (e) { e.stopPropagation(); clearDateFilters(); });
       container.querySelectorAll(".sp-date-rel").forEach(function (b) {
         b.addEventListener("click", function (e) { e.stopPropagation(); setDetDateFilter(this.getAttribute("data-from"), this.getAttribute("data-to")); });
       });
@@ -16614,11 +16622,15 @@
   }
   // Clear every date filter (recency window → All, absolute range → off, month-of-year
   // → off) and close the Last panel.
+  // The funnel-red-× clears every date filter but leaves the pane OPEN.
   function clearDateFilters() {
     window.GeoState.save({ detRecencyDays: 0, detDateRange: null, detMonths: [] });
-    spHeadPanel = null; spHeadPanelDate = null;              // close the table's Last panel
-    detDaysPanelOpen = false; obsDatePanelDate = null;       // close the Per-observation date pane
-    detFiltersRefresh();   // map + legend + list follow; renderSpControls closes the (now-empty) panel
+    detFiltersRefresh();   // map + legend + list follow; the pane re-renders in its open state
+  }
+  // The green × just closes the pane (no clearing) — same as clicking its header again.
+  function closeDatePane() {
+    if (spHeadPanel === "last") { spHeadPanel = null; spHeadPanelDate = null; renderSpControls(); return; }
+    detDaysPanelOpen = false; obsDatePanelDate = null; reRenderFilterBar();
   }
   // Toggle a status-flag filter (★/◉/🟠/🟡/🚫), mirroring ★/◉/🟠/🟡 to the global
   // detection filters so the map + legend + record views follow (🚫 stays list-only).

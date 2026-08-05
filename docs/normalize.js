@@ -55,20 +55,30 @@ window.AppNormalize = (function () {
   // genuinely scarce in Norway). Uncorrected, every kråke exact-matches svartkråke and
   // inflates it massively.
   function isCoroneName(sn) { return /^\s*corvus corone\s*$/i.test(String(sn || "")); }
-  // Direct Artsobservasjoner: the Norwegian vernacular disambiguates precisely —
-  // "kråke" → Hooded (Corvus cornix); "svartkråke" (and anything else) keeps its name.
-  function fixNorwegianSci(sn, name) {
-    if (isCoroneName(sn) && String(name || "").trim().toLowerCase() === "kråke") return "Corvus cornix";
-    return sn;
+  // Sweden's Artportalen does the SAME lumping as Norway's Artsobservasjoner: the
+  // common Scandinavian crow — Hooded Crow, Swedish "kråka" / Norwegian "kråke" — is
+  // filed under the binomial "Corvus corone", which internationally (and in the model)
+  // is the CARRION Crow ("svartkråka" / "svartkråke", genuinely scarce). Uncorrected,
+  // every kråka/kråke exact-matches svartkråka and inflates the wrong species.
+  // Direct Artsobservasjoner / Artportalen: the vernacular disambiguates precisely —
+  // "kråke"/"kråka" → Hooded (Corvus cornix); "svartkråke"/"svartkråka" keeps its name.
+  function fixNordicCrowVernacular(sn, name) {
+    if (!isCoroneName(sn)) return sn;
+    var v = String(name || "").trim().toLowerCase();
+    return (v === "kråke" || v === "kråka") ? "Corvus cornix" : sn;
   }
-  // GBIF's Norway "Corvus corone" is ~94% Artsobservasjoner's kråke (Hooded Crow filed
-  // under the lumped name) republished via GBIF; Carrion Crow is a Norwegian rarity. No
-  // vernacular is carried here, so fold ALL Norwegian "Corvus corone" to Corvus cornix
-  // — stops the svartkråke inflation and lets it dedup with the direct Artsobs copy.
-  // (Genuine NO Carrion Crows fold in too — an accepted trade-off; SE/DK are untouched,
-  // where Carrion Crow is real.)
-  function fixGbifNordicCrow(sn, countryCode) {
-    if (isCoroneName(sn) && String(countryCode || "").toUpperCase() === "NO") return "Corvus cornix";
+  // GBIF republish (no vernacular for NO): "Corvus corone" from Norway is ~94%
+  // Artsobservasjoner's kråke (Hooded) — fold ALL NO to Corvus cornix (Carrion Crow a
+  // NO rarity; an accepted trade-off) so it stops inflating svartkråke and dedups with
+  // the direct copy. Sweden's Artportalen usually DOES carry the Swedish vernacular via
+  // GBIF, and Carrion Crow is real in the far SW, so for SE keep records whose
+  // vernacular says "svartkråka" and fold the rest (kråka / no vernacular) to Hooded.
+  // DK etc. are left untouched.
+  function fixGbifNordicCrow(sn, countryCode, vernacular) {
+    if (!isCoroneName(sn)) return sn;
+    var cc = String(countryCode || "").toUpperCase();
+    if (cc === "NO") return "Corvus cornix";
+    if (cc === "SE") return /svartkr[åa]k/i.test(String(vernacular || "")) ? sn : "Corvus cornix";
     return sn;
   }
 
@@ -139,7 +149,7 @@ window.AppNormalize = (function () {
       var sn = o.species || o.scientificName; if (!sn) return;
       sn = sn.replace(/\s+\([^)]*\)\s*/g, " ").replace(/,\s*\d{4}.*$/, "").trim();
       if (!/\s/.test(sn)) return;
-      sn = fixGbifNordicCrow(sn, o.countryCode);   // NO "Corvus corone" is Artsobs' kråke → Corvus cornix
+      sn = fixGbifNordicCrow(sn, o.countryCode, o.vernacularName);   // NO/SE "Corvus corone" (kråke/kråka) → Corvus cornix
       // Never let a dataset/source title masquerade as the common name: some GBIF
       // records carry vernacularName == the dataset (e.g. "iNaturalist research-
       // grade observations"), which would otherwise show as the species name.
@@ -171,7 +181,7 @@ window.AppNormalize = (function () {
     var out = [];
     ((obj && obj.Observations) || []).forEach(function (o) {
       var sn = o.ScientificName; if (!sn || !/\s/.test(sn)) return;
-      sn = fixNorwegianSci(sn, o.Name);   // kråke is filed under "Corvus corone" here — remap to Corvus cornix
+      sn = fixNordicCrowVernacular(sn, o.Name);   // kråke is filed under "Corvus corone" here — remap to Corvus cornix
       // Coordinates are WGS84 but decimal-comma strings; dates are dd.mm.yyyy.
       var la = parseFloat(String(o.Latitude || "").replace(",", ".")), lo = parseFloat(String(o.Longitude || "").replace(",", "."));
       var dm = String(o.CollectedDate || "").match(/(\d{2})\.(\d{2})\.(\d{4})/), date = dm ? (dm[3] + "-" + dm[2] + "-" + dm[1]) : "";
@@ -187,6 +197,7 @@ window.AppNormalize = (function () {
     (arr || []).forEach(function (o) {
       var tax = o.taxon || {}, loc = o.location || {}, ev = o.event || {};
       var sn = tax.scientificName; if (!sn || !/\s/.test(sn)) return;
+      sn = fixNordicCrowVernacular(sn, tax.vernacularName);   // Swedish "kråka" is filed under "Corvus corone" → remap to Corvus cornix
       var oid = String((o.occurrence && o.occurrence.occurrenceId) || ""), m = oid.match(/[Ss]ighting[:\/](\d+)/);
       out.push({ src: "Artportalen", speciesCode: "", sciName: sn, comName: tax.vernacularName || "", family: tax.family || "", cls: classOrKingdom(tax["class"], tax.kingdom), kingdom: tax.kingdom || "",
         lat: loc.decimalLatitude != null ? +loc.decimalLatitude : null, lon: loc.decimalLongitude != null ? +loc.decimalLongitude : null,
