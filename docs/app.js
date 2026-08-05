@@ -16466,22 +16466,24 @@
     if (!country) set("sp-prob-head", t("th.prob"), probFilterActive());
     updateSortIndicators();
   }
-  // A Sort row (▲ asc / ▼ desc / ✕ off) shared by every header panel. `col` is the
-  // sortSpeciesList column key for that header.
-  function spSortBtnHtml(col, dir, glyph, title) {
-    var on = speciesListSort.col === col && speciesListSort.dir === dir;
-    return '<button type="button" class="sp-sort-btn' + (on ? " on" : "") + '" data-col="' + col + '" data-dir="' + dir + '" title="' + escapeHtml(title) + '">' + glyph + "</button>";
+  // ONE tri-state sort button per column: unsorted (⇅) → ascending (▲) → descending
+  // (▼) → unsorted, cycling on each click (see the wireSpHeadPanel handler). `col` is
+  // the sortSpeciesList column key.
+  function spSortBtnHtml(col, title) {
+    var on = speciesListSort.col === col;
+    var glyph = on ? (speciesListSort.dir === "asc" ? "▲" : "▼") : "⇅";
+    var tip = title + " — " + (on ? (speciesListSort.dir === "asc" ? t("sort.asc") : t("sort.desc")) : t("sort.off"));
+    return '<button type="button" class="sp-sort-btn' + (on ? " on" : "") + '" data-col="' + col + '" title="' + escapeHtml(tip) + '">' + glyph + "</button>";
   }
-  // No separate "off" button — clicking the active direction a second time turns the
-  // sort off (see the wireSpHeadPanel handler).
   function spSortRowHtml(col) {
     return '<div class="sp-head-sort"><span class="sp-head-sort-lbl">' + escapeHtml(t("sort.label")) + "</span>" +
-      spSortBtnHtml(col, "asc", "▲", t("sort.asc")) + spSortBtnHtml(col, "desc", "▼", t("sort.desc")) + "</div>";
+      spSortBtnHtml(col, t("sort.label")) + "</div>";
   }
-  // Total panel: sort by total specimens OR by number of observations (the "(n)").
+  // Total panel: sort by total specimens OR by number of observations (the "(n)"),
+  // each its own tri-state button.
   function spSortRowTotalHtml() {
     function grp(col, label) {
-      return '<span class="sp-sort-grp">' + escapeHtml(label) + spSortBtnHtml(col, "asc", "▲", t("sort.asc")) + spSortBtnHtml(col, "desc", "▼", t("sort.desc")) + "</span>";
+      return '<span class="sp-sort-grp">' + escapeHtml(label) + spSortBtnHtml(col, label) + "</span>";
     }
     return '<div class="sp-head-sort"><span class="sp-head-sort-lbl">' + escapeHtml(t("sort.label")) + "</span>" +
       grp("total", t("th.total")) + grp("pairs", t("sort.obs")) + "</div>";
@@ -16553,10 +16555,11 @@
     container.querySelectorAll(".sp-sort-btn").forEach(function (b) {
       b.addEventListener("click", function (e) {
         e.stopPropagation();
-        var col = this.getAttribute("data-col"), dir = this.getAttribute("data-dir");
-        // Click the already-active direction again → turn the sort off.
-        if (speciesListSort.col === col && speciesListSort.dir === dir) { speciesListSort.col = ""; speciesListSort.dir = ""; }
-        else { speciesListSort.col = col; speciesListSort.dir = dir; }
+        var col = this.getAttribute("data-col");
+        // Cycle: none → ascending → descending → none.
+        if (speciesListSort.col !== col) { speciesListSort.col = col; speciesListSort.dir = "asc"; }
+        else if (speciesListSort.dir === "asc") { speciesListSort.dir = "desc"; }
+        else { speciesListSort.col = ""; speciesListSort.dir = ""; }
         updateSortIndicators(); sortSpeciesList(); renderSpControls();
       });
     });

@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-05 — Sort: one tri-state button instead of two (sw v915)
+
+- The panels' two sort buttons (▲ asc / ▼ desc) are now a single tri-state button that cycles
+  **unsorted (⇅) → ascending (▲) → descending (▼) → unsorted** on each click. `spSortBtnHtml(col, title)`
+  renders the current-state glyph; the `wireSpHeadPanel` handler cycles. The Total panel keeps one button
+  per metric (Total, Observations).
+
 ## 2026-08-05 — Species name search moved into the Species filter panel (sw v914)
 
 - The "Filter species…" search box moved from the always-visible `#sp-controls` bar into the **Species**
