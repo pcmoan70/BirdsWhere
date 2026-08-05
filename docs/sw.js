@@ -21,11 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v901";
+var VERSION = "v902";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• Column-header filter panels. In the Species list, click Species / Total / Last / Prob to open a panel (between the header and the rows) with that column's filter AND a sort option: Total gets lower/upper bounds, Prob a min–max slider, Species the active-filter list with a clear-all, Last the date range (incl. This/Before/After a tapped date). A funnel marks any column that's filtered. In “By observation”, funnels mark the Species/Prob/Source headers, and the Source header opens an on/off list of every source.",
   "• The single-observation menu now uses the app's own line icons throughout — the interesting / this-year / life-list toggles are drawn as monochrome icons (star, calendar, sprout) instead of colour emoji, matching the other actions.",
   "• New installs now open on the Voyager map with “More place names” on by default, so local names show right away. If you've already picked a map, your choice is kept — switch any time in Settings → Map.",
   "• Click the “Last” column header in the Species list to open the date-range panel (recency, an exact from–to range, or specific months) between the header and the first rows — the same selection as “By observation”. The chosen window also narrows the table's Total and Last columns, so the list matches what's on the map.",

@@ -1,5 +1,25 @@
 # Changes
 
+## 2026-08-05 — Column-header filter + sort panels (sw v902)
+
+Chosen interaction: clicking a header opens a panel with BOTH filter controls and a sort option.
+
+- Species list (table): the Species / Total / Last / Prob headers now open an inline panel in
+  `#sp-filters-wrap` (`spHeadPanel` state; `spHeadPanelHtml`/`wireSpHeadPanel`/`openSpHeadPanel`):
+  - Sort row (▲ asc / ▼ desc / ✕ off) on every panel → `speciesListSort` + `sortSpeciesList`
+    (columns name / count / last / prob; Total & Last added to `updateSortIndicators`).
+  - Total: lower/upper bounds `spCountMin`/`spCountMax` (inclusive) via `countInBounds`, applied in
+    `applyAgeFilter` AND `detPassesCount` (so the map dots follow). `countHeadLabel` shows "min–max".
+  - Prob: dual-range slider mirroring the hidden `prob-min`/`prob-max`, re-renders the list on release.
+  - Species: active status-flag chips (`toggleSpFlag`, factored out of the flag-column handler) + the
+    isolated-selection list (each removable) + "clear all species filters".
+  - Last: This / Before / After a tapped date, plus the recency/range/months panel (reused).
+  - Date cell click seeds the Last panel with that date. Country view keeps the old sort/agg behaviour.
+- Funnels: `ico("funnel")`; `renderSpHeads()` sets each header = label + funnel when `*FilterActive()`.
+- "By observation": `obsHeadActive` adds funnels to the Species / Prob / Source headers; the Source
+  header opens `showSrcFilterList` — every present source as an on/off toggle (all on = no filter).
+- i18n: `sort.label/asc/desc/off` added for all 15 languages; chips/dates/clear reuse existing keys.
+
 ## 2026-08-05 — Single-observation menu: self-designed icons for status toggles (sw v901)
 
 - The record menu (`drmRenderMain`, opened from a dot/pin/row = the "single observation" popup) drew its

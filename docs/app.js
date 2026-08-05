@@ -275,6 +275,8 @@
       // Monochrome line icons for the record-menu status toggles (so the popup uses
       // the app's own icon set, not colour emoji): star = interesting, calendar =
       // this-year list, sprout = life list.
+      // Funnel — an "a filter is active on this column" indicator on table/list headers.
+      funnel:   '<path d="M3 5h18l-7 8.2V20l-4-2v-4.8z"/>',
       star:     '<path d="M12 3.5l2.7 5.47 6.05.88-4.38 4.26 1.03 6.02L12 17.25 6.58 20.13l1.03-6.02L3.23 9.85l6.05-.88z"/>',
       calendar: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 9.5h16M8.5 3.3v3.4M15.5 3.3v3.4"/>',
       sprout:   '<path d="M12 21v-7.5"/><path d="M12 13.5c0-3.3 2.6-5.8 6-5.8 0 3.3-2.6 5.8-6 5.8z"/><path d="M12 13.5c0-2.7-2.1-4.8-4.8-4.8 0 2.7 2.1 4.8 4.8 4.8z"/>'
@@ -1123,7 +1125,9 @@
   //    shows "days back" instead of the date.
   //  • Total column → count: null (any) → >0 → >1 → >5 (total specimens per species).
   var speciesAgeFilterDays = 0;
-  var spCountMin = null;
+  var spCountMin = null, spCountMax = null;   // Total-column lower/upper bounds (specimens, inclusive; null = open)
+  var spHeadPanel = null;                     // which table-header panel is open: "species"|"total"|"last"|"prob"|null
+  var spHeadPanelDate = null;                 // the clicked date, so the Last panel can offer This/Before/After
   // Active sort for the per-point species list. Default is the natural model
   // ranking (prob desc, set by the render function). Clicking the Scientific
   // name or # column header overrides it and toggles asc/desc.
@@ -1260,7 +1264,13 @@
     span.textContent = "(" + pairs + ")";
   }
   function recencyHeadLabel() { return speciesAgeFilterDays > 0 ? "≤" + speciesAgeFilterDays + "d ▾" : t("th.last"); }
-  function countHeadLabel() { return spCountMin == null ? t("th.total") : ">" + spCountMin + " ▾"; }
+  function countHeadLabel() {
+    if (spCountMin == null && spCountMax == null) return t("th.total");
+    return (spCountMin == null ? "0" : spCountMin) + "–" + (spCountMax == null ? "∞" : spCountMax);
+  }
+  // Count filter test shared by the list rows and the map dots: specimens within
+  // [min, max] (either bound null = open on that side).
+  function countInBounds(n) { return (spCountMin == null || n >= spCountMin) && (spCountMax == null || n <= spCountMax); }
   // "Last" cell: the observation date, or — while the recency filter is active — the
   // number of DAYS BACK (so the column reads against the ≤Nd window on its header).
   function lastCellSet(td, ts) {
@@ -1276,7 +1286,7 @@
   // Refresh the sort-arrow indicator on the sortable column headers. Class-based
   // (▲/▼ via CSS ::after) so it doesn't disturb the headers' dynamic labels.
   function updateSortIndicators() {
-    var cols = { "sp-species-head": "name", "sp-name2-head": "name2", "sp-sci-head": "sci", "sp-prob-head": "prob", "sp-dist-head": "dist", "sp-season-head": "season", "sp-delta-head": "cmp" };
+    var cols = { "sp-species-head": "name", "sp-name2-head": "name2", "sp-sci-head": "sci", "sp-nd-head": "count", "sp-last-head": "last", "sp-prob-head": "prob", "sp-dist-head": "dist", "sp-season-head": "season", "sp-delta-head": "cmp" };
     Object.keys(cols).forEach(function (id) {
       var el = document.getElementById(id); if (!el) return;
       var on = speciesListSort.col === cols[id];
@@ -1363,9 +1373,17 @@
     var pa2 = a.prob >= 0 ? a.prob : Infinity, pb2 = b.prob >= 0 ? b.prob : Infinity;   // default: rarest first
     return (pa2 - pb2) || String(a.name || "").localeCompare(String(b.name || ""));
   }
+  // Which "By observation" header columns carry an active filter (→ funnel indicator).
+  function obsHeadActive(col) {
+    if (col === "name" || col === "name2") return detSelectionActive() || detStarFilter || detRareFilter || detYearFilter || detLifeFilter;
+    if (col === "prob") return probFilterActive();
+    if (col === "src") return !!detSrcFilter;
+    return false;
+  }
   function spObsHeadCell(col, label, num) {
     var on = spObsSort.col === col, arrow = on ? (spObsSort.dir === "asc" ? " ▲" : " ▼") : "";
-    return '<th class="sp-obs-h' + (num ? " num" : "") + '" role="button" data-col="' + col + '">' + escapeHtml(label) + arrow + "</th>";
+    var funnel = obsHeadActive(col) ? ' <span class="sp-head-funnel" aria-hidden="true">' + ico("funnel") + "</span>" : "";
+    return '<th class="sp-obs-h' + (num ? " num" : "") + '" role="button" data-col="' + col + '">' + escapeHtml(label) + arrow + funnel + "</th>";
   }
   // One record row: colour swatch + species name, 2nd name, probability, [date],
   // distance, count, [observer] — separate columns (no parenthesised 2nd name).
@@ -1452,6 +1470,8 @@
       th.addEventListener("click", function (e) {
         e.stopPropagation();
         var col = this.getAttribute("data-col");
+        // Source header opens the source on/off list (all present sources) instead of sorting.
+        if (col === "src") { var r = this.getBoundingClientRect(); showSrcFilterList(r.left, r.bottom); return; }
         if (spObsSort.col === col) spObsSort.dir = spObsSort.dir === "asc" ? "desc" : (spObsSort.dir === "desc" ? "" : "asc");
         else { spObsSort.col = col; spObsSort.dir = "asc"; }
         if (!spObsSort.dir) spObsSort.col = "";
@@ -1601,7 +1621,7 @@
   function applyAgeFilter(withBuild) {
     var tbody = document.getElementById("sp-tbody");
     if (!tbody) return;
-    var agg = tbody._sightingsAgg, days = speciesAgeFilterDays, minC = spCountMin;
+    var agg = tbody._sightingsAgg, days = speciesAgeFilterDays;
     var rareSet = spFilters.rare ? tbody._rareSet : null;
     var anyBuild = withBuild && (spFilters.star || spFilters.year || spFilters.life || spFilters.hidden);
     var now = Date.now();
@@ -1642,8 +1662,8 @@
       }
       // Last-column recency filter (≤N days back). Unlimited (0) keeps everything.
       var recencyOk = !(days > 0) || (!!flatest && Math.round((now - flatest) / 86400000) <= days);
-      // Total-column count filter (>0 / >1 / >5). null = any.
-      var countOk = (minC == null) || (fc > minC);
+      // Total-column count filter: specimens within [min, max] (either null = open).
+      var countOk = countInBounds(fc);
       tr.style.display = (recencyOk && countOk && rareOk && buildOk && !obsFilteredOut) ? "" : "none";
     });
     refreshSpExpansions();   // keep expanded detail sub-rows under their (visible) species
@@ -2537,6 +2557,7 @@
   // newest first, shown at the bottom of Settings. Keep only the latest 10; add new
   // entries at the TOP when a notable feature ships. Text is kept brief/English.
   var WHATS_NEW = [
+    { v: "v902", date: "2026-08-05", text: "Filter (and sort) each column from its header. In the Species list, click the Species, Total, Last or Probability header to open a panel between the header and the rows: Total takes a lower/upper count, Probability a min–max slider, Species lists the active species filters with a “clear all”, and Last offers the date range plus This/Before/After a tapped date. Every panel also has a sort control (ascending / descending / off). A funnel icon marks any column that currently has a filter. In the “By observation” view, funnels mark the Species, Probability and Source headers, and clicking Source opens an on/off list of all data sources." },
     { v: "v899", date: "2026-08-05", text: "New installs now default to the Voyager map with “More place names” switched on, so detailed local names are visible from the start. Your own map/label choice (if you've set one) is preserved — change it any time under Settings → Map." },
     { v: "v898", date: "2026-08-05", text: "The Species-list table gains the same date-range selection as the “By observation” view. Click the “Last” column header (or a date in the list) to open a panel — between the header and the first rows — where you can pick a recency window (days/weeks/months), an exact from–to range, or specific months. The window also filters the table's Total and Last columns, so the list reflects the same dates as the map." },
     { v: "v896", date: "2026-08-05", text: "The map-point popup is less cluttered. All the external reference links — national databases (Artsobservasjoner, Artportalen, Laji, ornitho…), the BirdLife country factsheet, Birding Places, Blogs and the “Worldwide” list — are now shown only when Experimental features are enabled (Settings). By default the popup keeps just the species list." },
@@ -7189,7 +7210,7 @@
     }
     return n;
   }
-  function detPassesCount(k) { return spCountMin == null || detSpeciesCount(k) > spCountMin; }
+  function detPassesCount(k) { return (spCountMin == null && spCountMax == null) || countInBounds(detSpeciesCount(k)); }
   function detPassesYear(k) { return !detYearFilter || !inYearList((detPlot[k] && detPlot[k].key) || k); }
   function detPassesLife(k) { return !detLifeFilter || !inLifeList((detPlot[k] && detPlot[k].key) || k); }
   // "Rare here": a species observed at this spot that the HABITAT MODEL says is
@@ -8105,6 +8126,26 @@
     if (detSrcFilter) el.appendChild(drmBtn(t("src.all"), function () { closeDetRowMenu(); setDetSrcFilter(null); }));
     positionAnchoredMenu(el, x, y);
   }
+  // The Source-header list: every present source as an on/off toggle (checked = kept).
+  // Un-ticking a source drops it; ticking every source clears the filter (null = all).
+  function showSrcFilterList(x, y) {
+    var present = detSourcesPresent();
+    if (!present.length) return;
+    var el = openAnchoredMenu("detrow-menu");
+    el.innerHTML = "";
+    var h = document.createElement("div"); h.className = "detrow-menu-hdr"; h.textContent = t("th.source"); el.appendChild(h);
+    present.forEach(function (s) {
+      var kept = !detSrcFilter || detSrcFilter.has(s);
+      el.appendChild(drmToggle({ html: ico("check") }, kept, s, function () {
+        var set = detSrcFilter ? new Set(detSrcFilter) : new Set(present);
+        if (set.has(s)) set.delete(s); else set.add(s);
+        setDetSrcFilter(present.every(function (p) { return set.has(p); }) ? null : set);   // all on → no filter
+        showSrcFilterList(x, y);   // re-open, refreshed
+      }));
+    });
+    if (detSrcFilter) el.appendChild(drmBtn(t("src.all"), function () { closeDetRowMenu(); setDetSrcFilter(null); }));
+    positionAnchoredMenu(el, x, y);
+  }
   // Set the global date-range filter (clears the month-of-year filter so the chosen
   // day isn't further narrowed). Empty from/to → open-ended on that side; both empty → off.
   function setDetDateFilter(from, to) {
@@ -8878,7 +8919,7 @@
   // recency days / date range.) Drives the black × (clear all) in both the legend
   // and the detections-list filter bar.
   function detHasFilter() {
-    return detSelectionActive() || detStarFilter || detRareFilter || detYearFilter || detLifeFilter || !!detObsFilter || !!detSrcFilter || (detRecencyDays() !== 0) || !!detDateRange() || detMonths().length > 0 || spCountMin != null;
+    return detSelectionActive() || detStarFilter || detRareFilter || detYearFilter || detLifeFilter || !!detObsFilter || !!detSrcFilter || (detRecencyDays() !== 0) || !!detDateRange() || detMonths().length > 0 || spCountMin != null || spCountMax != null;
   }
   // Reset every legend filter at once (the black ×): the species selection, the
   // ★/◉/🟡 mode filter, the observer filter, and the recency (days) window → All.
@@ -8889,11 +8930,11 @@
     detObsPanelOpen = false; detDaysPanelOpen = false; detModePanelOpen = false;
     setDetObsFilter(null);                                                   // observer → all
     detSrcFilter = null;                                                     // source → all
-    speciesAgeFilterDays = 0; spCountMin = null;                             // species-list Total/Last column filters → off
+    speciesAgeFilterDays = 0; spCountMin = null; spCountMax = null;           // species-list Total/Last column filters → off
+    spHeadPanel = null; spHeadPanelDate = null;                              // close any open header panel
     window.GeoState.save({ detRecencyDays: 0, detDateRange: null, detMonths: [] });   // days + range + months → All
     detFiltersRefresh();                                                     // map + legend + open list(s)
-    var nh = document.getElementById("sp-nd-head"); if (nh) nh.textContent = countHeadLabel();     // refresh column header labels
-    var lh = document.getElementById("sp-last-head"); if (lh) lh.textContent = recencyHeadLabel();
+    if (typeof renderSpHeads === "function") renderSpHeads();                // refresh column header labels + funnels
   }
   // The red × clears the WHOLE map of plotted points: fetched dots, plus every
   // shown saved list / detection set (un-ticked so nothing is re-injected — the
@@ -12587,11 +12628,11 @@
       var dc = e.target.closest && e.target.closest(".dl-date-click");
       if (dc) {
         e.preventDefault(); e.stopPropagation();
-        // A Last-column date on a species row opens the inline date-range panel (between
-        // the header and the rows), matching "By observation". A date inside an expanded
-        // record sub-row still opens the compact On/Before/After menu for that record.
+        // A Last-column date on a species row opens the inline date panel, seeded with
+        // that date (This / Before / After it). A date inside an expanded record sub-row
+        // still opens the compact On/Before/After menu for that specific record.
         if (dc.closest(".sp-detail-row")) { showDateFilterMenu(dc.getAttribute("data-date"), e.clientX, e.clientY); return; }
-        openDetPanel("days"); reRenderFilterBar(); scrollSpFiltersIntoView(); return;
+        openSpHeadPanel("last", dc.getAttribute("data-date")); return;
       }
       var btn = e.target.closest && e.target.closest(".det-count-btn");
       if (!btn) {
@@ -12624,25 +12665,16 @@
     var n2h = document.getElementById("sp-name2-head"); if (n2h) n2h.addEventListener("click", function () { cycleSpeciesListSort("name2"); });
     document.getElementById("sp-dist-head").addEventListener("click", function () { cycleSpeciesListSort("dist"); });
     document.getElementById("sp-season-head").addEventListener("click", function () { cycleSpeciesListSort("season"); });
-    document.getElementById("sp-prob-head").addEventListener("click", function () { cycleSpeciesListSort("prob"); });
+    // "Probability" header → the Prob filter+sort panel (point/historic). Country view
+    // keeps its aggregation cycle (a separate handler below).
+    document.getElementById("sp-prob-head").addEventListener("click", function () { openSpHeadPanel("prob"); });
     document.getElementById("sp-delta-head").addEventListener("click", function () { cycleSpeciesListSort("cmp"); });
-    // "Total" column header cycles a COUNT filter over the total specimens per species:
-    // any → >0 → >1 → >5 → any. List-only (no map effect); applied live, no re-fetch.
-    document.getElementById("sp-nd-head").addEventListener("click", function () {
-      if (!currentSpView || (currentSpView.mode !== "point" && currentSpView.mode !== "historic")) return;
-      var seq = [null, 0, 1, 5];   // any → >0 → >1 → >5 → any
-      spCountMin = seq[(seq.indexOf(spCountMin) + 1) % seq.length];
-      this.textContent = countHeadLabel();
-      rebuildDetLayers(); updateDetLegend();   // the count filter now narrows the MAP dots + legend too
-      applyAgeFilter();
-    });
-    // "Last" column header opens the date-range selection panel (recency presets, an
-    // exact from–to range, or specific months) inline between the header and the first
-    // rows — the same panel "By observation" uses. Click again to collapse it.
-    document.getElementById("sp-last-head").addEventListener("click", function () {
-      if (!currentSpView || (currentSpView.mode !== "point" && currentSpView.mode !== "historic")) return;
-      openDetPanel("days"); reRenderFilterBar(); scrollSpFiltersIntoView();
-    });
+    // "Total" header → the count-bounds filter+sort panel (lower/upper specimens). The
+    // bounds also narrow the map dots + legend.
+    document.getElementById("sp-nd-head").addEventListener("click", function () { openSpHeadPanel("total"); });
+    // "Last" header → the date filter+sort panel (recency / range / months), inline
+    // between the header and the first rows. Click again to collapse.
+    document.getElementById("sp-last-head").addEventListener("click", function () { openSpHeadPanel("last"); });
 
     // Click the "Species" column header to cycle the list through five states:
     // default (natural prob order) → only ★ starred → only 🚫 blocked →
@@ -12652,32 +12684,17 @@
     // this year's list → 🟠 not on life list → 🚫 blocked → all.
     SP_FILTER_KEYS.forEach(function (f) {
       var th = document.getElementById("sp-f-" + f); if (!th) return;
-      var toggle = function () {
-        spFilters[f] = !spFilters[f];
-        // Mirror ★ / ◉ / 🟠 / 🟡 to the GLOBAL detection filters so the MAP dots + legend
-        // + record views also narrow to those species (🚫 hidden stays list-only).
-        if (f === "star") detStarFilter = spFilters.star;
-        else if (f === "rare") detRareFilter = spFilters.rare;
-        else if (f === "year") detYearFilter = spFilters.year;
-        else if (f === "life") detLifeFilter = spFilters.life;
-        if (f !== "hidden") saveLegendState();
-        syncFlagsHead();
-        keepListScroll = true;      // a filter toggle should not jump the list to the top
-        if (f !== "hidden") { rebuildDetLayers(); updateDetLegend(); }   // map + legend follow the filter
-        // Apply the filter IN PLACE (show/hide the already-rendered rows) so toggling a
-        // cue filter stays on the list page — a full re-render (refreshCurrentView →
-        // renderSpeciesList) would drop the user back to the map-first view. Fall back to
-        // the full refresh only when the in-place path can't handle the mode (e.g. country).
-        if (f === "rare") applyAgeFilter();
-        else if (!refreshCueCellsInPlace()) refreshCurrentView();
-      };
+      var toggle = function () { toggleSpFlag(f); };   // shared with the Species header panel's chips
       th.addEventListener("click", toggle);
       th.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
     });
 
-    // The "Species" header is now a plain name sort: A→Z → Z→A → off (off
-    // returns the natural Probability-descending ranking).
-    document.getElementById("sp-species-head").addEventListener("click", function () { cycleSpeciesListSort("name"); });
+    // "Species" header → the species filter+sort panel (point/historic); country view
+    // keeps a plain name sort.
+    document.getElementById("sp-species-head").addEventListener("click", function () {
+      if (currentSpView && currentSpView.mode === "country") cycleSpeciesListSort("name");
+      else openSpHeadPanel("species");
+    });
     syncFlagsHead();
 
     // Click the "Probability" column header in country view to cycle the
@@ -16377,17 +16394,199 @@
     // The observation filter bar (day/date · mode · observer) applies to the detailed
     // record layouts; the prediction table keeps its own flag columns + age cycle.
     if (spLayout === "table") {
-      // The date-range selection is opened from the "Last" column header (click it to
-      // expand) — no separate toggle button. Just render its panel inline in
-      // #sp-filters-wrap (between the header and the first rows) when open, and wire it.
+      // Column-header panels (Species / Total / Last / Prob) open inline in
+      // #sp-filters-wrap, between the header and the first rows. No toggle button.
       var bar = document.getElementById("sp-filters-bar"); if (bar) bar.innerHTML = "";
-      var fw = document.getElementById("sp-filters-wrap"); if (fw) fw.innerHTML = detDaysPanelOpen ? detDaysPanelHtml() : "";
-      wireDetFilters(document.getElementById("species-panel"));
+      var fw = document.getElementById("sp-filters-wrap"); if (fw) fw.innerHTML = spHeadPanelHtml();
+      wireSpHeadPanel(fw);
+      renderSpHeads();
     } else {
       renderSpFilterBar();
     }
     renderSpBody();
     updateRecencyNote();
+  }
+  // ---- Species-list column-header filter+sort panels ------------------------
+  // Whether each column currently has an active (narrowing) filter — drives the
+  // funnel indicator on the header and the "clear" buttons in the panels.
+  function speciesFilterActive() { return anySpFilter() || detSelectionActive(); }
+  function totalFilterActive() { return spCountMin != null || spCountMax != null; }
+  function lastFilterActive() { return !!detDateRange() || detMonths().length > 0 || (detRecencyDays() !== 0 && detRecencyDays() !== 30); }
+  function probFilterActive() { var lo = +document.getElementById("prob-min").value, hi = +document.getElementById("prob-max").value; return lo > 0 || hi < 100; }
+  // Compose each of the four headers' innerHTML = label (+ funnel when a filter is
+  // active). Called after every render / filter change so the funnels stay in sync.
+  function renderSpHeads() {
+    var country = currentSpView && currentSpView.mode === "country";
+    function set(id, label, active) {
+      var el = document.getElementById(id); if (!el) return;
+      el.innerHTML = escapeHtml(label) + (active ? ' <span class="sp-head-funnel" aria-hidden="true">' + ico("funnel") + "</span>" : "");
+    }
+    set("sp-species-head", t("th.species"), !country && speciesFilterActive());
+    set("sp-nd-head", countHeadLabel(), !country && totalFilterActive());
+    set("sp-last-head", recencyHeadLabel(), !country && lastFilterActive());
+    // Prob header keeps its country-aggregation label in country view; funnel only in point/historic.
+    if (!country) set("sp-prob-head", t("th.prob"), probFilterActive());
+    updateSortIndicators();
+  }
+  // A Sort row (▲ asc / ▼ desc / ✕ off) shared by every header panel. `col` is the
+  // sortSpeciesList column key for that header.
+  function spSortRowHtml(col) {
+    var on = speciesListSort.col === col;
+    var asc = on && speciesListSort.dir === "asc", desc = on && speciesListSort.dir === "desc";
+    function b(dir, glyph, title) {
+      var active = dir === "off" ? !on : (dir === "asc" ? asc : desc);
+      return '<button type="button" class="sp-sort-btn' + (active ? " on" : "") + '" data-col="' + col + '" data-dir="' + dir + '" title="' + escapeHtml(title) + '">' + glyph + "</button>";
+    }
+    return '<div class="sp-head-sort"><span class="sp-head-sort-lbl">' + escapeHtml(t("sort.label")) + "</span>" +
+      b("asc", "▲", t("sort.asc")) + b("desc", "▼", t("sort.desc")) + b("off", "✕", t("sort.off")) + "</div>";
+  }
+  function spHeadPanelHtml() {
+    if (spLayout !== "table" || !spHeadPanel) return "";
+    if (currentSpView && currentSpView.mode !== "point" && currentSpView.mode !== "historic") return "";   // panels are for the observation table only
+    if (spHeadPanel === "species") return spSpeciesPanelHtml();
+    if (spHeadPanel === "total") return spTotalPanelHtml();
+    if (spHeadPanel === "prob") return spProbPanelHtml();
+    if (spHeadPanel === "last") return spLastPanelHtml();
+    return "";
+  }
+  function spSpeciesPanelHtml() {
+    var html = '<div class="sp-head-panel">' + spSortRowHtml("name");
+    // Active status-flag filters as toggle chips (mirror the flag columns).
+    var spfTip = { star: t("det.starred"), rare: t("det.rare"), year: t("det.needsYear", { year: curYear() }), life: t("det.needsLife"), hidden: t("menu.hidden") };
+    var modes = [["star", SP_FLAG_GLYPH.star], ["rare", SP_FLAG_GLYPH.rare], ["year", SP_FLAG_GLYPH.year], ["life", SP_FLAG_GLYPH.life], ["hidden", SP_FLAG_GLYPH.hidden]];
+    html += '<div class="sp-spf-modes">' + modes.map(function (m) {
+      return '<button type="button" class="sp-spf-chip' + (spFilters[m[0]] ? " on" : "") + '" data-flag="' + m[0] + '" title="' + escapeHtml(spfTip[m[0]]) + '">' + m[1] + "</button>";
+    }).join("") + "</div>";
+    // Species currently isolated by the selection filter — each removable.
+    var sel = Object.keys(detSelected).filter(function (k) { return detPlot[k]; });
+    if (sel.length) {
+      html += '<div class="sp-spf-list">' + sel.map(function (k) {
+        var nm = (labelsByKey[k] && speciesName(labelsByKey[k])) || (detPlot[k] && detPlot[k].name) || k;
+        return '<div class="sp-spf-item"><span>' + escapeHtml(nm) + '</span><button type="button" class="sp-spf-del" data-key="' + escapeHtml(k) + '" aria-label="' + escapeHtml(t("obs.removeFilter")) + '">×</button></div>';
+      }).join("") + "</div>";
+    }
+    if (speciesFilterActive()) html += '<button type="button" class="sp-spf-clear demo-btn demo-btn-light">' + escapeHtml(t("menu.removeAllSp")) + "</button>";
+    return html + "</div>";
+  }
+  function spTotalPanelHtml() {
+    return '<div class="sp-head-panel">' + spSortRowHtml("count") +
+      '<div class="sp-bound-row">' +
+        '<label>≥ <input type="number" min="0" step="1" class="sp-cnt-min" value="' + (spCountMin == null ? "" : spCountMin) + '" /></label>' +
+        '<label>≤ <input type="number" min="0" step="1" class="sp-cnt-max" value="' + (spCountMax == null ? "" : spCountMax) + '" /></label>' +
+        (totalFilterActive() ? '<button type="button" class="sp-bound-clear demo-btn demo-btn-light">' + escapeHtml(t("det.clearFilters")) + "</button>" : "") +
+      "</div></div>";
+  }
+  function spProbPanelHtml() {
+    var lo = +document.getElementById("prob-min").value, hi = +document.getElementById("prob-max").value;
+    return '<div class="sp-head-panel">' + spSortRowHtml("prob") +
+      '<div class="sp-prob-range pr-range"><div class="pr-track"></div>' +
+        '<input type="range" min="0" max="100" step="1" class="sp-prob-min" value="' + lo + '" />' +
+        '<input type="range" min="0" max="100" step="1" class="sp-prob-max" value="' + hi + '" /></div>' +
+      '<div class="sp-prob-vals"><span class="sp-prob-lo">' + lo + '%</span> – <span class="sp-prob-hi">' + hi + "%</span></div></div>";
+  }
+  function spLastPanelHtml() {
+    var html = '<div class="sp-head-panel">' + spSortRowHtml("last");
+    // When opened from a specific date cell, offer This date / Before / After it.
+    if (spHeadPanelDate) {
+      var d = spHeadPanelDate, rg = detDateRange() || {};
+      function db(labelKey, from, to) {
+        var active = (rg.from || "") === from && (rg.to || "") === to && (!!detDateRange());
+        return '<button type="button" class="sp-date-rel' + (active ? " on" : "") + '" data-from="' + from + '" data-to="' + to + '">' + escapeHtml(t(labelKey)) + "</button>";
+      }
+      html += '<div class="sp-date-rel-row"><span class="sp-head-sort-lbl">' + escapeHtml(fmtDate(d) || d) + "</span>" +
+        db("date.on", d, d) + db("date.before", "", d) + db("date.after", d, "") + "</div>";
+    }
+    // The full recency / range / months panel (reused from "By observation").
+    return html + detDaysPanelHtml() + "</div>";
+  }
+  function wireSpHeadPanel(container) {
+    if (!container || !spHeadPanel) return;
+    // Sort buttons (all panels).
+    container.querySelectorAll(".sp-sort-btn").forEach(function (b) {
+      b.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var col = this.getAttribute("data-col"), dir = this.getAttribute("data-dir");
+        if (dir === "off") { speciesListSort.col = ""; speciesListSort.dir = ""; }
+        else { speciesListSort.col = col; speciesListSort.dir = dir; }
+        updateSortIndicators(); sortSpeciesList(); renderSpControls();
+      });
+    });
+    if (spHeadPanel === "species") {
+      container.querySelectorAll(".sp-spf-chip").forEach(function (c) {
+        c.addEventListener("click", function (e) { e.stopPropagation(); toggleSpFlag(this.getAttribute("data-flag")); renderSpControls(); });
+      });
+      container.querySelectorAll(".sp-spf-del").forEach(function (x) {
+        x.addEventListener("click", function (e) { e.stopPropagation(); delete detSelected[this.getAttribute("data-key")]; saveLegendState(); rebuildDetLayers(); updateDetLegend(); renderSpControls(); });
+      });
+      var clr = container.querySelector(".sp-spf-clear");
+      if (clr) clr.addEventListener("click", function (e) {
+        e.stopPropagation();
+        clearSpFilters(); detSelected = {};
+        detStarFilter = detRareFilter = detYearFilter = detLifeFilter = false;
+        syncFlagsHead(); saveLegendState(); rebuildDetLayers(); updateDetLegend();
+        if (!refreshCueCellsInPlace()) applyAgeFilter();
+        renderSpControls();
+      });
+    } else if (spHeadPanel === "total") {
+      function applyBounds() {
+        var mn = container.querySelector(".sp-cnt-min").value, mx = container.querySelector(".sp-cnt-max").value;
+        spCountMin = mn === "" ? null : Math.max(0, parseInt(mn, 10) || 0);
+        spCountMax = mx === "" ? null : Math.max(0, parseInt(mx, 10) || 0);
+        rebuildDetLayers(); updateDetLegend();   // the count filter narrows the map dots + legend too
+        applyAgeFilter(); renderSpHeads();
+      }
+      container.querySelectorAll(".sp-cnt-min, .sp-cnt-max").forEach(function (inp) { inp.addEventListener("change", function (e) { e.stopPropagation(); applyBounds(); }); });
+      var bc = container.querySelector(".sp-bound-clear");
+      if (bc) bc.addEventListener("click", function (e) { e.stopPropagation(); spCountMin = null; spCountMax = null; rebuildDetLayers(); updateDetLegend(); applyAgeFilter(); renderSpControls(); });
+    } else if (spHeadPanel === "prob") {
+      var lo = container.querySelector(".sp-prob-min"), hi = container.querySelector(".sp-prob-max");
+      function upd(e) {
+        var l = +lo.value, h = +hi.value;
+        if (l > h) { if (e && e.target === lo) { hi.value = l; h = l; } else { lo.value = h; l = h; } }
+        container.querySelector(".sp-prob-lo").textContent = l + "%"; container.querySelector(".sp-prob-hi").textContent = h + "%";
+        return { l: l, h: h };
+      }
+      function apply(e) {
+        var v = upd(e);
+        document.getElementById("prob-min").value = v.l; document.getElementById("prob-max").value = v.h;
+        document.getElementById("prob-min-val").textContent = v.l + "%"; document.getElementById("prob-max-val").textContent = v.h + "%";
+        window.GeoState.save({ probMin: v.l, probMax: v.h });
+        rerenderPointList();   // re-filter the list to the new range (panel re-renders open)
+      }
+      lo.addEventListener("input", upd); hi.addEventListener("input", upd);
+      lo.addEventListener("change", apply); hi.addEventListener("change", apply);
+    } else if (spHeadPanel === "last") {
+      container.querySelectorAll(".sp-date-rel").forEach(function (b) {
+        b.addEventListener("click", function (e) { e.stopPropagation(); setDetDateFilter(this.getAttribute("data-from"), this.getAttribute("data-to")); });
+      });
+      wireDetFilters(document.getElementById("species-panel"));   // recency chips / range inputs / month chips
+    }
+  }
+  // Toggle a status-flag filter (★/◉/🟠/🟡/🚫), mirroring ★/◉/🟠/🟡 to the global
+  // detection filters so the map + legend + record views follow (🚫 stays list-only).
+  // Shared by the flag column headers and the Species header panel's chips.
+  function toggleSpFlag(f) {
+    if (!f || !(f in spFilters)) return;
+    spFilters[f] = !spFilters[f];
+    if (f === "star") detStarFilter = spFilters.star;
+    else if (f === "rare") detRareFilter = spFilters.rare;
+    else if (f === "year") detYearFilter = spFilters.year;
+    else if (f === "life") detLifeFilter = spFilters.life;
+    if (f !== "hidden") saveLegendState();
+    syncFlagsHead();
+    keepListScroll = true;
+    if (f !== "hidden") { rebuildDetLayers(); updateDetLegend(); }
+    if (f === "rare") applyAgeFilter();
+    else if (!refreshCueCellsInPlace()) refreshCurrentView();
+  }
+  // Open (or, if already open, close) a table-header filter panel. `date` seeds the
+  // Last panel's This/Before/After. Point/historic only — country view has no records.
+  function openSpHeadPanel(which, date) {
+    if (!currentSpView || (currentSpView.mode !== "point" && currentSpView.mode !== "historic")) return;
+    spHeadPanel = (spHeadPanel === which && !date) ? null : which;
+    spHeadPanelDate = (which === "last") ? (date || null) : null;
+    renderSpControls();
+    scrollSpFiltersIntoView();
   }
   async function renderSpeciesList(lat, lon, hist) {
     // `hist` (optional) = { from, to, range }: Historic-observations mode. The
@@ -16423,12 +16622,9 @@
     var slt = document.getElementById("species-list-table"); if (slt) slt.classList.toggle("no-model", !groupHasModel());
     // Reset the agg toggle on the prob column header (country-only feature).
     var ph0 = document.getElementById("sp-prob-head");
-    if (ph0) { ph0.textContent = t("th.prob"); ph0.title = ""; ph0.classList.remove("clickable-head"); }
+    if (ph0) { ph0.title = ""; ph0.classList.remove("clickable-head"); }
     syncFlagsHead();
-    var ah0 = document.getElementById("sp-nd-head");
-    if (ah0) ah0.textContent = countHeadLabel();
-    var lh0 = document.getElementById("sp-last-head");
-    if (lh0) lh0.textContent = recencyHeadLabel();
+    renderSpHeads();   // header labels + funnels (Species / Total / Last / Prob)
     updateSortIndicators();
     var week = +document.getElementById("week-select").value;
     var pmin = +document.getElementById("prob-min").value / 100;
