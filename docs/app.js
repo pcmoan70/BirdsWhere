@@ -1280,7 +1280,23 @@
     return null;
   }
   function spDetailRowsFor(key) {
-    var rows = collectVisibleDetections(null, true).filter(function (d) { return d.key === key; });
+    // Build the expanded records from the SAME aggregation the Total column counts
+    // (tbody._sightingsAgg), filtered by the active date/observer/source filters — so
+    // the expanded list matches the Total. (It used to read detPlot, the plotted map
+    // dots, which can be a subset — hence "20" but only 1 record expanded.)
+    var tbody = document.getElementById("sp-tbody"), agg = tbody && tbody._sightingsAgg, e = agg && agg[key];
+    var rows;
+    if (e && e.rows && e.rows.length) {
+      var lbl = labelsByKey[key], nm = (lbl && speciesName(lbl)) || e.name || key, spCol = e.color || speciesColor(key);
+      rows = [];
+      e.rows.forEach(function (r) {
+        if (!detDatePasses(r.date) || !detObsPasses(r) || !detPassesSrc(r)) return;
+        rows.push({ key: key, name: nm, color: spCol, lat: r.lat, lon: r.lon, date: r.date || "", src: r.src || "", origin: r.origin || "",
+          url: r.url || "", place: r.place || "", count: (r.count != null ? r.count : ""), act: r.act || "", note: r.note || "", observer: r.observer || "", prob: (r._prob != null ? r._prob : -1) });
+      });
+    } else {
+      rows = collectVisibleDetections(null, true).filter(function (d) { return d.key === key; });   // extras / no agg → fall back to plotted rows
+    }
     var col = speciesListSort.col, dir = speciesListSort.dir;
     if (col === "dist") {
       var oLat = currentSpView ? +currentSpView.lat : NaN, oLon = currentSpView ? +currentSpView.lon : NaN;
@@ -2725,6 +2741,7 @@
         lon: o.decimalLongitude != null ? o.decimalLongitude : null,
         place: o.locality || o.verbatimLocality || o.stateProvince || o.county || o.country || "",
         who: (Array.isArray(o.recordedBy) ? o.recordedBy.join(", ") : o.recordedBy) || o.datasetName || "",
+        count: (o.individualCount != null ? o.individualCount : ""),
         note: o.occurrenceRemarks || "",
         url: o.key ? "https://www.gbif.org/occurrence/" + o.key : ""
       };
@@ -4532,7 +4549,8 @@
         lat: o.lat != null ? o.lat : null,
         lon: o.lng != null ? o.lng : null,
         place: o.locName || "",
-        who: (o.howMany != null ? "×" + o.howMany : ""),
+        who: (o.userDisplayName || ""),
+        count: (o.howMany != null ? o.howMany : ""),   // now its own column (was shown as "×N" in the who cell)
         note: "",   // the basic geo/recent endpoint carries no observer comments
         url: o.subId ? "https://ebird.org/checklist/" + o.subId : ""
       };
@@ -4566,10 +4584,10 @@
   function recentCsv() {
     var m = lastRecentMeta || {};
     var lines = ["# " + (m.name || "") + " (" + (m.sci || "") + ") | " + (m.lat != null ? m.lat.toFixed(4) + "°, " + m.lon.toFixed(4) + "°" : "")];
-    lines.push("date,source,class,origin,lat,lon,place,observer_or_count,notes,url");
+    lines.push("date,source,class,origin,lat,lon,place,count,observer,notes,url");
     lastRecentRows.forEach(function (r) {
       lines.push([csvEsc(r.date), r.src, csvEsc(r.cls || ""), csvEsc(r.origin || r.src), r.lat != null ? r.lat : "", r.lon != null ? r.lon : "",
-        csvEsc(r.place), csvEsc(r.who), csvEsc(r.note || ""), csvEsc(r.url)].join(","));
+        csvEsc(r.place), (r.count != null ? r.count : ""), csvEsc(r.who), csvEsc(r.note || ""), csvEsc(r.url)].join(","));
     });
     return lines.join("\n");
   }
@@ -4628,7 +4646,8 @@
         // GBIF aggregates many datasets — badge such rows by their origin platform + [GBIF].
         var badge = '<span class="rc-src rc-src-' + srcSlug(r.src) + '" title="' + escapeHtml(r.origin || r.src) + '">' + escapeHtml(srcLabel(r) || "") + "</span>";
         var clsBadge = r.cls ? '<span class="rc-cls" title="' + escapeHtml(r.cls) + '">' + classGlyph(r.cls) + "</span> " : "";
-        return '<tr><td class="rc-date">' + escapeHtml(fmtDate(r.date)) + '</td><td class="rc-srccell">' + badge + '</td><td class="rc-place">' + clsBadge + cell + '</td><td class="rc-who">' + escapeHtml(r.who) + "</td></tr>";
+        var cnt = (r.count != null && r.count !== "") ? "×" + escapeHtml(String(r.count)) : "";
+        return '<tr><td class="rc-date">' + escapeHtml(fmtDate(r.date)) + '</td><td class="rc-srccell">' + badge + '</td><td class="rc-place">' + clsBadge + cell + '</td><td class="rc-count num">' + cnt + '</td><td class="rc-who">' + escapeHtml(r.who) + "</td></tr>";
       }).join("");
       body.innerHTML = '<div class="recent-head"><span class="recent-src">' + escapeHtml(cap + " · " + fmtDate(d1) + " – " + fmtDate(d2) + " · " + radiusLabel(rkm)) + "</span>" +
         '<span class="recent-head-btns"><button type="button" id="recent-map">' + escapeHtml(t("btn.showInMap")) + "</button>" +

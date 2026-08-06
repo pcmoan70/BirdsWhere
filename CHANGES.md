@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-08-06 — Fix count mismatches: expanded records + "More of these" (sw v922)
+
+- **Expanded species records now match the Total.** `spDetailRowsFor` read from `detPlot` (the plotted
+  map dots — often a subset), while the Total counts `tbody._sightingsAgg[key].rows`. So a species showing
+  "20" could expand to 1 record. It now builds the expanded list from the same aggregation the Total uses
+  (filtered by the active date/observer/source), falling back to `detPlot` only for extras / no-agg.
+- **"More of these" shows counts.** The recent-fetch rows carried no `count` field (GBIF/iNat omitted it,
+  eBird stuffed "×N" into the observer cell). Added `count` to `gbifRecent` (individualCount) and
+  `ebirdRecent` (howMany, observer moved to its own cell), a **count column** in the panel table, and the
+  count to the CSV export.
+
 ## 2026-08-06 — "By observation" rows use the state dot (sw v921)
 
 - `spRecRowHtml` (the "By observation" record rows) now draws the species dot via `spListDot` /
