@@ -4034,12 +4034,14 @@
   // enabled as soon as ANY data has arrived (partial or complete) so the user can
   // pin what's come in without waiting for every source to finish.
   function updateSpMapBtn() {
+    var btn = document.getElementById("viewtoggle-btn");
+    if (!btn || !onListView()) return;
+    // Standalone plotted-detections list (no clicked point) → always allow toggling back to the map.
+    if (!speciesPanelPopulated()) { btn.disabled = false; return; }
     var r = currentSpView && currentSpView._result;
     var hasData = !!(r && (r.dedupTotal > 0 || (r.agg && Object.keys(r.agg).length) || (r.extras && Object.keys(r.extras).length)));
-    // The header switch: while on the list (icon = go to Map) only enable once
-    // there's something to plot.
-    var btn = document.getElementById("viewtoggle-btn");
-    if (btn && onListView()) btn.disabled = !hasData;
+    // While on the per-point list (icon = go to Map) only enable once there's something to plot.
+    btn.disabled = !hasData;
   }
   // Populate the per-point species-list rows with count + days-since-most-recent
   // from the cached all-species fetch. Cells stay blank for species without any
@@ -8763,9 +8765,13 @@
   // ---- List ⇄ Map view switch (header) -------------------------------------
   // A fetched species list (Species-List or Historic mode) can be viewed as the
   // list page or plotted on the map; the header switch flips between them.
+  function hasPlottedDetections() { return typeof detPlot !== "undefined" && Object.keys(detPlot).length > 0; }
   function viewToggleAvail() {
-    return (currentMode === "list" || currentMode === "historic") &&
-      !!(currentSpView && isFinite(+currentSpView.lat) && isFinite(+currentSpView.lon));
+    if (currentMode !== "list" && currentMode !== "historic") return false;
+    // A clicked-point species list, OR — with no point (e.g. after Fetch on open) —
+    // whenever there are detections on the map (toggle opens their "By observation" list).
+    if (currentSpView && isFinite(+currentSpView.lat) && isFinite(+currentSpView.lon)) return true;
+    return hasPlottedDetections();
   }
   function onListView() {
     var sp = document.getElementById("species-panel");
@@ -8783,13 +8789,29 @@
     if (onListView()) { btn.innerHTML = VT_MAP_SVG; btn.title = t("view.map"); btn.setAttribute("aria-label", t("view.map")); }
     else { btn.innerHTML = VT_LIST_SVG; btn.title = t("view.list"); btn.setAttribute("aria-label", t("view.list")); btn.disabled = false; }
   }
+  // A standalone "By observation" list of ALL plotted detections — shown by the header
+  // toggle when there's no per-point species list (e.g. after Fetch on open). Uses the
+  // same renderer as the species panel's "By observation" layout.
+  function renderPlottedObsPage() {
+    var rec = document.getElementById("sp-records"); if (!rec) return;
+    var tbl = document.getElementById("species-list-table"); if (tbl) tbl.style.display = "none";
+    var ctrls = document.getElementById("sp-controls"); if (ctrls) ctrls.style.display = "none";   // no per-point controls without a point
+    var fw = document.getElementById("sp-filters-wrap"); if (fw) fw.innerHTML = "";
+    var spTitle = document.getElementById("sp-title"); if (spTitle) spTitle.textContent = t("panel.spTitle");
+    var coords = document.getElementById("sp-coords"); if (coords) coords.textContent = "";
+    var rows = collectVisibleDetections(null, true);
+    rec.style.display = "";
+    rec.innerHTML = rows.length ? buildSpObsHtml(rows) : '<div class="dl-empty">' + escapeHtml(t("detlist.empty")) + "</div>";
+    wireSpDetail(rec);
+  }
   function showListView() {
     if (!viewToggleAvail()) return;
     var sp = document.getElementById("species-panel"); if (!sp) return;
     var bc = document.getElementById("barchart-panel"); if (bc) bc.style.display = "none";
+    if (!speciesPanelPopulated()) renderPlottedObsPage();   // no clicked point → list the plotted detections
     sp.classList.add("as-page"); sp.style.display = "block"; sp.scrollTop = 0;
     navOpen("page", closeAnyFullPage);
-    restrictListToView();   // the switch reflects the CURRENT map view
+    if (speciesPanelPopulated()) restrictListToView();   // per-point list: reflect the CURRENT map view
     updateViewToggle();
   }
   // Opening the list from the map restricts it to the species that actually have a
@@ -8820,7 +8842,9 @@
   function goToMapView() {
     if (!viewToggleAvail()) return;
     if (onListView()) navClose("page");   // close the list page (hides the panel + rewinds Back)
-    plotAllSightings();
+    // Per-point list: (re)plot its sightings. Standalone plotted-detections list: they're
+    // already on the map, so nothing to re-plot.
+    if (currentSpView && (currentSpView.mode === "point" || currentSpView.mode === "historic")) plotAllSightings();
     updateViewToggle();
   }
   function plotAllSightings() {
@@ -8898,8 +8922,9 @@
       if (bounds.isValid() && !autoOpenPlotting && !plotNoFit) { try { map.fitBounds(bounds.pad(0.2)); } catch (e3) {} }
       // Don't auto-switch the list⇄map view here — that only changes when the user taps
       // the header toggle. (The map-first flow already hid the list; re-plots on filter
-      // changes must NOT yank the user off the list.) Just refresh the toggle icon.
-      if (!autoOpenPlotting) updateViewToggle();
+      // changes must NOT yank the user off the list.) Just refresh the toggle icon —
+      // safe even during Fetch on open, since it only updates the button, not the view.
+      updateViewToggle();
       if (map) map.invalidateSize();
       // Per-source breakdown (raw records each source returned) so it's clear
       // which databases actually contributed — e.g. whether eBird downloaded.
@@ -14212,10 +14237,12 @@
             detLegendMini = false; saveLegendState(); updateDetLegend();
           }
           setStatus(t("loc.fetchedAll", { n: locs.length }));
+          updateViewToggle();   // detections are on the map now → offer the list toggle
           return;
         }
         fitToAreas();   // manual "Fetch observations": always fit to the fetched areas
         setStatus(t("loc.fetchedAll", { n: locs.length }));
+        updateViewToggle();
         return;
       }
       var l = locs[i++];

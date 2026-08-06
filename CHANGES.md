@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-08-06 — List/map toggle works after Fetch on open (sw v924)
+
+- The list/map toggle needed a clicked point (`currentSpView`), which Fetch on open never sets — so it
+  stayed greyed/hidden even with detections on the map. Now `viewToggleAvail()` also returns true when
+  there are plotted detections (`hasPlottedDetections`), and the toggle opens a standalone **"By
+  observation"** list of all plotted detections (`renderPlottedObsPage`) when there's no per-point list.
+- `updateViewToggle()` is now called as detections plot (even during Fetch on open — it only updates the
+  button, not the view) and on completion, so the toggle enables in real time. `updateSpMapBtn` keeps it
+  enabled on the standalone page; `goToMapView` skips the re-plot there (already on the map).
+
 ## 2026-08-06 — Re-fetching a spot after a radius change replaces its outline (sw v923)
 
 - The remembered fetched-area outlines were keyed by spot **+ radius**, so re-fetching a spot after
