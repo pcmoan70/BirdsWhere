@@ -5700,6 +5700,28 @@
       }
       taxByCode[code] = obj;
     }
+    applyTaxNameFixes();
+  }
+  // The model's bundled taxonomy mislabels brnowl (Tyto alba — the Western/European Barn
+  // Owl) with the AMERICAN Barn Owl's names in every language, identical to the real
+  // American Barn Owl (Tyto furcata, code 1578502). So European Tyto alba observations,
+  // though matched correctly, displayed as "amerikatårnugle". Correct brnowl's vernacular
+  // names here; this also fixes the match index (so "American Barn Owl" maps only to furcata).
+  var TAX_NAME_FIX = {
+    brnowl: {
+      com_name: "Western Barn Owl", common_name_no: "tårnugle", common_name_sv: "tornuggla",
+      common_name_de: "Schleiereule", common_name_es: "Lechuza común", common_name_fr: "Effraie des clochers",
+      common_name_nl: "Kerkuil", common_name_it: "Barbagianni", common_name_pt: "coruja-das-torres",
+      common_name_pl: "płomykówka", common_name_cs: "sova pálená", common_name_da: "slørugle",
+      common_name_fi: "tornipöllö", common_name_et: "loorkakk", common_name_lt: "liepsnotoji pelėda"
+    }
+  };
+  function applyTaxNameFixes() {
+    Object.keys(TAX_NAME_FIX).forEach(function (code) {
+      var row = taxByCode[code]; if (!row) return;
+      var fix = TAX_NAME_FIX[code];
+      Object.keys(fix).forEach(function (col) { row[col] = fix[col]; });
+    });
   }
 
   // Minimal RFC-4180-ish CSV parser (handles quoted fields, commas, newlines).

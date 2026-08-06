@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-08-06 — Fix: Barn Owl mislabelled as "American Barn Owl" (sw v947)
+
+- The model's bundled taxonomy names `brnowl` (Tyto alba — the Western/European Barn Owl) as the *American*
+  Barn Owl in every language (e.g. Norwegian "amerikatårnugle"), identical to the real American Barn Owl
+  (Tyto furcata, `1578502`). So European Tyto alba sightings — matched correctly — displayed under the wrong
+  name. Added a runtime `TAX_NAME_FIX` (applied at the end of `loadTaxonomy`) correcting `brnowl`'s vernacular
+  names across the 15 UI languages (no "tårnugle", sv "tornuggla", de "Schleiereule", en "Western Barn Owl",
+  …). This also fixes the match index so "American Barn Owl" maps only to Tyto furcata. No cache bump needed
+  (names resolve live from `taxByCode`).
+
 ## 2026-08-06 — Fix: long-press filter-clear × now shows the all-filters pane (sw v946)
 
 - Long-pressing the legend's filter-clear × opened the all-filters pane, but the finger-release/mouse-up
