@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-06 — Legend counts now match the Total column (deduped specimens) (sw v928)
+
+- The legend's "n/t" counted RECORDS, while the Species-list Total and the count filter (>N) count
+  deduped SPECIMENS — so a species could read e.g. "3" in the legend yet ">5" in the count filter.
+  `detVisibleCount` now returns deduped **specimens** passing the active date/observer/source (and
+  legend-view) filters; new `detTotalCount` gives the total specimens for the "/t". Factored the shared
+  dedup+sum into `specimenTotal`. The legend, the count filter and the Total column now agree.
+
 ## 2026-08-06 — Auto-fit floors at ~2.5 km (single observation keeps context) (sw v927)
 
 - Fetching a single observation used to zoom the map all the way in. New `fitBoundsMin(bounds, pad, minKm)`

@@ -7231,9 +7231,11 @@
   // counted ONCE. Used by the list Total, the map count filter and the extras rows so
   // they always agree. (detDupHidden only marks the plotted copies, so we re-dedup here
   // by the same key to cover the list's aggregation rows too.)
-  function dedupedSpecimenTotal(rows) {
-    var vis = [];
-    for (var i = 0; i < (rows || []).length; i++) { var r = rows[i]; if (detDatePasses(r.date) && detObsPasses(r) && detPassesSrc(r)) vis.push(r); }
+  // Deduped specimen total over an ALREADY-selected row set (no date/obs/src filtering
+  // here). With "Deduplicate detections" on, a cross-database duplicate (same
+  // observer/place/date/count from ≥2 sources) counts once.
+  function specimenTotal(vis) {
+    vis = vis || [];
     if (!dedupDetections()) { var t = 0; for (var j = 0; j < vis.length; j++) t += specimensOf(vis[j]); return t; }
     var groups = Object.create(null), order = [], total = 0;
     vis.forEach(function (r) {
@@ -7249,6 +7251,11 @@
       else total += specimensOf(g[0]);   // cross-database duplicate → count once
     });
     return total;
+  }
+  function dedupedSpecimenTotal(rows) {
+    var vis = [];
+    for (var i = 0; i < (rows || []).length; i++) { var r = rows[i]; if (detDatePasses(r.date) && detObsPasses(r) && detPassesSrc(r)) vis.push(r); }
+    return specimenTotal(vis);
   }
   function detSpeciesCount(k) { return dedupedSpecimenTotal((detPlot[k] || {}).rows || []); }
   // Number of distinct observations behind the specimen total: distinct observer × date
@@ -9620,17 +9627,23 @@
   // (NOT the per-species selection). Drives which species the legend lists. When
   // legendViewBounds is set (the "filter legend to view" setting), a row must also
   // fall inside the current map view — so panning/zooming narrows the legend.
+  // Deduped SPECIMENS of a species passing the active date/observer/source filters (and
+  // the "filter legend to view" bounds when on) — so the legend count matches the
+  // Species-list Total and the count filter (which both count specimens, not records).
   function detVisibleCount(k) {
     var e = detPlot[k]; if (!e || !e.rows) return 0;
-    var b = legendViewBounds, n = 0;
+    var b = legendViewBounds, vis = [];
     for (var i = 0; i < e.rows.length; i++) {
       var r = e.rows[i];
       if (!detDatePasses(r.date) || !detObsPasses(r) || !detPassesSrc(r)) continue;
       if (b && !(isFinite(+r.lat) && isFinite(+r.lon) && b.contains([+r.lat, +r.lon]))) continue;
-      n++;
+      vis.push(r);
     }
-    return n;
+    return specimenTotal(vis);
   }
+  // Total deduped specimens for a species, ignoring the active filters — the "/ t" of the
+  // legend's "n/t".
+  function detTotalCount(k) { var e = detPlot[k]; return (e && e.rows) ? specimenTotal(e.rows) : 0; }
   // Model week (1–48) for an observation date; falls back to the current week.
   function weekOfDate(s) {
     var d = s ? new Date(s) : null;
@@ -9877,8 +9890,9 @@
       (keys.length ? "" : '<div class="det-empty">' + escapeHtml(t("det.noMatch")) + "</div>") +
       keys.map(function (k) {
         var e = detPlot[k], nm = escapeHtml(detName(e));
-        var vis = visCount[k] != null ? visCount[k] : e.rows.length;   // detections passing days + observer
-        var ct = (vis === e.rows.length) ? String(vis) : (vis + "/" + e.rows.length);
+        var tot = detTotalCount(k);   // total specimens (deduped)
+        var vis = visCount[k] != null ? visCount[k] : tot;   // specimens passing the active filters
+        var ct = (vis === tot) ? String(vis) : (vis + "/" + tot);
         // When a selection is active, non-selected rows show a grey swatch and
         // dimmed text so it's clear they're hidden on the map.
         var selActive = hasSel, sel = !!detSelected[k];
