@@ -1,5 +1,19 @@
 # Changes
 
+## 2026-08-06 — Legend n/t totals follow the map view (sw v931)
+
+- With "Filter the legend to the map view" on, the "/t" total in each legend row now also respects the
+  current viewport — `detTotalCount` intersects a species' rows with `legendViewBounds` when it's set — so
+  panning/zooming recomputes both numbers of n/t (t = total in view), matching the filtered count.
+
+## 2026-08-06 — Total column filter: Total/Observations toggle (sw v930)
+
+- The Total header panel's count range is now `[ ] ≤ (Total|Observations) ≤ [ ]`, with a toggle button
+  between the bounds that switches whether the lower/upper limits restrict deduped **Total** specimens or
+  the number of **Observations** (distinct observer×date pairs). New `spCountMetric` ("total"|"pairs");
+  `detPassesCount`/`applyAgeFilter` read the pairs count via `detSpeciesPairs`/`data-pairs` when on. Empty
+  boxes still mean no count restriction.
+
 ## 2026-08-06 — Date pane: date + On/Before/After + sort on one line (sw v929)
 
 - In the Last (date range) panel, dropped the "Sort" label and moved the tri-state sort button onto the

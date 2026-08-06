@@ -2154,6 +2154,9 @@ button.dd-name:hover { text-decoration: underline; }
 .sp-splist-save { align-self: flex-start; }
 .sp-bound-row label { display: flex; align-items: center; gap: 5px; font-size: 0.9rem; }
 .sp-bound-row input[type="number"] { width: 66px; padding: 3px 5px; border: 1px solid var(--border); border-radius: 5px; }
+.sp-bound-op { font-size: 0.95rem; color: var(--ink-muted); }
+.sp-cnt-metric { padding: 3px 9px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); color: var(--ink); font-size: 0.85rem; cursor: pointer; white-space: nowrap; }
+.sp-cnt-metric:hover { border-color: var(--brand); color: var(--brand); }
 .sp-prob-vals { font-size: 0.8rem; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
 .sp-head-funnel { display: inline-flex; vertical-align: middle; color: var(--brand); }
 .sp-head-funnel .btn-ico { width: 12px; height: 12px; }

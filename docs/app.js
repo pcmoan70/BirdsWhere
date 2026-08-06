@@ -1125,7 +1125,8 @@
   //    shows "days back" instead of the date.
   //  • Total column → count: null (any) → >0 → >1 → >5 (total specimens per species).
   var speciesAgeFilterDays = 0;
-  var spCountMin = null, spCountMax = null;   // Total-column lower/upper bounds (specimens, inclusive; null = open)
+  var spCountMin = null, spCountMax = null;   // Total-column lower/upper bounds (inclusive; null = open)
+  var spCountMetric = "total";                // which count the bounds restrict: "total" (specimens) or "pairs" (observations)
   var spNameQuery = "";                       // species-list name filter (raw text; lowercased at compare time)
   var spHeadPanel = null;                     // which table-header panel is open: "species"|"total"|"last"|"prob"|null
   var spHeadPanelDate = null;                 // the clicked date, so the Last panel can offer This/Before/After
@@ -1696,8 +1697,9 @@
       }
       // Last-column recency filter (≤N days back). Unlimited (0) keeps everything.
       var recencyOk = !(days > 0) || (!!flatest && Math.round((now - flatest) / 86400000) <= days);
-      // Total-column count filter: specimens within [min, max] (either null = open).
-      var countOk = countInBounds(fc);
+      // Total-column count filter: the chosen metric (specimens or observations) within
+      // [min, max] (either null = open).
+      var countOk = countInBounds(spCountMetric === "pairs" ? (parseInt(tr.getAttribute("data-pairs"), 10) || 0) : fc);
       // Species selection / applied species list: keep only the selected species.
       var selOk = !hasSel || (!!key && !!detSelected[key]);
       tr.style.display = (recencyOk && countOk && rareOk && buildOk && !obsFilteredOut && selOk) ? "" : "none";
@@ -7258,6 +7260,7 @@
     return specimenTotal(vis);
   }
   function detSpeciesCount(k) { return dedupedSpecimenTotal((detPlot[k] || {}).rows || []); }
+  function detSpeciesPairs(k) { return distinctObsDatePairs((detPlot[k] || {}).rows || []); }
   // Number of distinct observations behind the specimen total: distinct observer × date
   // pairs (deduplicated records) over the rows that pass the active filters. Shown in
   // the Total column as "31(3)" — 31 specimens across 3 observation events.
@@ -7271,7 +7274,7 @@
     }
     return n;
   }
-  function detPassesCount(k) { return (spCountMin == null && spCountMax == null) || countInBounds(detSpeciesCount(k)); }
+  function detPassesCount(k) { return (spCountMin == null && spCountMax == null) || countInBounds(spCountMetric === "pairs" ? detSpeciesPairs(k) : detSpeciesCount(k)); }
   function detPassesYear(k) { return !detYearFilter || !inYearList((detPlot[k] && detPlot[k].key) || k); }
   function detPassesLife(k) { return !detLifeFilter || !inLifeList((detPlot[k] && detPlot[k].key) || k); }
   // "Rare here": a species observed at this spot that the HABITAT MODEL says is
@@ -9642,8 +9645,19 @@
     return specimenTotal(vis);
   }
   // Total deduped specimens for a species, ignoring the active filters — the "/ t" of the
-  // legend's "n/t".
-  function detTotalCount(k) { var e = detPlot[k]; return (e && e.rows) ? specimenTotal(e.rows) : 0; }
+  // legend's "n/t". Respects the map view (legendViewBounds) when "filter legend to view"
+  // is on, so panning/zooming recomputes the total as well as the filtered count.
+  function detTotalCount(k) {
+    var e = detPlot[k]; if (!e || !e.rows) return 0;
+    var b = legendViewBounds;
+    if (!b) return specimenTotal(e.rows);
+    var vis = [];
+    for (var i = 0; i < e.rows.length; i++) {
+      var r = e.rows[i];
+      if (isFinite(+r.lat) && isFinite(+r.lon) && b.contains([+r.lat, +r.lon])) vis.push(r);
+    }
+    return specimenTotal(vis);
+  }
   // Model week (1–48) for an observation date; falls back to the current week.
   function weekOfDate(s) {
     var d = s ? new Date(s) : null;
@@ -16723,10 +16737,16 @@
     return html + "</div>";
   }
   function spTotalPanelHtml() {
+    // Range form:  [min] ≤ (Total|Observations toggle) ≤ [max]. Empty boxes = no count
+    // restriction. The toggle switches which count the bounds apply to.
+    var metricLbl = spCountMetric === "pairs" ? t("sort.obs") : t("th.total");
     return '<div class="sp-head-panel">' + spSortRowTotalHtml() +
       '<div class="sp-bound-row">' +
-        '<label>≥ <input type="number" min="0" step="1" class="sp-cnt-min" value="' + (spCountMin == null ? "" : spCountMin) + '" /></label>' +
-        '<label>≤ <input type="number" min="0" step="1" class="sp-cnt-max" value="' + (spCountMax == null ? "" : spCountMax) + '" /></label>' +
+        '<input type="number" min="0" step="1" class="sp-cnt-min" value="' + (spCountMin == null ? "" : spCountMin) + '" aria-label="min" />' +
+        '<span class="sp-bound-op">≤</span>' +
+        '<button type="button" class="sp-cnt-metric" title="' + escapeHtml(t("th.total") + " / " + t("sort.obs")) + '">' + escapeHtml(metricLbl) + "</button>" +
+        '<span class="sp-bound-op">≤</span>' +
+        '<input type="number" min="0" step="1" class="sp-cnt-max" value="' + (spCountMax == null ? "" : spCountMax) + '" aria-label="max" />' +
         (totalFilterActive() ? '<button type="button" class="sp-bound-clear demo-btn demo-btn-light">' + escapeHtml(t("det.clearFilters")) + "</button>" : "") +
       "</div></div>";
   }
@@ -16809,6 +16829,12 @@
       // Filter as you type (input), not only on blur/Enter — applyBounds doesn't rebuild
       // the panel, so the field keeps focus. Immediate on desktop and mobile alike.
       container.querySelectorAll(".sp-cnt-min, .sp-cnt-max").forEach(function (inp) { inp.addEventListener("input", function (e) { e.stopPropagation(); applyBounds(); }); });
+      var metricBtn = container.querySelector(".sp-cnt-metric");
+      if (metricBtn) metricBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        spCountMetric = (spCountMetric === "pairs") ? "total" : "pairs";   // switch which count the range restricts
+        rebuildDetLayers(); updateDetLegend(); applyAgeFilter(); renderSpControls();
+      });
       var bc = container.querySelector(".sp-bound-clear");
       if (bc) bc.addEventListener("click", function (e) { e.stopPropagation(); spCountMin = null; spCountMax = null; rebuildDetLayers(); updateDetLegend(); applyAgeFilter(); renderSpControls(); });
     } else if (spHeadPanel === "prob") {
