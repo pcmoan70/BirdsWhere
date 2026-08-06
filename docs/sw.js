@@ -21,11 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v937";
+var VERSION = "v938";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• All filters in one place: long-press (or right-click) the legend's black × to open a panel listing every filter — species, status, count, name, date, observer, source — showing which are active, each with an inline control to change or clear it, plus a Clear all.",
   "• Two new overlay layers: GBIF occurrence density — a heatmap of where records concentrate, now SEASONAL: it follows the week selector (the month around it, easing into the adjacent month at a month's edges) — and the Emerald Network (Bern Convention — the non-EU counterpart to Natura 2000).",
   "• OSM protected-areas overlay fixed: it silently failed because a wide view asked the Overpass API for too much data (it rate-limited/timed out). It now loads once you zoom in, waits for panning to settle, and a hover tip on its checkbox explains this.",
   "• Selecting species no longer drops the rest from the legend: filtered-out species stay listed, greyed, reading 0/t — so you can still see and re-add them.",

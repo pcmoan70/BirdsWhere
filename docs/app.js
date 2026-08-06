@@ -8174,6 +8174,7 @@
     var dm = document.getElementById("detlist-modal");
     if (dm && dm.style.display === "flex" && typeof renderDetListModal === "function") renderDetListModal();
     if (typeof speciesPanelPopulated === "function" && speciesPanelPopulated()) renderSpControls();
+    if (allFiltersPane) renderAllFiltersPane();   // keep the "all filters" pane in sync
   }
   // Re-render just the filter bar on whichever surface currently hosts it (the popup,
   // or the fetch list) — for panel-open toggles that don't change the data.
@@ -9912,7 +9913,7 @@
     var hasFilter = detHasFilter();   // any filter active → show the black × (clear all)
     el.innerHTML = '<div class="det-legend-head" data-help="maphelp.legend">' +
         '<button type="button" class="det-min" title="' + escapeHtml(t("det.minimise")) + '" aria-label="' + escapeHtml(t("det.minimise")) + '">−</button>' +
-        (hasFilter ? '<button type="button" class="det-clear-sel" title="' + escapeHtml(t("det.clearFilters")) + '" aria-label="' + escapeHtml(t("det.clearFilters")) + '">' + filterXSvg(15) + '</button>' : "") +
+        (hasFilter ? '<button type="button" class="det-clear-sel" title="' + escapeHtml(t("det.clearFiltersHint")) + '" aria-label="' + escapeHtml(t("det.clearFilters")) + '">' + filterXSvg(15) + '</button>' : "") +
         '<button type="button" class="det-clear' + (detAreaDeleteMode ? " armed" : "") + '" title="' + escapeHtml(detAreaDeleteMode ? t("det.delAreaHint") : (fetchedAreas.length ? t("det.delAreaArm") : t("det.clearAll"))) + '" aria-label="' + escapeHtml(t("det.clearAll")) + '">' + X_MARK_SVG + '</button>' +
         (capped ? '<span class="det-cap-warn" role="img" title="' + escapeHtml(capTip) + '" aria-label="' + escapeHtml(capTip) + '">⚠</span>' : "") +
       "</div>" +
@@ -9944,11 +9945,7 @@
       if (!detAreaDeleteMode && fetchedAreas.length) { enterAreaDeleteMode(); updateDetLegend(); }
       else clearDetections();
     });
-    var clrSel = el.querySelector(".det-clear-sel");
-    if (clrSel) clrSel.addEventListener("click", function (e) {
-      e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
-      clearAllFilters();              // selection + mode + observer + recency days, dots kept
-    });
+    wireClearFilterBtn(el.querySelector(".det-clear-sel"));   // click = clear all; long-press/right-click = all-filters pane
     el.querySelector(".det-min").addEventListener("click", function () { mapClickGuardUntil = Date.now() + 250; detLegendMini = true; saveLegendState(); updateDetLegend(); });
     el.querySelectorAll(".det-del").forEach(function (b) { b.addEventListener("click", function (e) { e.stopPropagation(); removeDetection(this.getAttribute("data-key")); }); });
     // Tap a grey tombstone row → forget the deletion (its row clears; the species can
@@ -10036,7 +10033,7 @@
     return '<div class="detlist-filters">' +
         (showDays ? '<button type="button" class="det-tog det-days-tog' + (daysOn ? " on" : "") + (detDaysPanelOpen ? " open" : "") + '" title="' + escapeHtml(t("det.recency")) + '">' + escapeHtml(daysLbl) + "</button>" : "") +
         '<button type="button" class="det-tog det-mode-tog' + (modeOn ? " on" : "") + (detModePanelOpen ? " open" : "") + '" title="' + escapeHtml(modeTip) + '">' + escapeHtml(modeLbl) + "</button>" +
-        (detHasFilter() ? '<button type="button" class="det-clear-sel" title="' + escapeHtml(t("det.clearFilters")) + '" aria-label="' + escapeHtml(t("det.clearFilters")) + '">' + filterXSvg(15) + '</button>' : "") +
+        (detHasFilter() ? '<button type="button" class="det-clear-sel" title="' + escapeHtml(t("det.clearFiltersHint")) + '" aria-label="' + escapeHtml(t("det.clearFilters")) + '">' + filterXSvg(15) + '</button>' : "") +
       "</div>";
   }
   // The date-relative row (On / Before / After a clicked date) — shared by the table's
@@ -10137,8 +10134,7 @@
     if (obsCycle) obsCycle.addEventListener("click", function (e) { e.stopPropagation(); cycleObsFilter(); reRenderFilterBar(); });
     var edLists = el.querySelector(".det-obs-editlists");
     if (edLists) edLists.addEventListener("click", function (e) { e.stopPropagation(); openObserverEditor(); });
-    var clrSel = el.querySelector(".det-clear-sel");
-    if (clrSel) clrSel.addEventListener("click", function (e) { e.stopPropagation(); clearAllFilters(); });
+    wireClearFilterBtn(el.querySelector(".det-clear-sel"));   // click = clear all; long-press/right-click = all-filters pane
     // "Per observation" date pane: On/Before/After the clicked date + a green × that
     // clears every date filter and closes the pane.
     el.querySelectorAll(".sp-date-rel").forEach(function (b) {
@@ -10148,6 +10144,155 @@
     if (dclr) dclr.addEventListener("click", function (e) { e.stopPropagation(); closeDatePane(); });
     var dclrf = el.querySelector(".sp-date-clearfilters");
     if (dclrf) dclrf.addEventListener("click", function (e) { e.stopPropagation(); clearDateFilters(); });
+  }
+
+  // ---- "All filters" pane (long-press the legend's filter-clear ×) ----------
+  // One overlay that lists every active filter with its value and an inline control
+  // to change or clear it. Reuses the same panel builders + wireDetFilters() the
+  // legend/list uses, so the controls behave identically; re-renders on any change
+  // via the hook at the end of detFiltersRefresh().
+  var allFiltersPane = null;   // { overlay, box, close } while open, else null
+
+  function affSection(key, label, active, summary, bodyHtml) {
+    return '<div class="aff-sec' + (active ? " on" : "") + '">' +
+      '<div class="aff-sec-head"><span class="aff-sec-lbl">' + escapeHtml(label) + "</span>" +
+        '<span class="aff-sec-sum">' + escapeHtml(summary) + "</span>" +
+        (active ? '<button type="button" class="aff-sec-clear" data-sec="' + key + '" title="' + escapeHtml(t("det.clearFilters")) + '">' + filterXSvg(13) + "</button>" : "") +
+      "</div>" + (bodyHtml ? '<div class="aff-sec-body">' + bodyHtml + "</div>" : "") + "</div>";
+  }
+  // Source on/off checklist (present sources; checked = kept).
+  function affSrcHtml() {
+    var present = detSourcesPresent();
+    if (!present.length) return "";
+    return '<div class="aff-src-list">' + present.map(function (s) {
+      var kept = !detSrcFilter || detSrcFilter.has(s);
+      return '<label class="det-obs-row"><input type="checkbox" class="aff-src-cb" data-src="' + escapeHtml(s) + '"' + (kept ? " checked" : "") + ">" + escapeHtml(s) + "</label>";
+    }).join("") + "</div>";
+  }
+  function allFiltersBodyHtml() {
+    var head = '<div class="aff-head"><b class="aff-title">' + escapeHtml(t("filters.title")) + "</b>" +
+      ((detHasFilter() || speciesFilterActive()) ? '<button type="button" class="aff-clear-all demo-btn demo-btn-light">' + escapeHtml(t("det.clearFilters")) + "</button>" : "") +
+      '<button type="button" class="aff-close" aria-label="close">×</button></div>';
+
+    // Species selection
+    var selKeys = Object.keys(detSelected).filter(function (k) { return detPlot[k]; });
+    var selBody = selKeys.length ? '<div class="aff-sel-names">' + selKeys.map(function (k) { return escapeHtml(detName(detPlot[k])); }).join(", ") + "</div>" : "";
+    var secSel = affSection("sel", t("th.species"), selKeys.length > 0,
+      selKeys.length ? t("filters.nSelected", { n: selKeys.length }) : t("det.allSpecies"), selBody);
+
+    // Status (★/◉/year/life) — reuse the mode panel
+    var modeActive = detStarFilter || detRareFilter || detYearFilter || detLifeFilter;
+    var modeSum = detStarFilter ? t("det.starred") : detRareFilter ? t("det.rare")
+      : detYearFilter ? t("det.needsYear", { year: curYear() }) : detLifeFilter ? t("det.needsLife") : t("det.allSpecies");
+    var secMode = affSection("mode", t("filters.status"), modeActive, modeSum, detModePanelHtml());
+
+    // Count range [min] ≤ (Total|Observations) ≤ [max]
+    var metricLbl = spCountMetric === "pairs" ? t("sort.obs") : t("th.total");
+    var cntBody = '<div class="sp-bound-row">' +
+      '<input type="number" min="0" step="1" class="aff-cmin" value="' + (spCountMin == null ? "" : spCountMin) + '" aria-label="min" />' +
+      '<span class="sp-bound-op">≤</span>' +
+      '<button type="button" class="sp-cnt-metric aff-cmetric">' + escapeHtml(metricLbl) + "</button>" +
+      '<span class="sp-bound-op">≤</span>' +
+      '<input type="number" min="0" step="1" class="aff-cmax" value="' + (spCountMax == null ? "" : spCountMax) + '" aria-label="max" /></div>';
+    var secCnt = affSection("count", t("th.total"), totalFilterActive(), totalFilterActive() ? countHeadLabel() : t("filters.any"), cntBody);
+
+    // Species name search (narrows the species table)
+    var nameActive = !!spNameQuery.trim();
+    var nameBody = '<input type="search" class="aff-name sp-search" placeholder="' + escapeHtml(t("ph.filter")) + '" value="' + escapeHtml(spNameQuery) + '" autocomplete="off" autocorrect="off" spellcheck="false" />';
+    var secName = affSection("name", t("filters.name"), nameActive, nameActive ? spNameQuery : t("filters.any"), nameBody);
+
+    // Date / recency / months — reuse the days panel
+    var rg = detDateRange(), dateActive = daysBackActive() || !!rg || detMonths().length > 0;
+    var dateSum = rg ? ((rg.from || "…") + "–" + (rg.to || "…"))
+      : daysBackActive() ? detDaysLabel()
+      : detMonths().length ? detMonths().map(histMonthShort).join(" ") : t("filters.allTime");
+    var secDate = affSection("date", t("det.recency"), dateActive, dateSum, detDaysPanelHtml());
+
+    // Observer — reuse the observer panel
+    var secObs = affSection("obs", t("obs.people"), !!detObsFilter, obsFilterLabel(), detObsPanelHtml());
+
+    // Source
+    var present = detSourcesPresent();
+    var srcSum = !detSrcFilter ? t("src.all") : (Array.from(detSrcFilter).filter(function (s) { return present.indexOf(s) >= 0; }).length + "/" + present.length);
+    var secSrc = affSection("src", t("th.source"), !!detSrcFilter, srcSum, affSrcHtml());
+
+    return head + '<div class="aff-body">' + secSel + secMode + secCnt + secName + secDate + secObs + secSrc + "</div>";
+  }
+  function wireAllFiltersPane(box) {
+    wireDetFilters(box);   // mode rows, days chips, date range, month chips, observer checklist/cycle/editlists
+    var cl = box.querySelector(".aff-close"); if (cl) cl.addEventListener("click", function (e) { e.stopPropagation(); if (allFiltersPane) allFiltersPane.close(); });
+    var ca = box.querySelector(".aff-clear-all"); if (ca) ca.addEventListener("click", function (e) { e.stopPropagation(); clearAllFilters(); });
+    box.querySelectorAll(".aff-sec-clear").forEach(function (b) {
+      b.addEventListener("click", function (e) {
+        e.stopPropagation();
+        switch (this.getAttribute("data-sec")) {
+          case "sel": detSelected = {}; saveLegendState(); detFiltersRefresh(); break;
+          case "mode": detStarFilter = detRareFilter = detYearFilter = detLifeFilter = false; detFiltersRefresh(); break;
+          case "count": spCountMin = spCountMax = null; detFiltersRefresh(); break;
+          case "name": spNameQuery = ""; detFiltersRefresh(); break;
+          case "date": clearDateFilters(); break;
+          case "obs": setDetObsFilter(null); detFiltersRefresh(); break;
+          case "src": setDetSrcFilter(null); break;
+        }
+      });
+    });
+    var nm = box.querySelector(".aff-name");
+    if (nm) nm.addEventListener("input", function (e) { e.stopPropagation(); spNameQuery = this.value || ""; detFiltersRefresh(); });
+    function affBounds() {
+      var mn = box.querySelector(".aff-cmin").value, mx = box.querySelector(".aff-cmax").value;
+      spCountMin = mn === "" ? null : Math.max(0, parseInt(mn, 10) || 0);
+      spCountMax = mx === "" ? null : Math.max(0, parseInt(mx, 10) || 0);
+      detFiltersRefresh();
+    }
+    box.querySelectorAll(".aff-cmin, .aff-cmax").forEach(function (inp) { inp.addEventListener("input", function (e) { e.stopPropagation(); affBounds(); }); });
+    var cm = box.querySelector(".aff-cmetric");
+    if (cm) cm.addEventListener("click", function (e) { e.stopPropagation(); spCountMetric = (spCountMetric === "pairs") ? "total" : "pairs"; detFiltersRefresh(); });
+    box.querySelectorAll(".aff-src-cb").forEach(function (cb) {
+      cb.addEventListener("change", function (e) {
+        e.stopPropagation();
+        var present = detSourcesPresent(), set = detSrcFilter ? new Set(detSrcFilter) : new Set(present), s = this.getAttribute("data-src");
+        if (this.checked) set.add(s); else set.delete(s);
+        setDetSrcFilter(present.every(function (p) { return set.has(p); }) ? null : set);
+      });
+    });
+  }
+  // Re-render the open pane after a filter change — but not while a text/number field
+  // in it has focus (that would drop the caret mid-type; those fields refresh the map
+  // live and the pane re-syncs on the next non-typing interaction).
+  function renderAllFiltersPane() {
+    if (!allFiltersPane || !allFiltersPane.box || !allFiltersPane.box.isConnected) { allFiltersPane = null; return; }
+    var a = document.activeElement;
+    if (a && allFiltersPane.box.contains(a) && a.tagName === "INPUT" && /^(search|number|text)$/.test(a.type)) return;
+    allFiltersPane.box.innerHTML = allFiltersBodyHtml();
+    wireAllFiltersPane(allFiltersPane.box);
+  }
+  function openAllFiltersPane() {
+    if (allFiltersPane) return;
+    var m = createModal({ boxClass: "aff-modal", escClose: true, onClose: function () { allFiltersPane = null; } });
+    allFiltersPane = m;
+    m.box.innerHTML = allFiltersBodyHtml();
+    wireAllFiltersPane(m.box);
+  }
+  // Wire the legend's filter-clear × : a plain click clears all filters; a long-press
+  // (or right-click) opens the "all filters" pane instead.
+  function wireClearFilterBtn(btn) {
+    if (!btn) return;
+    var lpTimer = null, lpFired = false;
+    var start = function () { lpFired = false; clearTimeout(lpTimer); lpTimer = setTimeout(function () { lpFired = true; openAllFiltersPane(); }, 450); };
+    var cancel = function () { clearTimeout(lpTimer); };
+    btn.addEventListener("mousedown", function (e) { if (e.button === 0) start(); });
+    btn.addEventListener("mouseup", cancel);
+    btn.addEventListener("mouseleave", cancel);
+    btn.addEventListener("touchstart", function () { start(); }, { passive: true });
+    btn.addEventListener("touchend", cancel);
+    btn.addEventListener("touchmove", cancel);
+    btn.addEventListener("touchcancel", cancel);
+    btn.addEventListener("contextmenu", function (e) { e.preventDefault(); e.stopPropagation(); cancel(); lpFired = true; openAllFiltersPane(); });
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
+      if (lpFired) { lpFired = false; return; }   // the long-press already opened the pane
+      clearAllFilters();
+    });
   }
 
   // ---- Map points (user-added pins + named lists) ---------------------------

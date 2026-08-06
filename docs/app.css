@@ -1367,6 +1367,28 @@ button.dd-name:hover { text-decoration: underline; }
   box-shadow: 0 10px 40px rgba(0,0,0,.35); padding: 18px; width: min(380px, 92vw); box-sizing: border-box;
 }
 .ui-modal-msg { font-size: 0.92rem; line-height: 1.4; white-space: pre-wrap; }
+
+/* "All filters" pane (long-press the legend's filter-clear ×). */
+.aff-modal { width: min(440px, 94vw); max-height: 88vh; padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.aff-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.aff-title { font-size: 1rem; }
+.aff-head .aff-clear-all { margin-left: auto; padding: 3px 10px; font-size: 0.82rem; }
+.aff-close { background: none; border: none; font-size: 1.5rem; line-height: 1; cursor: pointer; color: var(--ink-muted); padding: 0 2px; }
+.aff-close:hover { color: var(--ink); }
+.aff-head .aff-clear-all + .aff-close { margin-left: 0; }
+.aff-head .aff-close:only-of-type { margin-left: auto; }
+.aff-body { overflow-y: auto; padding: 4px 0 8px; }
+.aff-sec { padding: 8px 14px; border-bottom: 1px solid var(--border-light, rgba(0,0,0,.06)); }
+.aff-sec:last-child { border-bottom: none; }
+.aff-sec-head { display: flex; align-items: center; gap: 8px; }
+.aff-sec-lbl { font-weight: 600; font-size: 0.9rem; }
+.aff-sec-sum { margin-left: auto; font-size: 0.82rem; color: var(--ink-muted); font-variant-numeric: tabular-nums; text-align: right; }
+.aff-sec.on .aff-sec-sum { color: var(--brand); font-weight: 600; }
+.aff-sec-clear { display: inline-flex; align-items: center; background: none; border: none; cursor: pointer; color: var(--brand); padding: 0; }
+.aff-sec-body { margin-top: 7px; }
+.aff-sel-names { font-size: 0.85rem; color: var(--ink); line-height: 1.4; max-height: 84px; overflow-y: auto; }
+.aff-src-list { display: flex; flex-direction: column; gap: 2px; }
+
 /* Explicit from–to date-range popup (from the date-filter menu). */
 .date-range-modal { width: min(320px, 92vw); }
 .date-range-modal .drm-title { font-weight: 700; font-size: 0.95rem; margin-bottom: 12px; }

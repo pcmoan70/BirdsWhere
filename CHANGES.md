@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-08-06 — "All filters" pane: long-press the legend's clear-× (sw v938)
+
+- Long-press (or right-click) the legend's black filter-clear × to open a centred pane listing every filter
+  category — species selection, status (★/◉/year/life), count range, name search, date/recency, observer,
+  source — each with its current active value shown and an inline control to change or clear it, plus a
+  Clear-all. Reuses the existing panel builders (`detModePanelHtml`/`detDaysPanelHtml`/`detObsPanelHtml`) and
+  `wireDetFilters`, and re-renders from the shared `detFiltersRefresh` hook (skipping re-render while a text/
+  number field is focused so the caret isn't dropped). A plain click on the × still clears all. New
+  `wireClearFilterBtn` replaces the two inline click handlers. Tooltip + Help updated; new i18n keys
+  `filters.*` and `det.clearFiltersHint` (15 languages).
+
 ## 2026-08-06 — GBIF density overlay is now seasonal (follows the week) (sw v937)
 
 - Switched the GBIF density overlay from the pre-aggregated `density` tiles (which ignore `month`) to the
