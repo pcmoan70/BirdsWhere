@@ -10492,7 +10492,19 @@
   function wireClearFilterBtn(btn) {
     if (!btn) return;
     var lpTimer = null, lpFired = false;
-    var start = function () { lpFired = false; clearTimeout(lpTimer); lpTimer = setTimeout(function () { lpFired = true; openAllFiltersPane(); }, 450); };
+    var start = function () {
+      lpFired = false; clearTimeout(lpTimer);
+      lpTimer = setTimeout(function () {
+        lpFired = true;
+        // The finger-release / mouse-up after the hold fires a click that would land on
+        // the just-opened overlay's backdrop and instantly close it — swallow that one
+        // click (capture phase, before the backdrop handler) so the pane actually shows.
+        var swallow = function (ev) { ev.stopPropagation(); ev.preventDefault(); document.removeEventListener("click", swallow, true); };
+        document.addEventListener("click", swallow, true);
+        setTimeout(function () { document.removeEventListener("click", swallow, true); }, 700);   // safety cleanup if no click comes
+        openAllFiltersPane();
+      }, 450);
+    };
     var cancel = function () { clearTimeout(lpTimer); };
     btn.addEventListener("mousedown", function (e) { if (e.button === 0) start(); });
     btn.addEventListener("mouseup", cancel);

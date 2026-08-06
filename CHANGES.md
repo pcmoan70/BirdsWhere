@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-08-06 — Fix: long-press filter-clear × now shows the all-filters pane (sw v946)
+
+- Long-pressing the legend's filter-clear × opened the all-filters pane, but the finger-release/mouse-up
+  then fired a click on the fresh overlay's backdrop and instantly closed it — so it never appeared. The
+  long-press now installs a one-shot capture-phase click swallower that eats that trailing click.
+
 ## 2026-08-06 — GBIF density: filled border-less hexes (no dots-on-grid) (sw v945)
 
 - The `purpleHeat.point` style (v940) rendered a grid of small dots at low/moderate density (only blurring
