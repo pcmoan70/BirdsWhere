@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-08-06 — GBIF density: filled border-less hexes (no dots-on-grid) (sw v945)
+
+- The `purpleHeat.point` style (v940) rendered a grid of small dots at low/moderate density (only blurring
+  where records are very dense). Switched to `purpleYellow-noborder.poly` (hex bins, `hexPerTile=30`) — a
+  continuous filled density wash with no grey grid lines and no scattered dots.
+
 ## 2026-08-06 — List filtering redesign: tickable dropdowns + list manager (sw v944)
 
 - **Species lists** in the Species filter panel are now a **tick-box dropdown** (saved lists + premade
