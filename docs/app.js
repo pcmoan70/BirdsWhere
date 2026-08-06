@@ -6907,6 +6907,11 @@
   var GBIF_ATTR = 'Occurrence density &copy; <a href="https://www.gbif.org" target="_blank" rel="noopener">GBIF.org</a>';
   var OSM_PA_ATTR = 'Protected areas &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
   var EBIRD_HS_ATTR = 'Hotspots &copy; <a href="https://ebird.org" target="_blank" rel="noopener">eBird</a> / Cornell Lab';
+  var BIRD_SPOTS_ATTR = 'Birding spots &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
+  // CORINE Land Cover 2018 (EEA/Copernicus) — Europe/EEA coverage incl. Norway. Layer 1 =
+  // the pre-rendered raster (clean filled land cover); same ArcGIS server family as Natura 2000.
+  var CLC2018_EXPORT = "https://image.discomap.eea.europa.eu/arcgis/rest/services/Corine/CLC2018_WM/MapServer/export";
+  var CLC_ATTR = 'Land cover &copy; <a href="https://land.copernicus.eu/pan-european/corine-land-cover" target="_blank" rel="noopener">Copernicus CORINE Land Cover</a> (EEA)';
 
   // A Leaflet tile layer backed by an ArcGIS MapServer "export" endpoint: each
   // 256-px tile is requested as a rendered PNG for its Web-Mercator bbox.
@@ -6970,6 +6975,57 @@
     function schedule() { clearTimeout(timer); timer = setTimeout(load, 500); }   // debounce pans → one query when movement settles
     grp.on("add", function () { active = true; map.attributionControl.addAttribution(OSM_PA_ATTR); load(); });
     grp.on("remove", function () { active = false; clearTimeout(timer); map.attributionControl.removeAttribution(OSM_PA_ATTR); });
+    map.on("moveend", function () { if (active) schedule(); });
+    return grp;
+  }
+
+  // Live OSM birding-navigation points: bird hides, observation towers and viewpoints —
+  // where to actually stand and watch. Same Overpass pattern as osmProtectedLayer (zoom-
+  // gated + debounced so we don't trip the rate limiter). Each is a clickable marker.
+  var BIRD_SPOT_KINDS = {
+    bird_hide:   { glyph: "🐦", i18n: "birdspot.hide" },
+    observation: { glyph: "🗼", i18n: "birdspot.tower" },
+    viewpoint:   { glyph: "🔭", i18n: "birdspot.viewpoint" }
+  };
+  function birdingSpotsLayer() {
+    var grp = L.layerGroup(), active = false, token = 0, timer = null;
+    function kindOf(tags) {
+      if (!tags) return null;
+      if (tags.leisure === "bird_hide") return "bird_hide";
+      if (tags.man_made === "tower" && tags["tower:type"] === "observation") return "observation";
+      if (tags.tourism === "viewpoint") return "viewpoint";
+      return null;
+    }
+    function load() {
+      if (!active) return;
+      if (map.getZoom() < OSM_PA_MIN_ZOOM) { grp.clearLayers(); return; }
+      var b = map.getBounds();
+      var bbox = b.getSouth().toFixed(4) + "," + b.getWest().toFixed(4) + "," + b.getNorth().toFixed(4) + "," + b.getEast().toFixed(4);
+      var q = "[out:json][timeout:25];(nwr[\"leisure\"=\"bird_hide\"](" + bbox +
+        ");nwr[\"man_made\"=\"tower\"][\"tower:type\"=\"observation\"](" + bbox +
+        ");node[\"tourism\"=\"viewpoint\"](" + bbox + "););out center;";
+      var mine = ++token;
+      fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: "data=" + encodeURIComponent(q) })
+        .then(function (r) { if (!r.ok) throw new Error("overpass " + r.status); return r.json(); })
+        .then(function (j) {
+          if (mine !== token || !active) return;
+          grp.clearLayers();
+          (j.elements || []).forEach(function (el) {
+            var kind = kindOf(el.tags); if (!kind) return;
+            var lat = el.lat != null ? el.lat : (el.center && el.center.lat);
+            var lon = el.lon != null ? el.lon : (el.center && el.center.lon);
+            if (lat == null || lon == null) return;
+            var meta = BIRD_SPOT_KINDS[kind], typeLbl = t(meta.i18n);
+            var nm = (el.tags && el.tags.name) || typeLbl;
+            var mk = L.marker([lat, lon], { icon: L.divIcon({ className: "bird-spot-ico", html: meta.glyph, iconSize: [22, 22], iconAnchor: [11, 11] }), title: nm });
+            mk.bindPopup('<div class="bird-spot-pop"><b>' + escapeHtml(nm) + '</b><br><span>' + escapeHtml(typeLbl) + "</span></div>");
+            grp.addLayer(mk);
+          });
+        }).catch(function () { /* offline / rate-limited — keep what's drawn, retry on next pan */ });
+    }
+    function schedule() { clearTimeout(timer); timer = setTimeout(load, 500); }
+    grp.on("add", function () { active = true; map.attributionControl.addAttribution(BIRD_SPOTS_ATTR); load(); });
+    grp.on("remove", function () { active = false; clearTimeout(timer); map.attributionControl.removeAttribution(BIRD_SPOTS_ATTR); });
     map.on("moveend", function () { if (active) schedule(); });
     return grp;
   }
@@ -11879,6 +11935,7 @@
     var emerald = new ArcGISExportLayer(EMERALD_EXPORT, { opacity: 0.5, attribution: EMERALD_ATTR, maxZoom: MAX_ZOOM, arcLayers: "show:3" });
     var gbif = L.tileLayer(gbifTileUrl(), { opacity: 0.65, attribution: GBIF_ATTR, maxZoom: MAX_ZOOM });
     gbifLayer = gbif;
+    var landcover = new ArcGISExportLayer(CLC2018_EXPORT, { opacity: 0.55, attribution: CLC_ATTR, maxZoom: MAX_ZOOM, arcLayers: "show:1" });
     arcOverlays = [{ layer: wdpa, kind: "wdpa" },
       { layer: ramsar, kind: "wdpa", defs: ramsar.options.layerDefs },
       { layer: n2k, kind: "natura" },
@@ -11888,10 +11945,12 @@
     overlays[t("layer.ramsar")] = ramsar;
     overlays[t("layer.natura2000")] = n2k;
     overlays[t("layer.emerald")] = emerald;
+    overlays[t("layer.landcover")] = landcover;
     overlays[t("layer.gbif")] = gbif;
     hotspotsLayer = ebirdHotspotLayer();
     overlays[t("layer.hotspots")] = hotspotsLayer;
     overlays[t("layer.osmpa")] = osmProtectedLayer();
+    overlays[t("layer.birdSpots")] = birdingSpotsLayer();
     var layersCtrl = L.control.layers(null, overlays, { collapsed: true, position: "topright" }).addTo(map);
     // Hover tips: eBird hotspots (50 km fetch + caching) and OSM protected areas
     // (drawn live from OpenStreetMap; only loads when zoomed in — a wide view returns
@@ -11902,6 +11961,8 @@
       tips[t("layer.osmpa")] = t("layer.osmpaTip");
       tips[t("layer.emerald")] = t("layer.emeraldTip");
       tips[t("layer.gbif")] = t("layer.gbifTip");
+      tips[t("layer.landcover")] = t("layer.landcoverTip");
+      tips[t("layer.birdSpots")] = t("layer.birdSpotsTip");
       Array.prototype.forEach.call(layersCtrl.getContainer().querySelectorAll(".leaflet-control-layers-overlays label"), function (lab) {
         var txt = (lab.textContent || "").trim();
         if (tips[txt]) lab.title = tips[txt];

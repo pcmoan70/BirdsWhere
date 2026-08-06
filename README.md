@@ -67,10 +67,12 @@ map dots and the observation fetch. The model covers birds/mammals/amphibians/in
 
 **Overlay layers** (layer control): **WDPA · Protected Planet**, **Ramsar wetlands**,
 **Natura 2000** (EU SPA/SCI), **Emerald Network** (Bern Convention — the non-EU counterpart
-to Natura 2000), **GBIF occurrence density** (a heatmap of where records concentrate),
-**OSM protected areas**, and **eBird hotspots** (clickable — each opens a popup with an eBird
-link and *Navigate*; needs the eBird key). All are streamed from the providers; nothing is
-stored. Hover a layer's checkbox for a tip on what it shows.
+to Natura 2000), **Land cover** (CORINE / Copernicus-EEA — habitat backdrop, Europe/EEA),
+**GBIF occurrence density** (a seasonal heatmap of where records concentrate),
+**OSM protected areas**, **Birding spots** (OSM bird hides, observation towers & viewpoints —
+clickable markers for where to watch from), and **eBird hotspots** (clickable — each opens a popup
+with an eBird link and *Navigate*; needs the eBird key). All are streamed from the providers;
+nothing is stored. Hover a layer's checkbox for a tip on what it shows.
 
 ---
 

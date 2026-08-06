@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-08-06 — Navigation overlays: Birding spots + Land cover (sw v943)
+
+- **Birding spots** — an OSM/Overpass point layer of **bird hides** (`leisure=bird_hide`), **observation
+  towers** (`man_made=tower` + `tower:type=observation`) and **viewpoints** (`tourism=viewpoint`) as
+  clickable markers (🐦/🗼/🔭) with a name + type popup. Same zoom-gate (≥ ~town level) + 500 ms debounce as
+  the OSM protected-areas layer so Overpass isn't overloaded. New `birdingSpotsLayer` + `BIRD_SPOT_KINDS`.
+- **Land cover (CORINE)** — CORINE Land Cover 2018 (Copernicus/EEA) as a translucent habitat backdrop
+  (forest/wetland/cropland…), via `ArcGISExportLayer` on the EEA discomap server (`CLC2018_WM`, layer 1 =
+  raster). Europe/EEA coverage (incl. Norway — verified). No token/key.
+- Both added to the layer control with hover tips; i18n `layer.birdSpots`/`layer.landcover` (+ tips) and
+  `birdspot.hide/tower/viewpoint` (15 languages). README overlay list updated.
+
 ## 2026-08-06 — Add a species to a list from the species menu (sw v942)
 
 - The species popup's **Lists & actions** section now has **Add to species list…** — a sub-view listing the
