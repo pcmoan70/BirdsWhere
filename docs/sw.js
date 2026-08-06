@@ -21,7 +21,7 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v938";
+var VERSION = "v939";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
@@ -30,7 +30,7 @@ var NOTES = [
   "• Two new overlay layers: GBIF occurrence density — a heatmap of where records concentrate, now SEASONAL: it follows the week selector (the month around it, easing into the adjacent month at a month's edges) — and the Emerald Network (Bern Convention — the non-EU counterpart to Natura 2000).",
   "• OSM protected-areas overlay fixed: it silently failed because a wide view asked the Overpass API for too much data (it rate-limited/timed out). It now loads once you zoom in, waits for panning to settle, and a hover tip on its checkbox explains this.",
   "• Selecting species no longer drops the rest from the legend: filtered-out species stay listed, greyed, reading 0/t — so you can still see and re-add them.",
-  "• Legend totals now follow the map view: with “Filter the legend to the map view” on, both counts in each row's n/t recompute as you pan and zoom, so t is the total in view rather than everywhere.",
+  "• Legend counts follow the map view: each row's n is now how many of that species' dots are on screen (t stays the grand total), recomputed every time you pan or zoom — no setting needed. “Filter the legend to the map view” now only controls whether off-screen species drop out of the list.",
   "• The Total column filter now reads [ ] ≤ Total ≤ [ ] with a Total/Observations toggle in the middle — tap it to switch whether the lower/upper bounds restrict deduped totals or the number of observations. Empty boxes = no count restriction.",
   "• Filter by lists. Observer popup → “Filter by observer list” applies a saved observer list. And new species lists: in a species menu, “Show only” then “Add to species filter” to build a set, then “Save selection as list” in the Species panel — tap a saved list to narrow the map, legend and species table to those species.",
   "• Observer filtering moved into the observer popup: tap an observer's name in a record to Show only / Add to (build a multi-observer filter) / Remove, plus Add to list and the list editor. The separate 👤 button in the “By observation” bar is gone.",

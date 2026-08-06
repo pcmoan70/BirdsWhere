@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-08-06 — Legend n counts follow the map view, live on pan (sw v939)
+
+- Each legend row's **n** (of n/t) is now the number of that species' dots **currently on screen** (passing
+  the date/observer/source filters); **t** stays the grand total. The legend re-renders on every `moveend`/
+  `zoomend`, so the counts update when you release a pan/zoom — regardless of the "filter legend to view"
+  setting (previously both the view-awareness and the re-render were gated behind that toggle, so with it off
+  — the default — nothing updated). `legendViewBounds` is now always the current view; `countPassing(k,
+  inView)` backs `detVisibleCount` (in view) and new `detFilteredCount` (anywhere, used for list membership
+  when the toggle is off so rows aren't dropped); `detTotalCount` reverts to the fixed grand total. The
+  "filter legend to view" toggle now only decides whether off-screen species leave the list.
+
 ## 2026-08-06 — "All filters" pane: long-press the legend's clear-× (sw v938)
 
 - Long-press (or right-click) the legend's black filter-clear × to open a centred pane listing every filter

@@ -5973,11 +5973,12 @@
     map.whenReady(updateWorldMinZoom);
     // Offline: if the view isn't cached but a downloaded area covers it, offer it.
     map.on("moveend zoomend", scheduleOfflineCheck);
-    // "Filter legend to view" (setting): re-list the legend as the viewport changes,
-    // so it reflects only the species with a dot on screen. moveend fires once per
-    // pan/zoom gesture (not continuously), and this doesn't move the map, so no loop.
+    // Re-render the legend as the viewport changes so the "n" of each row's n/t reflects
+    // how many of that species' dots are on screen (and, with "filter legend to view" on,
+    // which species are listed). moveend fires once per pan/zoom gesture (not continuously)
+    // and this doesn't move the map, so there's no loop.
     map.on("moveend zoomend", function () {
-      if (legendInView() && detLegend && typeof detPlot !== "undefined" && Object.keys(detPlot).length) updateDetLegendKeepObsScroll();
+      if (detLegend && typeof detPlot !== "undefined" && Object.keys(detPlot).length) updateDetLegendKeepObsScroll();
     });
     window.addEventListener("offline", scheduleOfflineCheck);
     window.addEventListener("online", refreshOfflineZoomCap);   // reconnected → fetch full-res deep tiles again
@@ -9642,16 +9643,12 @@
     for (var i = 0; i < arr.length; i++) if (!set.has(arr[i])) return false;
     return true;
   }
-  // How many of a species' detections pass the current days + observer filters
-  // (NOT the per-species selection). Drives which species the legend lists. When
-  // legendViewBounds is set (the "filter legend to view" setting), a row must also
-  // fall inside the current map view — so panning/zooming narrows the legend.
-  // Deduped SPECIMENS of a species passing the active date/observer/source filters (and
-  // the "filter legend to view" bounds when on) — so the legend count matches the
-  // Species-list Total and the count filter (which both count specimens, not records).
-  function detVisibleCount(k) {
+  // Deduped SPECIMENS of a species passing the active date/observer/source filters,
+  // optionally restricted to the current map view (legendViewBounds). The counts match
+  // the Species-list Total / count filter (specimens, not records).
+  function countPassing(k, inView) {
     var e = detPlot[k]; if (!e || !e.rows) return 0;
-    var b = legendViewBounds, vis = [];
+    var b = inView ? legendViewBounds : null, vis = [];
     for (var i = 0; i < e.rows.length; i++) {
       var r = e.rows[i];
       if (!detDatePasses(r.date) || !detObsPasses(r) || !detPassesSrc(r)) continue;
@@ -9660,20 +9657,17 @@
     }
     return specimenTotal(vis);
   }
-  // Total deduped specimens for a species, ignoring the active filters — the "/ t" of the
-  // legend's "n/t". Respects the map view (legendViewBounds) when "filter legend to view"
-  // is on, so panning/zooming recomputes the total as well as the filtered count.
-  function detTotalCount(k) {
-    var e = detPlot[k]; if (!e || !e.rows) return 0;
-    var b = legendViewBounds;
-    if (!b) return specimenTotal(e.rows);
-    var vis = [];
-    for (var i = 0; i < e.rows.length; i++) {
-      var r = e.rows[i];
-      if (isFinite(+r.lat) && isFinite(+r.lon) && b.contains([+r.lat, +r.lon])) vis.push(r);
-    }
-    return specimenTotal(vis);
-  }
+  // The "n" of the legend's "n/t": specimens IN THE CURRENT VIEW passing the filters —
+  // so panning/zooming recomputes it (the legend re-renders on moveend). legendViewBounds
+  // is always the current map bounds, independent of the "filter legend to view" setting
+  // (that setting only decides whether off-screen species are dropped from the LIST).
+  function detVisibleCount(k) { return countPassing(k, true); }
+  // Specimens passing the filters anywhere (no view restriction) — drives list membership
+  // when "filter legend to view" is OFF, so panning doesn't drop rows (only their n → 0).
+  function detFilteredCount(k) { return countPassing(k, false); }
+  // Total deduped specimens for a species, ignoring the active filters and the view —
+  // the fixed "/ t" denominator of the legend's "n/t".
+  function detTotalCount(k) { var e = detPlot[k]; return (e && e.rows) ? specimenTotal(e.rows) : 0; }
   // Model week (1–48) for an observation date; falls back to the current week.
   function weekOfDate(s) {
     var d = s ? new Date(s) : null;
@@ -9844,13 +9838,19 @@
     // The list reflects ALL the active filters: the per-species mode filter
     // (★/◉/🟡/group) AND the days + observer filters (a species with nothing left
     // after those drops out, like its dots do on the map).
-    // Filter the legend to species with a dot in the current view (setting; default
-    // OFF — the legend lists every plotted species, synced with the map). Bounds
-    // captured once here so every detVisibleCount() call this render uses the same viewport.
-    legendViewBounds = (legendInView() && map) ? map.getBounds() : null;
+    // legendViewBounds = the current map view, captured once so every count this render
+    // uses the same viewport. It ALWAYS reflects the view (so the "n" of n/t updates as
+    // you pan). The "filter legend to view" setting only decides list membership: ON =
+    // drop species with nothing on screen; OFF (default) = keep every plotted species,
+    // its n just going to 0 when panned off-screen.
+    legendViewBounds = map ? map.getBounds() : null;
+    var inView = legendInView();
     var visCount = Object.create(null);
     allKeys.forEach(function (k) { visCount[k] = detVisibleCount(k); });
-    var keys = allKeys.filter(function (k) { return detPassesStar(k) && detPassesGroup(k) && detPassesRare(k) && detPassesYear(k) && detPassesLife(k) && detPassesCount(k) && detPassesSearch(k) && visCount[k] > 0; });
+    var keys = allKeys.filter(function (k) {
+      if (!(detPassesStar(k) && detPassesGroup(k) && detPassesRare(k) && detPassesYear(k) && detPassesLife(k) && detPassesCount(k) && detPassesSearch(k))) return false;
+      return inView ? visCount[k] > 0 : detFilteredCount(k) > 0;   // ON: on-screen only; OFF: any passing observation
+    });
     // Legend hover/hold-isolate: if the focused row is no longer in the legend (a
     // filter/refresh removed it), clear the focus so the map doesn't stay stuck
     // isolated to one species after its row's mouseleave never fired.
@@ -9926,7 +9926,7 @@
         var tot = detTotalCount(k);   // total specimens (deduped)
         // A species filtered OUT by the selection has 0 dots on the map, so it reads
         // "0/t" — kept in the legend (greyed), not removed.
-        var vis = (selActive && !sel) ? 0 : (visCount[k] != null ? visCount[k] : tot);   // specimens passing the active filters
+        var vis = (selActive && !sel) ? 0 : (visCount[k] != null ? visCount[k] : tot);   // n = specimens on screen passing the filters
         var ct = (vis === tot) ? String(vis) : (vis + "/" + tot);
         var rowCls = "det-row det-row-click" + (selActive && !sel ? " det-row-off" : "") + (sel ? " det-row-on" : "");
         var sw = (selActive && !sel) ? DET_MUTE_COLOR : e.color;
