@@ -10021,11 +10021,15 @@
     if (from === d && to === "") return "after";
     return "none";   // some other range → not one of the three
   }
-  function dateRelRowHtml(d) {
+  // The On/Before/After cycling button alone (no row wrapper), so callers can put it on
+  // one line with the (bold) date and, in the table Last panel, the sort button.
+  function dateRelBtnHtml(d) {
     var st = dateRelState(d);
     var label = st === "on" ? t("date.on") : st === "before" ? t("date.before") : st === "after" ? t("date.after") : "–";
-    return '<div class="sp-date-rel-row"><span class="sp-head-sort-lbl">' + escapeHtml(fmtDate(d) || d) + "</span>" +
-      '<button type="button" class="sp-date-rel' + (st !== "none" ? " on" : "") + '" data-date="' + escapeHtml(d) + '" data-state="' + st + '" title="' + escapeHtml(t("date.on") + " / " + t("date.before") + " / " + t("date.after")) + '">' + escapeHtml(label) + "</button></div>";
+    return '<button type="button" class="sp-date-rel' + (st !== "none" ? " on" : "") + '" data-date="' + escapeHtml(d) + '" data-state="' + st + '" title="' + escapeHtml(t("date.on") + " / " + t("date.before") + " / " + t("date.after")) + '">' + escapeHtml(label) + "</button>";
+  }
+  function dateRelRowHtml(d) {
+    return '<div class="sp-date-rel-row"><b class="sp-date-lbl">' + escapeHtml(fmtDate(d) || d) + "</b>" + dateRelBtnHtml(d) + "</div>";
   }
   function cycleDateRel(dateStr, state) {
     var next = DATE_REL_ORDER[(DATE_REL_ORDER.indexOf(state) + 1) % DATE_REL_ORDER.length];
@@ -16737,9 +16741,12 @@
   function spLastPanelHtml() {
     // A green × in the corner clears EVERY date filter (recency + range + months) and
     // closes the panel.
-    var html = '<div class="sp-head-panel">' + dateClearCloseBtns() + spSortRowHtml("last");
-    // When opened from a specific date cell, offer On / Before / After it.
-    if (spHeadPanelDate) html += dateRelRowHtml(spHeadPanelDate);
+    var html = '<div class="sp-head-panel">' + dateClearCloseBtns();
+    // One line: bold date · On/Before/After (when opened from a date) · sort button
+    // (no "Sort" label — the ⇅/▲/▼ glyph is self-explanatory).
+    html += '<div class="sp-date-rel-row">' +
+      (spHeadPanelDate ? '<b class="sp-date-lbl">' + escapeHtml(fmtDate(spHeadPanelDate) || spHeadPanelDate) + "</b>" + dateRelBtnHtml(spHeadPanelDate) : "") +
+      spSortBtnHtml("last", t("sort.label")) + "</div>";
     // The full recency / range / months panel (reused from "By observation").
     return html + detDaysPanelHtml() + "</div>";
   }

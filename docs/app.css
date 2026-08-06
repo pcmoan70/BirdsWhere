@@ -2123,6 +2123,7 @@ button.dd-name:hover { text-decoration: underline; }
 }
 .sp-head-sort, .sp-date-rel-row, .sp-bound-row, .sp-spf-modes { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .sp-head-sort-lbl { font-size: 0.8rem; color: var(--ink-muted); }
+.sp-date-lbl { font-weight: 700; color: var(--ink, inherit); margin-right: 2px; }
 /* Date-pane corner buttons: green × (close, top-right) and funnel-red-× (clear the
    date filters, just left of it — shown only when a date filter is active). */
 .sp-head-panel { position: relative; }

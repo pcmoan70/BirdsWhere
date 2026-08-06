@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-08-06 — Date pane: date + On/Before/After + sort on one line (sw v929)
+
+- In the Last (date range) panel, dropped the "Sort" label and moved the tri-state sort button onto the
+  same row as the On/Before/After button; the tapped date is now shown in **bold** (`.sp-date-lbl`).
+  Factored the On/Before/After button into `dateRelBtnHtml` (also bolds the date in the Per-observation pane).
+
 ## 2026-08-06 — Legend counts now match the Total column (deduped specimens) (sw v928)
 
 - The legend's "n/t" counted RECORDS, while the Species-list Total and the count filter (>N) count
