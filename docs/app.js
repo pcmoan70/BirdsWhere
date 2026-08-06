@@ -8691,7 +8691,7 @@
       e.group.addTo(map);
     }
     if (!defer) { updateDetLegend(); saveDetections(); }   // batch when plotting many at once
-    if (fit && e.group) { try { map.fitBounds(e.group.getBounds().pad(0.25)); } catch (err) { /* single point / bad bounds */ } }
+    if (fit && e.group) { try { fitBoundsMin(e.group.getBounds(), 0.25); } catch (err) { /* single point / bad bounds */ } }
   }
   // Rebuild every detection layer from the current selection state (called when
   // a legend row is toggled). Hidden/filtered-out species get no layer; visible
@@ -8862,6 +8862,18 @@
     var fetchP = hist ? fetchHistoricSightingsAt(currentSpView.lat, currentSpView.lon, hist) : fetchAllSightingsAt(currentSpView.lat, currentSpView.lon);
     fetchP.then(plotSightingsResult).catch(function () { obsStatusActive = false; setStatus(t("det.none")); });
   }
+  // Fit the map to `bounds`, but never TIGHTER than a ~minKm box (default 2.5 km)
+  // around its centre — so a single fetched observation keeps some context instead of
+  // zooming all the way in. Never smaller than the data's own extent.
+  function fitBoundsMin(bounds, padFrac, minKm) {
+    if (!map || !bounds || !bounds.isValid || !bounds.isValid()) return;
+    var c = bounds.getCenter(), half = (minKm || 2.5) / 2;
+    var dLat = half / 111.32, cos = Math.cos(c.lat * Math.PI / 180);
+    var dLon = half / (111.32 * (cos > 0.01 ? cos : 0.01));
+    var b = L.latLngBounds([[c.lat - dLat, c.lng - dLon], [c.lat + dLat, c.lng + dLon]]);
+    b.extend(bounds.getSouthWest()).extend(bounds.getNorthEast());   // keep the data's extent when it's larger
+    try { map.fitBounds(padFrac != null ? b.pad(padFrac) : b); } catch (e) {}
+  }
   // Plot a (partial or complete) all-species result onto the map. Extracted so
   // plotAllSightings can render the current snapshot or a freshly-fetched one.
   function plotSightingsResult(result) {
@@ -8918,7 +8930,7 @@
       // showcase (only if the user hasn't interacted yet).
       var bounds = L.latLngBounds([]);
       entries.forEach(function (e) { (e.rows || []).forEach(function (r) { if (r && isFinite(+r.lat) && isFinite(+r.lon)) bounds.extend([+r.lat, +r.lon]); }); });
-      if (bounds.isValid() && !autoOpenPlotting && !plotNoFit) { try { map.fitBounds(bounds.pad(0.2)); } catch (e3) {} }
+      if (bounds.isValid() && !autoOpenPlotting && !plotNoFit) { try { fitBoundsMin(bounds, 0.2); } catch (e3) {} }
       // Don't auto-switch the list⇄map view here — that only changes when the user taps
       // the header toggle. (The map-first flow already hid the list; re-plots on filter
       // changes must NOT yank the user off the list.) Just refresh the toggle icon —
@@ -8979,7 +8991,7 @@
         try { bounds.extend(detPlot[k].group.getBounds()); } catch (err) { /* empty */ }
       }
     });
-    if (bounds.isValid()) try { map.fitBounds(bounds.pad(0.25)); } catch (e) { /* single point */ }
+    if (bounds.isValid()) try { fitBoundsMin(bounds, 0.25); } catch (e) { /* single point */ }
     // Surface the map: close the full-screen field page so the user can see it.
     stopFieldGeoWatch();
     document.getElementById("field-page").style.display = "none";
@@ -9218,7 +9230,7 @@
       if (!detIsVisible(k, selActive)) return;
       (detPlot[k].rows || []).forEach(function (r) { if (r && isFinite(+r.lat) && isFinite(+r.lon) && detDatePasses(r.date)) b.extend([+r.lat, +r.lon]); });
     });
-    if (b.isValid()) { try { map.fitBounds(b.pad(0.2)); } catch (e) {} }
+    if (b.isValid()) { try { fitBoundsMin(b, 0.2); } catch (e) {} }
   }
   // Collapsed/expanded state for the detection legend (persisted in mapLegend).
   var detLegendMini = false;
@@ -14212,7 +14224,7 @@
     Object.keys(detPlot).forEach(function (k) {
       (detPlot[k].rows || []).forEach(function (r) { if (isFinite(+r.lat) && isFinite(+r.lon) && detDatePasses(r.date)) pb.extend([+r.lat, +r.lon]); });
     });
-    if (pb.isValid()) { try { map.fitBounds(pb.pad(0.2)); return true; } catch (e) {} }
+    if (pb.isValid()) { try { fitBoundsMin(pb, 0.2); return true; } catch (e) {} }
     return false;
   }
   function fetchSelectedStoredLocations(locsOverride, silent, daysOverride, autoOpen) {
@@ -14226,7 +14238,7 @@
     function fitToAreas() {
       var b = L.latLngBounds([]);
       locs.forEach(function (l) { var d = (l.radius || recentRadiusKm()) / 111; b.extend([l.lat - d, l.lon - d]); b.extend([l.lat + d, l.lon + d]); });
-      if (b.isValid()) { try { map.fitBounds(b.pad(0.1)); } catch (e) {} }
+      if (b.isValid()) { try { fitBoundsMin(b, 0.1); } catch (e) {} }
     }
     (function next() {
       if (i >= locs.length) {

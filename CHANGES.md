@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-06 — Auto-fit floors at ~2.5 km (single observation keeps context) (sw v927)
+
+- Fetching a single observation used to zoom the map all the way in. New `fitBoundsMin(bounds, pad, minKm)`
+  never fits tighter than a ~2.5 km box around the centre (still keeps the data's extent when larger).
+  Applied to the observation-fetch fits: `plotSightingsResult`, `plotDetections`, the country/list fits,
+  and Fetch-on-open (`fitAllDetectionPoints` / `fitToAreas`).
+
 ## 2026-08-06 — eBird hotspots: fixed 500 km fetch + hover tip on the checkbox (sw v926)
 
 - The hotspot query uses a fixed 500 km radius (eBird's max) around the view centre; hotspots accumulate/persist across pans via the cache.
