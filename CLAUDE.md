@@ -15,7 +15,7 @@ There is **no build step, no framework, no npm, no bundler**. Everything is hand
 cd docs && python -m http.server 8000   # → http://localhost:8000
 ```
 
-**Deploy = `git push` to `main`.** GitHub Pages serves the `docs/` folder of `main` directly, so any push to `main` publishes the live site at `https://pcmoan70.github.io/BirdsWhere/`. There is no CI/build between commit and production — treat every push to `main` as a deploy.
+**Two-branch deploy (since 2026-08-06).** `main` is the development branch; GitHub Pages serves the `docs/` folder of the **`deploy`** branch. So pushing to `main` does **not** publish — it just saves work. **Deploy = promote `main` to `deploy`:** `git push origin main:deploy` (fast-forward), which publishes the live site at `https://pcmoan70.github.io/BirdsWhere/`. This gives a review/test gate before production. Default per-task action: commit + push to `main`; only promote to `deploy` when the user asks to deploy (or has approved the change). Keep `deploy` a fast-forward of `main` (don't commit directly to it).
 
 ### Two things that MUST happen on a user-visible change
 
