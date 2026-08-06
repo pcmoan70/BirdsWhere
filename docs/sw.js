@@ -21,11 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v941";
+var VERSION = "v942";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• Add a species to a list from its menu: in the species popup under “Lists & actions”, tap “Add to species list…” to add it to a saved list — or create a new one seeded with that species. Complements Save-selection-as-list and the premade groups.",
   "• Premade species groups: in the Species column panel, tap a group — Raptors, Owls, Ducks & geese, Waders, Gulls & terns, Herons, Woodpeckers, Finches, Crows & jays, Hummingbirds, Pigeons, Warblers — to filter the plotted species to that taxonomic group (derived offline from the IOC taxonomy). Your own saved lists still live right beside them.",
   "• All filters in one place: long-press (or right-click) the legend's black × to open a panel listing every filter — species, status, count, name, date, observer, source — showing which are active, each with an inline control to change or clear it, plus a Clear all.",
   "• Two new overlay layers: GBIF occurrence density — a heatmap of where records concentrate, now SEASONAL: it follows the week selector (the month around it, easing into the adjacent month at a month's edges) — and the Emerald Network (Bern Convention — the non-EU counterpart to Natura 2000).",

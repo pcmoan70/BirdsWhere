@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-06 — Add a species to a list from the species menu (sw v942)
+
+- The species popup's **Lists & actions** section now has **Add to species list…** — a sub-view listing the
+  saved species lists (✓ marks lists that already contain the species, with each list's size) to append to,
+  plus **New list…** to create one seeded with that species. New `drmRenderSpLists` + `addSpeciesToList`
+  (dedups, re-renders the Species panel if open); mirrors the point-list "Add to list" pattern. i18n
+  `spmenu.addList` (15 languages; reuses `detmenu.newList` + `sp.saveListPrompt`).
+
 ## 2026-08-06 — Premade taxonomic species groups (sw v941)
 
 - The Species column panel now offers **premade groups** alongside user-saved lists: Raptors, Owls,

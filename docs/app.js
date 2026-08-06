@@ -8075,6 +8075,9 @@
         }
         if (detSelectionActive()) el.appendChild(drmBtn(t("menu.removeAllSp"), function () { closeDetRowMenu(); detSelected = {}; refreshSel(); }));
       }
+      // Add this species to a saved species list (or create one) — the persistent
+      // counterpart to the transient selection filter above. Works for any keyed species.
+      el.appendChild(drmBtn(tLabel("spmenu.addList"), function () { drmRenderSpLists(el, d); }, "dotsplus"));
       // Each row is a toggle drawn with the app's own monochrome line icons (not the
       // colour emoji the list columns use); the active state reads via the icon's
       // full-strength (vs dimmed) rendering — see .drm-toggle .drm-ico-svg.
@@ -8101,6 +8104,35 @@
     el.appendChild(drmBtn(t("detmenu.newList"), function () {
       closeDetRowMenu();
       modalPrompt(t("detmenu.newListPrompt"), "").then(function (n) { if (n && n.trim()) addDetPoint(d, n.trim()); });
+    }));
+    positionAnchoredMenu(el, rect.left, rect.top);   // keep on-screen after the height change
+  }
+  // Append a species to a saved species list (dedup), then reflect it if the panel is up.
+  function addSpeciesToList(i, key) {
+    var a = getSpeciesLists(), l = a[i]; if (!l || !key) return;
+    l.keys = l.keys || [];
+    if (l.keys.indexOf(key) < 0) l.keys.push(key);
+    saveSpeciesLists(a);
+    if (typeof speciesPanelPopulated === "function" && speciesPanelPopulated()) renderSpControls();
+  }
+  // "Add to species list" sub-view of the species menu: pick an existing list (✓ = the
+  // species is already in it) or create a new one seeded with this species.
+  function drmRenderSpLists(el, d) {
+    var rect = el.getBoundingClientRect();
+    el.innerHTML = "";
+    var hdr = document.createElement("div"); hdr.className = "detrow-menu-hdr"; hdr.textContent = t("spmenu.addList"); el.appendChild(hdr);
+    var lists = getSpeciesLists();
+    lists.forEach(function (l, i) {
+      var has = (l.keys || []).indexOf(d.key) >= 0;
+      el.appendChild(drmBtn(l.name + " (" + ((l.keys || []).length) + ")" + (has ? " ✓" : ""), function () { addSpeciesToList(i, d.key); closeDetRowMenu(); }));
+    });
+    el.appendChild(drmBtn(t("detmenu.newList"), function () {
+      closeDetRowMenu();
+      modalPrompt(t("sp.saveListPrompt"), "").then(function (n) {
+        n = (n || "").trim(); if (!n) return;
+        var a = getSpeciesLists(); a.push({ name: n, keys: [d.key] }); saveSpeciesLists(a);
+        if (typeof speciesPanelPopulated === "function" && speciesPanelPopulated()) renderSpControls();
+      });
     }));
     positionAnchoredMenu(el, rect.left, rect.top);   // keep on-screen after the height change
   }
