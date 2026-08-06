@@ -11753,10 +11753,11 @@
   // GBIF adhoc endpoint (computed per request) — unlike the pre-aggregated "density" tiles
   // it honours the month filter, so the heatmap can follow the selected week's season.
   // Repeated month= params give SET semantics (a comma value is read as a RANGE, which
-  // 503s on a year-boundary wrap like Dec+Jan).
+  // 503s on a year-boundary wrap like Dec+Jan). "purpleHeat.point" is a smooth heat kernel
+  // (no hex bins / borders) so the wash reads as density, not a disruptive tiled grid.
   function gbifTileUrl() {
     return "https://api.gbif.org/v2/map/occurrence/adhoc/{z}/{x}/{y}@1x.png" +
-      "?srs=EPSG:3857&style=classic.poly&bin=hex&hexPerTile=30" +
+      "?srs=EPSG:3857&style=purpleHeat.point" +
       gbifSeasonMonths().map(function (m) { return "&month=" + m; }).join("");
   }
   // Re-tint the GBIF density overlay for the current week — only when it's actually showing.

@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-08-06 — GBIF density overlay: smooth heat instead of hex grid (sw v940)
+
+- Switched the GBIF density style from `classic.poly` hex bins (with their disruptive grey cell borders) to
+  `purpleHeat.point` — a smooth heat kernel with no bins or borders, so the overlay reads as a density wash.
+  Dropped the now-unused `bin`/`hexPerTile` params.
+
 ## 2026-08-06 — Legend n counts follow the map view, live on pan (sw v939)
 
 - Each legend row's **n** (of n/t) is now the number of that species' dots **currently on screen** (passing
