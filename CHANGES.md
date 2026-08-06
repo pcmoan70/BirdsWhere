@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-06 — Re-fetching a spot after a radius change replaces its outline (sw v923)
+
+- The remembered fetched-area outlines were keyed by spot **+ radius**, so re-fetching a spot after
+  resizing the Sightings radius stacked a second rectangle and left the original under it.
+  `rememberFetchedArea` now removes any existing outline at the same spot (any radius) before adding the
+  new one (`removeFetchedAreasBySpot`), so a spot shows a single outline at the latest radius.
+
 ## 2026-08-06 — Fix count mismatches: expanded records + "More of these" (sw v922)
 
 - **Expanded species records now match the Total.** `spDetailRowsFor` read from `detPlot` (the plotted

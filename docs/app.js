@@ -2836,11 +2836,26 @@
   // whose point falls inside the rectangle) and its outline.
   var fetchedAreasLayer = null, fetchedAreaKeys = null, fetchedAreas = [];
   var areaDelLayer = null, detAreaDeleteMode = false;
+  // Drop any remembered outline(s) at this spot (any radius) — so re-fetching after a
+  // radius resize replaces the outline instead of stacking the original rectangle under
+  // the new one.
+  function removeFetchedAreasBySpot(spot) {
+    var pref = spot + ":";
+    for (var i = fetchedAreas.length - 1; i >= 0; i--) {
+      var a = fetchedAreas[i];
+      if (String(a.id).indexOf(pref) !== 0) continue;
+      if (fetchedAreasLayer && a.rect) fetchedAreasLayer.removeLayer(a.rect);
+      if (areaDelLayer && a.delMarker) areaDelLayer.removeLayer(a.delMarker);
+      if (fetchedAreaKeys) delete fetchedAreaKeys[a.id];
+      fetchedAreas.splice(i, 1);
+    }
+  }
   function rememberFetchedArea(lat, lon, rkm) {
     if (!map || !L.rectangle || !isFinite(lat) || !isFinite(lon)) return;
     rkm = rkm || recentRadiusKm();
-    var key = lat.toFixed(3) + "," + lon.toFixed(3) + ":" + rkm;
-    addFetchedAreaRect(key, fetchAreaBounds(L.latLng(lat, lon)));
+    var spot = lat.toFixed(3) + "," + lon.toFixed(3);
+    removeFetchedAreasBySpot(spot);                       // no stacked rectangles at one spot after a radius change
+    addFetchedAreaRect(spot + ":" + rkm, fetchAreaBounds(L.latLng(lat, lon)));
     saveFetchedAreas();
   }
   // Draw one remembered area (outline + bookkeeping). Shared by a live fetch and
