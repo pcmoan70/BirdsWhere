@@ -7043,10 +7043,9 @@
     function load() {
       var key = ebirdKey();
       if (!key) { grp.clearLayers(); setStatus(t("layer.hotspotsKey")); return; }
-      var c = map.getCenter(), b = map.getBounds();
-      var radius = Math.round(haversineKm(c.lat, c.lng, b.getNorth(), b.getEast()));
-      var capped = radius > 500;
-      var dist = Math.min(500, Math.max(10, Math.ceil(radius / 25) * 25));   // 25 km buckets → cache-friendly
+      var c = map.getCenter();
+      var dist = 50;        // fixed 50 km radius around the view centre (eBird ref/hotspot/geo)
+      var capped = false;   // well within eBird's 500 km limit; hotspots accumulate as you pan
       lastCtx = { capped: capped, c: c, dist: dist };
       var ck = hsKey(c.lat, c.lng, dist);
       // This cell was already fetched recently → its hotspots are in the store; just
@@ -11547,7 +11546,14 @@
     hotspotsLayer = ebirdHotspotLayer();
     overlays[t("layer.hotspots")] = hotspotsLayer;
     overlays[t("layer.osmpa")] = osmProtectedLayer();
-    L.control.layers(null, overlays, { collapsed: true, position: "topright" }).addTo(map);
+    var layersCtrl = L.control.layers(null, overlays, { collapsed: true, position: "topright" }).addTo(map);
+    // Hover tip on the eBird hotspots row (explains the 50 km fetch + caching).
+    try {
+      var hsName = t("layer.hotspots");
+      Array.prototype.forEach.call(layersCtrl.getContainer().querySelectorAll(".leaflet-control-layers-overlays label"), function (lab) {
+        if ((lab.textContent || "").trim() === hsName) lab.title = t("layer.hotspotsTip");
+      });
+    } catch (e) {}
     setupAreaHover();
   }
 

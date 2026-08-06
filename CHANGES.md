@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-06 — eBird hotspots: fixed 50 km fetch + hover tip on the checkbox (sw v925)
+
+- The hotspot query now uses a **fixed 50 km** radius around the view centre (was the view radius, up to
+  eBird's 500 km cap). Predictable, and hotspots still accumulate/persist across pans.
+- Added a hover message on the eBird‑hotspots row in the layers control (`layer.hotspotsTip`, 15 langs):
+  "eBird returns hotspots within 50 km of the view centre. Pan the map to load more — cached hotspots
+  stay on the map."
+
 ## 2026-08-06 — List/map toggle works after Fetch on open (sw v924)
 
 - The list/map toggle needed a clicked point (`currentSpView`), which Fetch on open never sets — so it
