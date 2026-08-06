@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-08-06 — Species selection keeps greyed rows in the legend as 0/t (sw v932)
+
+- When a species selection is active, the non-selected species already stayed in the legend greyed out, but
+  their count still read the pre-selection n/t. Since a filtered-out species has 0 dots on the map, its
+  legend row now reads **0/t** — kept (not removed) so it can still be seen and re-added.
+
 ## 2026-08-06 — Legend n/t totals follow the map view (sw v931)
 
 - With "Filter the legend to the map view" on, the "/t" total in each legend row now also respects the

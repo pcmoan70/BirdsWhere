@@ -21,11 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v931";
+var VERSION = "v932";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• Selecting species no longer drops the rest from the legend: filtered-out species stay listed, greyed, reading 0/t — so you can still see and re-add them.",
   "• Legend totals now follow the map view: with “Filter the legend to the map view” on, both counts in each row's n/t recompute as you pan and zoom, so t is the total in view rather than everywhere.",
   "• The Total column filter now reads [ ] ≤ Total ≤ [ ] with a Total/Observations toggle in the middle — tap it to switch whether the lower/upper bounds restrict deduped totals or the number of observations. Empty boxes = no count restriction.",
   "• Filter by lists. Observer popup → “Filter by observer list” applies a saved observer list. And new species lists: in a species menu, “Show only” then “Add to species filter” to build a set, then “Save selection as list” in the Species panel — tap a saved list to narrow the map, legend and species table to those species.",

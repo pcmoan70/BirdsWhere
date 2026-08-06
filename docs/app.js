@@ -9904,12 +9904,14 @@
       (keys.length ? "" : '<div class="det-empty">' + escapeHtml(t("det.noMatch")) + "</div>") +
       keys.map(function (k) {
         var e = detPlot[k], nm = escapeHtml(detName(e));
-        var tot = detTotalCount(k);   // total specimens (deduped)
-        var vis = visCount[k] != null ? visCount[k] : tot;   // specimens passing the active filters
-        var ct = (vis === tot) ? String(vis) : (vis + "/" + tot);
         // When a selection is active, non-selected rows show a grey swatch and
         // dimmed text so it's clear they're hidden on the map.
         var selActive = hasSel, sel = !!detSelected[k];
+        var tot = detTotalCount(k);   // total specimens (deduped)
+        // A species filtered OUT by the selection has 0 dots on the map, so it reads
+        // "0/t" — kept in the legend (greyed), not removed.
+        var vis = (selActive && !sel) ? 0 : (visCount[k] != null ? visCount[k] : tot);   // specimens passing the active filters
+        var ct = (vis === tot) ? String(vis) : (vis + "/" + tot);
         var rowCls = "det-row det-row-click" + (selActive && !sel ? " det-row-off" : "") + (sel ? " det-row-on" : "");
         var sw = (selActive && !sel) ? DET_MUTE_COLOR : e.color;
         return '<div class="' + rowCls + '" data-key="' + escapeHtml(k) + '">' + detSwatch(sw, isInteresting(e.key), detIsRare(k), e.key) + '<span class="det-nm" title="' + nm + '">' + nm + '</span><span class="det-ct">' + ct + '</span><button type="button" class="det-del" data-key="' + escapeHtml(k) + '" aria-label="remove">×</button></div>';
