@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-08-06 — List filtering redesign: tickable dropdowns + list manager (sw v944)
+
+- **Species lists** in the Species filter panel are now a **tick-box dropdown** (saved lists + premade
+  groups), multi-select **union** — tick several to combine them; a list is ticked when all its plotted
+  species are selected. Renaming/deleting saved lists moved to a **list manager** (the ✎ button) instead of
+  inline × chips. New `keysAllSelected`/`toggleListSelection`/`openSpeciesListManager`/`premadeById`;
+  removed the old apply-chip path (`applySpeciesList`) and `sp-splist` chips.
+- **Observer lists** get the same treatment: the observer filter's cycle button is replaced by a tickable
+  observer-lists dropdown (`obsListTicked`/`toggleObsList`); All/None stay reachable via the individual
+  observer checklist, and the ✎ opens the existing observer list editor/manager. Removed `cycleObsFilter`.
+- New i18n `sp.pickLists`/`sp.manageLists`/`sp.noLists` (15 languages); CSS for the dropdowns + manager.
+
 ## 2026-08-06 — Navigation overlays: Birding spots + Land cover (sw v943)
 
 - **Birding spots** — an OSM/Overpass point layer of **bird hides** (`leisure=bird_hide`), **observation

@@ -1341,6 +1341,28 @@ button.dd-name:hover { text-decoration: underline; }
 /* Birding-spot markers (hides / observation towers / viewpoints). */
 .bird-spot-ico { font-size: 16px; line-height: 22px; text-align: center; text-shadow: 0 0 2px #fff, 0 0 3px #fff; cursor: pointer; }
 .bird-spot-pop { font-size: 0.82rem; line-height: 1.35; }
+
+/* Tickable list dropdowns (species + observer filter panes) + list manager. */
+.sp-splist-head .sp-lists-manage { background: none; border: none; cursor: pointer; color: var(--brand); font-size: 0.9rem; margin-left: 4px; padding: 0 2px; }
+.sp-lists-dd, .det-obslists-dd { margin: 2px 0 4px; }
+.sp-lists-dd > summary, .det-obslists-dd > summary { cursor: pointer; font-size: 0.86rem; padding: 3px 6px; border: 1px solid var(--border); border-radius: 5px; list-style: none; display: inline-flex; align-items: center; gap: 4px; user-select: none; }
+.sp-lists-dd > summary::after, .det-obslists-dd > summary::after { content: "▾"; color: var(--ink-muted); }
+.sp-lists-dd[open] > summary::after, .det-obslists-dd[open] > summary::after { content: "▴"; }
+.sp-lists-menu, .det-obslists-menu { margin-top: 4px; padding: 4px; border: 1px solid var(--border); border-radius: 6px; max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+.sp-list-row { display: flex; align-items: center; gap: 6px; padding: 3px 4px; font-size: 0.86rem; cursor: pointer; border-radius: 4px; }
+.sp-list-row:hover { background: var(--surface-2, rgba(0,0,0,.04)); }
+.sp-list-row .sp-list-nm { flex: 1; }
+.sp-list-n { color: var(--ink-muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.sp-list-sub { font-size: 0.72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-muted); padding: 5px 4px 2px; }
+.sp-list-empty { font-size: 0.82rem; color: var(--ink-muted); padding: 4px; }
+.det-obs-scope { font-size: 0.86rem; color: var(--ink-muted); }
+.list-mgr { width: min(360px, 92vw); max-height: 82vh; padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.list-mgr .lm-body { overflow-y: auto; padding: 8px 12px 12px; }
+.list-mgr .lm-empty { color: var(--ink-muted); font-size: 0.88rem; padding: 8px 0; }
+.list-mgr .lm-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.list-mgr .lm-name { flex: 1; padding: 4px 6px; border: 1px solid var(--border); border-radius: 5px; font-size: 0.9rem; }
+.list-mgr .lm-n { color: var(--ink-muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.list-mgr .lm-del { background: none; border: none; cursor: pointer; color: var(--brand); font-size: 1.1rem; line-height: 1; padding: 0 2px; }
 .area-tip .area-tip-sub { color: var(--ink-muted, #666); font-size: 0.72rem; }
 .area-tip .area-tip-note { display: block; margin-top: 3px; color: var(--ink-muted, #666); font-size: 0.72rem; line-height: 1.35; }
 .area-tip .area-tip-sep { display: block; height: 5px; }

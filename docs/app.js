@@ -9355,6 +9355,20 @@
   // Saved sets of observer names (to filter by).
   function getObserverLists() { return window.GeoState.get("observerLists", []) || []; }
   function saveObserverLists(a) { window.GeoState.save({ observerLists: a }); }
+  var obsListsDdOpen = false;   // keep the observer-lists dropdown open across re-renders
+  // An observer list is ticked when all its observers are in the active filter.
+  function obsListTicked(L) {
+    if (!detObsFilter || !L.observers || !L.observers.length) return false;
+    return L.observers.every(function (n) { return detObsFilter.has(n); });
+  }
+  // Tick/untick an observer list: add / remove its observers from the filter (union;
+  // starting from "all" narrows to just that list). Empty result → back to all.
+  function toggleObsList(observers, on) {
+    var cur = detObsFilter ? new Set(detObsFilter) : new Set();
+    (observers || []).forEach(function (n) { if (on) cur.add(n); else cur.delete(n); });
+    setDetObsFilter(cur.size ? cur : null);
+    detFiltersRefresh(); reRenderFilterBar();
+  }
   // Named species lists — saved sets of species keys. Applying one filters the plotted
   // detections (map / legend / By-observation) down to those species, via the same
   // detSelected mechanism as "Show only this species". Build a selection first (Show
@@ -9366,18 +9380,6 @@
     for (var i = 0; i < arr.length; i++) if (!selObj[arr[i]]) return false;
     return true;
   }
-  // Apply saved species list #i as the species selection filter (only species that are
-  // actually plotted can be selected).
-  function applySpeciesList(i) {
-    var l = getSpeciesLists()[i]; if (!l) return;
-    var plotted = (l.keys || []).filter(function (k) { return detPlot[k]; });   // list species observed here
-    var cleared = sameKeySet(detSelected, plotted);   // tapping the active list again clears it
-    detSelected = {};
-    if (!cleared) plotted.forEach(function (k) { detSelected[k] = true; });
-    saveLegendState(); rebuildDetLayers(); updateDetLegend();
-    refreshCueCellsInPlace();   // repaint the list in place (species panel is up)
-    renderSpControls();          // re-render the panel (chip highlight + selection list)
-  }
   // Save the current species selection as a named list.
   function saveCurrentSpeciesList() {
     var keys = Object.keys(detSelected).filter(function (k) { return detPlot[k]; });
@@ -9387,6 +9389,55 @@
       var a = getSpeciesLists(); a.push({ name: name, keys: keys }); saveSpeciesLists(a);
       if (typeof speciesPanelPopulated === "function" && speciesPanelPopulated()) renderSpControls();
     });
+  }
+  // ---- Tickable species-list filtering (dropdown) --------------------------
+  // Lists are applied by TICKING them (multi-select union), not tapping chips; editing
+  // and deleting move to the list manager. `spListsDdOpen` keeps the dropdown open across
+  // the re-render a tick triggers.
+  var spListsDdOpen = false;
+  // A list's plotted species are all currently in the selection → its box is ticked.
+  function keysAllSelected(keys) {
+    var p = (keys || []).filter(function (k) { return detPlot[k]; });
+    return p.length > 0 && p.every(function (k) { return detSelected[k]; });
+  }
+  // Tick/untick a list: add / remove its plotted species from the selection (union).
+  function toggleListSelection(keys, on) {
+    var p = (keys || []).filter(function (k) { return detPlot[k]; });
+    if (on) p.forEach(function (k) { detSelected[k] = true; });
+    else p.forEach(function (k) { delete detSelected[k]; });
+    saveLegendState(); rebuildDetLayers(); updateDetLegend();
+    refreshCueCellsInPlace(); renderSpControls();
+  }
+  // Species list manager: rename / delete saved lists (moved out of the filter pane).
+  function openSpeciesListManager() {
+    var m = createModal({ boxClass: "list-mgr", escClose: true });
+    function render() {
+      var lists = getSpeciesLists();
+      var html = '<div class="aff-head"><b class="aff-title">' + escapeHtml(t("sp.manageLists")) + "</b>" +
+        '<button type="button" class="lm-close aff-close" aria-label="close">×</button></div><div class="lm-body">';
+      if (!lists.length) html += '<div class="lm-empty">' + escapeHtml(t("sp.noLists")) + "</div>";
+      lists.forEach(function (l, i) {
+        html += '<div class="lm-row"><input type="text" class="lm-name" data-i="' + i + '" value="' + escapeHtml(l.name) + '" />' +
+          '<span class="lm-n">(' + ((l.keys || []).length) + ")</span>" +
+          '<button type="button" class="lm-del" data-i="' + i + '" aria-label="' + escapeHtml(t("offline.delete")) + '">×</button></div>';
+      });
+      html += "</div>";
+      m.box.innerHTML = html;
+      m.box.querySelector(".lm-close").addEventListener("click", function () { m.close(); });
+      m.box.querySelectorAll(".lm-name").forEach(function (inp) {
+        inp.addEventListener("change", function () {
+          var a = getSpeciesLists(), li = +this.getAttribute("data-i"), nm = (this.value || "").trim();
+          if (a[li] && nm) { a[li].name = nm; saveSpeciesLists(a); if (speciesPanelPopulated && speciesPanelPopulated()) renderSpControls(); }
+        });
+      });
+      m.box.querySelectorAll(".lm-del").forEach(function (b) {
+        b.addEventListener("click", function () {
+          var a = getSpeciesLists(); a.splice(+this.getAttribute("data-i"), 1); saveSpeciesLists(a);
+          render(); if (speciesPanelPopulated && speciesPanelPopulated()) renderSpControls();
+        });
+      });
+    }
+    render();
   }
 
   // ---- Premade (taxonomic) species lists -----------------------------------
@@ -9450,6 +9501,7 @@
   function premadeKeys(def) {
     return Object.keys(detPlot).filter(function (k) { return speciesInPremade(k, def); });
   }
+  function premadeById(id) { for (var i = 0; i < PREMADE_LISTS.length; i++) if (PREMADE_LISTS[i].id === id) return PREMADE_LISTS[i]; return null; }
   // Apply premade group `id` as the selection filter (toggle: tapping the active one clears).
   function applyPremadeList(id) {
     var def = null; for (var i = 0; i < PREMADE_LISTS.length; i++) if (PREMADE_LISTS[i].id === id) { def = PREMADE_LISTS[i]; break; }
@@ -9701,11 +9753,21 @@
     }
     var rows = ob.names.map(function (o) { return row(o, o); });
     if (ob.hasNone) rows.push(row("", t("det.noObserver")));
-    // Head: an ✎ button opens the list editor; the cycle button (where "All" used
-    // to be) shows the current scope and steps All → None → each saved list.
+    // Head: a TICKABLE dropdown of saved observer lists (tick to apply a list's observers,
+    // union across ticked lists) + an ✎ button that opens the list manager. When there are
+    // no lists yet, just show the current scope label. All/None stay reachable via the
+    // individual-observer checklist below.
+    var oLists = getObserverLists(), head;
+    if (oLists.length) {
+      head = '<details class="det-obslists-dd"' + (obsListsDdOpen ? " open" : "") + '><summary>' + escapeHtml(obsFilterLabel()) + "</summary>" +
+        '<div class="det-obslists-menu">' + oLists.map(function (L, i) {
+          return '<label class="sp-list-row"><input type="checkbox" class="det-obslist-tick" data-i="' + i + '"' + (obsListTicked(L) ? " checked" : "") + " /> <span class=\"sp-list-nm\">" + escapeHtml(L.name) + '</span> <span class="sp-list-n">(' + ((L.observers || []).length) + ")</span></label>";
+        }).join("") + "</div></details>";
+    } else {
+      head = '<span class="det-obs-scope">' + escapeHtml(obsFilterLabel()) + "</span>";
+    }
     return '<div class="det-obs-panel">' +
-      '<div class="det-obs-head">' +
-        '<button type="button" class="det-obs-cycle" title="' + escapeHtml(t("det.obsCycleHint")) + '">' + escapeHtml(obsFilterLabel()) + "</button>" +
+      '<div class="det-obs-head">' + head +
         '<button type="button" class="det-obs-editlists" title="' + escapeHtml(t("obs.lists")) + '">✎</button></div>' +
       '<div class="det-obs-list">' + rows.join("") + "</div></div>";
   }
@@ -9784,20 +9846,6 @@
     var lists = getObserverLists();
     for (var i = 0; i < lists.length; i++) if (sameNameSet(detObsFilter, lists[i].observers)) return lists[i].name;
     return t("det.obsCustom");
-  }
-  // Step the observer scope: All (null) → None (empty) → list0 → list1 → … → All.
-  // A custom checkbox selection resets to All on the next step.
-  function cycleObsFilter() {
-    var lists = getObserverLists(), n = 2 + lists.length, cur = 0;
-    if (detObsFilter) {
-      if (detObsFilter.size === 0) cur = 1;
-      else { cur = -1; for (var i = 0; i < lists.length; i++) if (sameNameSet(detObsFilter, lists[i].observers)) { cur = 2 + i; break; } }
-    }
-    var next = cur < 0 ? 0 : (cur + 1) % n;
-    if (next === 0) setDetObsFilter(null);
-    else if (next === 1) setDetObsFilter(new Set());
-    else setDetObsFilter(new Set(lists[next - 2].observers));
-    saveLegendState(); rebuildDetLayers(); updateDetLegend();
   }
   // True if the current filter Set contains exactly the names in `arr`.
   function sameNameSet(set, arr) {
@@ -10292,8 +10340,12 @@
         nm.addEventListener("mouseleave", unfocusDetObs);
       }
     });
-    var obsCycle = el.querySelector(".det-obs-cycle");
-    if (obsCycle) obsCycle.addEventListener("click", function (e) { e.stopPropagation(); cycleObsFilter(); reRenderFilterBar(); });
+    // Tickable observer-lists dropdown: tick a list → apply its observers (union).
+    var obsDd = el.querySelector(".det-obslists-dd");
+    if (obsDd) obsDd.addEventListener("toggle", function () { obsListsDdOpen = obsDd.open; });
+    el.querySelectorAll(".det-obslist-tick").forEach(function (cb) {
+      cb.addEventListener("change", function (e) { e.stopPropagation(); var L = getObserverLists()[+this.getAttribute("data-i")]; if (L) toggleObsList(L.observers, this.checked); });
+    });
     var edLists = el.querySelector(".det-obs-editlists");
     if (edLists) edLists.addEventListener("click", function (e) { e.stopPropagation(); openObserverEditor(); });
     wireClearFilterBtn(el.querySelector(".det-clear-sel"));   // click = clear all; long-press/right-click = all-filters pane
@@ -17103,32 +17155,27 @@
       }).join("") + "</div>";
     }
     if (speciesFilterActive()) html += '<button type="button" class="sp-spf-clear demo-btn demo-btn-light">' + escapeHtml(t("menu.removeAllSp")) + "</button>";
-    // Saved species lists: tap to filter the plotted detections down to that list; ×
-    // deletes. Plus "Save selection as list" when a species selection is active.
+    // Species lists as a TICKABLE dropdown (multi-select union): tick a saved list or a
+    // premade group to add its species to the filter; untick to remove. Editing/deleting
+    // saved lists lives in the manager (✎), not inline here.
     var spLists = getSpeciesLists();
-    if (spLists.length || sel.length) {
-      html += '<div class="sp-splist-head">' + escapeHtml(t("sp.speciesLists")) + "</div>";
-      if (spLists.length) {
-        html += '<div class="sp-splist-chips">' + spLists.map(function (l, i) {
-          var active = sel.length && sameKeySet(detSelected, (l.keys || []).filter(function (k) { return detPlot[k]; }));
-          return '<span class="sp-splist-chip' + (active ? " on" : "") + '"><button type="button" class="sp-splist-apply" data-i="' + i + '">' + escapeHtml(l.name) + " (" + ((l.keys || []).length) + ')</button><button type="button" class="sp-splist-del" data-i="' + i + '" aria-label="' + escapeHtml(t("offline.delete")) + '">×</button></span>';
-        }).join("") + "</div>";
-      }
-      if (sel.length) html += '<button type="button" class="sp-splist-save demo-btn demo-btn-light">' + escapeHtml(t("sp.saveAsList")) + "</button>";
-    }
-    // Premade taxonomic groups (raptors, owls, …). Shown only once the IOC taxonomy is
-    // loaded and only for groups with at least one matching plotted species.
-    if (iocReady) {
-      var pm = PREMADE_LISTS.map(function (def) { return { def: def, keys: premadeKeys(def) }; }).filter(function (x) { return x.keys.length; });
+    var pm = iocReady ? PREMADE_LISTS.map(function (def) { return { def: def, keys: premadeKeys(def) }; }).filter(function (x) { return x.keys.length; }) : (ensureIocLoaded(), []);
+    if (spLists.length || pm.length || sel.length) {
+      html += '<div class="sp-splist-head">' + escapeHtml(t("sp.speciesLists")) +
+        ' <button type="button" class="sp-lists-manage" title="' + escapeHtml(t("sp.manageLists")) + '" aria-label="' + escapeHtml(t("sp.manageLists")) + '">✎</button></div>';
+      var rows = "";
+      spLists.forEach(function (l, i) {
+        rows += '<label class="sp-list-row"><input type="checkbox" class="sp-list-tick" data-i="' + i + '"' + (keysAllSelected(l.keys) ? " checked" : "") + " /> <span class=\"sp-list-nm\">" + escapeHtml(l.name) + '</span> <span class="sp-list-n">(' + ((l.keys || []).length) + ")</span></label>";
+      });
       if (pm.length) {
-        html += '<div class="sp-splist-head">' + escapeHtml(t("sp.premadeLists")) + "</div>";
-        html += '<div class="sp-splist-chips">' + pm.map(function (x) {
-          var active = sel.length && sameKeySet(detSelected, x.keys);
-          return '<span class="sp-splist-chip' + (active ? " on" : "") + '"><button type="button" class="sp-premade-apply" data-id="' + escapeHtml(x.def.id) + '">' + escapeHtml(t("premade." + x.def.id)) + " (" + x.keys.length + ")</button></span>";
-        }).join("") + "</div>";
+        rows += '<div class="sp-list-sub">' + escapeHtml(t("sp.premadeLists")) + "</div>";
+        pm.forEach(function (x) {
+          rows += '<label class="sp-list-row"><input type="checkbox" class="sp-premade-tick" data-id="' + escapeHtml(x.def.id) + '"' + (keysAllSelected(x.keys) ? " checked" : "") + " /> <span class=\"sp-list-nm\">" + escapeHtml(t("premade." + x.def.id)) + '</span> <span class="sp-list-n">(' + x.keys.length + ")</span></label>";
+        });
       }
-    } else {
-      ensureIocLoaded();   // fire-and-forget; re-renders the panel once ready
+      html += '<details class="sp-lists-dd"' + (spListsDdOpen ? " open" : "") + '><summary>' + escapeHtml(t("sp.pickLists")) + "</summary>" +
+        '<div class="sp-lists-menu">' + (rows || '<div class="sp-list-empty">' + escapeHtml(t("sp.noLists")) + "</div>") + "</div></details>";
+      if (sel.length) html += '<button type="button" class="sp-splist-save demo-btn demo-btn-light">' + escapeHtml(t("sp.saveAsList")) + "</button>";
     }
     return html + "</div>";
   }
@@ -17196,16 +17243,18 @@
         x.addEventListener("click", function (e) { e.stopPropagation(); delete detSelected[this.getAttribute("data-key")]; saveLegendState(); rebuildDetLayers(); updateDetLegend(); renderSpControls(); });
       });
       // Saved species lists: apply / delete / save-current.
-      container.querySelectorAll(".sp-splist-apply").forEach(function (b) {
-        b.addEventListener("click", function (e) { e.stopPropagation(); applySpeciesList(+this.getAttribute("data-i")); });
+      // Tickable lists dropdown: tick a saved list or premade group → add its species to
+      // the filter (union); untick → remove. Keep the dropdown open across the re-render.
+      var listsDd = container.querySelector(".sp-lists-dd");
+      if (listsDd) listsDd.addEventListener("toggle", function () { spListsDdOpen = listsDd.open; });
+      container.querySelectorAll(".sp-list-tick").forEach(function (cb) {
+        cb.addEventListener("change", function (e) { e.stopPropagation(); var l = getSpeciesLists()[+this.getAttribute("data-i")]; if (l) toggleListSelection(l.keys, this.checked); });
       });
-      container.querySelectorAll(".sp-splist-del").forEach(function (b) {
-        b.addEventListener("click", function (e) { e.stopPropagation(); var a = getSpeciesLists(); a.splice(+this.getAttribute("data-i"), 1); saveSpeciesLists(a); renderSpControls(); });
+      container.querySelectorAll(".sp-premade-tick").forEach(function (cb) {
+        cb.addEventListener("change", function (e) { e.stopPropagation(); var def = premadeById(this.getAttribute("data-id")); if (def) toggleListSelection(premadeKeys(def), this.checked); });
       });
-      // Premade taxonomic groups: apply / toggle.
-      container.querySelectorAll(".sp-premade-apply").forEach(function (b) {
-        b.addEventListener("click", function (e) { e.stopPropagation(); applyPremadeList(this.getAttribute("data-id")); });
-      });
+      var listsMng = container.querySelector(".sp-lists-manage");
+      if (listsMng) listsMng.addEventListener("click", function (e) { e.stopPropagation(); openSpeciesListManager(); });
       var spListSave = container.querySelector(".sp-splist-save");
       if (spListSave) spListSave.addEventListener("click", function (e) { e.stopPropagation(); saveCurrentSpeciesList(); });
       var clr = container.querySelector(".sp-spf-clear");
