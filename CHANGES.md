@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-08-06 — Legend: summed N/T at top, per-species n only, hide n<1 (sw v948)
+
+- The legend now lists **only species with ≥ 1 specimen on screen** (passing the filters); each row shows
+  just that on-screen count **n** (no more per-row n/t). A new **Total** row at the top sums it: **N/T**
+  where N = Σ on-screen filtered specimens and T = Σ grand-total deduped specimens plotted (just N when
+  equal). A selection hides non-selected species' dots, so those drop out (n → 0). New `legendN(k)` helper.
+- Removed the now-redundant **"Filter the legend to the map view"** setting (this in-view behaviour is now
+  always on) and the dead `detFilteredCount`/`legendInView`/`DET_MUTE_COLOR`. Help text updated.
+
 ## 2026-08-06 — Fix: Barn Owl mislabelled as "American Barn Owl" (sw v947)
 
 - The model's bundled taxonomy names `brnowl` (Tyto alba — the Western/European Barn Owl) as the *American*

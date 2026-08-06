@@ -2898,6 +2898,10 @@ a.dl-row:hover, .dl-row-menu:hover { background: var(--surface-2, rgba(0,0,0,.05
 .det-clear-sel { border: none; background: transparent; cursor: pointer; color: var(--ink, #1a1a1a); font: inherit; font-size: 1.2rem; line-height: 1; padding: 2px 7px; }
 .det-clear-sel:hover { color: #000; }
 .det-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+/* Summed N/T row at the top of the legend list. */
+.det-legend-total { font-weight: 700; border-bottom: 1px solid var(--border, rgba(0,0,0,.12)); padding-bottom: 3px; margin-bottom: 2px; }
+.det-legend-total .det-nm { flex: 1; }
+.det-legend-total .det-ct { font-variant-numeric: tabular-nums; }
 .det-row-click { cursor: pointer; border-radius: 4px; }
 .det-row-click:hover { background: var(--surface-2, rgba(0,0,0,.05)); }
 .det-row-on .det-nm { font-weight: 700; }

@@ -5157,10 +5157,6 @@
                 '<p class="cu-hint" data-i18n="ctrl.deduphint">When the same sighting is registered in two databases (e.g. eBird and Artsobservasjoner) — same observer, approximate location, date, count and species — show it once instead of twice. Off = show every source\'s copy.</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
-                '<label class="ctrl-check"><input type="checkbox" id="legend-inview-toggle"> <span data-i18n="ctrl.legendInView">Filter the legend to the map view</span></label>' +
-                '<p class="cu-hint" data-i18n="ctrl.legendInViewHint">The bottom-left legend lists only species with an observation currently visible on the map, updating as you pan and zoom. Off = list every plotted species.</p>' +
-              '</div>' +
-              '<div class="ctrl-group">' +
                 '<label for="rare-pct" data-i18n="ctrl.rarepct">Rare species threshold (%)</label>' +
                 '<input id="rare-pct" type="number" min="1" max="100" step="1" />' +
                 '<p class="cu-hint" data-i18n="ctrl.rarepcthint">A plotted species is “rare locally” when its detection count is at most this % of the commonest plotted species. Rare dots get a black centre; filter them with the legend’s ◉ Rare.</p>' +
@@ -7238,7 +7234,6 @@
   // "Filter legend to the current view" (default on): the legend lists only species
   // that have at least one plotted dot inside the map's visible bounds, and updates
   // as you pan/zoom. Off = list every plotted species regardless of the viewport.
-  function legendInView() { return window.GeoState.get("legendInView", false) === true; }   // default OFF: the legend/list shows ALL plotted species, synced with the map (not narrowed to the view)
   var legendViewBounds = null;   // set per updateDetLegend() call: the map bounds when the filter is on, else null
   var detLegend = null;
   // Legend-driven visibility: dots always draw in their species colour. Click a
@@ -7418,7 +7413,6 @@
   }
   // Dots are always shown in their species colour (no grey overview mode) — so
   // "all"/"1 day"/etc. all render coloured. Visibility (above) does the filtering.
-  var DET_MUTE_COLOR = "#9aa3a0";   // still used for hidden rows' legend swatch
   function detSlim(rows) {
     return (rows || []).filter(function (r) { return r.lat != null && r.lon != null; })
       .map(function (r) { return { lat: +r.lat, lon: +r.lon, url: r.url || "", date: r.date || "", src: r.src || "", origin: r.origin || "", place: r.place || "", count: (r.count != null ? r.count : ""), act: r.act || "", note: String(r.note || "").slice(0, 160), observer: r.observer || "" }; });
@@ -9891,14 +9885,11 @@
   }
   // The "n" of the legend's "n/t": specimens IN THE CURRENT VIEW passing the filters —
   // so panning/zooming recomputes it (the legend re-renders on moveend). legendViewBounds
-  // is always the current map bounds, independent of the "filter legend to view" setting
-  // (that setting only decides whether off-screen species are dropped from the LIST).
+  // is always the current map bounds — the legend lists only species with a dot on screen
+  // (n ≥ 1), each showing that on-screen filtered count.
   function detVisibleCount(k) { return countPassing(k, true); }
-  // Specimens passing the filters anywhere (no view restriction) — drives list membership
-  // when "filter legend to view" is OFF, so panning doesn't drop rows (only their n → 0).
-  function detFilteredCount(k) { return countPassing(k, false); }
   // Total deduped specimens for a species, ignoring the active filters and the view —
-  // the fixed "/ t" denominator of the legend's "n/t".
+  // the fixed "/ t" denominator of the legend's summed N/T.
   function detTotalCount(k) { var e = detPlot[k]; return (e && e.rows) ? specimenTotal(e.rows) : 0; }
   // Model week (1–48) for an observation date; falls back to the current week.
   function weekOfDate(s) {
@@ -10071,17 +10062,17 @@
     // (★/◉/🟡/group) AND the days + observer filters (a species with nothing left
     // after those drops out, like its dots do on the map).
     // legendViewBounds = the current map view, captured once so every count this render
-    // uses the same viewport. It ALWAYS reflects the view (so the "n" of n/t updates as
-    // you pan). The "filter legend to view" setting only decides list membership: ON =
-    // drop species with nothing on screen; OFF (default) = keep every plotted species,
-    // its n just going to 0 when panned off-screen.
+    // uses the same viewport. Each row's n = deduped specimens ON SCREEN passing the
+    // filters (0 if a selection is active and this species isn't in it — its dots are
+    // hidden on the map). Rows with n < 1 are NOT listed.
     legendViewBounds = map ? map.getBounds() : null;
-    var inView = legendInView();
+    var hasSel = detSelectionActive();
     var visCount = Object.create(null);
     allKeys.forEach(function (k) { visCount[k] = detVisibleCount(k); });
+    function legendN(k) { return (hasSel && !detSelected[k]) ? 0 : (visCount[k] || 0); }
     var keys = allKeys.filter(function (k) {
       if (!(detPassesStar(k) && detPassesGroup(k) && detPassesRare(k) && detPassesYear(k) && detPassesLife(k) && detPassesCount(k) && detPassesSearch(k))) return false;
-      return inView ? visCount[k] > 0 : detFilteredCount(k) > 0;   // ON: on-screen only; OFF: any passing observation
+      return legendN(k) >= 1;   // hide species with nothing visible on screen
     });
     // Legend hover/hold-isolate: if the focused row is no longer in the legend (a
     // filter/refresh removed it), clear the focus so the map doesn't stay stuck
@@ -10141,28 +10132,27 @@
     // popup (☰); the legend keeps only: − minimise · ☰ list · (black ×) clear
     // filters · (red ×) delete areas / all, plus a ⚠ (right-aligned) when the draw
     // cap is truncating the map, and the species rows.
-    var hasSel = detSelectionActive();
     var hasFilter = detHasFilter();   // any filter active → show the black × (clear all)
+    // Summary at the top: N/T summed over all species. N = specimens on screen passing the
+    // filters (Σ each row's n); T = total deduped specimens plotted (unfiltered). Shows just
+    // N when they're equal (nothing hidden by filters/view).
+    var sumN = 0; keys.forEach(function (k) { sumN += legendN(k); });
+    var sumT = 0; allKeys.forEach(function (k) { sumT += detTotalCount(k); });
+    var sumCt = (sumN === sumT) ? String(sumN) : (sumN + "/" + sumT);
     el.innerHTML = '<div class="det-legend-head" data-help="maphelp.legend">' +
         '<button type="button" class="det-min" title="' + escapeHtml(t("det.minimise")) + '" aria-label="' + escapeHtml(t("det.minimise")) + '">−</button>' +
         (hasFilter ? '<button type="button" class="det-clear-sel" title="' + escapeHtml(t("det.clearFiltersHint")) + '" aria-label="' + escapeHtml(t("det.clearFilters")) + '">' + filterXSvg(15) + '</button>' : "") +
         '<button type="button" class="det-clear' + (detAreaDeleteMode ? " armed" : "") + '" title="' + escapeHtml(detAreaDeleteMode ? t("det.delAreaHint") : (fetchedAreas.length ? t("det.delAreaArm") : t("det.clearAll"))) + '" aria-label="' + escapeHtml(t("det.clearAll")) + '">' + X_MARK_SVG + '</button>' +
         (capped ? '<span class="det-cap-warn" role="img" title="' + escapeHtml(capTip) + '" aria-label="' + escapeHtml(capTip) + '">⚠</span>' : "") +
       "</div>" +
-      (keys.length ? "" : '<div class="det-empty">' + escapeHtml(t("det.noMatch")) + "</div>") +
+      (keys.length ? '<div class="det-row det-legend-total"><span class="det-nm">' + escapeHtml(t("th.total")) + '</span><span class="det-ct">' + sumCt + "</span></div>"
+                   : '<div class="det-empty">' + escapeHtml(t("det.noMatch")) + "</div>") +
       keys.map(function (k) {
         var e = detPlot[k], nm = escapeHtml(detName(e));
-        // When a selection is active, non-selected rows show a grey swatch and
-        // dimmed text so it's clear they're hidden on the map.
-        var selActive = hasSel, sel = !!detSelected[k];
-        var tot = detTotalCount(k);   // total specimens (deduped)
-        // A species filtered OUT by the selection has 0 dots on the map, so it reads
-        // "0/t" — kept in the legend (greyed), not removed.
-        var vis = (selActive && !sel) ? 0 : (visCount[k] != null ? visCount[k] : tot);   // n = specimens on screen passing the filters
-        var ct = (vis === tot) ? String(vis) : (vis + "/" + tot);
-        var rowCls = "det-row det-row-click" + (selActive && !sel ? " det-row-off" : "") + (sel ? " det-row-on" : "");
-        var sw = (selActive && !sel) ? DET_MUTE_COLOR : e.color;
-        return '<div class="' + rowCls + '" data-key="' + escapeHtml(k) + '">' + detSwatch(sw, isInteresting(e.key), detIsRare(k), e.key) + '<span class="det-nm" title="' + nm + '">' + nm + '</span><span class="det-ct">' + ct + '</span><button type="button" class="det-del" data-key="' + escapeHtml(k) + '" aria-label="remove">×</button></div>';
+        var sel = !!detSelected[k];
+        var ct = String(legendN(k));   // per-species: n only (specimens on screen passing the filters)
+        var rowCls = "det-row det-row-click" + (sel ? " det-row-on" : "");
+        return '<div class="' + rowCls + '" data-key="' + escapeHtml(k) + '">' + detSwatch(e.color, isInteresting(e.key), detIsRare(k), e.key) + '<span class="det-nm" title="' + nm + '">' + nm + '</span><span class="det-ct">' + ct + '</span><button type="button" class="det-del" data-key="' + escapeHtml(k) + '" aria-label="remove">×</button></div>';
       }).join("") +
       // Deleted species leave a grey tombstone row: name only, no colour dot and no ×
       // (already deleted). Tapping it restores the species (re-plots on the next fetch).
@@ -12560,15 +12550,6 @@
         if (document.getElementById("detlist-modal") && document.getElementById("detlist-modal").style.display === "flex" && typeof renderDetListModal === "function") renderDetListModal();
       });
     }
-    var legendViewEl = document.getElementById("legend-inview-toggle");
-    if (legendViewEl) {
-      legendViewEl.checked = legendInView();
-      legendViewEl.addEventListener("change", function () {
-        window.GeoState.save({ legendInView: this.checked });
-        updateDetLegend();   // re-list with/without the viewport filter now
-      });
-    }
-
     wireNumSetting("fetch-timeout", fetchTimeoutSec, 0, 600, 0, setFetchTimeoutSec, null);
     wireNumSetting("sight-ttl", sightTtlMin, 0, 10080, 0, function (v) { window.GeoState.save({ sightTtlMin: v }); }, null);
     var fooEl = document.getElementById("fetchonopen-toggle");
