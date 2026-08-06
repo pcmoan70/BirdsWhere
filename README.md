@@ -140,6 +140,12 @@ reports, so a much-reported vagrant still counts as rare and a well-modelled com
 never does. **Filtering** by these states (and clearing them) lives in the **Species header
 panel**; clicking a column header opens that column's filter + sort panel (see below).
 
+The Species column panel also holds **species lists**: build a selection and *Save selection as
+list* to reuse it, and tap a **premade group** (Raptors, Owls, Ducks & geese, Waders, Gulls &
+terns, Herons, Woodpeckers, Finches, Crows & jays, Hummingbirds, Pigeons, Warblers) to filter the
+plotted species to that taxonomic group — derived offline from the bundled IOC taxonomy (Order /
+Family), and shown only for groups with a match in what's currently plotted.
+
 ---
 
 ## Historic observations

@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-08-06 — Premade taxonomic species groups (sw v941)
+
+- The Species column panel now offers **premade groups** alongside user-saved lists: Raptors, Owls,
+  Ducks & geese, Waders, Gulls & terns, Herons, Woodpeckers, Finches, Crows & jays, Hummingbirds, Pigeons,
+  Warblers. Tapping one filters the plotted species to that group (toggles off on a second tap).
+- Groups are defined by IOC **Order/Family** and resolved offline: the bundled (previously unused)
+  `taxonomyIOC_15.2.csv` is lazy-loaded on first Species-panel view and matched to each plotted species by
+  scientific name (exact, else genus) — 10,202/12,012 model species map to IOC; non-birds simply don't
+  match. New `PREMADE_LISTS`, `ensureIocLoaded`/`iocOf`/`applyPremadeList`; chips reuse the saved-list
+  styling and appear only for groups present in what's plotted. i18n `sp.premadeLists` + `premade.*`
+  (15 languages). Ecological groupings (e.g. African migrants) are deferred — still buildable via Save-as-list.
+
 ## 2026-08-06 — GBIF density overlay: smooth heat instead of hex grid (sw v940)
 
 - Switched the GBIF density style from `classic.poly` hex bins (with their disruptive grey cell borders) to

@@ -9300,6 +9300,80 @@
       if (typeof speciesPanelPopulated === "function" && speciesPanelPopulated()) renderSpControls();
     });
   }
+
+  // ---- Premade (taxonomic) species lists -----------------------------------
+  // Curated groups (raptors, owls, …) defined by IOC Order/Family. The IOC data
+  // (order + family per scientific name) isn't in the model's taxonomy.csv, so we
+  // lazy-load the bundled taxonomyIOC_15.2.csv the first time the Species panel is
+  // shown and match each plotted species to it BY SCIENTIFIC NAME (exact, else genus).
+  // Definitions: o = IOC orders (UPPERCASE), f = IOC families. A species matches if its
+  // order is in o OR its family is in f.
+  var PREMADE_LISTS = [
+    { id: "raptors",     o: ["ACCIPITRIFORMES", "FALCONIFORMES", "CATHARTIFORMES"] },
+    { id: "owls",        o: ["STRIGIFORMES"] },
+    { id: "wildfowl",    o: ["ANSERIFORMES"] },
+    { id: "waders",      f: ["Charadriidae", "Scolopacidae", "Recurvirostridae", "Haematopodidae", "Burhinidae", "Jacanidae", "Rostratulidae", "Glareolidae", "Pluvianidae", "Ibidorhynchidae", "Pluvianellidae", "Chionidae"] },
+    { id: "gullsterns",  f: ["Laridae", "Stercorariidae", "Alcidae"] },
+    { id: "herons",      f: ["Ardeidae"] },
+    { id: "woodpeckers", f: ["Picidae"] },
+    { id: "finches",     f: ["Fringillidae"] },
+    { id: "corvids",     f: ["Corvidae"] },
+    { id: "hummingbirds",f: ["Trochilidae"] },
+    { id: "pigeons",     o: ["COLUMBIFORMES"] },
+    { id: "warblers",    f: ["Parulidae", "Phylloscopidae", "Acrocephalidae", "Sylviidae", "Locustellidae", "Cettiidae", "Scotocercidae", "Macrosphenidae"] }
+  ];
+  var iocReady = false, iocLoading = false, iocBySci = null, iocByGenus = null;
+  function ensureIocLoaded() {
+    if (iocReady || iocLoading) return;
+    iocLoading = true;
+    fetch(new URL("taxonomyIOC_15.2.csv", SCRIPT_BASE).href).then(function (r) { return r.text(); }).then(function (text) {
+      iocBySci = Object.create(null); iocByGenus = Object.create(null);
+      var lines = text.split("\n");
+      for (var i = 1; i < lines.length; i++) {
+        var p = lines[i].split(";");   // seq;Order;Family;IOC_15.2(sci);...
+        if (p.length < 4) continue;
+        var order = (p[1] || "").trim(), family = (p[2] || "").trim(), sci = (p[3] || "").trim();
+        if (!sci || !order) continue;
+        var rec = { order: order, family: family };
+        var sl = sci.toLowerCase();
+        iocBySci[sl] = rec;
+        var g = sl.split(" ")[0];
+        if (g && !iocByGenus[g]) iocByGenus[g] = rec;   // genus → family/order (near-always 1:1) for name mismatches
+      }
+      iocReady = true; iocLoading = false;
+      if (typeof speciesPanelPopulated === "function" && speciesPanelPopulated()) renderSpControls();   // reveal the chips
+    }).catch(function () { iocLoading = false; });   // offline before first load / fetch failed — chips just stay hidden
+  }
+  // IOC {order, family} for a plotted species, by its model scientific name.
+  function iocOf(k) {
+    if (!iocReady) return null;
+    var lbl = labelsByKey[k], sci = (lbl && lbl.sci) || (detPlot[k] && detPlot[k].sci) || "";
+    if (!sci) return null;
+    sci = sci.toLowerCase();
+    return iocBySci[sci] || iocByGenus[sci.split(" ")[0]] || null;
+  }
+  function speciesInPremade(k, def) {
+    var tx = iocOf(k); if (!tx) return false;
+    if (def.o && def.o.indexOf(tx.order) >= 0) return true;
+    if (def.f && def.f.indexOf(tx.family) >= 0) return true;
+    return false;
+  }
+  // Plotted species matching a premade group (its dynamic key set).
+  function premadeKeys(def) {
+    return Object.keys(detPlot).filter(function (k) { return speciesInPremade(k, def); });
+  }
+  // Apply premade group `id` as the selection filter (toggle: tapping the active one clears).
+  function applyPremadeList(id) {
+    var def = null; for (var i = 0; i < PREMADE_LISTS.length; i++) if (PREMADE_LISTS[i].id === id) { def = PREMADE_LISTS[i]; break; }
+    if (!def) return;
+    var keys = premadeKeys(def);
+    var cleared = sameKeySet(detSelected, keys);
+    detSelected = {};
+    if (!cleared) keys.forEach(function (k) { detSelected[k] = true; });
+    saveLegendState(); rebuildDetLayers(); updateDetLegend();
+    refreshCueCellsInPlace();
+    renderSpControls();
+  }
   // Observers that currently have observations plotted (the pool you can add from).
   function allKnownObservers() {
     var set = Object.create(null);
@@ -16949,6 +17023,20 @@
       }
       if (sel.length) html += '<button type="button" class="sp-splist-save demo-btn demo-btn-light">' + escapeHtml(t("sp.saveAsList")) + "</button>";
     }
+    // Premade taxonomic groups (raptors, owls, …). Shown only once the IOC taxonomy is
+    // loaded and only for groups with at least one matching plotted species.
+    if (iocReady) {
+      var pm = PREMADE_LISTS.map(function (def) { return { def: def, keys: premadeKeys(def) }; }).filter(function (x) { return x.keys.length; });
+      if (pm.length) {
+        html += '<div class="sp-splist-head">' + escapeHtml(t("sp.premadeLists")) + "</div>";
+        html += '<div class="sp-splist-chips">' + pm.map(function (x) {
+          var active = sel.length && sameKeySet(detSelected, x.keys);
+          return '<span class="sp-splist-chip' + (active ? " on" : "") + '"><button type="button" class="sp-premade-apply" data-id="' + escapeHtml(x.def.id) + '">' + escapeHtml(t("premade." + x.def.id)) + " (" + x.keys.length + ")</button></span>";
+        }).join("") + "</div>";
+      }
+    } else {
+      ensureIocLoaded();   // fire-and-forget; re-renders the panel once ready
+    }
     return html + "</div>";
   }
   function spTotalPanelHtml() {
@@ -17020,6 +17108,10 @@
       });
       container.querySelectorAll(".sp-splist-del").forEach(function (b) {
         b.addEventListener("click", function (e) { e.stopPropagation(); var a = getSpeciesLists(); a.splice(+this.getAttribute("data-i"), 1); saveSpeciesLists(a); renderSpControls(); });
+      });
+      // Premade taxonomic groups: apply / toggle.
+      container.querySelectorAll(".sp-premade-apply").forEach(function (b) {
+        b.addEventListener("click", function (e) { e.stopPropagation(); applyPremadeList(this.getAttribute("data-id")); });
       });
       var spListSave = container.querySelector(".sp-splist-save");
       if (spListSave) spListSave.addEventListener("click", function (e) { e.stopPropagation(); saveCurrentSpeciesList(); });
