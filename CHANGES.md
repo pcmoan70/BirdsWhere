@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-08-06 — GBIF density overlay is now seasonal (follows the week) (sw v937)
+
+- Switched the GBIF density overlay from the pre-aggregated `density` tiles (which ignore `month`) to the
+  `adhoc` endpoint (computed per request), which honours a month filter. The heatmap now follows the
+  selected model week: week 1–48 → the surrounding month, easing into the adjacent month at a month's
+  edges (weeks 1–2 also pull the previous month, weeks 3–4 the next — a coarse seasonal interpolation).
+  Changing the week re-tints the overlay when it's shown (`refreshGbifSeason`). Months are sent as repeated
+  `month=` params (set semantics) because a comma value is read as a range and 503s on a Dec+Jan wrap.
+  `gbifTip` updated (15 languages).
+
 ## 2026-08-06 — Two new overlay layers: GBIF density + Emerald Network (sw v936)
 
 - **GBIF occurrence density** — a heatmap of all GBIF occurrence records (`api.gbif.org/v2/map`, free,

@@ -6900,9 +6900,6 @@
   // Same EEA ArcGIS server as Natura 2000; layer 3 = "All sites" (0-2 are by status).
   var EMERALD_EXPORT = "https://bio.discomap.eea.europa.eu/arcgis/rest/services/ProtectedSites/EmeraldSites/MapServer/export";
   var RAMSAR_DEF = "desig_eng='Wetland of International Importance (Ramsar Site)'";
-  // GBIF occurrence-density heatmap tiles (free, no key). srs=EPSG:3857 is REQUIRED for
-  // Leaflet's web-mercator grid — the GBIF map API defaults to EPSG:4326 otherwise.
-  var GBIF_DENSITY_URL = "https://api.gbif.org/v2/map/occurrence/density/{z}/{x}/{y}@1x.png?srs=EPSG:3857&style=classic.poly&bin=hex&hexPerTile=30";
   var WDPA_ATTR = 'Protected areas &copy; <a href="https://www.protectedplanet.net" target="_blank" rel="noopener">UNEP-WCMC &amp; IUCN — Protected Planet (WDPA)</a>';
   var EEA_ATTR = 'Natura 2000 &copy; <a href="https://www.eea.europa.eu" target="_blank" rel="noopener">European Environment Agency</a>';
   var EMERALD_ATTR = 'Emerald Network &copy; <a href="https://www.eea.europa.eu" target="_blank" rel="noopener">European Environment Agency</a>';
@@ -11594,6 +11591,33 @@
   }
   var arcOverlays = [];   // active-overlay refs for hover identify: {layer, kind, defs}
   var hotspotsLayer = null;
+  var gbifLayer = null;   // GBIF density overlay — kept so the week selector can re-tint it seasonally
+  // The app's model week (1-48, 4 weeks per month) → GBIF month filter. GBIF's tile API
+  // filters by whole month only, so to ease the heatmap between months as the week slider
+  // moves we UNION the adjacent month at a month's edges: weeks 1-2 of a month also pull the
+  // PREVIOUS month, weeks 3-4 the NEXT month (a coarse seasonal interpolation).
+  function gbifSeasonMonths() {
+    var el = document.getElementById("week-select");
+    var wk = el && el.value ? +el.value : weekOfToday();   // 1..48
+    if (!(wk >= 1 && wk <= 48)) wk = weekOfToday();
+    var m = Math.ceil(wk / 4);              // 1..12
+    var wim = ((wk - 1) % 4) + 1;           // week within its month, 1..4
+    var wrap = function (x) { return ((x - 1 + 12) % 12) + 1; };
+    return (wim <= 2) ? [wrap(m - 1), m] : [m, wrap(m + 1)];   // two adjacent months
+  }
+  // GBIF adhoc endpoint (computed per request) — unlike the pre-aggregated "density" tiles
+  // it honours the month filter, so the heatmap can follow the selected week's season.
+  // Repeated month= params give SET semantics (a comma value is read as a RANGE, which
+  // 503s on a year-boundary wrap like Dec+Jan).
+  function gbifTileUrl() {
+    return "https://api.gbif.org/v2/map/occurrence/adhoc/{z}/{x}/{y}@1x.png" +
+      "?srs=EPSG:3857&style=classic.poly&bin=hex&hexPerTile=30" +
+      gbifSeasonMonths().map(function (m) { return "&month=" + m; }).join("");
+  }
+  // Re-tint the GBIF density overlay for the current week — only when it's actually showing.
+  function refreshGbifSeason() {
+    if (gbifLayer && map && map.hasLayer(gbifLayer)) gbifLayer.setUrl(gbifTileUrl());
+  }
   function setupAreaOverlays() {
     if (!map || !window.L) return;
     var wdpa = new ArcGISExportLayer(WDPA_EXPORT, { opacity: 0.5, attribution: WDPA_ATTR, maxZoom: MAX_ZOOM });
@@ -11601,7 +11625,8 @@
       arcLayers: "show:0,1", layerDefs: JSON.stringify({ 0: RAMSAR_DEF, 1: RAMSAR_DEF }) });
     var n2k = new ArcGISExportLayer(N2K_EXPORT, { opacity: 0.5, attribution: EEA_ATTR, maxZoom: MAX_ZOOM });
     var emerald = new ArcGISExportLayer(EMERALD_EXPORT, { opacity: 0.5, attribution: EMERALD_ATTR, maxZoom: MAX_ZOOM, arcLayers: "show:3" });
-    var gbif = L.tileLayer(GBIF_DENSITY_URL, { opacity: 0.65, attribution: GBIF_ATTR, maxZoom: MAX_ZOOM });
+    var gbif = L.tileLayer(gbifTileUrl(), { opacity: 0.65, attribution: GBIF_ATTR, maxZoom: MAX_ZOOM });
+    gbifLayer = gbif;
     arcOverlays = [{ layer: wdpa, kind: "wdpa" },
       { layer: ramsar, kind: "wdpa", defs: ramsar.options.layerDefs },
       { layer: n2k, kind: "natura" },
@@ -12766,6 +12791,7 @@
       updateRangeSpecies();   // keep the "· Week N" label in sync
       rerenderPointList();   // update the per-point list (list or range with a marker)
       updateLegend();
+      refreshGbifSeason();   // re-tint the GBIF density overlay to the week's season (if shown)
     });
 
     document.getElementById("compare-select").addEventListener("change", function () {
