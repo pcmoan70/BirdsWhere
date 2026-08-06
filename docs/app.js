@@ -7044,8 +7044,8 @@
       var key = ebirdKey();
       if (!key) { grp.clearLayers(); setStatus(t("layer.hotspotsKey")); return; }
       var c = map.getCenter();
-      var dist = 50;        // fixed 50 km radius around the view centre (eBird ref/hotspot/geo)
-      var capped = false;   // well within eBird's 500 km limit; hotspots accumulate as you pan
+      var dist = 500;       // fixed 500 km radius around the view centre (eBird ref/hotspot/geo max)
+      var capped = false;   // 500 km is eBird's max; hotspots accumulate as you pan
       lastCtx = { capped: capped, c: c, dist: dist };
       var ck = hsKey(c.lat, c.lng, dist);
       // This cell was already fetched recently → its hotspots are in the store; just
