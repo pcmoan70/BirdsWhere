@@ -1,5 +1,10 @@
 # Changes
 
+## 2026-08-06 — OSM protected-areas hover tip: note the zoom trade-off (sw v935)
+
+- Extended `layer.osmpaTip` (15 languages) to explain that the layer loads at ~town level and that, for a
+  zoomed-out view, the WDPA / Natura 2000 overlays show protected areas at every zoom.
+
 ## 2026-08-06 — Fix: "OSM protected areas" overlay showed nothing (sw v934)
 
 - The overlay queried Overpass for OSM `nature_reserve` + `protected_area` boundaries on every pan, at a
