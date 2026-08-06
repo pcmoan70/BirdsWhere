@@ -1,0 +1,5 @@
+#!/bin/sh
+# Stamp the current local date-time into the page footer ("Last change")
+# on every commit, so each push to main reflects when the code last changed.
+date +"%d-%m-%Y %H:%M" > docs/last-change.txt
+git add docs/last-change.txt

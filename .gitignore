@@ -1,0 +1,10 @@
+# Local Claude Code config / plans / memory
+.claude/
+
+# Reference screenshots (design inputs, not part of the deployed site)
+pix/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
