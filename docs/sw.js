@@ -21,11 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v933";
+var VERSION = "v934";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• OSM protected-areas overlay fixed: it silently failed because a wide view asked the Overpass API for too much data (it rate-limited/timed out). It now loads once you zoom in, waits for panning to settle, and a hover tip on its checkbox explains this.",
   "• Selecting species no longer drops the rest from the legend: filtered-out species stay listed, greyed, reading 0/t — so you can still see and re-add them.",
   "• Legend totals now follow the map view: with “Filter the legend to the map view” on, both counts in each row's n/t recompute as you pan and zoom, so t is the total in view rather than everywhere.",
   "• The Total column filter now reads [ ] ≤ Total ≤ [ ] with a Total/Observations toggle in the middle — tap it to switch whether the lower/upper bounds restrict deduped totals or the number of observations. Empty boxes = no count restriction.",

@@ -6921,17 +6921,26 @@
 
   // OpenStreetMap protected areas (Overpass) as outlines — refreshed on pan
   // while active, and only when zoomed in enough to keep the query small.
+  // Live OSM nature-reserve / protected-area boundaries via Overpass. These queries
+  // return the FULL geometry of every intersecting area (national parks included), so
+  // a wide view is multi-megabyte and Overpass answers it with a 429/504 — which used
+  // to fail silently and show nothing. So we only query once zoomed in enough for the
+  // payload to be small (OSM_PA_MIN_ZOOM), debounce panning so we don't trip the rate
+  // limiter, and treat a non-OK response as an error (keep what's drawn, retry on the
+  // next pan) instead of parsing its HTML body as JSON.
+  var OSM_PA_MIN_ZOOM = 11;   // first H3 zoom stop at/above this (~12.3) gives a ~0.3° bbox that answers reliably
   function osmProtectedLayer() {
-    var grp = L.layerGroup(), active = false, token = 0;
+    var grp = L.layerGroup(), active = false, token = 0, timer = null;
     function load() {
-      if (map.getZoom() < 9) { grp.clearLayers(); return; }
+      if (!active) return;
+      if (map.getZoom() < OSM_PA_MIN_ZOOM) { grp.clearLayers(); return; }
       var b = map.getBounds();
       var bbox = b.getSouth().toFixed(4) + "," + b.getWest().toFixed(4) + "," + b.getNorth().toFixed(4) + "," + b.getEast().toFixed(4);
       var q = "[out:json][timeout:25];(way[\"leisure\"=\"nature_reserve\"](" + bbox + ");relation[\"leisure\"=\"nature_reserve\"](" + bbox +
         ");way[\"boundary\"=\"protected_area\"](" + bbox + ");relation[\"boundary\"=\"protected_area\"](" + bbox + "););out geom;";
       var mine = ++token;
       fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: "data=" + encodeURIComponent(q) })
-        .then(function (r) { return r.json(); })
+        .then(function (r) { if (!r.ok) throw new Error("overpass " + r.status); return r.json(); })
         .then(function (j) {
           if (mine !== token || !active) return;
           grp.clearLayers();
@@ -6950,11 +6959,12 @@
               el.members.forEach(function (m) { if (m.geometry) add(m.geometry.map(function (g) { return [g.lat, g.lon]; }), false); });
             }
           });
-        }).catch(function () { /* offline / rate-limited — leave as-is */ });
+        }).catch(function () { /* offline / rate-limited (429/504) — keep what's drawn, retry on next pan */ });
     }
+    function schedule() { clearTimeout(timer); timer = setTimeout(load, 500); }   // debounce pans → one query when movement settles
     grp.on("add", function () { active = true; map.attributionControl.addAttribution(OSM_PA_ATTR); load(); });
-    grp.on("remove", function () { active = false; map.attributionControl.removeAttribution(OSM_PA_ATTR); });
-    map.on("moveend", function () { if (active) load(); });
+    grp.on("remove", function () { active = false; clearTimeout(timer); map.attributionControl.removeAttribution(OSM_PA_ATTR); });
+    map.on("moveend", function () { if (active) schedule(); });
     return grp;
   }
 
@@ -11593,11 +11603,15 @@
     overlays[t("layer.hotspots")] = hotspotsLayer;
     overlays[t("layer.osmpa")] = osmProtectedLayer();
     var layersCtrl = L.control.layers(null, overlays, { collapsed: true, position: "topright" }).addTo(map);
-    // Hover tip on the eBird hotspots row (explains the 50 km fetch + caching).
+    // Hover tips: eBird hotspots (50 km fetch + caching) and OSM protected areas
+    // (drawn live from OpenStreetMap; only loads when zoomed in — a wide view returns
+    // too much data for the Overpass API).
     try {
-      var hsName = t("layer.hotspots");
+      var hsName = t("layer.hotspots"), osmName = t("layer.osmpa");
       Array.prototype.forEach.call(layersCtrl.getContainer().querySelectorAll(".leaflet-control-layers-overlays label"), function (lab) {
-        if ((lab.textContent || "").trim() === hsName) lab.title = t("layer.hotspotsTip");
+        var txt = (lab.textContent || "").trim();
+        if (txt === hsName) lab.title = t("layer.hotspotsTip");
+        else if (txt === osmName) lab.title = t("layer.osmpaTip");
       });
     } catch (e) {}
     setupAreaHover();

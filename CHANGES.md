@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-08-06 — Fix: "OSM protected areas" overlay showed nothing (sw v934)
+
+- The overlay queried Overpass for OSM `nature_reserve` + `protected_area` boundaries on every pan, at a
+  zoom (first stop ~9.5, a ~1.9° bbox) where the response is multi‑megabyte — so Overpass answered with a
+  429/504, whose HTML body made `r.json()` throw, and the silent `.catch` left the layer empty.
+- Now it (1) only queries at zoom ≥ `OSM_PA_MIN_ZOOM` (11 → first stop ~12.3, a ~0.3° bbox that answers
+  reliably), (2) debounces panning by 500 ms so rapid moves don't trip the rate limiter, and (3) treats a
+  non‑OK response as an error (keeps what's drawn, retries on the next pan) instead of parsing its body as
+  JSON. Added a hover tip (`layer.osmpaTip`, 15 languages) on the layer's checkbox explaining it loads when
+  zoomed in.
+
 ## 2026-08-06 — Natura 2000 hover: name once, with its detail (sw v933)
 
 - The protected-area hover tooltip rendered one block per ArcGIS identify result, and the Natura 2000
