@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-06 — Natura 2000 hover: name once, with its detail (sw v933)
+
+- The protected-area hover tooltip rendered one block per ArcGIS identify result, and the Natura 2000
+  service returns the same site once per sub-layer — so its name showed up to 3×. `label()` now groups
+  results by name and unions the info bits, so each area shows its name **once** followed by the available
+  detail (designation, site type, code, status).
+
 ## 2026-08-06 — Species selection keeps greyed rows in the legend as 0/t (sw v932)
 
 - When a species selection is active, the non-selected species already stayed in the legend greyed out, but

@@ -11612,7 +11612,11 @@
     var hide = function () { if (map.hasLayer(tip)) map.removeLayer(tip); };
     var pick = function (a, keys) { for (var i = 0; i < keys.length; i++) { var v = a[keys[i]]; if (v != null && v !== "" && String(v).toLowerCase() !== "null") return v; } return ""; };
     function label(results) {
-      return (results || []).slice(0, 3).map(function (rs) {
+      // Natura 2000 (and some WDPA services) return the SAME site once per sub-layer,
+      // so a naive per-result render repeats the name. Group by name and union the
+      // info bits, so each area shows its name ONCE with all available detail after it.
+      var order = [], byName = Object.create(null);
+      (results || []).forEach(function (rs) {
         var a = rs.attributes || {};
         var name = pick(a, ["name", "NAME", "sitename", "SITENAME", "orig_name", "ORIG_NAME"]) || rs.layerName || "";
         var bits = [];
@@ -11621,9 +11625,16 @@
         var st = pick(a, ["sitetype", "SITETYPE"]); if (st) bits.push(({ A: "SPA · Birds Directive", B: "SCI/SAC · Habitats", C: "SPA + SCI/SAC" })[st] || st);
         var code = pick(a, ["sitecode", "SITECODE"]); if (code) bits.push(code);
         var status = pick(a, ["status", "STATUS"]); if (status) bits.push(status);
-        if (!name && !bits.length) return "";
-        return "<b>" + escapeHtml(String(name)) + "</b>" + (bits.length ? "<br><span class='area-tip-sub'>" + escapeHtml(bits.join(" · ")) + "</span>" : "");
-      }).filter(Boolean).join("<span class='area-tip-sep'></span>");
+        if (!name && !bits.length) return;
+        var key = name ? String(name).toLowerCase() : "__" + order.length;   // keep unnamed hits separate
+        if (!byName[key]) { byName[key] = { name: name, bits: [] }; order.push(key); }
+        var g = byName[key];
+        bits.forEach(function (b) { if (g.bits.indexOf(b) < 0) g.bits.push(b); });   // union, no repeats
+      });
+      return order.slice(0, 3).map(function (key) {
+        var g = byName[key];
+        return "<b>" + escapeHtml(String(g.name)) + "</b>" + (g.bits.length ? "<br><span class='area-tip-sub'>" + escapeHtml(g.bits.join(" · ")) + "</span>" : "");
+      }).join("<span class='area-tip-sep'></span>");
     }
     function identify(o, latlng) {
       var sz = map.getSize(), b = map.getBounds();
