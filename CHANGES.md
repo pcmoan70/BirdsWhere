@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-08-06 — Two new overlay layers: GBIF density + Emerald Network (sw v936)
+
+- **GBIF occurrence density** — a heatmap of all GBIF occurrence records (`api.gbif.org/v2/map`, free,
+  no key), streamed as XYZ raster tiles (`srs=EPSG:3857` for the web-mercator grid). Shows where records
+  concentrate as a backdrop to the model range and fetched dots.
+- **Emerald Network** (Bern Convention) — the non-EU counterpart to Natura 2000, drawn from the same EEA
+  ArcGIS server via `ArcGISExportLayer` (layer 3 = "All sites"); it participates in the area-hover identify.
+- Both appear in the layer control with a hover tip (`layer.gbif`/`layer.gbifTip`, `layer.emerald`/
+  `layer.emeraldTip`, 15 languages). README overlay list updated.
+
 ## 2026-08-06 — OSM protected-areas hover tip: note the zoom trade-off (sw v935)
 
 - Extended `layer.osmpaTip` (15 languages) to explain that the layer loads at ~town level and that, for a

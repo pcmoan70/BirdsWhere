@@ -6896,9 +6896,17 @@
   //   OSM    — OpenStreetMap protected areas via Overpass (open fallback).
   var WDPA_EXPORT = "https://data-gis.unep-wcmc.org/server/rest/services/ProtectedPlanet/WDPCA/MapServer/export";
   var N2K_EXPORT = "https://bio.discomap.eea.europa.eu/arcgis/rest/services/ProtectedSites/Natura2000_Dyna_WM/MapServer/export";
+  // Emerald Network (Bern Convention) — the counterpart to Natura 2000 outside the EU.
+  // Same EEA ArcGIS server as Natura 2000; layer 3 = "All sites" (0-2 are by status).
+  var EMERALD_EXPORT = "https://bio.discomap.eea.europa.eu/arcgis/rest/services/ProtectedSites/EmeraldSites/MapServer/export";
   var RAMSAR_DEF = "desig_eng='Wetland of International Importance (Ramsar Site)'";
+  // GBIF occurrence-density heatmap tiles (free, no key). srs=EPSG:3857 is REQUIRED for
+  // Leaflet's web-mercator grid — the GBIF map API defaults to EPSG:4326 otherwise.
+  var GBIF_DENSITY_URL = "https://api.gbif.org/v2/map/occurrence/density/{z}/{x}/{y}@1x.png?srs=EPSG:3857&style=classic.poly&bin=hex&hexPerTile=30";
   var WDPA_ATTR = 'Protected areas &copy; <a href="https://www.protectedplanet.net" target="_blank" rel="noopener">UNEP-WCMC &amp; IUCN — Protected Planet (WDPA)</a>';
   var EEA_ATTR = 'Natura 2000 &copy; <a href="https://www.eea.europa.eu" target="_blank" rel="noopener">European Environment Agency</a>';
+  var EMERALD_ATTR = 'Emerald Network &copy; <a href="https://www.eea.europa.eu" target="_blank" rel="noopener">European Environment Agency</a>';
+  var GBIF_ATTR = 'Occurrence density &copy; <a href="https://www.gbif.org" target="_blank" rel="noopener">GBIF.org</a>';
   var OSM_PA_ATTR = 'Protected areas &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
   var EBIRD_HS_ATTR = 'Hotspots &copy; <a href="https://ebird.org" target="_blank" rel="noopener">eBird</a> / Cornell Lab';
 
@@ -11592,13 +11600,18 @@
     var ramsar = new ArcGISExportLayer(WDPA_EXPORT, { opacity: 0.6, attribution: WDPA_ATTR, maxZoom: MAX_ZOOM,
       arcLayers: "show:0,1", layerDefs: JSON.stringify({ 0: RAMSAR_DEF, 1: RAMSAR_DEF }) });
     var n2k = new ArcGISExportLayer(N2K_EXPORT, { opacity: 0.5, attribution: EEA_ATTR, maxZoom: MAX_ZOOM });
+    var emerald = new ArcGISExportLayer(EMERALD_EXPORT, { opacity: 0.5, attribution: EMERALD_ATTR, maxZoom: MAX_ZOOM, arcLayers: "show:3" });
+    var gbif = L.tileLayer(GBIF_DENSITY_URL, { opacity: 0.65, attribution: GBIF_ATTR, maxZoom: MAX_ZOOM });
     arcOverlays = [{ layer: wdpa, kind: "wdpa" },
       { layer: ramsar, kind: "wdpa", defs: ramsar.options.layerDefs },
-      { layer: n2k, kind: "natura" }];
+      { layer: n2k, kind: "natura" },
+      { layer: emerald, kind: "emerald" }];
     var overlays = {};
     overlays[t("layer.wdpa")] = wdpa;
     overlays[t("layer.ramsar")] = ramsar;
     overlays[t("layer.natura2000")] = n2k;
+    overlays[t("layer.emerald")] = emerald;
+    overlays[t("layer.gbif")] = gbif;
     hotspotsLayer = ebirdHotspotLayer();
     overlays[t("layer.hotspots")] = hotspotsLayer;
     overlays[t("layer.osmpa")] = osmProtectedLayer();
@@ -11607,11 +11620,14 @@
     // (drawn live from OpenStreetMap; only loads when zoomed in — a wide view returns
     // too much data for the Overpass API).
     try {
-      var hsName = t("layer.hotspots"), osmName = t("layer.osmpa");
+      var tips = {};
+      tips[t("layer.hotspots")] = t("layer.hotspotsTip");
+      tips[t("layer.osmpa")] = t("layer.osmpaTip");
+      tips[t("layer.emerald")] = t("layer.emeraldTip");
+      tips[t("layer.gbif")] = t("layer.gbifTip");
       Array.prototype.forEach.call(layersCtrl.getContainer().querySelectorAll(".leaflet-control-layers-overlays label"), function (lab) {
         var txt = (lab.textContent || "").trim();
-        if (txt === hsName) lab.title = t("layer.hotspotsTip");
-        else if (txt === osmName) lab.title = t("layer.osmpaTip");
+        if (tips[txt]) lab.title = tips[txt];
       });
     } catch (e) {}
     setupAreaHover();
