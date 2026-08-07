@@ -1966,6 +1966,8 @@ button.dd-name:hover { text-decoration: underline; }
 }
 .settings-about::before { content: "\2139  "; }   /* ℹ */
 .settings-about:hover { background: var(--surface-2); }
+/* Running version (+ last-change time), directly under "About & how it works". */
+.settings-version { padding: 0 6px 6px; font-size: 0.78rem; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
 /* "Reload to update" — lights up (green) only when a newer version is waiting. */
 .settings-update { display: block; width: 100%; text-align: left; border: 1px solid var(--good, #2e8b74); background: var(--good, #2e8b74); color: #fff; padding: 8px 10px; border-radius: var(--radius-xs); font: inherit; font-size: 0.88rem; font-weight: 600; cursor: pointer; margin: 4px 0 2px; }
 .settings-update:hover:not(:disabled) { filter: brightness(1.08); }

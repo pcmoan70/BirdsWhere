@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-08-07 — Settings: running version under "About & how it works" (sw v956)
+
+- Settings now shows the running app version (+ last-change time) in a muted line directly below the
+  "About & how it works" button (`#settings-version`), populated by the same SW `getVersion` round-trip as
+  the perf-modal footer (`updatePerfMeta` now feeds both).
+
 ## 2026-08-07 — Birding spots: show the full fetch error in the status (sw v955)
 
 - The birding-spots load failure now surfaces the **actual error** instead of a generic "refresh failed":

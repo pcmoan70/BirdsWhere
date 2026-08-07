@@ -5060,6 +5060,7 @@
             '<div id="settings-panel" class="dd-panel settings-panel" style="display:none">' +
               '<p class="settings-intro" data-i18n="settings.appIntro">BirdsWhere shows where species live, migrate, and are being seen right now — the BirdNET habitat model runs entirely in your browser, overlaid with live observations from eBird, GBIF, iNaturalist and national databases.</p>' +
               '<button type="button" id="about-open" class="settings-about" data-i18n="ctrl.about">About &amp; how it works</button>' +
+              '<div id="settings-version" class="settings-version" style="display:none"></div>' +
               '<button type="button" id="settings-update" class="settings-update" style="display:none"></button>' +
               '<div class="settings-section" data-i18n="settings.secView">View</div>' +
               '<div class="ctrl-group">' +
@@ -12356,12 +12357,14 @@
     } catch (e) {}
   }
   function updatePerfMeta() {
-    var el = document.getElementById("perf-version"); if (!el) return;
     var parts = [];
     if (appVersion) parts.push(appVersion);
     if (lastChangeText) parts.push(lastChangeText);
-    el.textContent = parts.join(" · ");
-    el.style.display = parts.length ? "" : "none";
+    var el = document.getElementById("perf-version");
+    if (el) { el.textContent = parts.join(" · "); el.style.display = parts.length ? "" : "none"; }
+    // The running version also shows in Settings, under "About & how it works".
+    var sv = document.getElementById("settings-version");
+    if (sv) { sv.textContent = parts.join(" · "); sv.style.display = parts.length ? "" : "none"; }
   }
 
   // One-time performance note shown over the page on load.
