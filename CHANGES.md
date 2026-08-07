@@ -1,5 +1,18 @@
 # Changes
 
+## 2026-08-07 — Species list spans all plotted points; shares reopen the sender's view (sw v962)
+
+- **Species list now reflects EVERY plotted detection, not just the last fetch.** Querying at several points
+  accumulates dots on the map (`detPlot`); the species-list table now shows that same union — Total/records/
+  Last and the "By observation" list all draw from all point-fetches. Implemented by folding `detPlot` (plus
+  the current fetch's rows, deduped by observer·date·lat·lon·source) into `tbody._sightingsAgg` via new
+  `mergedSightingsAgg` / `mergedExtras`, so the existing `applyAgeFilter` count logic is unchanged.
+- **Reverted "shared links always open in map view" (v960).** A share now records whether the sender was on
+  the list (`lv` in the payload); opening it reopens the **same view the sender had** — their species/
+  observation list if they shared from it (new `showSharedList` switches into Species-List mode and shows the
+  plotted-detections page), otherwise the map (`fitSharedLatLngs`, unchanged). Applies to both `t:"d"` and
+  `t:"m"` payloads.
+
 ## 2026-08-07 — Share detections: option to include your map points (sw v961)
 
 - Sharing the current detections now asks **"Also include your N map point(s)?"** when user-defined points

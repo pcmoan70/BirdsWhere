@@ -4059,10 +4059,52 @@
   // rest, since more is still coming); on the FINAL pass we also clear empty rows,
   // show the per-source "Loaded:" counts, and stash the result so "pin to map" can
   // plot whatever has arrived without re-fetching.
+  // Fold EVERY plotted detection (all point-fetches, not just this one) into the
+  // shape the species-list table reads. Querying at several points accumulates dots
+  // on the map (detPlot); the list must show that same union, not only the last
+  // fetch. The current fetch's own rows are merged in too (its dots are plotted a
+  // moment later), deduped by observer·date·place·source so overlapping fetches don't
+  // double up. `filt` = "" (model species, non-x: keys) or "x" (extras, x: keys).
+  function _mergeRowId(r) { return (r.observer || "").toLowerCase().trim() + "|" + String(r.date || "").slice(0, 10) + "|" + r.lat + "|" + r.lon + "|" + (r.src || ""); }
+  function mergedSightingsAgg(fetchAgg) {
+    var out = {};
+    function add(key, rows, name, color) {
+      if (key.indexOf("x:") === 0 || !rows || !rows.length) return;   // extras handled separately
+      var e = out[key] || (out[key] = { rows: [], count: 0, latestTs: null, name: name, color: color, _ids: Object.create(null) });
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i], id = _mergeRowId(r); if (e._ids[id]) continue; e._ids[id] = 1; e.rows.push(r);
+        var ts = r.date ? Date.parse(r.date + "T00:00:00") : 0; if (ts && (!e.latestTs || ts > e.latestTs)) e.latestTs = ts;
+      }
+      e.count = e.rows.length;
+    }
+    Object.keys(detPlot).forEach(function (k) { var d = detPlot[k]; add(k, d.rows, detName(d), d.color); });
+    if (fetchAgg) Object.keys(fetchAgg).forEach(function (k) { var e = fetchAgg[k]; add(k, e.rows, e.name, e.color); });
+    return out;
+  }
+  // Same union, for the non-model "extras" (plants/fungi/insects keyed x:<sci>) so
+  // those shown on the map across every point also list, matching prependExtraSightings' shape.
+  function mergedExtras(fetchExtras) {
+    var out = {};
+    function add(mapKey, name, sci, cls, rows) {
+      if (!rows || !rows.length) return;
+      var e = out[mapKey] || (out[mapKey] = { sci: sci || mapKey, name: name || sci || mapKey, cls: cls || "", rows: [], count: 0, latestTs: null, _ids: Object.create(null) });
+      if (!e.name && name) e.name = name; if (!e.cls && cls) e.cls = cls;
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i], id = _mergeRowId(r); if (e._ids[id]) continue; e._ids[id] = 1; e.rows.push(r);
+        var ts = r.date ? Date.parse(r.date + "T00:00:00") : 0; if (ts && (!e.latestTs || ts > e.latestTs)) e.latestTs = ts;
+      }
+      e.count = e.rows.length;
+    }
+    Object.keys(detPlot).forEach(function (k) { if (k.indexOf("x:") !== 0) return; var d = detPlot[k]; add(k.slice(2), detName(d), k.slice(2), d.cls, d.rows); });
+    if (fetchExtras) Object.keys(fetchExtras).forEach(function (k) { var e = fetchExtras[k]; add(k, e.name, e.sci, e.cls, e.rows); });
+    return out;
+  }
   function applySightings(tbody, token, result, isFinal) {
     if (!tbody || tbody.dataset.sightingsToken !== token) return;
     if (isFinal) showSourceCounts(result.bySrc, result.dedupTotal, result.timedOut, result.failed);
-    var agg = result.agg, extras = result.extras;
+    // Union across ALL plotted point-fetches, so the list mirrors the accumulated
+    // map dots — not just this one fetch's data.
+    var extras = mergedExtras(result.extras), agg = mergedSightingsAgg(result.agg);
     tbody._sightingsAgg = agg;
     if (currentSpView) currentSpView._result = result;   // latest data for plotAllSightings (partial or final)
     updateSpMapBtn();
@@ -15123,7 +15165,9 @@
         urls.push(urlTail(r.url, r.src));
       });
     });
-    return { v: 3, t: "d", n: name, g: speciesGroup, s: sp.map(function (x) { var p = x.split("\t"); return [p[0], p[1], p[2], p[3] || ""]; }), d: dt, o: ob, sr: sr,
+    // lv=1 → the sender was viewing the LIST (species / By-observation) when they
+    // shared, so the recipient opens on the list too rather than always the map.
+    return { v: 3, t: "d", n: name, g: speciesGroup, lv: onListView() ? 1 : 0, s: sp.map(function (x) { var p = x.split("\t"); return [p[0], p[1], p[2], p[3] || ""]; }), d: dt, o: ob, sr: sr,
       b: [baseLat || 0, baseLon || 0], c: { sp: cSp, la: cLa, lo: cLo, dt: cDt, cn: cCn, ob: cOb, sc: cSc }, u: urls };
   }
   function shareDetSet(name) {
@@ -15188,7 +15232,7 @@
       var tail = obj.u && obj.u[i]; if (tail) rr.url = urlFromTail(tail, src);
       dets[key].rows.push(rr);
     }
-    return { type: "det", name: obj.n || "", group: obj.g || "all", detections: dets };   // legacy links (no g) → "all", so nothing is group-filtered away
+    return { type: "det", name: obj.n || "", group: obj.g || "all", view: obj.lv ? "list" : "map", detections: dets };   // legacy links (no g) → "all", so nothing is group-filtered away
   }
   function uniqueShareName(base, taken) { var n = base, i = 2; while (taken(n)) n = base + " (" + (i++) + ")"; return n; }
   // A shared link should land the recipient ON THE MAP with the shared points visible —
@@ -15198,10 +15242,24 @@
     try { closeModals(); } catch (e) {}
     try { updateViewToggle(); } catch (e) {}
   }
-  function fitSharedLatLngs(pts) {
-    ensureMapViewForShare();
+  function fitLatLngs(pts) {
     if (!map || !pts.length) return;
     try { map.fitBounds(L.latLngBounds(pts).pad(0.2)); } catch (e) {}
+  }
+  function fitSharedLatLngs(pts) {
+    ensureMapViewForShare();
+    fitLatLngs(pts);
+  }
+  // The sender was on the LIST when they shared → open the recipient on the same
+  // list. No clicked point rides in a share, so this is the standalone "By
+  // observation" page of the plotted (shared) detections. Switch into Species-List
+  // mode first (a fresh open lands in Range mode, where the list toggle is unavailable).
+  function showSharedList(pts) {
+    try { closeModals(); } catch (e) {}
+    var modeEl = document.getElementById("mode-select");
+    if (modeEl && currentMode !== "list") { modeEl.value = "list"; try { modeEl.dispatchEvent(new Event("change")); } catch (e) {} }
+    fitLatLngs(pts);   // fit the map behind the list so toggling to Map shows the shared area
+    try { showListView(); } catch (e) {}
   }
   // Apply a payload decoded from #s= at boot. Points / detection sets are imported
   // (after a confirm) into the recipient's saved lists, shown, and fitted; a single
@@ -15296,7 +15354,9 @@
             var ll = [];
             if (nDet) ll = ll.concat(plotSharedDetections(detObj.detections, detObj.group));
             if (nPts) { ll = ll.concat(importPointsColl(mnm, mpts).ll); saveMapPoints(); }
-            saveShownState(); renderMapPoints(); fitSharedLatLngs(ll);
+            saveShownState(); renderMapPoints();
+            // Open the view the sender was on: their list (if they shared from it), else the map.
+            if (detObj && detObj.view === "list") showSharedList(ll); else fitSharedLatLngs(ll);
             setStatus(t("share.imported", { name: mnm }));
           });
         });
@@ -15330,7 +15390,9 @@
           if (!ok) return;
           maybeClearBeforeShare().then(function () {
             var ll = plotSharedDetections(obj.detections, obj.group);
-            fitSharedLatLngs(ll); setStatus(t("share.imported", { name: nm }));
+            // Open the view the sender was on: their list (if they shared from it), else the map.
+            if (obj.view === "list") showSharedList(ll); else fitSharedLatLngs(ll);
+            setStatus(t("share.imported", { name: nm }));
           });
         });
         return;
