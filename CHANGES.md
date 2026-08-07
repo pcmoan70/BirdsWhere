@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-08-08 — Overlay legend follows the UI language; faster birding-spots overlay (sw v970)
+
+- **Map-overlays legend now re-translates on a language change.** The Leaflet overlay layer control built its
+  labels once at init from the `overlays` object, so switching the UI language left them stale (e.g. still
+  "Fugleplasser" after switching to English). The overlay names + hover-tips are now driven by a single
+  key→layer table (`overlayDefsRef`) and `setLang` calls `relabelOverlays()` to re-render them. (All
+  `layer.*` names were already translated in 15 languages; only the runtime refresh was missing.)
+- **Birding spots ("Fugleplasser") render faster.** `drawAll` rebuilt EVERY cached spot marker (up to 5000,
+  accumulated across pans) on each pan; it now renders only spots within the padded current view. The Overpass
+  fetch latency itself is server-side and unchanged.
+
 ## 2026-08-08 — Clickable place-names in the "Per observation" list (sw v969)
 
 - In the species panel's **Per observation** list, the group-header **place-name** now opens the same location

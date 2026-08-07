@@ -5851,6 +5851,7 @@
     if (document.getElementById("field-page").style.display === "flex") renderFieldList();  // re-localize activity labels if open
     if (window.__refreshFilterCycle) window.__refreshFilterCycle();   // cycle-button text isn't covered by data-i18n
     if (typeof refreshDetections === "function") refreshDetections();   // re-localize plotted "Show in map" species names + legend
+    if (typeof relabelOverlays === "function") relabelOverlays();   // re-translate the map-overlays layer control
     refreshCurrentView();   // re-render species names in the active panel
   }
 
@@ -7136,9 +7137,15 @@
     function drawAll() {
       grp.clearLayers();
       if (map.getZoom() < BIRD_SPOTS_SHOW_ZOOM) return;   // hidden at the widest zooms
+      // Only render spots near the current view. The cache can hold thousands (they
+      // accumulate as you pan); rebuilding every marker on each pan is what made the
+      // overlay feel slow. Off-screen spots aren't visible anyway and are redrawn as
+      // the view moves over them.
+      var vb = map.getBounds().pad(0.5);
       var store = loadBirdStore();
       Object.keys(store).forEach(function (id) {
         var s = store[id]; if (s.lat == null || s.lon == null) return;
+        if (!vb.contains([s.lat, s.lon])) return;
         var meta = BIRD_SPOT_KINDS[s.kind] || BIRD_SPOT_KINDS.viewpoint, typeLbl = t(meta.i18n);
         var nm = s.name || typeLbl;
         var mk = L.marker([s.lat, s.lon], { icon: L.divIcon({ className: "bird-spot-ico", html: meta.glyph, iconSize: [22, 22], iconAnchor: [11, 11] }), title: nm });
@@ -12252,6 +12259,33 @@
       gbifLayer.setUrl(gbifRasterUrl());
     }
   }
+  // The Leaflet overlay control builds its labels ONCE from the overlays object, so a
+  // runtime language change would leave them stale (e.g. still "Fugleplasser" after
+  // switching to English). Keep a name-key per layer so the control can be re-labelled.
+  var overlayLayersCtrl = null, overlayDefsRef = null;
+  function applyOverlayTips() {
+    if (!overlayLayersCtrl || !overlayDefsRef) return;
+    try {
+      var tips = {};
+      overlayDefsRef.forEach(function (d) { if (d.tip) tips[t(d.key)] = t(d.tip); });
+      Array.prototype.forEach.call(overlayLayersCtrl.getContainer().querySelectorAll(".leaflet-control-layers-overlays label"), function (lab) {
+        var txt = (lab.textContent || "").trim();
+        lab.title = tips[txt] || "";
+      });
+    } catch (e) {}
+  }
+  function relabelOverlays() {
+    if (!overlayLayersCtrl || !overlayDefsRef) return;
+    try {
+      (overlayLayersCtrl._layers || []).forEach(function (o) {
+        for (var i = 0; i < overlayDefsRef.length; i++) {
+          if (overlayDefsRef[i].layer === o.layer) { o.name = t(overlayDefsRef[i].key); break; }
+        }
+      });
+      overlayLayersCtrl._update();   // re-render the labels in the new language
+      applyOverlayTips();            // labels were rebuilt → reattach the hover tips
+    } catch (e) {}
+  }
   function setupAreaOverlays() {
     if (!map || !window.L) return;
     var wdpa = new ArcGISExportLayer(WDPA_EXPORT, { opacity: 0.5, attribution: WDPA_ATTR, maxZoom: MAX_ZOOM });
@@ -12265,34 +12299,27 @@
       { layer: ramsar, kind: "wdpa", defs: ramsar.options.layerDefs },
       { layer: n2k, kind: "natura" },
       { layer: emerald, kind: "emerald" }];
-    var overlays = {};
-    overlays[t("layer.wdpa")] = wdpa;
-    overlays[t("layer.ramsar")] = ramsar;
-    overlays[t("layer.natura2000")] = n2k;
-    overlays[t("layer.emerald")] = emerald;
-    overlays[t("layer.landcover")] = landcover;
-    overlays[t("layer.gbif")] = gbif;
     hotspotsLayer = ebirdHotspotLayer();
-    overlays[t("layer.hotspots")] = hotspotsLayer;
-    overlays[t("layer.osmpa")] = osmProtectedLayer();
-    overlays[t("layer.birdSpots")] = birdingSpotsLayer();
-    var layersCtrl = L.control.layers(null, overlays, { collapsed: true, position: "topright" }).addTo(map);
-    // Hover tips: eBird hotspots (50 km fetch + caching) and OSM protected areas
+    // One source of truth for the overlay control: name key (+ optional hover-tip key)
+    // per layer, so relabelOverlays() can re-translate the control on a language change.
+    // Hover tips explain eBird hotspots (50 km fetch + caching) and OSM protected areas
     // (drawn live from OpenStreetMap; only loads when zoomed in — a wide view returns
     // too much data for the Overpass API).
-    try {
-      var tips = {};
-      tips[t("layer.hotspots")] = t("layer.hotspotsTip");
-      tips[t("layer.osmpa")] = t("layer.osmpaTip");
-      tips[t("layer.emerald")] = t("layer.emeraldTip");
-      tips[t("layer.gbif")] = t("layer.gbifTip");
-      tips[t("layer.landcover")] = t("layer.landcoverTip");
-      tips[t("layer.birdSpots")] = t("layer.birdSpotsTip");
-      Array.prototype.forEach.call(layersCtrl.getContainer().querySelectorAll(".leaflet-control-layers-overlays label"), function (lab) {
-        var txt = (lab.textContent || "").trim();
-        if (tips[txt]) lab.title = tips[txt];
-      });
-    } catch (e) {}
+    overlayDefsRef = [
+      { key: "layer.wdpa", layer: wdpa },
+      { key: "layer.ramsar", layer: ramsar },
+      { key: "layer.natura2000", layer: n2k },
+      { key: "layer.emerald", layer: emerald, tip: "layer.emeraldTip" },
+      { key: "layer.landcover", layer: landcover, tip: "layer.landcoverTip" },
+      { key: "layer.gbif", layer: gbif, tip: "layer.gbifTip" },
+      { key: "layer.hotspots", layer: hotspotsLayer, tip: "layer.hotspotsTip" },
+      { key: "layer.osmpa", layer: osmProtectedLayer(), tip: "layer.osmpaTip" },
+      { key: "layer.birdSpots", layer: birdingSpotsLayer(), tip: "layer.birdSpotsTip" }
+    ];
+    var overlays = {};
+    overlayDefsRef.forEach(function (d) { overlays[t(d.key)] = d.layer; });
+    overlayLayersCtrl = L.control.layers(null, overlays, { collapsed: true, position: "topright" }).addTo(map);
+    applyOverlayTips();
     setupAreaHover();
   }
 
