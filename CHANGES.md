@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-08 — Clickable place-names in the "Per observation" list (sw v969)
+
+- In the species panel's **Per observation** list, the group-header **place-name** now opens the same location
+  menu (find on map · add point · add to route) that the **Species** list's expanded records already used
+  (`showLocPointMenu`). It's clickable when the group has a record with coordinates (uses that record's
+  lat/lon); otherwise it stays a plain label. The shared `.sp-loc-click` handler now reads coords from the
+  span itself, falling back to the enclosing record row for the Species-list case.
+
 ## 2026-08-08 — Administer species & observer lists from the lists modal (sw v968)
 
 - Settings → **Administer lists** (renamed from the year/life-only title in every language) now has two buttons,

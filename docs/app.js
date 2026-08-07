@@ -1471,7 +1471,17 @@
       return gkeys.map(function (gk) {
         var g = byG[gk];
         var obsSpan = g.obs ? ' · <span class="sp-obs-filter" role="button" data-obs="' + escapeHtml(g.obs) + '" title="' + escapeHtml(t("obs.filterHint")) + '">' + escapeHtml(g.obs) + "</span>" : "";
-        var locSpan = g.loc ? ' <span class="dl-loc">· ' + escapeHtml(g.loc) + "</span>" : "";
+        // The place-name opens the same location menu as the "Species" list's expanded
+        // records (find on map · add point · route). Needs coordinates, so use the first
+        // record in the group that has them; otherwise it stays a plain label.
+        var locSpan = "";
+        if (g.loc) {
+          var gLoc = null;
+          for (var gli = 0; gli < g.items.length; gli++) { var git = g.items[gli]; if (git && isFinite(+git.lat) && isFinite(+git.lon)) { gLoc = git; break; } }
+          locSpan = gLoc
+            ? ' · <span class="dl-loc sp-loc-click" role="button" data-lat="' + (+gLoc.lat) + '" data-lon="' + (+gLoc.lon) + '" title="' + escapeHtml(t("locmenu.hint")) + '">' + escapeHtml(g.loc) + "</span>"
+            : ' <span class="dl-loc">· ' + escapeHtml(g.loc) + "</span>";
+        }
         var headRow = '<tr class="sp-obs-grp"><td colspan="' + ncols + '">' + datePart + obsSpan + locSpan + '<span class="dl-ct">' + g.items.length + "</span></td></tr>";
         return headRow + g.items.slice().sort(spObsCmp).map(function (d) { return spRecRowHtml(d, { name2: name2On, date: false, src: true, obs: false }); }).join("");
       }).join("");
@@ -1515,8 +1525,13 @@
     Array.prototype.forEach.call(container.querySelectorAll(".sp-loc-click"), function (s) {
       s.addEventListener("click", function (e) {
         e.preventDefault(); e.stopPropagation();
-        var row = this.closest(".sp-d-row");
-        var la = row ? parseFloat(row.getAttribute("data-lat")) : NaN, lo = row ? parseFloat(row.getAttribute("data-lon")) : NaN;
+        // The "Per observation" group-header place carries its own coords; the "Species"
+        // list's record spans don't — fall back to the enclosing record row for those.
+        var la = parseFloat(this.getAttribute("data-lat")), lo = parseFloat(this.getAttribute("data-lon"));
+        if (!isFinite(la) || !isFinite(lo)) {
+          var row = this.closest(".sp-d-row");
+          if (row) { la = parseFloat(row.getAttribute("data-lat")); lo = parseFloat(row.getAttribute("data-lon")); }
+        }
         showLocPointMenu(la, lo, this.textContent, e.clientX, e.clientY);
       });
     });
