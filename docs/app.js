@@ -17190,9 +17190,13 @@
     var to = (document.getElementById("hist-to").value || "").trim();
     if (!from || !to) { setStatus(t("hist.needdates")); return; }
     if (from > to) { var tmp = from; from = to; to = tmp; }   // tolerate reversed range
-    if (histAbort) { try { histAbort.abort(); } catch (e) {} }
+    // A new Fetch does NOT cancel an ongoing one — every fired fetch runs to completion
+    // and plots its result (dots accumulate). The per-request promise cache
+    // (histSightingsCache, keyed by spot+range+months+group) makes re-firing the SAME
+    // request join the in-flight one, and DIFFERENT requests run independently — so
+    // requests effectively queue instead of killing each other. Each fetch still gets
+    // its own AbortController (captured at call time) for its internal timeouts.
     histAbort = (typeof AbortController !== "undefined") ? new AbortController() : null;
-    histSightingsCache = {};   // a fresh Fetch → don't reuse a prior (possibly aborted) historic fetch
     setStatus(t("hist.searching"));
     collapseHistRange(from, to);   // fetch started → tuck the date picker away
     await renderSpeciesList(lat, lon, { from: from, to: to, range: from + "," + to, months: histMonths.slice() });

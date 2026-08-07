@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-08-07 — Fetches are never cancelled by a new request (sw v957)
+
+- Firing a new fetch no longer cancels an ongoing one. The regular point-fetch already behaved this way
+  (a superseded fetch completes and its dots plot in the background; the promise cache joins duplicate
+  requests). The **historic** fetch was the exception — a new Fetch aborted the in-flight one
+  (`histAbort.abort()`) and wiped `histSightingsCache`. Now every fired fetch runs to completion and plots
+  its result; re-firing the same request joins the in-flight promise, different requests run independently
+  (effectively a queue). The failure path still evicts its cache entry so retries refetch.
+
 ## 2026-08-07 — Settings: running version under "About & how it works" (sw v956)
 
 - Settings now shows the running app version (+ last-change time) in a muted line directly below the
