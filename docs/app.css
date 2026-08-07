@@ -2907,6 +2907,9 @@ a.dl-row:hover, .dl-row-menu:hover { background: var(--surface-2, rgba(0,0,0,.05
 .det-legend-total { font-weight: 700; border-bottom: 1px solid var(--border, rgba(0,0,0,.12)); padding-bottom: 3px; margin-bottom: 2px; }
 .det-legend-total .det-nm { flex: 1; }
 .det-legend-total .det-ct { font-variant-numeric: tabular-nums; }
+/* While the map is being panned/zoomed the on-screen counts are out of date — grey them
+   until the legend re-renders (after the map has been still a few seconds). */
+.det-counts-stale .det-ct { color: #b7bdba; opacity: 0.6; transition: color .1s; }
 .det-row-click { cursor: pointer; border-radius: 4px; }
 .det-row-click:hover { background: var(--surface-2, rgba(0,0,0,.05)); }
 .det-row-on .det-nm { font-weight: 700; }

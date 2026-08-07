@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-07 — Legend: defer count re-render while panning (big sets) (sw v951)
+
+- With a large detection set (70k+), recomputing every species' on-screen count on each pan made panning
+  sluggish (the legend re-rendered on every `moveend`). Now the counts **grey out** the moment the map
+  moves and the legend only **re-renders after the map has been still for 3 s** (`LEGEND_REDRAW_IDLE`) —
+  no per-pan recompute. Any immediate re-render (filter change, fetch) clears the grey via `updateDetLegend`.
+  New `.det-counts-stale` CSS.
+
 ## 2026-08-07 — Species lists: 3-state include/exclude box (sw v950)
 
 - Each list in the Species filter dropdown (saved lists + premade groups) now has a **3-state box**:

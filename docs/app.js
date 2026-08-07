@@ -5993,12 +5993,22 @@
     map.whenReady(updateWorldMinZoom);
     // Offline: if the view isn't cached but a downloaded area covers it, offer it.
     map.on("moveend zoomend", scheduleOfflineCheck);
-    // Re-render the legend as the viewport changes so the "n" of each row's n/t reflects
-    // how many of that species' dots are on screen (and, with "filter legend to view" on,
-    // which species are listed). moveend fires once per pan/zoom gesture (not continuously)
-    // and this doesn't move the map, so there's no loop.
+    // Re-render the legend as the viewport changes so each row's on-screen n is current.
+    // Recomputing every count is costly with a big detection set, so DON'T re-render on
+    // every pan: grey the counts as "stale" the moment the map moves, then re-render only
+    // once the map has been still for LEGEND_REDRAW_IDLE ms (no further pan/zoom).
+    var legendRedrawTimer = null, LEGEND_REDRAW_IDLE = 3000;   // ms of map stillness before the legend re-renders
+    function legendHasData() { return detLegend && typeof detPlot !== "undefined" && Object.keys(detPlot).length; }
+    map.on("movestart zoomstart", function () {
+      if (!legendHasData()) return;
+      clearTimeout(legendRedrawTimer);
+      var el = document.getElementById("det-legend"); if (el) el.classList.add("det-counts-stale");   // grey counts while moving
+    });
     map.on("moveend zoomend", function () {
-      if (detLegend && typeof detPlot !== "undefined" && Object.keys(detPlot).length) updateDetLegendKeepObsScroll();
+      if (!legendHasData()) return;
+      var el = document.getElementById("det-legend"); if (el) el.classList.add("det-counts-stale");
+      clearTimeout(legendRedrawTimer);
+      legendRedrawTimer = setTimeout(function () { if (legendHasData()) updateDetLegendKeepObsScroll(); }, LEGEND_REDRAW_IDLE);
     });
     window.addEventListener("offline", scheduleOfflineCheck);
     window.addEventListener("online", refreshOfflineZoomCap);   // reconnected → fetch full-res deep tiles again
@@ -10133,6 +10143,7 @@
       detLegend.addTo(map);
     }
     var el = document.getElementById("det-legend");
+    if (el) el.classList.remove("det-counts-stale");   // a full render = fresh counts, so drop any "stale" greying
     // Only collapse to the corner pill when there are species to summarise.
     // When the active filters leave the list empty, stay expanded so the filter
     // controls (days / mode / observer / clear) remain reachable to recover.
