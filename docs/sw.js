@@ -21,11 +21,12 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v965";
+var VERSION = "v966";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
+  "• Legend → species menu: long-press (or right-click) a species NAME in the legend to open its full menu — range/migration maps, references, and lists & actions — the same menu a species-list name opens. A plain tap still toggles the species on the map; on a mouse, hovering a row still isolates it (press-and-hold no longer isolates on touch).",
   "• The species list now covers EVERY plotted point, not just your last query: search at several spots and the list (counts, records and “By observation”) shows the union of all the dots on the map. And opening a shared link now lands you on the same view the sender had — their species/observation list if they shared from it, otherwise the map.",
   "• Species lists now include OR exclude: each list in the Species filter dropdown has a 3-state box — empty, green ✓ (show only these), red ✕ (hide these). Combine several to build a set like “raptors, but not this saved list”.",
   "• Cleaner list filtering: species lists (and premade groups) are now a dropdown in the Species filter panel — combine several. Renaming and deleting lists moved to a list manager (the ✎). Observer lists work the same way in the observer filter.",

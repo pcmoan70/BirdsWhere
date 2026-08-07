@@ -233,7 +233,9 @@ into a named point-list.
 The legend (bottom-left) lists the plotted species **ordered by the habitat model's predicted
 probability** (lowest → highest; a species with several observations uses its highest one).
 Each row shows a swatch, the name, a `visible/total` count and a per-row × to drop it.
-Tap a row to isolate/select it; press-and-hold isolates on the map.
+Tap a row to select it (picks stack, so several show together); on a mouse, hover a row to isolate
+it on the map. Long-press (or right-click) a species **name** for its menu (info, references, lists
+& actions) — the same menu a species-list name opens.
 
 The control line opens three mutually-exclusive **filter subwindows**:
 

@@ -10351,27 +10351,44 @@
         row.addEventListener("mouseenter", function () { if (!detSelectionActive()) focusDetSpecies(this.getAttribute("data-key")); });
         row.addEventListener("mouseleave", unfocusDetSpecies);
       }
-      // Press-and-hold → isolate (touch hover). lpFired marks a hold so the
-      // synthesized click that follows doesn't also toggle the selection.
-      var lpTimer = null, lpFired = false, lpY = 0;
+      // Long-press the species NAME → the unified species menu (info · lists &
+      // actions), the same one a species-list name opens. Isolate-on-hold was
+      // retired for this: a plain tap already isolates by selecting the one species,
+      // and mouse devices still hover-isolate (above). suppressClick stops the
+      // synthesized click after a touch long-press from also toggling the selection.
+      var lpTimer = null, suppressClick = false, lpY = 0;
+      function openLegendSpMenu(x, y, fromTouch) {
+        var key = row.getAttribute("data-key"); if (!key) return;
+        var en = detPlot[key]; if (!en) return;
+        var lbl = labelsByKey[key];
+        if (fromTouch) suppressClick = true;
+        showDetRowMenu({ key: key, name: detName(en), sci: (lbl && lbl.sci) || "" }, x, y, function () { try { updateDetLegend(); } catch (e2) {} });
+      }
       row.addEventListener("touchstart", function (e) {
-        lpFired = false;
-        var key = this.getAttribute("data-key");
+        suppressClick = false;
+        var onName = !!(e.target.closest && e.target.closest(".det-nm"));   // only the name opens the menu
         lpY = (e.touches && e.touches[0]) ? e.touches[0].clientY : 0;
+        var sx = (e.touches && e.touches[0]) ? e.touches[0].clientX : 0, sy = lpY;
         clearTimeout(lpTimer);
-        lpTimer = setTimeout(function () { lpFired = true; focusDetSpecies(key); }, 400);
+        if (onName) lpTimer = setTimeout(function () { openLegendSpMenu(sx, sy, true); }, MAP_LONGPRESS_MS);
       }, { passive: true });
       row.addEventListener("touchmove", function (e) {
         var y = (e.touches && e.touches[0]) ? e.touches[0].clientY : lpY;
-        if (Math.abs(y - lpY) > 10) clearTimeout(lpTimer);   // scrolling → don't isolate
+        if (Math.abs(y - lpY) > 10) clearTimeout(lpTimer);   // scrolling → not a long-press
       }, { passive: true });
-      var lpEnd = function () { clearTimeout(lpTimer); if (lpFired) unfocusDetSpecies(); };   // lift after a hold → restore
+      var lpEnd = function () { clearTimeout(lpTimer); };
       row.addEventListener("touchend", lpEnd);
       row.addEventListener("touchcancel", lpEnd);
+      // Desktop parity: right-click the name → the same menu (no trailing click to suppress).
+      row.addEventListener("contextmenu", function (e) {
+        if (!(e.target.closest && e.target.closest(".det-nm"))) return;
+        e.preventDefault(); e.stopPropagation(); clearTimeout(lpTimer);
+        openLegendSpMenu(e.clientX, e.clientY, false);
+      });
       row.addEventListener("click", function (e) {
         e.stopPropagation();
         mapClickGuardUntil = Date.now() + 250;
-        if (lpFired) { lpFired = false; return; }   // this was a press-and-hold, not a select
+        if (suppressClick) { suppressClick = false; return; }   // the long-press opened the menu, not a select
         detFocusKey = null;   // a tap commits a selection — clear any transient hover-focus
         var k = this.getAttribute("data-key");
         // Multi-select: each click toggles that species, and the picks stick —

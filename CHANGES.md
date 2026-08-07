@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-08-07 — Long-press a legend species name → its species menu (sw v966)
+
+- Long-press (touch) or right-click (mouse) a species **name** in the legend now opens the unified species
+  menu (`showDetRowMenu`) — the same one a species-list name opens (info · references · lists & actions).
+- Retired press-and-hold-to-isolate on touch (user-approved): a plain tap already isolates by selecting the
+  one species, and mouse devices still hover-isolate. Long-press now belongs to the name → menu. The map's
+  `MAP_LONGPRESS_MS` (500 ms) is reused as the threshold; `.det-nm` gets `touch-callout/user-select: none` so
+  the browser's own long-press selection doesn't fire first. Docs updated: `maphelp.legend` (15 languages),
+  the full in-app Help, and README.
+
 ## 2026-08-07 — Tune touch tap / long-press timings (sw v965)
 
 - Map tap → point popup delay set to **250 ms** (was 300). Map long-press threshold made an explicit
