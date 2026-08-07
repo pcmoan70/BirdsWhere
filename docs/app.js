@@ -7000,6 +7000,8 @@
   // Live OSM birding-navigation points: bird hides, observation towers and viewpoints —
   // where to actually stand and watch. Same Overpass pattern as osmProtectedLayer (zoom-
   // gated + debounced so we don't trip the rate limiter). Each is a clickable marker.
+  // These are lightweight POINTS (not heavy polygons), so they load from a lower zoom.
+  var BIRD_SPOTS_MIN_ZOOM = 8;
   var BIRD_SPOT_KINDS = {
     bird_hide:   { glyph: "🐦", i18n: "birdspot.hide" },
     observation: { glyph: "🗼", i18n: "birdspot.tower" },
@@ -7016,7 +7018,7 @@
     }
     function load() {
       if (!active) return;
-      if (map.getZoom() < OSM_PA_MIN_ZOOM) { grp.clearLayers(); return; }
+      if (map.getZoom() < BIRD_SPOTS_MIN_ZOOM) { grp.clearLayers(); return; }
       var b = map.getBounds();
       var bbox = b.getSouth().toFixed(4) + "," + b.getWest().toFixed(4) + "," + b.getNorth().toFixed(4) + "," + b.getEast().toFixed(4);
       var q = "[out:json][timeout:25];(nwr[\"leisure\"=\"bird_hide\"](" + bbox +
@@ -11988,20 +11990,48 @@
     var wrap = function (x) { return ((x - 1 + 12) % 12) + 1; };
     return (wim <= 2) ? [wrap(m - 1), m] : [m, wrap(m + 1)];   // two adjacent months
   }
-  // GBIF adhoc endpoint (computed per request) — unlike the pre-aggregated "density" tiles
-  // it honours the month filter, so the heatmap can follow the selected week's season.
-  // Repeated month= params give SET semantics (a comma value is read as a RANGE, which
-  // 503s on a year-boundary wrap like Dec+Jan). Style: a border-LESS filled hex-bin poly
-  // ("purpleYellow-noborder.poly") — a continuous density wash with no grey grid lines and
-  // no scattered dots (the earlier .point style showed a grid of dots at low density).
-  function gbifTileUrl() {
-    return "https://api.gbif.org/v2/map/occurrence/adhoc/{z}/{x}/{y}@1x.png" +
-      "?srs=EPSG:3857&style=purpleYellow-noborder.poly&bin=hex&hexPerTile=30" +
-      gbifSeasonMonths().map(function (m) { return "&month=" + m; }).join("");
+  // GBIF density via the adhoc MVT vector tiles (each hex carries a `total` count),
+  // rendered by MapLibre GL with a custom LIGHT→DARK ramp (few = pale, many = dark) and a
+  // low-count cut so the sparsest hexes get no tile. Repeated month= params give SET
+  // semantics (a comma value is read as a RANGE, which 503s on a Dec+Jan wrap). Falls back
+  // to a raster tile layer (light→dark classic style) where MapLibre GL isn't available.
+  function gbifMonthParams() { return gbifSeasonMonths().map(function (m) { return "&month=" + m; }).join(""); }
+  function gbifMvtTiles() { return "https://api.gbif.org/v2/map/occurrence/adhoc/{z}/{x}/{y}.mvt?srs=EPSG:3857&bin=hex&hexPerTile=30" + gbifMonthParams(); }
+  function gbifRasterUrl() { return "https://api.gbif.org/v2/map/occurrence/adhoc/{z}/{x}/{y}@1x.png?srs=EPSG:3857&style=classic-noborder.poly&bin=hex&hexPerTile=30" + gbifMonthParams(); }
+  var GBIF_MIN_TOTAL = 2;   // hexes with fewer than this (the sparsest ~lowest bin) get no tile
+  function gbifGlStyle() {
+    return {
+      version: 8,
+      sources: { gbif: { type: "vector", tiles: [gbifMvtTiles()], minzoom: 0, maxzoom: 16 } },
+      layers: [{
+        id: "gbif-fill", type: "fill", source: "gbif", "source-layer": "occurrence",
+        filter: [">=", ["to-number", ["get", "total"]], GBIF_MIN_TOTAL],
+        paint: {
+          "fill-antialias": false, "fill-opacity": 0.78,
+          // colour on log10(total): 1 → pale green, ~1000 → dark green
+          "fill-color": ["interpolate", ["linear"], ["log10", ["max", ["to-number", ["get", "total"]], 1]],
+            0, "#e5f5e0", 0.7, "#a1d99b", 1.4, "#41ab5d", 2.1, "#238b45", 3, "#00552a"]
+        }
+      }]
+    };
   }
-  // Re-tint the GBIF density overlay for the current week — only when it's actually showing.
+  function gbifDensityLayer() {
+    if (window.maplibregl && L.maplibreGL) {
+      if (!map.getPane("gbifPane")) { map.createPane("gbifPane"); var gp = map.getPane("gbifPane"); gp.style.zIndex = 340; gp.style.pointerEvents = "none"; }
+      var glLayer = L.maplibreGL({ style: gbifGlStyle(), interactive: false, pane: "gbifPane", attribution: GBIF_ATTR });
+      glLayer._gbifGl = true; gbifLayer = glLayer; return glLayer;
+    }
+    var raster = L.tileLayer(gbifRasterUrl(), { opacity: 0.68, attribution: GBIF_ATTR, maxZoom: MAX_ZOOM });   // fallback: light→dark, no cut
+    gbifLayer = raster; return raster;
+  }
+  // Re-render the GBIF overlay for the current week — only when it's actually showing.
   function refreshGbifSeason() {
-    if (gbifLayer && map && map.hasLayer(gbifLayer)) gbifLayer.setUrl(gbifTileUrl());
+    if (!gbifLayer || !map || !map.hasLayer(gbifLayer)) return;
+    if (gbifLayer._gbifGl && gbifLayer.getMaplibreMap) {
+      try { var m = gbifLayer.getMaplibreMap(); if (m && m.getSource("gbif")) m.getSource("gbif").setTiles([gbifMvtTiles()]); } catch (e) {}
+    } else if (gbifLayer.setUrl) {
+      gbifLayer.setUrl(gbifRasterUrl());
+    }
   }
   function setupAreaOverlays() {
     if (!map || !window.L) return;
@@ -12010,8 +12040,7 @@
       arcLayers: "show:0,1", layerDefs: JSON.stringify({ 0: RAMSAR_DEF, 1: RAMSAR_DEF }) });
     var n2k = new ArcGISExportLayer(N2K_EXPORT, { opacity: 0.5, attribution: EEA_ATTR, maxZoom: MAX_ZOOM });
     var emerald = new ArcGISExportLayer(EMERALD_EXPORT, { opacity: 0.5, attribution: EMERALD_ATTR, maxZoom: MAX_ZOOM, arcLayers: "show:3" });
-    var gbif = L.tileLayer(gbifTileUrl(), { opacity: 0.65, attribution: GBIF_ATTR, maxZoom: MAX_ZOOM });
-    gbifLayer = gbif;
+    var gbif = gbifDensityLayer();
     var landcover = new ArcGISExportLayer(CLC2018_EXPORT, { opacity: 0.55, attribution: CLC_ATTR, maxZoom: MAX_ZOOM, arcLayers: "show:1" });
     arcOverlays = [{ layer: wdpa, kind: "wdpa" },
       { layer: ramsar, kind: "wdpa", defs: ramsar.options.layerDefs },

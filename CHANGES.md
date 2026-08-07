@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-08-07 — GBIF density: light→dark ramp + low-count cut; birding spots at lower zoom (sw v949)
+
+- **GBIF density** now renders GBIF's adhoc **MVT** vector tiles (per-hex `total`) via **MapLibre GL** with a
+  custom **light→dark** ramp on `log10(total)` (few = pale green, many = dark) and a **low-count cut**
+  (`GBIF_MIN_TOTAL = 2`) so the sparsest hexes (the lowest bin) get no tile. Seasonal month follows the week
+  (`setTiles`). Falls back to a raster tile layer (light→dark `classic-noborder.poly`) where GL is
+  unavailable. New `gbifDensityLayer`/`gbifGlStyle`/`gbifMvtTiles`; replaced the raster `gbifTileUrl`.
+- **Birding spots** overlay now loads from a lower zoom (`BIRD_SPOTS_MIN_ZOOM = 8`, was 11) — they're
+  lightweight points, so no need to wait for a tight bbox like the protected-area polygons.
+
 ## 2026-08-06 — Legend: summed N/T at top, per-species n only, hide n<1 (sw v948)
 
 - The legend now lists **only species with ≥ 1 specimen on screen** (passing the filters); each row shows
