@@ -12023,28 +12023,57 @@
   function gbifMonthParams() { return gbifSeasonMonths().map(function (m) { return "&month=" + m; }).join(""); }
   function gbifMvtTiles() { return "https://api.gbif.org/v2/map/occurrence/adhoc/{z}/{x}/{y}.mvt?srs=EPSG:3857&bin=hex&hexPerTile=30" + gbifMonthParams(); }
   function gbifRasterUrl() { return "https://api.gbif.org/v2/map/occurrence/adhoc/{z}/{x}/{y}@1x.png?srs=EPSG:3857&style=classic-noborder.poly&bin=hex&hexPerTile=30" + gbifMonthParams(); }
-  var GBIF_MIN_TOTAL = 2;   // hexes with fewer than this (the sparsest ~lowest bin) get no tile
+  // Light→dark YlOrRd ramp (pale yellow → orange → red) spread across a log10(total)
+  // window [l0, l1]. Multi-hue so small count differences read as clear colour changes;
+  // the darkest shade only at the very top of the window (so it isn't "all dark").
+  function gbifRamp(l0, l1) {
+    var span = (l1 > l0) ? (l1 - l0) : 1;
+    return ["interpolate", ["linear"], ["log10", ["max", ["to-number", ["get", "total"]], 1]],
+      l0, "#ffffb2", l0 + span * 0.25, "#fecc5c", l0 + span * 0.5, "#fd8d3c", l0 + span * 0.75, "#f03b20", l1, "#bd0026"];
+  }
   function gbifGlStyle() {
     return {
       version: 8,
       sources: { gbif: { type: "vector", tiles: [gbifMvtTiles()], minzoom: 0, maxzoom: 16 } },
       layers: [{
         id: "gbif-fill", type: "fill", source: "gbif", "source-layer": "occurrence",
-        filter: [">=", ["to-number", ["get", "total"]], GBIF_MIN_TOTAL],
-        paint: {
-          "fill-antialias": false, "fill-opacity": 0.78,
-          // colour on log10(total): 1 → pale green, ~1000 → dark green
-          "fill-color": ["interpolate", ["linear"], ["log10", ["max", ["to-number", ["get", "total"]], 1]],
-            0, "#e5f5e0", 0.7, "#a1d99b", 1.4, "#41ab5d", 2.1, "#238b45", 3, "#00552a"]
-        }
+        filter: [">=", ["to-number", ["get", "total"]], 2],
+        paint: { "fill-antialias": false, "fill-opacity": 0.7, "fill-color": gbifRamp(0, 3) }   // replaced live by the data-driven scale
       }]
     };
+  }
+  // Fit the colour window + low-count cut to the CURRENTLY VISIBLE counts: cut at the 3rd
+  // percentile (drops the sparsest hexes) and spread the ramp up to the 98th — so the
+  // palette tracks the real variation on screen instead of a fixed 1→1000 that buries
+  // everything in the dark end. Runs on GL "idle"; guarded so it doesn't loop.
+  function gbifApplyDynamicScale(m) {
+    if (!m || !m.getLayer || !m.getLayer("gbif-fill")) return;
+    var feats; try { feats = m.querySourceFeatures("gbif", { sourceLayer: "occurrence" }); } catch (e) { return; }
+    if (!feats || !feats.length) return;
+    var totals = []; for (var i = 0; i < feats.length; i++) { var v = +feats[i].properties.total; if (v > 0) totals.push(v); }
+    if (!totals.length) return;
+    totals.sort(function (a, b) { return a - b; });
+    var lo = totals[Math.floor(totals.length * 0.03)] || 1;
+    var hi = totals[Math.min(totals.length - 1, Math.floor(totals.length * 0.98))] || totals[totals.length - 1];
+    if (hi <= lo) hi = lo + 1;
+    var key = lo + "|" + hi; if (m._gbifScaleKey === key) return;   // unchanged → avoid a re-render loop
+    m._gbifScaleKey = key;
+    try {
+      m.setFilter("gbif-fill", [">=", ["to-number", ["get", "total"]], lo]);
+      m.setPaintProperty("gbif-fill", "fill-color", gbifRamp(Math.log10(lo), Math.log10(hi)));
+    } catch (e) {}
   }
   function gbifDensityLayer() {
     if (window.maplibregl && L.maplibreGL) {
       if (!map.getPane("gbifPane")) { map.createPane("gbifPane"); var gp = map.getPane("gbifPane"); gp.style.zIndex = 340; gp.style.pointerEvents = "none"; }
       var glLayer = L.maplibreGL({ style: gbifGlStyle(), interactive: false, pane: "gbifPane", attribution: GBIF_ATTR });
-      glLayer._gbifGl = true; gbifLayer = glLayer; return glLayer;
+      glLayer._gbifGl = true; gbifLayer = glLayer;
+      glLayer.on("add", function () {
+        var m = glLayer.getMaplibreMap && glLayer.getMaplibreMap(); if (!m) return;
+        var bind = function () { m._gbifScaleKey = null; m.on("idle", function () { gbifApplyDynamicScale(m); }); };
+        if (m.isStyleLoaded && m.isStyleLoaded()) bind(); else m.on("load", bind);
+      });
+      return glLayer;
     }
     var raster = L.tileLayer(gbifRasterUrl(), { opacity: 0.68, attribution: GBIF_ATTR, maxZoom: MAX_ZOOM });   // fallback: light→dark, no cut
     gbifLayer = raster; return raster;
@@ -12053,7 +12082,7 @@
   function refreshGbifSeason() {
     if (!gbifLayer || !map || !map.hasLayer(gbifLayer)) return;
     if (gbifLayer._gbifGl && gbifLayer.getMaplibreMap) {
-      try { var m = gbifLayer.getMaplibreMap(); if (m && m.getSource("gbif")) m.getSource("gbif").setTiles([gbifMvtTiles()]); } catch (e) {}
+      try { var m = gbifLayer.getMaplibreMap(); if (m && m.getSource("gbif")) { m._gbifScaleKey = null; m.getSource("gbif").setTiles([gbifMvtTiles()]); } } catch (e) {}
     } else if (gbifLayer.setUrl) {
       gbifLayer.setUrl(gbifRasterUrl());
     }

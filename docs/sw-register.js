@@ -12,27 +12,45 @@ if ("serviceWorker" in navigator) {
   // Shared state for the app (Settings button reads this; app.js sets bannerEnabled
   // + onchange). apply() activates the waiting worker → controllerchange reloads.
   var SWUpdate = window.SWUpdate = {
-    pending: false, version: "", notes: "", worker: null,
+    pending: false, version: "", notes: "", worker: null, _reloaded: false,
     bannerEnabled: false,   // app.js sets from the user setting (default: no auto banner)
     onchange: null,         // app.js hooks this to refresh the Settings update button
     showBanner: function () {},
+    // Activate the newest worker and reload ONTO it. The old worker keeps controlling
+    // (and serving old cached code) until a new one takes over via skipWaiting →
+    // controllerchange, so we must never plain-reload while an update is pending — that
+    // just re-serves the old shell (the "falls back to the previous version" bug).
     apply: function () {
-      var w = SWUpdate.worker;
-      if (w) { try { w.postMessage({ type: "skipWaiting" }); } catch (e) {} return; }
-      // No captured waiting worker (button lit by the direct version check before the
-      // new SW finished installing): find a waiting one, else reload as a last resort.
-      if (navigator.serviceWorker.getRegistration) {
-        navigator.serviceWorker.getRegistration().then(function (reg) {
-          if (reg && reg.waiting) { try { reg.waiting.postMessage({ type: "skipWaiting" }); } catch (e) {} }
-          else { try { if (reg) reg.update(); } catch (e) {} window.location.reload(); }
+      function activate(w) { if (w) { try { w.postMessage({ type: "skipWaiting" }); } catch (e) {} } }
+      // If the worker is still installing, wait for it to finish, then skipWaiting.
+      function onceInstalled(reg, w) {
+        if (!w) return false;
+        if (w.state === "installed") { activate(w); return true; }
+        w.addEventListener("statechange", function () { if (w.state === "installed") activate(reg.waiting || w); });
+        return true;
+      }
+      // Belt-and-braces: if controllerchange never fires (skipWaiting silently blocked),
+      // reload anyway after a few seconds so the button doesn't sit on "Updating…".
+      function fallbackReload() { setTimeout(function () { if (!SWUpdate._reloaded) { SWUpdate._reloaded = true; window.location.reload(); } }, 7000); }
+
+      if (SWUpdate.worker) { activate(SWUpdate.worker); fallbackReload(); return; }
+      if (!navigator.serviceWorker.getRegistration) { window.location.reload(); return; }
+      navigator.serviceWorker.getRegistration().then(function (reg) {
+        if (!reg) { window.location.reload(); return; }
+        if (reg.waiting) { activate(reg.waiting); fallbackReload(); return; }
+        if (onceInstalled(reg, reg.installing)) { fallbackReload(); return; }
+        // Nothing pending locally — pull the latest from the server, then activate it.
+        Promise.resolve(reg.update()).then(function () {
+          if (reg.waiting) { activate(reg.waiting); fallbackReload(); }
+          else if (onceInstalled(reg, reg.installing)) { fallbackReload(); }
+          else window.location.reload();   // genuinely up to date (or offline) → a plain reload is fine
         }).catch(function () { window.location.reload(); });
-      } else window.location.reload();
+      }).catch(function () { window.location.reload(); });
     }
   };
   window.addEventListener("load", function () {
-    var reloaded = false;
     navigator.serviceWorker.addEventListener("controllerchange", function () {
-      if (reloaded) return; reloaded = true; window.location.reload();
+      if (SWUpdate._reloaded) return; SWUpdate._reloaded = true; window.location.reload();
     });
 
     // Ask a specific worker over a MessageChannel (sw.js replies on the port) for its

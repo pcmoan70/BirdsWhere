@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-08-07 — Fix update button "falls back to old version"; lighter GBIF palette (sw v952)
+
+- **Update button fix:** `SWUpdate.apply()` could plain-reload while a new version existed but wasn't yet
+  the *waiting* worker (button lit by the direct version check) — the old SW stayed in control and re-served
+  the old cached shell (looked like "falls back to the previous version"). `apply()` now activates the
+  newest waiting/installing worker (skipWaiting → `controllerchange` → reload) and only plain-reloads when
+  there's genuinely nothing pending, with a 7 s fallback reload. Shared `_reloaded` guard.
+- **GBIF density palette:** was a dark single-hue green on a fixed log 1→1000 scale — too dark and flat for
+  high counts. Switched to a light→dark **YlOrRd** (pale yellow → orange → red) ramp whose window **adapts
+  to the visible counts** (cut at the 3rd percentile, spread up to the 98th) via a guarded GL `idle`
+  handler — so colour tracks the real on-screen variation and the darkest shade is reserved for the top.
+
 ## 2026-08-07 — Legend: defer count re-render while panning (big sets) (sw v951)
 
 - With a large detection set (70k+), recomputing every species' on-screen count on each pan made panning
