@@ -673,6 +673,9 @@
     if (el) el.textContent = msg;
     renderStatusDots();   // keep the in-flight-fetch dots after a text update
   }
+  // Overlay data-load indicator in the status text above the map (Overpass overlays).
+  function overlayLoadStatus(name) { setStatus(t("layer.loading", { name: name })); }
+  function overlayLoadedStatus(name, n) { setStatus(n < 0 ? t("layer.loadFail", { name: name }) : t("layer.loaded", { name: name, n: n })); }
   // Status with limited inline markup (only app-controlled HTML, e.g. the
   // blinking fetch fraction — never user input).
   function setStatusHtml(html) {
@@ -6980,12 +6983,14 @@
       var q = "[out:json][timeout:25];(way[\"leisure\"=\"nature_reserve\"](" + bbox + ");relation[\"leisure\"=\"nature_reserve\"](" + bbox +
         ");way[\"boundary\"=\"protected_area\"](" + bbox + ");relation[\"boundary\"=\"protected_area\"](" + bbox + "););out geom;";
       var mine = ++token;
+      overlayLoadStatus(t("layer.osmpa"));
       fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: "data=" + encodeURIComponent(q) })
         .then(function (r) { if (!r.ok) throw new Error("overpass " + r.status); return r.json(); })
         .then(function (j) {
           if (mine !== token || !active) return;
           grp.clearLayers();
           var style = { color: "#1f8a3b", weight: 1.5, opacity: 0.9, fillColor: "#1f8a3b", fillOpacity: 0.08 };
+          var n = 0;
           (j.elements || []).forEach(function (el) {
             var nm = (el.tags && el.tags.name) || t("layer.osmpa");
             var add = function (pts, closed) {
@@ -6995,12 +7000,13 @@
             };
             if (el.type === "way" && el.geometry) {
               var p = el.geometry.map(function (g) { return [g.lat, g.lon]; });
-              add(p, p.length > 2 && p[0][0] === p[p.length - 1][0] && p[0][1] === p[p.length - 1][1]);
+              add(p, p.length > 2 && p[0][0] === p[p.length - 1][0] && p[0][1] === p[p.length - 1][1]); n++;
             } else if (el.type === "relation" && el.members) {
-              el.members.forEach(function (m) { if (m.geometry) add(m.geometry.map(function (g) { return [g.lat, g.lon]; }), false); });
+              el.members.forEach(function (m) { if (m.geometry) add(m.geometry.map(function (g) { return [g.lat, g.lon]; }), false); }); n++;
             }
           });
-        }).catch(function () { /* offline / rate-limited (429/504) — keep what's drawn, retry on next pan */ });
+          overlayLoadedStatus(t("layer.osmpa"), n);
+        }).catch(function () { overlayLoadedStatus(t("layer.osmpa"), -1); });   // offline / rate-limited — keep what's drawn
     }
     function schedule() { clearTimeout(timer); timer = setTimeout(load, 500); }   // debounce pans → one query when movement settles
     grp.on("add", function () { active = true; map.attributionControl.addAttribution(OSM_PA_ATTR); load(); });
@@ -7012,8 +7018,11 @@
   // Live OSM birding-navigation points: bird hides, observation towers and viewpoints —
   // where to actually stand and watch. Same Overpass pattern as osmProtectedLayer (zoom-
   // gated + debounced so we don't trip the rate limiter). Each is a clickable marker.
-  // These are lightweight POINTS (not heavy polygons), so they load from a lower zoom.
-  var BIRD_SPOTS_MIN_ZOOM = 8;
+  // These are lightweight POINTS, so they load from a fairly low zoom. Bird hides +
+  // observation towers are rare enough to query over a wide area; VIEWPOINTS are far
+  // denser (a continent-wide query times out), so they're added only once zoomed in.
+  var BIRD_SPOTS_MIN_ZOOM = 6;
+  var BIRD_SPOTS_VP_MIN_ZOOM = 10;
   var BIRD_SPOT_KINDS = {
     bird_hide:   { glyph: "🐦", i18n: "birdspot.hide" },
     observation: { glyph: "🗼", i18n: "birdspot.tower" },
@@ -7033,15 +7042,18 @@
       if (map.getZoom() < BIRD_SPOTS_MIN_ZOOM) { grp.clearLayers(); return; }
       var b = map.getBounds();
       var bbox = b.getSouth().toFixed(4) + "," + b.getWest().toFixed(4) + "," + b.getNorth().toFixed(4) + "," + b.getEast().toFixed(4);
+      var withVp = map.getZoom() >= BIRD_SPOTS_VP_MIN_ZOOM;   // viewpoints only when zoomed in (too dense over a wide bbox)
       var q = "[out:json][timeout:25];(nwr[\"leisure\"=\"bird_hide\"](" + bbox +
-        ");nwr[\"man_made\"=\"tower\"][\"tower:type\"=\"observation\"](" + bbox +
-        ");node[\"tourism\"=\"viewpoint\"](" + bbox + "););out center;";
+        ");nwr[\"man_made\"=\"tower\"][\"tower:type\"=\"observation\"](" + bbox + ")" +
+        (withVp ? ";node[\"tourism\"=\"viewpoint\"](" + bbox + ")" : "") + ";);out center;";
       var mine = ++token;
+      overlayLoadStatus(t("layer.birdSpots"));
       fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: "data=" + encodeURIComponent(q) })
         .then(function (r) { if (!r.ok) throw new Error("overpass " + r.status); return r.json(); })
         .then(function (j) {
           if (mine !== token || !active) return;
           grp.clearLayers();
+          var n = 0;
           (j.elements || []).forEach(function (el) {
             var kind = kindOf(el.tags); if (!kind) return;
             var lat = el.lat != null ? el.lat : (el.center && el.center.lat);
@@ -7051,9 +7063,10 @@
             var nm = (el.tags && el.tags.name) || typeLbl;
             var mk = L.marker([lat, lon], { icon: L.divIcon({ className: "bird-spot-ico", html: meta.glyph, iconSize: [22, 22], iconAnchor: [11, 11] }), title: nm });
             mk.bindPopup('<div class="bird-spot-pop"><b>' + escapeHtml(nm) + '</b><br><span>' + escapeHtml(typeLbl) + "</span></div>");
-            grp.addLayer(mk);
+            grp.addLayer(mk); n++;
           });
-        }).catch(function () { /* offline / rate-limited — keep what's drawn, retry on next pan */ });
+          overlayLoadedStatus(t("layer.birdSpots"), n);
+        }).catch(function () { overlayLoadedStatus(t("layer.birdSpots"), -1); });   // offline / rate-limited — keep what's drawn
     }
     function schedule() { clearTimeout(timer); timer = setTimeout(load, 500); }
     grp.on("add", function () { active = true; map.attributionControl.addAttribution(BIRD_SPOTS_ATTR); load(); });

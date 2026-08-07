@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-08-07 — Birding spots at lower zoom; overlay load indicator (sw v953)
+
+- **Birding spots** now show from zoom 6 (was 8). Bird hides + observation towers are queried from that
+  low zoom (they're rare enough to answer over a wide area); **viewpoints** are far denser (a wide query
+  502/504s), so they're added only from zoom 10 (`BIRD_SPOTS_VP_MIN_ZOOM`). So the hides/towers are visible
+  at all but the widest zooms.
+- **Overlay load indicator** in the status text above the map: turning on (or panning) an Overpass overlay
+  (Birding spots, OSM protected areas) shows "Loading …" then "…: N shown" (or a load-failed note). New
+  `overlayLoadStatus`/`overlayLoadedStatus` + i18n `layer.loading`/`layer.loaded`/`layer.loadFail` (15 langs).
+
 ## 2026-08-07 — Fix update button "falls back to old version"; lighter GBIF palette (sw v952)
 
 - **Update button fix:** `SWUpdate.apply()` could plain-reload while a new version existed but wasn't yet
