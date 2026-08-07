@@ -14931,7 +14931,11 @@
     var i = 0;
     function fitToAreas() {
       var b = L.latLngBounds([]);
-      locs.forEach(function (l) { var d = (l.radius || recentRadiusKm()) / 111; b.extend([l.lat - d, l.lon - d]); b.extend([l.lat + d, l.lon + d]); });
+      locs.forEach(function (l) {
+        var rkm = l.radius || recentRadiusKm(), dLat = rkm / 111.32;
+        var cos = Math.cos(l.lat * Math.PI / 180), dLon = rkm / (111.32 * (cos > 0.01 ? cos : 0.01));   // widen the E-W extent by 1/cos(lat) so high-latitude areas aren't clipped
+        b.extend([l.lat - dLat, l.lon - dLon]); b.extend([l.lat + dLat, l.lon + dLon]);
+      });
       if (b.isValid()) { try { fitBoundsMin(b, 0.1); } catch (e) {} }
     }
     (function next() {

@@ -1,5 +1,16 @@
 # Changes
 
+## 2026-08-07 — Fix longitude extent when zooming to a batch fetch (sw v963)
+
+- The zoom-to-fit after a **stored-locations batch fetch** (`fetchSelectedStoredLocations` → `fitToAreas`)
+  built its bounding box with the radius applied as-is to **both** lat and lon (`d = rkm / 111`). A degree of
+  longitude is shorter than a degree of latitude, so at high latitude (e.g. Norway ~65°N) the E-W extent came
+  out ~2.4× too narrow and the view clipped the east/west edges of the fetched areas. Now the longitude
+  half-width is widened by `1/cos(lat)` (matching `fetchAreaBounds`, `gbifGeometry` and every source query).
+- Verified the actual fetch **queries** were already correct: GBIF, Artskart (Norway), Laji.fi, BirdWeather,
+  Artportalen all scale longitude by `cos(lat)`; eBird/iNat use circular radii. This was the only km→degree
+  conversion in the codebase missing the factor.
+
 ## 2026-08-07 — Species list spans all plotted points; shares reopen the sender's view (sw v962)
 
 - **Species list now reflects EVERY plotted detection, not just the last fetch.** Querying at several points
