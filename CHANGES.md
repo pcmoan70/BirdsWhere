@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-07 — Share detections: option to include your map points (sw v961)
+
+- Sharing the current detections now asks **"Also include your N map point(s)?"** when user-defined points
+  are on screen. Yes → a combined `t:"m"` payload (detections + points) the importer already handles fully
+  (points imported as a shown collection, with the group/colour/clean-map/map-view behaviour). No → the
+  detections-only share as before. New `share.inclPoints` (15 languages).
+
 ## 2026-08-07 — Shared links open in map view (sw v960)
 
 - Opening a shared URL now lands on the **map** with the shared points visible: if the restored session had

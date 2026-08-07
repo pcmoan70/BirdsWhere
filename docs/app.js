@@ -15138,12 +15138,19 @@
     doShare(compactDet(name, dets), name);
   }
   // Share the detections currently loaded from data sources (the live plot), no
-  // need to save them as a trip first.
+  // need to save them as a trip first. When user-defined map points are also on
+  // screen, ask whether to include them — if yes, a combined "m" payload (detections
+  // + points) the importer already understands; if no, a detections-only share.
   function shareCurrentDetections() {
     var det = serializeVisibleDetPlot();   // only what's visible on the map right now
     if (!det || !Object.keys(det).length) { setStatus(t("det.none")); return; }
     var name = t("share.detName");
-    doShare(compactDet(name, det), name);
+    var pts = packPoints(allShownUserPoints().filter(function (p) { return inMapView(p.lat, p.lon); }));   // on-screen user points
+    if (!pts.length) { doShare(compactDet(name, det), name); return; }
+    modalConfirm(t("share.inclPoints", { n: pts.length })).then(function (incl) {
+      if (incl) doShare({ v: 1, t: "m", n: name, d: compactDet(name, det), p: pts }, name);
+      else doShare(compactDet(name, det), name);
+    });
   }
   // Every user-defined point currently ON the map: loose working pins + shown
   // saved-list points that aren't detections (list detection points already ride
