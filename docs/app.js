@@ -5232,7 +5232,7 @@
               '<div class="settings-section" data-i18n="settings.secListsShare">Lists &amp; sharing</div>' +
               '<div class="ctrl-group">' +
                 '<label class="ctrl-check"><input type="checkbox" id="share-tiny-toggle"> <span data-i18n="ctrl.shareTiny">Shorten share links (TinyURL)</span></label>' +
-                '<p class="cu-hint" data-i18n="ctrl.shareTinyHint">Turns share links into short tinyurl.com links (easier to paste / QR), for links under 14 kB. ⚠ The shared data is sent to TinyURL — a third party — so it may be exposed to unknown parties. Off (default): plain link + .share file, nothing leaves via a shortener.</p>' +
+                '<p class="cu-hint" data-i18n="ctrl.shareTinyHint">Turns share links into short tinyurl.com links (easier to paste / QR), for links under 14 kB. On by default. ⚠ The shared data is sent to TinyURL — a third party — so it may be exposed to unknown parties. Turn off for a plain link + .share file, so nothing leaves via a shortener.</p>' +
               '</div>' +
               '<div class="ctrl-group" id="points-kml-wrap">' +
                 '<label data-i18n="ctrl.exportPoints">Map points</label>' +
@@ -7364,7 +7364,7 @@
   var detProbBusy = false;  // an inference pass is in flight
   var detDupHidden = new Set();   // rows hidden as cross-database duplicates (dedup setting)
   var detDupSig = "";             // plotted-set + setting signature detDupHidden was computed for
-  function dedupDetections() { return window.GeoState.get("dedupDetections", false) === true; }
+  function dedupDetections() { return window.GeoState.get("dedupDetections", true) !== false; }
   // "Filter legend to the current view" (default on): the legend lists only species
   // that have at least one plotted dot inside the map's visible bounds, and updates
   // as you pan/zoom. Off = list every plotted species regardless of the viewport.
@@ -7669,7 +7669,7 @@
   // Cap on how many detection dots are DRAWN at once (markers are the draw-speed
   // bottleneck). Data is never dropped — the rest still show in the Detections
   // list and sync normally; only the map render is limited to the newest N.
-  function detMaxPoints() { var n = +window.GeoState.get("maxMapPoints", 5000); return (n > 0) ? n : 5000; }
+  function detMaxPoints() { var n = +window.GeoState.get("maxMapPoints", 50000); return (n > 0) ? n : 50000; }
   // Map-tile cache buffer (LRU) in MB, enforced by the service worker. One of
   // the fixed steps; default 5 MB. Pushed to the SW on load and on change.
   // One shared "Map cache" budget (MB) covers BOTH the map-tile cache (in the
@@ -12771,7 +12771,7 @@
         relayerDet();
       });
     }
-    wireNumSetting("max-points", detMaxPoints, 50, 100000, 5000, function (v) { window.GeoState.save({ maxMapPoints: v }); }, relayerDet);
+    wireNumSetting("max-points", detMaxPoints, 50, 100000, 50000, function (v) { window.GeoState.save({ maxMapPoints: v }); }, relayerDet);
     var dedupEl = document.getElementById("dedup-toggle");
     if (dedupEl) {
       dedupEl.checked = dedupDetections();
@@ -12935,7 +12935,7 @@
     });
     var shareTinyCb = document.getElementById("share-tiny-toggle");
     if (shareTinyCb) {
-      shareTinyCb.checked = !!window.GeoState.get("shareTinyUrl", false);
+      shareTinyCb.checked = window.GeoState.get("shareTinyUrl", true) !== false;
       shareTinyCb.addEventListener("change", function () { window.GeoState.save({ shareTinyUrl: !!this.checked }); });
     }
     var kmlFile = document.getElementById("points-kml-file");
@@ -15095,7 +15095,7 @@
         // TinyURL mode (opt-in): shorten a HASH link (#s=, never sent to the host so no
         // 8 kB limit) — the resulting tinyurl has NO fragment, so it survives any share
         // target. Falls back to the plain query link if shortening fails.
-        if (window.GeoState.get("shareTinyUrl", false)) {
+        if (window.GeoState.get("shareTinyUrl", true) !== false) {
           var hashUrl = location.origin + location.pathname + "#s=" + enc;
           if (hashUrl.length > TINY_MAX) { modalConfirm(t("share.tooBigOfferFile")).then(function (ok) { if (ok) shareAsFile(enc, title); }); return; }
           setStatus(t("share.shortening"));

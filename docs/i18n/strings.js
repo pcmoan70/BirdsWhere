@@ -241,7 +241,7 @@ window.GeoI18N = (function () {
       "share.copied": "Link copied",
       "share.shortening": "Shortening link…",
       "ctrl.shareTiny": "Shorten share links (TinyURL)",
-      "ctrl.shareTinyHint": "Turns share links into short tinyurl.com links (easier to paste / QR), for links under 14 kB. ⚠ The shared data is sent to TinyURL — a third party — so it may be exposed to unknown parties. Off (default): plain link + .share file, nothing leaves via a shortener.",
+      "ctrl.shareTinyHint": "Turns share links into short tinyurl.com links (easier to paste / QR), for links under 14 kB. On by default. ⚠ The shared data is sent to TinyURL — a third party — so it may be exposed to unknown parties. Turn off for a plain link + .share file, so nothing leaves via a shortener.",
       "share.copyManual": "Copy this link:",
       "share.tooBig": "Too large to share as a link",
       "share.failed": "Couldn’t create the link",

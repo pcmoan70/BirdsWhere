@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-08 — New default settings (sw v967)
+
+- Changed the out-of-the-box defaults (existing users' saved settings are untouched): **Max points on map
+  50000** (was 5000), **Deduplicate detections ON** (was off), **Shorten share links / TinyURL ON** (was off).
+  **Fetch on open** and **Experimental features** were already OFF by default — unchanged. Updated the TinyURL
+  hint (English) to reflect it's now on by default while keeping the third-party privacy warning; the 14 other
+  languages' hint still carries a stale "(default)" note on the Off case.
+
 ## 2026-08-07 — Long-press a legend species name → its species menu (sw v966)
 
 - Long-press (touch) or right-click (mouse) a species **name** in the legend now opens the unified species
