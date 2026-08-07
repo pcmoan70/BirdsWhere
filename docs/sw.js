@@ -21,12 +21,13 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v949";
+var VERSION = "v950";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [
   "What's new:",
-  "• Cleaner list filtering: species lists (and premade groups) are now a tick-box dropdown in the Species filter panel — tick several to combine them. Renaming and deleting lists moved to a list manager (the ✎). Observer lists work the same way in the observer filter.",
+  "• Species lists now include OR exclude: each list in the Species filter dropdown has a 3-state box — empty, green ✓ (show only these), red ✕ (hide these). Combine several to build a set like “raptors, but not this saved list”.",
+  "• Cleaner list filtering: species lists (and premade groups) are now a dropdown in the Species filter panel — combine several. Renaming and deleting lists moved to a list manager (the ✎). Observer lists work the same way in the observer filter.",
   "• Two navigation overlays: Birding spots (OSM bird hides, observation towers and viewpoints — clickable markers showing where to watch from, live from OpenStreetMap) and Land cover (CORINE, Copernicus/EEA — forest/wetland/cropland as a habitat backdrop across Europe).",
   "• Add a species to a list from its menu: in the species popup under “Lists & actions”, tap “Add to species list…” to add it to a saved list — or create a new one seeded with that species. Complements Save-selection-as-list and the premade groups.",
   "• Premade species groups: in the Species column panel, tap a group — Raptors, Owls, Ducks & geese, Waders, Gulls & terns, Herons, Woodpeckers, Finches, Crows & jays, Hummingbirds, Pigeons, Warblers — to filter the plotted species to that taxonomic group (derived offline from the IOC taxonomy). Your own saved lists still live right beside them.",

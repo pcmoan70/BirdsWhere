@@ -1700,9 +1700,11 @@
       // Total-column count filter: the chosen metric (specimens or observations) within
       // [min, max] (either null = open).
       var countOk = countInBounds(spCountMetric === "pairs" ? (parseInt(tr.getAttribute("data-pairs"), 10) || 0) : fc);
-      // Species selection / applied species list: keep only the selected species.
+      // Species selection / applied species list: keep only the selected species (include),
+      // and drop any list red-excluded species.
       var selOk = !hasSel || (!!key && !!detSelected[key]);
-      tr.style.display = (recencyOk && countOk && rareOk && buildOk && !obsFilteredOut && selOk) ? "" : "none";
+      var excOk = !key || !detExcluded[key];
+      tr.style.display = (recencyOk && countOk && rareOk && buildOk && !obsFilteredOut && selOk && excOk) ? "" : "none";
     });
     refreshSpExpansions();   // keep expanded detail sub-rows under their (visible) species
     updateRecencyNote();
@@ -7242,7 +7244,28 @@
   // legend row to "select" it — that isolates the selected species (the rest are
   // hidden); with nothing selected every species shows, in colour.
   var detSelected = {};
+  var detExcluded = {};   // species EXCLUDED via a list's red tri-state — hidden from map/legend/table
   var deletedSpecies = Object.create(null);   // key → name of species deleted from the map (grey tombstone in the legend + list)
+  // A list's tri-state from the current selection/exclusion: "include" (all its plotted
+  // species selected), "exclude" (all excluded), else "empty".
+  function listTriState(keys) {
+    var p = (keys || []).filter(function (k) { return detPlot[k]; });
+    if (!p.length) return "empty";
+    if (p.every(function (k) { return detExcluded[k]; })) return "exclude";
+    if (p.every(function (k) { return detSelected[k]; })) return "include";
+    return "empty";
+  }
+  // Cycle a list through empty → include (green ✓) → exclude (red ✕) → empty, applying it
+  // to the selection/exclusion sets and refreshing the map, legend and species table.
+  function cycleListTri(keys) {
+    var p = (keys || []).filter(function (k) { return detPlot[k]; });
+    var next = { empty: "include", include: "exclude", exclude: "empty" }[listTriState(keys)];
+    p.forEach(function (k) { delete detSelected[k]; delete detExcluded[k]; });   // clear this list's contribution first
+    if (next === "include") p.forEach(function (k) { detSelected[k] = true; });
+    else if (next === "exclude") p.forEach(function (k) { detExcluded[k] = true; });
+    saveLegendState(); rebuildDetLayers(); updateDetLegend();
+    refreshCueCellsInPlace(); renderSpControls();
+  }
   // "Starred only" filter, driven by the legend dropdown: when on, the legend
   // lists (and the map shows) only the species the user has starred.
   var detStarFilter = false;
@@ -7407,10 +7430,12 @@
   function touchHeldMs() { return Date.now() - mapPtrDownTs; }   // how long the current touch has been held
   var mapClickDelayTimer = null;   // pending touch-tap → point-popup open (cancelled by a pan/zoom in the delay window)
   function detSelectionActive() { return Object.keys(detSelected).some(function (k) { return detPlot[k] && detPassesStar(k) && detPassesGroup(k) && detPassesRare(k) && detPassesYear(k) && detPassesLife(k); }); }
+  function detExclusionActive() { return Object.keys(detExcluded).some(function (k) { return detPlot[k]; }); }
   // `selActive` lets a render loop compute detSelectionActive() ONCE and pass it
   // in, instead of this re-scanning all selected keys for every species.
   function detIsVisible(key, selActive) {
     if (selActive === undefined) selActive = detSelectionActive();
+    if (detExcluded[key]) return false;   // list red-excluded → never show
     return !isHidden((detPlot[key] && detPlot[key].key) || key) && detPassesStar(key) && detPassesGroup(key) && detPassesRare(key) && detPassesYear(key) && detPassesLife(key) && detPassesCount(key) && (!selActive || !!detSelected[key]);
   }
   // Dots are always shown in their species colour (no grey overview mode) — so
@@ -9146,13 +9171,13 @@
   // recency days / date range.) Drives the black × (clear all) in both the legend
   // and the detections-list filter bar.
   function detHasFilter() {
-    return detSelectionActive() || detStarFilter || detRareFilter || detYearFilter || detLifeFilter || !!detObsFilter || !!detSrcFilter || (detRecencyDays() !== 0) || !!detDateRange() || detMonths().length > 0 || spCountMin != null || spCountMax != null;
+    return detSelectionActive() || detExclusionActive() || detStarFilter || detRareFilter || detYearFilter || detLifeFilter || !!detObsFilter || !!detSrcFilter || (detRecencyDays() !== 0) || !!detDateRange() || detMonths().length > 0 || spCountMin != null || spCountMax != null;
   }
   // Reset every legend filter at once (the black ×): the species selection, the
   // ★/◉/🟡 mode filter, the observer filter, and the recency (days) window → All.
   // Dots stay plotted; only the filtering is cleared.
   function clearAllFilters() {
-    detSelected = {};
+    detSelected = {}; detExcluded = {};
     detStarFilter = false; detRareFilter = false; detYearFilter = false; detLifeFilter = false;
     detObsPanelOpen = false; detDaysPanelOpen = false; detModePanelOpen = false;
     setDetObsFilter(null);                                                   // observer → all
@@ -9172,7 +9197,7 @@
     if (storedLocFramesLayer) storedLocFramesLayer.clearLayers();   // selection preview
     clearFetchedAreas();   // remembered fetched-area outlines go with the detections
     Object.keys(detPlot).forEach(function (k) { if (detPlot[k].group) map.removeLayer(detPlot[k].group); });
-    detPlot = {}; detSelected = {}; deletedSpecies = Object.create(null);
+    detPlot = {}; detSelected = {}; detExcluded = {}; deletedSpecies = Object.create(null);
     // Filters are DELIBERATELY kept (they persist until the black × / toggled off) —
     // only the transient subwindow-open flags and the minimise state reset here.
     detObsPanelOpen = false; detDaysPanelOpen = false; detModePanelOpen = false; detLegendMini = false;
@@ -9302,7 +9327,7 @@
   // Persist the legend's UI state — collapsed, the starred-only filter, and the
   // row selection — so the map legend comes back the way the user left it.
   function saveLegendState() {
-    window.GeoState.save({ mapLegend: { mini: detLegendMini, starFilter: detStarFilter, rareFilter: detRareFilter, yearFilter: detYearFilter, lifeFilter: detLifeFilter, selected: Object.keys(detSelected), obsFilter: detObsFilter ? Array.from(detObsFilter) : null, srcFilter: detSrcFilter ? Array.from(detSrcFilter) : null, deleted: deletedSpecies } });
+    window.GeoState.save({ mapLegend: { mini: detLegendMini, starFilter: detStarFilter, rareFilter: detRareFilter, yearFilter: detYearFilter, lifeFilter: detLifeFilter, selected: Object.keys(detSelected), excluded: Object.keys(detExcluded), obsFilter: detObsFilter ? Array.from(detObsFilter) : null, srcFilter: detSrcFilter ? Array.from(detSrcFilter) : null, deleted: deletedSpecies } });
   }
   function loadDetections() {
     // Self-heal a store left over-quota by an older build: cap the stored
@@ -9337,6 +9362,8 @@
     }
     detSelected = {};
     (Array.isArray(ls.selected) ? ls.selected : []).forEach(function (k) { if (detPlot[k]) detSelected[k] = true; });
+    detExcluded = {};
+    (Array.isArray(ls.excluded) ? ls.excluded : []).forEach(function (k) { if (detPlot[k]) detExcluded[k] = true; });
     deletedSpecies = Object.create(null);
     if (ls.deleted && typeof ls.deleted === "object") Object.keys(ls.deleted).forEach(function (k) { if (!detPlot[k]) deletedSpecies[k] = ls.deleted[k]; });
     rebuildDetLayers();
@@ -9413,19 +9440,6 @@
   // and deleting move to the list manager. `spListsDdOpen` keeps the dropdown open across
   // the re-render a tick triggers.
   var spListsDdOpen = false;
-  // A list's plotted species are all currently in the selection → its box is ticked.
-  function keysAllSelected(keys) {
-    var p = (keys || []).filter(function (k) { return detPlot[k]; });
-    return p.length > 0 && p.every(function (k) { return detSelected[k]; });
-  }
-  // Tick/untick a list: add / remove its plotted species from the selection (union).
-  function toggleListSelection(keys, on) {
-    var p = (keys || []).filter(function (k) { return detPlot[k]; });
-    if (on) p.forEach(function (k) { detSelected[k] = true; });
-    else p.forEach(function (k) { delete detSelected[k]; });
-    saveLegendState(); rebuildDetLayers(); updateDetLegend();
-    refreshCueCellsInPlace(); renderSpControls();
-  }
   // Species list manager: rename / delete saved lists (moved out of the filter pane).
   function openSpeciesListManager() {
     var m = createModal({ boxClass: "list-mgr", escClose: true });
@@ -10071,7 +10085,7 @@
     var hasSel = detSelectionActive();
     var visCount = Object.create(null);
     allKeys.forEach(function (k) { visCount[k] = detVisibleCount(k); });
-    function legendN(k) { return (hasSel && !detSelected[k]) ? 0 : (visCount[k] || 0); }
+    function legendN(k) { if (detExcluded[k]) return 0; return (hasSel && !detSelected[k]) ? 0 : (visCount[k] || 0); }
     var keys = allKeys.filter(function (k) {
       if (!(detPassesStar(k) && detPassesGroup(k) && detPassesRare(k) && detPassesYear(k) && detPassesLife(k) && detPassesCount(k) && detPassesSearch(k))) return false;
       return legendN(k) >= 1;   // hide species with nothing visible on screen
@@ -10454,7 +10468,7 @@
       b.addEventListener("click", function (e) {
         e.stopPropagation();
         switch (this.getAttribute("data-sec")) {
-          case "sel": detSelected = {}; saveLegendState(); detFiltersRefresh(); break;
+          case "sel": detSelected = {}; detExcluded = {}; saveLegendState(); detFiltersRefresh(); break;
           case "mode": detStarFilter = detRareFilter = detYearFilter = detLifeFilter = false; detFiltersRefresh(); break;
           case "count": spCountMin = spCountMax = null; detFiltersRefresh(); break;
           case "name": spNameQuery = ""; detFiltersRefresh(); break;
@@ -17125,7 +17139,7 @@
   // ---- Species-list column-header filter+sort panels ------------------------
   // Whether each column currently has an active (narrowing) filter — drives the
   // funnel indicator on the header and the "clear" buttons in the panels.
-  function speciesFilterActive() { return anySpFilter() || Object.keys(detSelected).length > 0 || !!spNameQuery.trim(); }
+  function speciesFilterActive() { return anySpFilter() || Object.keys(detSelected).length > 0 || Object.keys(detExcluded).length > 0 || !!spNameQuery.trim(); }
   function totalFilterActive() { return spCountMin != null || spCountMax != null; }
   function lastFilterActive() { return !!detDateRange() || detMonths().length > 0 || (detRecencyDays() !== 0 && detRecencyDays() !== 30); }
   function probFilterActive() { var lo = +document.getElementById("prob-min").value, hi = +document.getElementById("prob-max").value; return lo > 0 || hi < 100; }
@@ -17208,15 +17222,17 @@
     if (spLists.length || pm.length || sel.length) {
       html += '<div class="sp-splist-head">' + escapeHtml(t("sp.speciesLists")) +
         ' <button type="button" class="sp-lists-manage" title="' + escapeHtml(t("sp.manageLists")) + '" aria-label="' + escapeHtml(t("sp.manageLists")) + '">✎</button></div>';
+      // Each list has a 3-state box: empty → include (green ✓) → exclude (red ✕) → empty.
+      function triRow(cls, dataAttr, keys, label, n) {
+        var st = listTriState(keys), glyph = st === "include" ? "✓" : st === "exclude" ? "✕" : "";
+        return '<div class="sp-list-row"><button type="button" class="sp-tri sp-tri-' + st + " " + cls + '" ' + dataAttr + ' title="' + escapeHtml(t("sp.triCycle")) + '" aria-label="' + escapeHtml(t("sp.triCycle")) + '">' + glyph + "</button>" +
+          ' <span class="sp-list-nm">' + escapeHtml(label) + '</span> <span class="sp-list-n">(' + n + ")</span></div>";
+      }
       var rows = "";
-      spLists.forEach(function (l, i) {
-        rows += '<label class="sp-list-row"><input type="checkbox" class="sp-list-tick" data-i="' + i + '"' + (keysAllSelected(l.keys) ? " checked" : "") + " /> <span class=\"sp-list-nm\">" + escapeHtml(l.name) + '</span> <span class="sp-list-n">(' + ((l.keys || []).length) + ")</span></label>";
-      });
+      spLists.forEach(function (l, i) { rows += triRow("sp-list-tri", 'data-i="' + i + '"', l.keys, l.name, (l.keys || []).length); });
       if (pm.length) {
         rows += '<div class="sp-list-sub">' + escapeHtml(t("sp.premadeLists")) + "</div>";
-        pm.forEach(function (x) {
-          rows += '<label class="sp-list-row"><input type="checkbox" class="sp-premade-tick" data-id="' + escapeHtml(x.def.id) + '"' + (keysAllSelected(x.keys) ? " checked" : "") + " /> <span class=\"sp-list-nm\">" + escapeHtml(t("premade." + x.def.id)) + '</span> <span class="sp-list-n">(' + x.keys.length + ")</span></label>";
-        });
+        pm.forEach(function (x) { rows += triRow("sp-premade-tri", 'data-id="' + escapeHtml(x.def.id) + '"', x.keys, t("premade." + x.def.id), x.keys.length); });
       }
       html += '<details class="sp-lists-dd"' + (spListsDdOpen ? " open" : "") + '><summary>' + escapeHtml(t("sp.pickLists")) + "</summary>" +
         '<div class="sp-lists-menu">' + (rows || '<div class="sp-list-empty">' + escapeHtml(t("sp.noLists")) + "</div>") + "</div></details>";
@@ -17292,11 +17308,11 @@
       // the filter (union); untick → remove. Keep the dropdown open across the re-render.
       var listsDd = container.querySelector(".sp-lists-dd");
       if (listsDd) listsDd.addEventListener("toggle", function () { spListsDdOpen = listsDd.open; });
-      container.querySelectorAll(".sp-list-tick").forEach(function (cb) {
-        cb.addEventListener("change", function (e) { e.stopPropagation(); var l = getSpeciesLists()[+this.getAttribute("data-i")]; if (l) toggleListSelection(l.keys, this.checked); });
+      container.querySelectorAll(".sp-list-tri").forEach(function (b) {
+        b.addEventListener("click", function (e) { e.stopPropagation(); var l = getSpeciesLists()[+this.getAttribute("data-i")]; if (l) cycleListTri(l.keys); });
       });
-      container.querySelectorAll(".sp-premade-tick").forEach(function (cb) {
-        cb.addEventListener("change", function (e) { e.stopPropagation(); var def = premadeById(this.getAttribute("data-id")); if (def) toggleListSelection(premadeKeys(def), this.checked); });
+      container.querySelectorAll(".sp-premade-tri").forEach(function (b) {
+        b.addEventListener("click", function (e) { e.stopPropagation(); var def = premadeById(this.getAttribute("data-id")); if (def) cycleListTri(premadeKeys(def)); });
       });
       var listsMng = container.querySelector(".sp-lists-manage");
       if (listsMng) listsMng.addEventListener("click", function (e) { e.stopPropagation(); openSpeciesListManager(); });
@@ -17305,7 +17321,7 @@
       var clr = container.querySelector(".sp-spf-clear");
       if (clr) clr.addEventListener("click", function (e) {
         e.stopPropagation();
-        clearSpFilters(); detSelected = {}; spNameQuery = "";
+        clearSpFilters(); detSelected = {}; detExcluded = {}; spNameQuery = "";
         detStarFilter = detRareFilter = detYearFilter = detLifeFilter = false;
         syncFlagsHead(); saveLegendState(); rebuildDetLayers(); updateDetLegend();
         if (!refreshCueCellsInPlace()) applyAgeFilter();

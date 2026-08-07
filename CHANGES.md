@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-08-07 — Species lists: 3-state include/exclude box (sw v950)
+
+- Each list in the Species filter dropdown (saved lists + premade groups) now has a **3-state box**:
+  empty → **include** (green ✓, show only these) → **exclude** (red ✕, hide these) → empty. New `detExcluded`
+  set (orthogonal to `detSelected`), wired into the map (`detIsVisible`), legend (`legendN`), species table
+  (`applyAgeFilter`), `detHasFilter`/`speciesFilterActive`, save/load (`mapLegend.excluded`) and all the
+  clear paths. Tri-state is derived from the persisted sets (`listTriState`/`cycleListTri`), so it survives
+  reload. Replaced the checkbox tick (`toggleListSelection`/`keysAllSelected`) with `sp-tri` buttons; new
+  i18n `sp.triCycle` (15 languages) + CSS.
+
 ## 2026-08-07 — GBIF density: light→dark ramp + low-count cut; birding spots at lower zoom (sw v949)
 
 - **GBIF density** now renders GBIF's adhoc **MVT** vector tiles (per-hex `total`) via **MapLibre GL** with a
