@@ -1,5 +1,18 @@
 # Changes
 
+## 2026-08-07 — Birding spots: persistent cache + fetch-only-missing; overlay status (sw v954)
+
+- **Birding spots are now cached** (`birdSpots` in GeoState, keyed by OSM id) like eBird hotspots: they
+  accumulate across pans and survive reloads, show at any zoom ≥ 5, and a failed/slow/timed-out fetch no
+  longer wipes them (fixing "could not load" clearing the map). Only **un-fetched ground is queried** —
+  fetched (padded) bboxes are remembered (`birdBoxes`), so panning back over covered areas re-downloads
+  nothing. Fetch happens at zoom ≥ 8 (viewpoints ≥ 10). Status shows **N shown + kB downloaded**
+  (`birdspot.status`/`statusFail`).
+- **GBIF density status:** turning it on now shows "Loading …" then the **cell count** loaded
+  (`gbif.status`). NOTE: the GL vector tiles are cross-origin with no `Timing-Allow-Origin`, so byte size
+  isn't measurable — hence the cell count. The seasonal *adhoc* endpoint is computed per request (slow first
+  load, then cached ~20 min); the pre-aggregated *density* endpoint is CDN-fast but drops month seasonality.
+
 ## 2026-08-07 — Birding spots at lower zoom; overlay load indicator (sw v953)
 
 - **Birding spots** now show from zoom 6 (was 8). Bird hides + observation towers are queried from that

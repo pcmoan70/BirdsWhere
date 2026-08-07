@@ -7021,13 +7021,44 @@
   // These are lightweight POINTS, so they load from a fairly low zoom. Bird hides +
   // observation towers are rare enough to query over a wide area; VIEWPOINTS are far
   // denser (a continent-wide query times out), so they're added only once zoomed in.
-  var BIRD_SPOTS_MIN_ZOOM = 6;
-  var BIRD_SPOTS_VP_MIN_ZOOM = 10;
+  var BIRD_SPOTS_SHOW_ZOOM = 5;      // draw cached markers at/above this (hidden only at the widest zooms)
+  var BIRD_SPOTS_MIN_ZOOM = 8;       // fetch NEW spots at/above this (a fast, reliable Overpass bbox)
+  var BIRD_SPOTS_VP_MIN_ZOOM = 10;   // the far denser viewpoints only once this zoomed in
+  var BIRD_STORE_CAP = 5000;
+  var birdKB = 0;                    // cumulative kB downloaded this session
   var BIRD_SPOT_KINDS = {
     bird_hide:   { glyph: "🐦", i18n: "birdspot.hide" },
     observation: { glyph: "🗼", i18n: "birdspot.tower" },
     viewpoint:   { glyph: "🔭", i18n: "birdspot.viewpoint" }
   };
+  // Persistent cache (like eBird hotspots): spots ACCUMULATE across pans and survive
+  // reloads, so a wide view shows everything gathered while browsing — and a failed/slow
+  // fetch never wipes what's already there.
+  function loadBirdStore() { return window.GeoState.get("birdSpots", {}) || {}; }
+  function saveBirdStore(store) {
+    var ids = Object.keys(store);
+    if (ids.length > BIRD_STORE_CAP) {   // LRU trim by last-seen
+      ids.sort(function (a, b) { return (store[b].ts || 0) - (store[a].ts || 0); });
+      var trimmed = Object.create(null);
+      ids.slice(0, BIRD_STORE_CAP).forEach(function (id) { trimmed[id] = store[id]; });
+      store = trimmed;
+    }
+    window.GeoState.save({ birdSpots: store });
+    return store;
+  }
+  // Already-downloaded areas — so we only query GROUND WE HAVEN'T fetched yet. Each box
+  // is padded beyond its view, so small pans reuse it. `vp` records whether viewpoints
+  // were included (they're only fetched when zoomed in), so re-fetch if they're now wanted.
+  var BIRD_FETCH_PAD = 0.35;
+  function loadBirdBoxes() { return window.GeoState.get("birdBoxes", []) || []; }
+  function saveBirdBoxes(a) { if (a.length > 60) a = a.slice(a.length - 60); window.GeoState.save({ birdBoxes: a }); return a; }
+  function birdViewCovered(b, boxes, needVp) {
+    for (var i = 0; i < boxes.length; i++) {
+      var x = boxes[i];
+      if (b.getSouth() >= x.s && b.getWest() >= x.w && b.getNorth() <= x.n && b.getEast() <= x.e && (!needVp || x.vp)) return true;
+    }
+    return false;
+  }
   function birdingSpotsLayer() {
     var grp = L.layerGroup(), active = false, token = 0, timer = null;
     function kindOf(tags) {
@@ -7037,36 +7068,56 @@
       if (tags.tourism === "viewpoint") return "viewpoint";
       return null;
     }
+    function drawAll() {
+      grp.clearLayers();
+      if (map.getZoom() < BIRD_SPOTS_SHOW_ZOOM) return;   // hidden at the widest zooms
+      var store = loadBirdStore();
+      Object.keys(store).forEach(function (id) {
+        var s = store[id]; if (s.lat == null || s.lon == null) return;
+        var meta = BIRD_SPOT_KINDS[s.kind] || BIRD_SPOT_KINDS.viewpoint, typeLbl = t(meta.i18n);
+        var nm = s.name || typeLbl;
+        var mk = L.marker([s.lat, s.lon], { icon: L.divIcon({ className: "bird-spot-ico", html: meta.glyph, iconSize: [22, 22], iconAnchor: [11, 11] }), title: nm });
+        mk.bindPopup('<div class="bird-spot-pop"><b>' + escapeHtml(nm) + '</b><br><span>' + escapeHtml(typeLbl) + "</span></div>");
+        grp.addLayer(mk);
+      });
+    }
     function load() {
       if (!active) return;
-      if (map.getZoom() < BIRD_SPOTS_MIN_ZOOM) { grp.clearLayers(); return; }
+      drawAll();   // show whatever's cached immediately, at any (non-widest) zoom
+      if (map.getZoom() < BIRD_SPOTS_MIN_ZOOM) return;   // too zoomed out to fetch cheaply — cached only
       var b = map.getBounds();
-      var bbox = b.getSouth().toFixed(4) + "," + b.getWest().toFixed(4) + "," + b.getNorth().toFixed(4) + "," + b.getEast().toFixed(4);
-      var withVp = map.getZoom() >= BIRD_SPOTS_VP_MIN_ZOOM;   // viewpoints only when zoomed in (too dense over a wide bbox)
+      var withVp = map.getZoom() >= BIRD_SPOTS_VP_MIN_ZOOM;
+      var boxes = loadBirdBoxes();
+      if (birdViewCovered(b, boxes, withVp)) return;   // this ground is already downloaded → cached only, no re-download
+      // Fetch a PADDED box (a bit beyond the view) so nearby pans reuse it instead of re-querying.
+      var dLat = (b.getNorth() - b.getSouth()) * BIRD_FETCH_PAD, dLon = (b.getEast() - b.getWest()) * BIRD_FETCH_PAD;
+      var s = b.getSouth() - dLat, w = b.getWest() - dLon, n = b.getNorth() + dLat, e = b.getEast() + dLon;
+      var bbox = s.toFixed(4) + "," + w.toFixed(4) + "," + n.toFixed(4) + "," + e.toFixed(4);
       var q = "[out:json][timeout:25];(nwr[\"leisure\"=\"bird_hide\"](" + bbox +
         ");nwr[\"man_made\"=\"tower\"][\"tower:type\"=\"observation\"](" + bbox + ")" +
         (withVp ? ";node[\"tourism\"=\"viewpoint\"](" + bbox + ")" : "") + ";);out center;";
       var mine = ++token;
       overlayLoadStatus(t("layer.birdSpots"));
       fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: "data=" + encodeURIComponent(q) })
-        .then(function (r) { if (!r.ok) throw new Error("overpass " + r.status); return r.json(); })
-        .then(function (j) {
+        .then(function (r) { if (!r.ok) throw new Error("overpass " + r.status); return r.text(); })
+        .then(function (txt) {
           if (mine !== token || !active) return;
-          grp.clearLayers();
-          var n = 0;
+          try { birdKB += (new Blob([txt]).size) / 1024; } catch (e) { birdKB += txt.length / 1024; }
+          var j = JSON.parse(txt), store = loadBirdStore();
           (j.elements || []).forEach(function (el) {
             var kind = kindOf(el.tags); if (!kind) return;
             var lat = el.lat != null ? el.lat : (el.center && el.center.lat);
             var lon = el.lon != null ? el.lon : (el.center && el.center.lon);
             if (lat == null || lon == null) return;
-            var meta = BIRD_SPOT_KINDS[kind], typeLbl = t(meta.i18n);
-            var nm = (el.tags && el.tags.name) || typeLbl;
-            var mk = L.marker([lat, lon], { icon: L.divIcon({ className: "bird-spot-ico", html: meta.glyph, iconSize: [22, 22], iconAnchor: [11, 11] }), title: nm });
-            mk.bindPopup('<div class="bird-spot-pop"><b>' + escapeHtml(nm) + '</b><br><span>' + escapeHtml(typeLbl) + "</span></div>");
-            grp.addLayer(mk); n++;
+            store[(el.type || "n") + el.id] = { lat: lat, lon: lon, kind: kind, name: (el.tags && el.tags.name) || "", ts: Date.now() };
           });
-          overlayLoadedStatus(t("layer.birdSpots"), n);
-        }).catch(function () { overlayLoadedStatus(t("layer.birdSpots"), -1); });   // offline / rate-limited — keep what's drawn
+          store = saveBirdStore(store);
+          boxes.push({ s: s, w: w, n: n, e: e, vp: withVp }); saveBirdBoxes(boxes);   // remember we've now covered this ground
+          drawAll();
+          setStatus(t("birdspot.status", { n: Object.keys(store).length, kb: Math.round(birdKB) }));
+        }).catch(function () {   // offline / rate-limited / timeout — keep the cached spots on the map
+          setStatus(t("birdspot.statusFail", { n: Object.keys(loadBirdStore()).length, kb: Math.round(birdKB) }));
+        });
     }
     function schedule() { clearTimeout(timer); timer = setTimeout(load, 500); }
     grp.on("add", function () { active = true; map.attributionControl.addAttribution(BIRD_SPOTS_ATTR); load(); });
@@ -12063,6 +12114,7 @@
     if (!m || !m.getLayer || !m.getLayer("gbif-fill")) return;
     var feats; try { feats = m.querySourceFeatures("gbif", { sourceLayer: "occurrence" }); } catch (e) { return; }
     if (!feats || !feats.length) return;
+    setStatus(t("gbif.status", { n: feats.length }));   // density cells loaded (the GL tiles are cross-origin, so bytes aren't measurable — show the cell count)
     var totals = []; for (var i = 0; i < feats.length; i++) { var v = +feats[i].properties.total; if (v > 0) totals.push(v); }
     if (!totals.length) return;
     totals.sort(function (a, b) { return a - b; });
@@ -12083,7 +12135,12 @@
       glLayer._gbifGl = true; gbifLayer = glLayer;
       glLayer.on("add", function () {
         var m = glLayer.getMaplibreMap && glLayer.getMaplibreMap(); if (!m) return;
-        var bind = function () { m._gbifScaleKey = null; m.on("idle", function () { gbifApplyDynamicScale(m); }); };
+        var bind = function () {
+          m._gbifScaleKey = null;
+          overlayLoadStatus(t("layer.gbif"));   // adhoc tiles are computed per request → can be slow; show it's loading
+          try { m.on("dataloading", function (e) { if (e && e.sourceId === "gbif") overlayLoadStatus(t("layer.gbif")); }); } catch (e) {}
+          m.on("idle", function () { gbifApplyDynamicScale(m); });
+        };
         if (m.isStyleLoaded && m.isStyleLoaded()) bind(); else m.on("load", bind);
       });
       return glLayer;
