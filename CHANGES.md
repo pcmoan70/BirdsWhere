@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-08-07 — Longer tap delay before the map point popup on touch (sw v964)
+
+- On touch, the point popup now opens **300 ms** after a map tap (was 180 ms) — long enough that an accidental
+  graze while panning/pinching can be cancelled (a `movestart`/`zoomstart`/second tap still aborts the pending
+  open), short enough to stay responsive. Mouse clicks remain instant. New `MAP_TAP_POPUP_DELAY_MS` constant.
+
 ## 2026-08-07 — Fix longitude extent when zooming to a batch fetch (sw v963)
 
 - The zoom-to-fit after a **stored-locations batch fetch** (`fetchSelectedStoredLocations` → `fitToAreas`)

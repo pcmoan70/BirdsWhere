@@ -7559,6 +7559,7 @@
   var mapPtrDownTs = 0, mapPtrIsTouch = false;   // last map pointer-down time + whether it was touch (press-duration gating)
   function touchHeldMs() { return Date.now() - mapPtrDownTs; }   // how long the current touch has been held
   var mapClickDelayTimer = null;   // pending touch-tap → point-popup open (cancelled by a pan/zoom in the delay window)
+  var MAP_TAP_POPUP_DELAY_MS = 300;   // touch: hold the point popup this long after a tap so an accidental graze can be cancelled
   function detSelectionActive() { return Object.keys(detSelected).some(function (k) { return detPlot[k] && detPassesStar(k) && detPassesGroup(k) && detPassesRare(k) && detPassesYear(k) && detPassesLife(k); }); }
   function detExclusionActive() { return Object.keys(detExcluded).some(function (k) { return detPlot[k]; }); }
   // `selActive` lets a render loop compute detSelectionActive() ONCE and pass it
@@ -14739,11 +14740,13 @@
     // Normalize: latitude clamped to [-90, 90]; longitude wrapped to [-180, 180]
     // (a click on a panned world-copy can otherwise give e.g. lon = 635).
     var lat = Math.max(-90, Math.min(90, e.latlng.lat)), lon = wrapLon(e.latlng.lng);
-    // On touch: open the popup after a tiny delay instead of instantly, so a
-    // fleeting graze that's really the start of a pan/zoom doesn't pop it up — a
-    // movestart/zoomstart (or another tap) in that window cancels it. Mouse = instant.
+    // On touch: open the popup after a short delay instead of instantly, so a
+    // fleeting graze that's really the start of a pan/zoom (or a stray accidental
+    // tap) doesn't pop it up — a movestart/zoomstart (or another tap) in that window
+    // cancels it. Long enough to feel deliberate, short enough to stay responsive.
+    // Mouse = instant.
     clearTimeout(mapClickDelayTimer);
-    if (mapPtrIsTouch) mapClickDelayTimer = setTimeout(function () { selectMapPoint(lat, lon); }, 180);
+    if (mapPtrIsTouch) mapClickDelayTimer = setTimeout(function () { selectMapPoint(lat, lon); }, MAP_TAP_POPUP_DELAY_MS);
     else selectMapPoint(lat, lon);
   }
 
