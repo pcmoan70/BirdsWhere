@@ -21,7 +21,7 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v954";
+var VERSION = "v955";
 // A short "what's new" shown under the update banner (one bullet per line). Keep it
 // to ~3–4 lines and refresh it whenever VERSION is bumped for a user-visible change.
 var NOTES = [

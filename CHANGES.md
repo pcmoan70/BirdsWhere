@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-08-07 — Birding spots: show the full fetch error in the status (sw v955)
+
+- The birding-spots load failure now surfaces the **actual error** instead of a generic "refresh failed":
+  the fetch reads the body even on a non-OK response (`HTTP 504 … <body snippet>`), detects an Overpass
+  timeout/error **remark** on a 200 with no elements, and reports JSON-parse / network errors — all shown in
+  the status via `birdspot.statusFail` (`… — {err}`), truncated to ~200 chars.
+
 ## 2026-08-07 — Birding spots: persistent cache + fetch-only-missing; overlay status (sw v954)
 
 - **Birding spots are now cached** (`birdSpots` in GeoState, keyed by OSM id) like eBird hotspots: they

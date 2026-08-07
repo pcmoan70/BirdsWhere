@@ -7098,12 +7098,20 @@
         (withVp ? ";node[\"tourism\"=\"viewpoint\"](" + bbox + ")" : "") + ";);out center;";
       var mine = ++token;
       overlayLoadStatus(t("layer.birdSpots"));
+      function snippet(s) { return String(s || "").replace(/\s+/g, " ").trim().slice(0, 200); }
       fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: "data=" + encodeURIComponent(q) })
-        .then(function (r) { if (!r.ok) throw new Error("overpass " + r.status); return r.text(); })
+        .then(function (r) {   // read the body even on error so its detail can be surfaced
+          return r.text().then(function (txt) {
+            if (!r.ok) throw new Error("HTTP " + r.status + (r.statusText ? " " + r.statusText : "") + (txt ? " — " + snippet(txt) : ""));
+            return txt;
+          });
+        })
         .then(function (txt) {
           if (mine !== token || !active) return;
           try { birdKB += (new Blob([txt]).size) / 1024; } catch (e) { birdKB += txt.length / 1024; }
-          var j = JSON.parse(txt), store = loadBirdStore();
+          var j; try { j = JSON.parse(txt); } catch (e) { throw new Error("Bad response — " + snippet(txt)); }
+          if (j.remark && (!j.elements || !j.elements.length)) throw new Error(snippet(j.remark));   // Overpass timeout/error remark
+          var store = loadBirdStore();
           (j.elements || []).forEach(function (el) {
             var kind = kindOf(el.tags); if (!kind) return;
             var lat = el.lat != null ? el.lat : (el.center && el.center.lat);
@@ -7115,8 +7123,9 @@
           boxes.push({ s: s, w: w, n: n, e: e, vp: withVp }); saveBirdBoxes(boxes);   // remember we've now covered this ground
           drawAll();
           setStatus(t("birdspot.status", { n: Object.keys(store).length, kb: Math.round(birdKB) }));
-        }).catch(function () {   // offline / rate-limited / timeout — keep the cached spots on the map
-          setStatus(t("birdspot.statusFail", { n: Object.keys(loadBirdStore()).length, kb: Math.round(birdKB) }));
+        }).catch(function (err) {   // offline / rate-limited / timeout — keep cached spots, show the full error
+          if (mine !== token || !active) return;
+          setStatus(t("birdspot.statusFail", { n: Object.keys(loadBirdStore()).length, kb: Math.round(birdKB), err: (err && err.message) ? String(err.message) : String(err) }));
         });
     }
     function schedule() { clearTimeout(timer); timer = setTimeout(load, 500); }
