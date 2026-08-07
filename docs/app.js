@@ -7559,7 +7559,8 @@
   var mapPtrDownTs = 0, mapPtrIsTouch = false;   // last map pointer-down time + whether it was touch (press-duration gating)
   function touchHeldMs() { return Date.now() - mapPtrDownTs; }   // how long the current touch has been held
   var mapClickDelayTimer = null;   // pending touch-tap → point-popup open (cancelled by a pan/zoom in the delay window)
-  var MAP_TAP_POPUP_DELAY_MS = 300;   // touch: hold the point popup this long after a tap so an accidental graze can be cancelled
+  var MAP_TAP_POPUP_DELAY_MS = 250;   // touch: hold the point popup this long after a tap so an accidental graze can be cancelled
+  var MAP_LONGPRESS_MS = 500;         // touch: a map long-press (add-point / location menu) must be held at least this long
   function detSelectionActive() { return Object.keys(detSelected).some(function (k) { return detPlot[k] && detPassesStar(k) && detPassesGroup(k) && detPassesRare(k) && detPassesYear(k) && detPassesLife(k); }); }
   function detExclusionActive() { return Object.keys(detExcluded).some(function (k) { return detPlot[k]; }); }
   // `selActive` lets a render loop compute detSelectionActive() ONCE and pass it
@@ -11823,7 +11824,7 @@
   function onMapContextMenu(e) {
     // Registering a location by long-press must be a deliberate ≥500 ms hold (a
     // shorter touch shouldn't drop a point). Mouse right-click is not gated.
-    if (mapPtrIsTouch && touchHeldMs() < 500) return;
+    if (mapPtrIsTouch && touchHeldMs() < MAP_LONGPRESS_MS) return;
     // A long-press fires contextmenu then often a trailing click — re-arm the
     // debounce so that click doesn't also open the point-options popup.
     mapClickGuardUntil = Date.now() + 200;

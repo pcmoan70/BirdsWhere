@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-08-07 — Tune touch tap / long-press timings (sw v965)
+
+- Map tap → point popup delay set to **250 ms** (was 300). Map long-press threshold made an explicit
+  constant `MAP_LONGPRESS_MS` = **500 ms** (unchanged from its previous hard-coded 500 — now tunable
+  alongside the tap delay).
+
 ## 2026-08-07 — Longer tap delay before the map point popup on touch (sw v964)
 
 - On touch, the point popup now opens **300 ms** after a map tap (was 180 ms) — long enough that an accidental
