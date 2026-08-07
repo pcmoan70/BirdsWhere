@@ -15184,7 +15184,15 @@
     return { type: "det", name: obj.n || "", group: obj.g || "all", detections: dets };   // legacy links (no g) → "all", so nothing is group-filtered away
   }
   function uniqueShareName(base, taken) { var n = base, i = 2; while (taken(n)) n = base + " (" + (i++) + ")"; return n; }
+  // A shared link should land the recipient ON THE MAP with the shared points visible —
+  // the restored session may have left the full-screen species list covering it.
+  function ensureMapViewForShare() {
+    try { if (onListView()) navClose("page"); } catch (e) {}
+    try { closeModals(); } catch (e) {}
+    try { updateViewToggle(); } catch (e) {}
+  }
   function fitSharedLatLngs(pts) {
+    ensureMapViewForShare();
     if (!map || !pts.length) return;
     try { map.fitBounds(L.latLngBounds(pts).pad(0.2)); } catch (e) {}
   }
@@ -15292,6 +15300,7 @@
       if (obj.type === "point") {
         var la = Math.max(-90, Math.min(90, +obj.lat)), lo = wrapLon(+obj.lon);
         if (!isFinite(la) || !isFinite(lo)) { setStatus(t("share.badLink")); return; }
+        ensureMapViewForShare();
         if (map) map.setView([la, lo], Math.max(map.getZoom() || 0, 12));
         selectMapPoint(la, lo);
         return;

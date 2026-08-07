@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-08-07 — Shared links open in map view (sw v960)
+
+- Opening a shared URL now lands on the **map** with the shared points visible: if the restored session had
+  left the full-screen species list (or a modal) covering the map, it's closed before the fit
+  (`ensureMapViewForShare`, hooked into `fitSharedLatLngs` + the single-point share path).
+
 ## 2026-08-07 — Shares without a species group default to "All" (sw v959)
 
 - Legacy share links (created before v958, no `g` field) now import as group **"All"** — the receiver is
