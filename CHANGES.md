@@ -1,5 +1,18 @@
 # Changes
 
+## 2026-08-07 — Shares carry species group + exact colours; optional clean-map import (sw v958)
+
+- **Species group travels with the share** (`g` in the v3 payload). On import the recipient is switched to
+  the sender's group (All/Birds/Mammals…), so e.g. shared mammals aren't hidden by a receiver in Birds mode;
+  the plot is also tagged with that group.
+- **Dot colours now match the sender exactly:** each shared species carries its **family** (4th field of the
+  `s` tuple). Colours are a deterministic function of family name, so seeding the recipient's family index
+  (`recordFamily` + `saveFamIndex`) reproduces the sender's colours and they survive later recolours.
+- **Clean-map option on import:** after confirming an import, a second prompt offers to **clear the current
+  dots first** (OK = clear + late results from still-running fetches are dropped; Cancel = shared dots
+  accumulate on top). Backed by a new `detPlotGen` generation counter bumped in `clearDetections` — in-flight
+  recent/historic fetches complete but skip plotting when the map was cleared after they started.
+
 ## 2026-08-07 — Fetches are never cancelled by a new request (sw v957)
 
 - Firing a new fetch no longer cancels an ongoing one. The regular point-fetch already behaved this way

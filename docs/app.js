@@ -3847,6 +3847,7 @@
     var ck = lat.toFixed(2) + "," + lon.toFixed(2) + ":" + rkm + ":" + range + months + ":" + fetchGroup;   // group-keyed (class filter differs per group)
     if (histSightingsCache[ck]) return histSightingsCache[ck];
     var sig = histAbort ? histAbort.signal : null;
+    var myGen = detPlotGen;   // skip late plotting if the user clears the map mid-fetch
     var rp = String(range).split(","), from = rp[0], to = rp[1] || rp[0];
     var reqMonths = histMonths.slice();
     var histKey = lat.toFixed(2) + "," + lon.toFixed(2) + ":" + rkm + ":" + fetchGroup;
@@ -3880,13 +3881,13 @@
           // Dedup by GBIF key across batches (a record can straddle a month boundary).
           (raw || []).forEach(function (o) { if (o && o.key != null) { if (seen[o.key]) return; seen[o.key] = 1; } allRecs.push(o); });
           var grew = allRecs.length > before;
-          if (!(sig && sig.aborted)) { try { plotHistoricRecs(AppNormalize.normGbif(raw), fetchGroup); } catch (e) {} }   // fill the map month by month
+          if (!(sig && sig.aborted) && myGen === detPlotGen) { try { plotHistoricRecs(AppNormalize.normGbif(raw), fetchGroup); } catch (e) {} }   // fill the map month by month
           // Direct-API top-up for the newest months (fresher than GBIF's republish).
           if (nordicSrc && r[1] >= recentCutoff && !(sig && sig.aborted)) {
             var dn = await fetchNordicHistoric(nordicSrc, lat, lon, rkm, r[0], r[1], sig);
             if (dn && dn.length) {
               directNorm.push.apply(directNorm, dn); grew = true;
-              if (!(sig && sig.aborted)) { try { plotHistoricRecs(dn, fetchGroup); } catch (e) {} }
+              if (!(sig && sig.aborted) && myGen === detPlotGen) { try { plotHistoricRecs(dn, fetchGroup); } catch (e) {} }
             }
           }
           monthsDone++;
@@ -4117,6 +4118,7 @@
     var token = lat.toFixed(4) + "," + lon.toFixed(4) + (histRange ? ":" + histRange : "");
     var tbody = document.getElementById("sp-tbody");
     if (tbody) tbody.dataset.sightingsToken = token;   // supersede if another click arrives
+    var myGen = detPlotGen;      // if the map is cleared while this runs, don't replot the late result
     var mapFetch = spMapFetch;   // this fetch intended to drop dots on the map (map-first point flow)
     hideSourceCounts();   // clear any prior location's "Loaded: …" line before this fetch
     var onPartial = function (partial) { applySightings(tbody, token, partial, false); };   // live-fill rows as each source returns (recent) / each month batch (historic)
@@ -4126,9 +4128,10 @@
       // list, but STILL plot this fetch's detections in the background so no queued fetch
       // is lost — the dots accumulate (plotDetections merges) like any other fetch.
       if (!tbody || tbody.dataset.sightingsToken !== token) {
-        if (mapFetch) { var prevObs = obsStatusActive; plotNoFit = true; try { plotSightingsResult(result); } catch (e) {} plotNoFit = false; obsStatusActive = prevObs; }
+        if (mapFetch && myGen === detPlotGen) { var prevObs = obsStatusActive; plotNoFit = true; try { plotSightingsResult(result); } catch (e) {} plotNoFit = false; obsStatusActive = prevObs; }
         return;
       }
+      if (myGen !== detPlotGen) return;   // map cleared (e.g. before a share import) — drop this late result
       applySightings(tbody, token, result, true);
       if (!tbody || tbody.dataset.sightingsToken !== token) return;
       var sp = splitFailed(result.failed);
@@ -7310,6 +7313,7 @@
     });
   }
   var detPlot = {};     // speciesKey -> { key, name (fallback), color, rows, group }
+  var detPlotGen = 0;   // bumped by clearDetections(); fetches capture it at start and skip LATE plotting if the map was cleared meanwhile
   var detFocusKey = null;   // legend hover: this species keeps colour, the rest grey out
   var detFocusObs = null;   // legend hover on an observer name: show only that observer's records
   var detProb = Object.create(null);     // species key -> MIN habitat prob over an area grid (drives legend order)
@@ -9277,6 +9281,7 @@
   // lists/sets themselves are kept in storage, just hidden). Loose working map
   // pins and the saved lists survive.
   function clearDetections() {
+    detPlotGen++;   // invalidate in-flight fetches' late plotting (they finish, but won't repopulate a cleared map)
     clearSpider();
     if (storedLocFramesLayer) storedLocFramesLayer.clearLayers();   // selection preview
     clearFetchedAreas();   // remembered fetched-area outlines go with the detections
@@ -15101,7 +15106,10 @@
     function idx(arr, map, v) { if (map[v] == null) { map[v] = arr.length; arr.push(v); } return map[v]; }
     Object.keys(detections || {}).forEach(function (k) {
       var en = detections[k] || {};
-      var si = idx(sp, spI, (en.key || k) + "\t" + (en.cls || "") + "\t" + (en.color || "#888"));
+      // 4th field: the species' FAMILY (when known). Colours are a deterministic function
+      // of family name, so seeding the recipient's family index reproduces the sender's
+      // dot colours exactly (and they survive recolours) — see plotSharedDetections.
+      var si = idx(sp, spI, (en.key || k) + "\t" + (en.cls || "") + "\t" + (en.color || "#888") + "\t" + (famIndex[en.key || k] || ""));
       (en.rows || []).forEach(function (r) {
         if (r.lat == null || r.lon == null) return;
         if (baseLat == null) { baseLat = Math.round(r.lat * 1e4) / 1e4; baseLon = Math.round(r.lon * 1e4) / 1e4; }
@@ -15115,7 +15123,7 @@
         urls.push(urlTail(r.url, r.src));
       });
     });
-    return { v: 3, t: "d", n: name, s: sp.map(function (x) { var p = x.split("\t"); return [p[0], p[1], p[2]]; }), d: dt, o: ob, sr: sr,
+    return { v: 3, t: "d", n: name, g: speciesGroup, s: sp.map(function (x) { var p = x.split("\t"); return [p[0], p[1], p[2], p[3] || ""]; }), d: dt, o: ob, sr: sr,
       b: [baseLat || 0, baseLon || 0], c: { sp: cSp, la: cLa, lo: cLo, dt: cDt, cn: cCn, ob: cOb, sc: cSc }, u: urls };
   }
   function shareDetSet(name) {
@@ -15163,7 +15171,7 @@
       if (v3) { si = c.sp[i] || 0; laI = c.la[i] || 0; loI = c.lo[i] || 0; di = (c.dt && c.dt[i] != null) ? c.dt[i] : -1; cnt = (c.cn && c.cn[i]) || 0; oi = (c.ob && c.ob[i] != null) ? c.ob[i] : -1; ri = (c.sc && c.sc[i] != null) ? c.sc[i] : -1; }
       else { var row = obj.r[i] || []; si = row[0] || 0; laI = row[1] || 0; loI = row[2] || 0; di = (row[3] == null ? -1 : row[3]); cnt = row[4] || 0; oi = (row[5] == null ? -1 : row[5]); ri = (row[6] == null ? -1 : row[6]); }
       var spx = (obj.s && obj.s[si]) || ["", "", "#888"], key = "s" + si;
-      if (!dets[key]) dets[key] = { key: spx[0] || "", cls: spx[1] || "", color: spx[2] || "#888", rows: [] };
+      if (!dets[key]) dets[key] = { key: spx[0] || "", cls: spx[1] || "", color: spx[2] || "#888", fam: spx[3] || "", rows: [] };
       var rr = { lat: baseLat + laI / SC, lon: baseLon + loI / SC };
       if (di >= 0 && obj.d && obj.d[di]) rr.date = obj.d[di];
       if (cnt) rr.count = cnt;
@@ -15173,7 +15181,7 @@
       var tail = obj.u && obj.u[i]; if (tail) rr.url = urlFromTail(tail, src);
       dets[key].rows.push(rr);
     }
-    return { type: "det", name: obj.n || "", detections: dets };
+    return { type: "det", name: obj.n || "", group: obj.g || "", detections: dets };
   }
   function uniqueShareName(base, taken) { var n = base, i = 2; while (taken(n)) n = base + " (" + (i++) + ")"; return n; }
   function fitSharedLatLngs(pts) {
@@ -15201,7 +15209,7 @@
   // up identically. Model species go in `agg` (localised name), non-model in
   // `extras`. Rows come straight from the link, so NO source is fetched. Returns the
   // [lat,lon] list for fit-to-bounds.
-  function plotSharedDetections(detections) {
+  function plotSharedDetections(detections, group) {
     // The recipient may have leftover legend filters — a species selection, an
     // observer filter, a ★/rare/year/life mode, or a recency/date window — that would
     // hide the imported dots and leave a wrong or empty legend. Clear them all so the
@@ -15209,6 +15217,22 @@
     // "All", so historic shared dots aren't hidden by the recipient's default 30-day
     // window, as pinning historic does.)
     clearAllFilters();
+    // Switch the recipient to the SENDER's species group (shared in the payload) —
+    // otherwise e.g. shared mammals would be hidden by a receiver in Birds mode.
+    if (group && group !== speciesGroup) {
+      speciesGroup = group;
+      window.GeoState.save({ group: speciesGroup });
+      var gs = document.getElementById("group-select"); if (gs) gs.value = speciesGroup;
+      try { updateSettingsIcon(); refreshGroupModeOptions(); } catch (e) {}
+    }
+    // Seed the family index from the share so dot colours match the sender's exactly
+    // (colour = deterministic function of family name) and survive later recolours.
+    var famChanged = false;
+    Object.keys(detections || {}).forEach(function (k) {
+      var e = detections[k];
+      if (e && e.fam && e.key && recordFamily(e.key, e.fam)) famChanged = true;
+    });
+    if (famChanged) saveFamIndex();
     var agg = {}, extras = {}, ll = [];
     Object.keys(detections || {}).forEach(function (k) {
       var e = detections[k]; if (!e || !e.rows || !e.rows.length) return;
@@ -15227,8 +15251,20 @@
         a.rows = a.rows.concat(e.rows); a.count += count; if (latest > a.latestTs) a.latestTs = latest;
       }
     });
-    plotSightingsResult({ agg: agg, extras: extras, bySrc: {}, failed: [], timedOut: [], group: "all" });
+    plotSightingsResult({ agg: agg, extras: extras, bySrc: {}, failed: [], timedOut: [], group: group || "all" });
     return ll;
+  }
+  // Before importing a share, offer to start from a CLEAN map: remove already-plotted
+  // dots (any fetch still in flight keeps running, but its result would repopulate the
+  // map, so we also invalidate the current list token). Declining keeps everything —
+  // the shared dots simply accumulate on top.
+  function maybeClearBeforeShare() {
+    if (typeof detPlot === "undefined" || !Object.keys(detPlot).length) return Promise.resolve();
+    return modalConfirm(t("share.clearFirst")).then(function (yes) {
+      if (!yes) return;
+      var tb = document.getElementById("sp-tbody"); if (tb) tb.dataset.sightingsToken = "";   // orphan in-flight fetches (their late results won't replot)
+      clearDetections();
+    });
   }
   function importShared(str) {
     decodeShare(str).then(function (raw) {
@@ -15241,11 +15277,13 @@
         var mnm = String(raw.n || t("share.mapName"));
         modalConfirm(t("share.importMapPrompt", { d: nDet, p: nPts })).then(function (ok) {
           if (!ok) return;
-          var ll = [];
-          if (nDet) ll = ll.concat(plotSharedDetections(detObj.detections));
-          if (nPts) { ll = ll.concat(importPointsColl(mnm, mpts).ll); saveMapPoints(); }
-          saveShownState(); renderMapPoints(); fitSharedLatLngs(ll);
-          setStatus(t("share.imported", { name: mnm }));
+          maybeClearBeforeShare().then(function () {
+            var ll = [];
+            if (nDet) ll = ll.concat(plotSharedDetections(detObj.detections, detObj.group));
+            if (nPts) { ll = ll.concat(importPointsColl(mnm, mpts).ll); saveMapPoints(); }
+            saveShownState(); renderMapPoints(); fitSharedLatLngs(ll);
+            setStatus(t("share.imported", { name: mnm }));
+          });
         });
         return;
       }
@@ -15274,8 +15312,10 @@
         if (!n) { setStatus(t("share.badLink")); return; }
         modalConfirm(t("share.importPrompt", { name: nm, n: n })).then(function (ok) {
           if (!ok) return;
-          var ll = plotSharedDetections(obj.detections);
-          fitSharedLatLngs(ll); setStatus(t("share.imported", { name: nm }));
+          maybeClearBeforeShare().then(function () {
+            var ll = plotSharedDetections(obj.detections, obj.group);
+            fitSharedLatLngs(ll); setStatus(t("share.imported", { name: nm }));
+          });
         });
         return;
       }
