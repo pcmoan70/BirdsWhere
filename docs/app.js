@@ -5244,7 +5244,7 @@
                 '<input type="file" id="points-kml-file" style="display:none" />' +
               '</div>' +
               '<div class="ctrl-group">' +
-                '<label data-i18n="lists.title">Year &amp; life lists</label>' +
+                '<label data-i18n="lists.title">Administer lists</label>' +
                 icoBtn("lists-open", "list", "lists.manage", "Administer lists…") +
               '</div>' +
               '<div class="ctrl-group">' +
@@ -5581,10 +5581,14 @@
         '</div></div>' +
         '<div id="lists-modal" style="display:none"><div id="lists-box">' +
           '<button type="button" id="lists-close" aria-label="Close">×</button>' +
-          '<h3 data-i18n="lists.title">Year &amp; life lists</h3>' +
+          '<h3 data-i18n="lists.title">Administer lists</h3>' +
           '<p class="cu-hint" data-i18n="lists.hint">Add species from a species menu or a field checklist. Species missing from this year\'s list get a thin bronze edge on the map; missing from the life list, a thick yellow one. Old year lists are kept until you delete them.</p>' +
           '<label class="ctrl-check lists-edges-row"><input type="checkbox" id="list-edges-toggle"> <span data-i18n="lists.edgesToggle">Show the year/life-list edges on map markers</span></label>' +
           '<div id="lists-list"></div>' +
+          '<div class="lists-managers">' +
+            '<button type="button" id="lists-species-btn" class="demo-btn demo-btn-light" data-i18n="lists.speciesLists">Species lists…</button>' +
+            '<button type="button" id="lists-observer-btn" class="demo-btn demo-btn-light" data-i18n="lists.observerLists">Observer lists…</button>' +
+          '</div>' +
         '</div></div>' +
       '</div>';
 
@@ -12733,6 +12737,11 @@
       });
       document.getElementById("lists-close").addEventListener("click", function () { navClose("lists"); });
       document.getElementById("lists-modal").addEventListener("click", function (e) { if (e.target === this) navClose("lists"); });
+      // Species / observer lists are administered by their own editors, opened here too.
+      var lsSpBtn = document.getElementById("lists-species-btn");
+      if (lsSpBtn) lsSpBtn.addEventListener("click", function () { openSpeciesListManager(); });
+      var lsObBtn = document.getElementById("lists-observer-btn");
+      if (lsObBtn) lsObBtn.addEventListener("click", function () { openObserverEditor(); });
     }
 
     // The H3 range cache shares the unified "Map cache" budget (small slice).

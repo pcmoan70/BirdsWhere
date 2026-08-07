@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-08-08 — Administer species & observer lists from the lists modal (sw v968)
+
+- Settings → **Administer lists** (renamed from the year/life-only title in every language) now has two buttons,
+  **Species lists…** and **Observer lists…**, that open the existing species-list manager
+  (`openSpeciesListManager`) and observer-list editor (`openObserverEditor`) — so all four list kinds
+  (year, life, species, observer) are reachable from one place. New i18n `lists.speciesLists` /
+  `lists.observerLists` (15 languages); `lists.title` / `lists.manage` retranslated to "Administer lists".
+
 ## 2026-08-08 — New default settings (sw v967)
 
 - Changed the out-of-the-box defaults (existing users' saved settings are untouched): **Max points on map
