@@ -1,5 +1,11 @@
 # Changes
 
+## 2026-08-07 — Shares without a species group default to "All" (sw v959)
+
+- Legacy share links (created before v958, no `g` field) now import as group **"All"** — the receiver is
+  switched to All so none of the shared dots can be hidden by their current group filter (previously the
+  empty group skipped the switch, leaving e.g. a Birds-mode receiver hiding shared mammals).
+
 ## 2026-08-07 — Shares carry species group + exact colours; optional clean-map import (sw v958)
 
 - **Species group travels with the share** (`g` in the v3 payload). On import the recipient is switched to

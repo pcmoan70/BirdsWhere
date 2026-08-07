@@ -15181,7 +15181,7 @@
       var tail = obj.u && obj.u[i]; if (tail) rr.url = urlFromTail(tail, src);
       dets[key].rows.push(rr);
     }
-    return { type: "det", name: obj.n || "", group: obj.g || "", detections: dets };
+    return { type: "det", name: obj.n || "", group: obj.g || "all", detections: dets };   // legacy links (no g) → "all", so nothing is group-filtered away
   }
   function uniqueShareName(base, taken) { var n = base, i = 2; while (taken(n)) n = base + " (" + (i++) + ")"; return n; }
   function fitSharedLatLngs(pts) {
