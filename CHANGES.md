@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-08-08 — Verified Overpass mirrors; drop the broken one (sw v973)
+
+- Load-tested the birding-spots Overpass strategy against a real Norway (Oslo-area) query. Findings:
+  `overpass.openstreetmap.fr` returns **403 (whitelist-only)** — it was in v972's list and would always fail;
+  `overpass.osm.ch` returns **0 results outside its region** (would falsely cache "no spots"). Both dropped.
+  `overpass-api.de` and `overpass.kumi.systems` both answer with real data within the budget (~7–10 s vs the
+  30 s per-mirror timeout; kumi returned 308 spots for the test box). Mirror list is now those two proven,
+  CORS-enabled, full-planet instances. (kumi 429s clients with no User-Agent, but browsers always send one.)
+
 ## 2026-08-08 — Reliable birding-spots loading (mirrors + timeout) (sw v972)
 
 - The Overpass fetch for birding spots had **no client-side timeout** and used a **single host**, so an

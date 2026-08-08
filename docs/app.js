@@ -7124,10 +7124,12 @@
   // single fetch with no timeout would spin forever showing nothing. POST the query to
   // each mirror in turn, each with its own abort timeout; return the first body that
   // comes back, or throw a combined error naming what failed on each host.
+  // Only CORS-enabled, full-planet public instances (verified to answer this query and
+  // return data within the timeout). overpass.openstreetmap.fr is whitelist-only (403)
+  // and overpass.osm.ch returns 0 results outside its region — both were dropped.
   var OVERPASS_MIRRORS = [
     "https://overpass-api.de/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
-    "https://overpass.openstreetmap.fr/api/interpreter"
+    "https://overpass.kumi.systems/api/interpreter"
   ];
   function overpassPost(query, timeoutMs) {
     var errs = [];
