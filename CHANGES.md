@@ -1,5 +1,20 @@
 # Changes
 
+## 2026-08-08 — Birding spots: 50×50 km tile cache (sw v974)
+
+- Replaced the arbitrary padded-box fetch cache with a **deterministic 50×50 km tile grid**. Tile height is
+  constant (~0.449°) and width widens with latitude (÷cos) so every tile is ~50 km on the ground at any
+  latitude (verified 0°→70°); the key `iy:ix` is deterministic, so ground maps to the same tile every time and
+  a tile is downloaded **at most once**. Fetched tiles persist in `birdTiles` (with a `vp` flag for whether the
+  denser viewpoints were included).
+- **Cache cap lowered to 2500 spots** (was 5000). Eviction now removes **whole tiles** (their spots *and* the
+  tile record) oldest-first, so it never leaves a tile marked "fetched" with its spots gone.
+- **On-demand tile filling**: once zoomed in enough that the view spans ≤ 12 tiles (~zoom 9+), the uncached
+  in-view tiles are fetched **one at a time, nearest-to-centre first**, re-reading the live view each step so
+  panning/zooming redirects it. Wider views stay cached-only with the "zoom in" hint. Each tile query is
+  bbox-bounded (small, fast) and goes through the mirror+timeout `overpassPost`.
+- (The same tile scheme could be applied to eBird hotspots — not done here.)
+
 ## 2026-08-08 — Verified Overpass mirrors; drop the broken one (sw v973)
 
 - Load-tested the birding-spots Overpass strategy against a real Norway (Oslo-area) query. Findings:

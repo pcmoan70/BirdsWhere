@@ -7088,9 +7088,13 @@
   // observation towers are rare enough to query over a wide area; VIEWPOINTS are far
   // denser (a continent-wide query times out), so they're added only once zoomed in.
   var BIRD_SPOTS_SHOW_ZOOM = 5;      // draw cached markers at/above this (hidden only at the widest zooms)
-  var BIRD_SPOTS_MIN_ZOOM = 8;       // fetch NEW spots at/above this (a fast, reliable Overpass bbox)
+  var BIRD_SPOTS_MIN_ZOOM = 8;       // cheap early-out: never even consider fetching below this zoom
   var BIRD_SPOTS_VP_MIN_ZOOM = 10;   // the far denser viewpoints only once this zoomed in
-  var BIRD_STORE_CAP = 5000;
+  var BIRD_STORE_CAP = 2500;         // max cached spots — whole 50 km tiles are evicted (oldest first) to stay under it
+  var BIRD_TILE_KM = 50;             // spots are fetched + cached one fixed 50×50 km tile at a time
+  var BIRD_TILES_CAP = 400;          // max remembered tiles (LRU-evicted together with their spots)
+  var BIRD_MAX_TILES_IN_VIEW = 12;   // only fetch once zoomed in enough that the view spans ≤ this many tiles
+  var BIRD_TILE_DLAT = BIRD_TILE_KM / 111.32;   // tile height in degrees (~0.449°); width widens with latitude
   var birdKB = 0;                    // cumulative kB downloaded this session
   // White line-glyphs on a teal badge (see .bird-spot-mk) so the spots match the app's
   // marker language and stand out on the map: binoculars = hide/lookout, a lookout
@@ -7109,15 +7113,31 @@
   // reloads, so a wide view shows everything gathered while browsing — and a failed/slow
   // fetch never wipes what's already there.
   function loadBirdStore() { return window.GeoState.get("birdSpots", {}) || {}; }
-  function saveBirdStore(store) {
-    var ids = Object.keys(store);
-    if (ids.length > BIRD_STORE_CAP) {   // LRU trim by last-seen
-      ids.sort(function (a, b) { return (store[b].ts || 0) - (store[a].ts || 0); });
-      var trimmed = Object.create(null);
-      ids.slice(0, BIRD_STORE_CAP).forEach(function (id) { trimmed[id] = store[id]; });
-      store = trimmed;
+  // Remembered 50 km tiles we've already fetched: { "iy:ix": { vp, ts } }. `vp` marks
+  // whether the denser viewpoints were included (fetched only when zoomed in), so a tile
+  // pulled without them is re-fetched once they're wanted.
+  function loadBirdTiles() { return window.GeoState.get("birdTiles", {}) || {}; }
+  // Persist store + tiles together, evicting the OLDEST whole tiles (their spots AND their
+  // tile record) until both caps hold — so eviction never orphans a spot from its tile or
+  // leaves a tile marked "fetched" with its spots gone (which would show an empty area).
+  function saveBirdCache(store, tiles) {
+    var overSpots = function () { return Object.keys(store).length > BIRD_STORE_CAP; };
+    var overTiles = function () { return Object.keys(tiles).length > BIRD_TILES_CAP; };
+    if (overSpots() || overTiles()) {
+      var byTile = Object.create(null);
+      Object.keys(store).forEach(function (id) { var tk = store[id].tile || "?"; (byTile[tk] || (byTile[tk] = [])).push(id); });
+      var order = Object.keys(tiles).sort(function (a, b) { return (tiles[a].ts || 0) - (tiles[b].ts || 0); });   // oldest first
+      for (var i = 0; i < order.length && (overSpots() || overTiles()); i++) {
+        (byTile[order[i]] || []).forEach(function (id) { delete store[id]; });
+        delete tiles[order[i]];
+      }
+      if (overSpots()) {   // safety net for legacy spots that carry no tile: plain LRU trim
+        var keep = Object.create(null);
+        Object.keys(store).sort(function (a, b) { return (store[b].ts || 0) - (store[a].ts || 0); }).slice(0, BIRD_STORE_CAP).forEach(function (id) { keep[id] = store[id]; });
+        store = keep;
+      }
     }
-    window.GeoState.save({ birdSpots: store });
+    window.GeoState.save({ birdSpots: store, birdTiles: tiles });
     return store;
   }
   // Overpass is frequently overloaded on any one host (429/504) or simply hangs, so a
@@ -7154,21 +7174,30 @@
     }
     return tryOne(0);
   }
-  // Already-downloaded areas — so we only query GROUND WE HAVEN'T fetched yet. Each box
-  // is padded beyond its view, so small pans reuse it. `vp` records whether viewpoints
-  // were included (they're only fetched when zoomed in), so re-fetch if they're now wanted.
-  var BIRD_FETCH_PAD = 0.35;
-  function loadBirdBoxes() { return window.GeoState.get("birdBoxes", []) || []; }
-  function saveBirdBoxes(a) { if (a.length > 60) a = a.slice(a.length - 60); window.GeoState.save({ birdBoxes: a }); return a; }
-  function birdViewCovered(b, boxes, needVp) {
-    for (var i = 0; i < boxes.length; i++) {
-      var x = boxes[i];
-      if (b.getSouth() >= x.s && b.getWest() >= x.w && b.getNorth() <= x.n && b.getEast() <= x.e && (!needVp || x.vp)) return true;
+  // Fixed 50×50 km tile grid. Tile HEIGHT is constant (BIRD_TILE_DLAT); tile WIDTH in
+  // degrees widens with latitude (÷cos) so every tile is ~50 km on the ground. The key
+  // "iy:ix" is deterministic, so the same ground always maps to the same tile — no
+  // overlapping or duplicated fetches, and any given tile is downloaded at most once.
+  function birdTileDLon(iy) {
+    var latC = (iy + 0.5) * BIRD_TILE_DLAT;
+    var cv = Math.cos(latC * Math.PI / 180); if (Math.abs(cv) < 0.01) cv = 0.01;
+    return BIRD_TILE_KM / (111.32 * Math.abs(cv));
+  }
+  // Every tile whose bounds intersect `b`, each with its bbox + centre (for nearest-first order).
+  function birdTilesInView(b) {
+    var out = [];
+    var iy0 = Math.floor(b.getSouth() / BIRD_TILE_DLAT), iy1 = Math.floor(b.getNorth() / BIRD_TILE_DLAT);
+    for (var iy = iy0; iy <= iy1; iy++) {
+      var dLon = birdTileDLon(iy), s = iy * BIRD_TILE_DLAT, n = (iy + 1) * BIRD_TILE_DLAT;
+      var ix0 = Math.floor(b.getWest() / dLon), ix1 = Math.floor(b.getEast() / dLon);
+      for (var ix = ix0; ix <= ix1; ix++) {
+        out.push({ key: iy + ":" + ix, s: s, n: n, w: ix * dLon, e: (ix + 1) * dLon, mLat: (s + n) / 2, mLon: (ix + 0.5) * dLon });
+      }
     }
-    return false;
+    return out;
   }
   function birdingSpotsLayer() {
-    var grp = L.layerGroup(), active = false, token = 0, timer = null;
+    var grp = L.layerGroup(), active = false, timer = null;
     function kindOf(tags) {
       if (!tags) return null;
       if (tags.leisure === "bird_hide") return "bird_hide";
@@ -7205,53 +7234,70 @@
         grp.addLayer(mk);
       });
     }
-    function load(fromAdd) {
-      if (!active) return;
-      drawAll();   // show whatever's cached immediately, at any (non-widest) zoom
-      if (map.getZoom() < BIRD_SPOTS_MIN_ZOOM) {   // too zoomed out to fetch cheaply — cached only
-        if (fromAdd) setStatus(t("birdspot.zoomIn", { n: Object.keys(loadBirdStore()).length }));   // explain the silence on enable, but don't clobber status on every pan
-        return;
-      }
-      var b = map.getBounds();
-      var withVp = map.getZoom() >= BIRD_SPOTS_VP_MIN_ZOOM;
-      var boxes = loadBirdBoxes();
-      if (birdViewCovered(b, boxes, withVp)) return;   // already downloaded → served from the cache (spots already drawn), no re-download and no status spam on every pan
-      // Fetch a PADDED box (a bit beyond the view) so nearby pans reuse it instead of re-querying.
-      var dLat = (b.getNorth() - b.getSouth()) * BIRD_FETCH_PAD, dLon = (b.getEast() - b.getWest()) * BIRD_FETCH_PAD;
-      var s = b.getSouth() - dLat, w = b.getWest() - dLon, n = b.getNorth() + dLat, e = b.getEast() + dLon;
-      var bbox = s.toFixed(4) + "," + w.toFixed(4) + "," + n.toFixed(4) + "," + e.toFixed(4);
+    // Download ONE 50 km tile: bbox-bounded Overpass query, store its spots (tagged with
+    // the tile key), mark the tile fetched. Errors surface in the status line and leave
+    // the tile UNmarked so it retries on the next visit.
+    function fetchTile(tt, withVp) {
+      var bbox = tt.s.toFixed(4) + "," + tt.w.toFixed(4) + "," + tt.n.toFixed(4) + "," + tt.e.toFixed(4);
       var q = "[out:json][timeout:25];(nwr[\"leisure\"=\"bird_hide\"](" + bbox +
         ");nwr[\"man_made\"=\"tower\"][\"tower:type\"=\"observation\"](" + bbox + ")" +
         (withVp ? ";node[\"tourism\"=\"viewpoint\"](" + bbox + ")" : "") + ";);out center;";
-      var mine = ++token;
+      function snippet(x) { return String(x || "").replace(/\s+/g, " ").trim().slice(0, 200); }
       overlayLoadStatus(t("layer.birdSpots"));
-      function snippet(s) { return String(s || "").replace(/\s+/g, " ").trim().slice(0, 200); }
-      overpassPost(q, 30000)   // per-mirror timeout + fallback across hosts
-        .then(function (txt) {
-          if (mine !== token || !active) return;
-          try { birdKB += (new Blob([txt]).size) / 1024; } catch (e) { birdKB += txt.length / 1024; }
-          var j; try { j = JSON.parse(txt); } catch (e) { throw new Error("Bad response — " + snippet(txt)); }
-          if (j.remark && (!j.elements || !j.elements.length)) throw new Error(snippet(j.remark));   // Overpass timeout/error remark
-          var store = loadBirdStore();
-          (j.elements || []).forEach(function (el) {
-            var kind = kindOf(el.tags); if (!kind) return;
-            var lat = el.lat != null ? el.lat : (el.center && el.center.lat);
-            var lon = el.lon != null ? el.lon : (el.center && el.center.lon);
-            if (lat == null || lon == null) return;
-            store[(el.type || "n") + el.id] = { lat: lat, lon: lon, kind: kind, name: (el.tags && el.tags.name) || "", ts: Date.now() };
-          });
-          store = saveBirdStore(store);
-          boxes.push({ s: s, w: w, n: n, e: e, vp: withVp }); saveBirdBoxes(boxes);   // remember we've now covered this ground (cached across reloads)
-          drawAll();
-          setStatus(t("birdspot.status", { n: Object.keys(store).length, kb: Math.round(birdKB) }));
-        }).catch(function (err) {   // offline / rate-limited / timeout on every mirror — keep cached spots, show the full error
-          if (mine !== token || !active) return;
-          setStatus(t("birdspot.statusFail", { n: Object.keys(loadBirdStore()).length, kb: Math.round(birdKB), err: (err && err.message) ? String(err.message) : String(err) }));
+      return overpassPost(q, 30000).then(function (txt) {   // per-mirror timeout + fallback across hosts
+        if (!active) return;
+        try { birdKB += (new Blob([txt]).size) / 1024; } catch (e) { birdKB += txt.length / 1024; }
+        var j; try { j = JSON.parse(txt); } catch (e) { throw new Error("Bad response — " + snippet(txt)); }
+        if (j.remark && (!j.elements || !j.elements.length)) throw new Error(snippet(j.remark));   // Overpass timeout/error remark
+        var store = loadBirdStore(), tiles = loadBirdTiles(), now = Date.now();
+        (j.elements || []).forEach(function (el) {
+          var kind = kindOf(el.tags); if (!kind) return;
+          var lat = el.lat != null ? el.lat : (el.center && el.center.lat);
+          var lon = el.lon != null ? el.lon : (el.center && el.center.lon);
+          if (lat == null || lon == null) return;
+          store[(el.type || "n") + el.id] = { lat: lat, lon: lon, kind: kind, name: (el.tags && el.tags.name) || "", tile: tt.key, ts: now };
         });
+        tiles[tt.key] = { vp: !!withVp, ts: now };   // tile downloaded (survives reloads); empty tiles are remembered too, so we don't re-query barren ground
+        store = saveBirdCache(store, tiles);
+        drawAll();
+        setStatus(t("birdspot.status", { n: Object.keys(store).length, kb: Math.round(birdKB) }));
+      }).catch(function (err) {   // keep cached spots; leave the tile unmarked so it retries later
+        if (!active) return;
+        setStatus(t("birdspot.statusFail", { n: Object.keys(loadBirdStore()).length, kb: Math.round(birdKB), err: (err && err.message) ? String(err.message) : String(err) }));
+        throw err;
+      });
+    }
+    // Fill the view: fetch its uncached tiles one at a time, nearest-to-centre first,
+    // re-reading the live view each step so panning/zooming redirects it. Stops when the
+    // view is fully cached, becomes too wide (cancelChain), or a fetch fails (retry on move).
+    var busy = false, cancelChain = false;
+    function step() {
+      if (!active || cancelChain) { busy = false; return; }
+      var b = map.getBounds(), withVp = map.getZoom() >= BIRD_SPOTS_VP_MIN_ZOOM, tiles = loadBirdTiles();
+      var missing = birdTilesInView(b).filter(function (tt) { var e = tiles[tt.key]; return !e || (withVp && !e.vp); });
+      if (!missing.length) { busy = false; return; }
+      var c = b.getCenter();
+      missing.sort(function (a, d) {
+        var da = (a.mLat - c.lat) * (a.mLat - c.lat) + (a.mLon - c.lng) * (a.mLon - c.lng);
+        var dd = (d.mLat - c.lat) * (d.mLat - c.lat) + (d.mLon - c.lng) * (d.mLon - c.lng);
+        return da - dd;
+      });
+      fetchTile(missing[0], withVp).then(function () { step(); }, function () { busy = false; });
+    }
+    function load(fromAdd) {
+      if (!active) return;
+      drawAll();   // show whatever's cached immediately
+      if (map.getZoom() < BIRD_SPOTS_MIN_ZOOM || birdTilesInView(map.getBounds()).length > BIRD_MAX_TILES_IN_VIEW) {
+        cancelChain = true;   // too zoomed out / view spans too many tiles → cached only, no fetch storm
+        if (fromAdd) setStatus(t("birdspot.zoomIn", { n: Object.keys(loadBirdStore()).length }));   // explain the silence on enable, without clobbering status on every pan
+        return;
+      }
+      cancelChain = false;
+      if (!busy) { busy = true; step(); }
     }
     function schedule() { clearTimeout(timer); timer = setTimeout(load, 500); }
     grp.on("add", function () { active = true; map.attributionControl.addAttribution(BIRD_SPOTS_ATTR); load(true); });
-    grp.on("remove", function () { active = false; clearTimeout(timer); map.attributionControl.removeAttribution(BIRD_SPOTS_ATTR); });
+    grp.on("remove", function () { active = false; cancelChain = true; busy = false; clearTimeout(timer); map.attributionControl.removeAttribution(BIRD_SPOTS_ATTR); });
     map.on("moveend", function () { if (active) schedule(); });
     return grp;
   }
