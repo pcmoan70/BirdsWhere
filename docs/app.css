@@ -1339,8 +1339,13 @@ button.dd-name:hover { text-decoration: underline; }
 .leaflet-tooltip.area-tip { white-space: normal; overflow-wrap: break-word; width: max-content; max-width: 240px; }
 .area-tip { font-size: 0.8rem; line-height: 1.3; }
 /* Birding-spot markers (hides / observation towers / viewpoints). */
-.bird-spot-ico { font-size: 16px; line-height: 22px; text-align: center; text-shadow: 0 0 2px #fff, 0 0 3px #fff; cursor: pointer; }
-.bird-spot-pop { font-size: 0.82rem; line-height: 1.35; }
+/* Birding-spot markers: a teal badge (app accent) with a white line-glyph + white ring
+   and a soft shadow, so they read clearly on any basemap and match the app's markers. */
+.bird-spot-mk { display: flex; align-items: center; justify-content: center; box-sizing: border-box;
+  width: 26px; height: 26px; border-radius: 50%; background: var(--brand, #2e8b74); color: #fff;
+  border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.45); cursor: pointer; transition: background .12s, transform .12s; }
+.bird-spot-mk:hover { background: var(--brand-strong, #246b59); transform: scale(1.08); }
+.bird-spot-mk svg { width: 15px; height: 15px; display: block; }
 
 /* Tickable list dropdowns (species + observer filter panes) + list manager. */
 .sp-splist-head .sp-lists-manage { background: none; border: none; cursor: pointer; color: var(--brand); font-size: 0.9rem; margin-left: 4px; padding: 0 2px; }
@@ -2876,6 +2881,7 @@ a.dl-row:hover, .dl-row-menu:hover { background: var(--surface-2, rgba(0,0,0,.05
 .detrow-menu-item .btn-ico { color: var(--brand); width: 16px; height: 16px; }
 .detrow-menu-item.ico-btn > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .detrow-menu-hdr { padding: 8px 12px 4px; margin-top: 4px; border-top: 1px solid var(--border); font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); }
+.detrow-menu-sub { padding: 0 12px 6px; font-size: 0.74rem; color: var(--ink-muted); }
 .dl-sp { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Name + small sub-lines stacked: name on top, then activity / note below. */
 .dl-name-wrap { flex: 0 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; overflow: hidden; }

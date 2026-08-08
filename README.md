@@ -70,7 +70,8 @@ map dots and the observation fetch. The model covers birds/mammals/amphibians/in
 to Natura 2000), **Land cover** (CORINE / Copernicus-EEA — habitat backdrop, Europe/EEA),
 **GBIF occurrence density** (a seasonal heatmap of where records concentrate),
 **OSM protected areas**, **Birding spots** (OSM bird hides, observation towers & viewpoints —
-clickable markers for where to watch from), and **eBird hotspots** (clickable — each opens a popup
+tap a marker for its name, type and coordinates plus map actions: find · add point · route), and
+**eBird hotspots** (clickable — each opens a popup
 with an eBird link and *Navigate*; needs the eBird key). All are streamed from the providers;
 nothing is stored. Hover a layer's checkbox for a tip on what it shows.
 

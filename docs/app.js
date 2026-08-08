@@ -7092,10 +7092,18 @@
   var BIRD_SPOTS_VP_MIN_ZOOM = 10;   // the far denser viewpoints only once this zoomed in
   var BIRD_STORE_CAP = 5000;
   var birdKB = 0;                    // cumulative kB downloaded this session
+  // White line-glyphs on a teal badge (see .bird-spot-mk) so the spots match the app's
+  // marker language and stand out on the map: binoculars = hide/lookout, a lookout
+  // tower = observation tower, an eye = viewpoint.
+  var BIRD_SPOT_SVG = {
+    bird_hide:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="15" r="3.6"/><circle cx="17" cy="15" r="3.6"/><path d="M7 11.4V6.5M17 11.4V6.5M7 6.5h3l1 2.6h2l1-2.6h3"/></svg>',
+    observation: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8.5" y="3" width="7" height="4" rx="1"/><path d="M9 7L6 21M15 7l3 14"/><path d="M8 12h8M7 16.5h10"/></svg>',
+    viewpoint:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.6"/></svg>'
+  };
   var BIRD_SPOT_KINDS = {
-    bird_hide:   { glyph: "🐦", i18n: "birdspot.hide" },
-    observation: { glyph: "🗼", i18n: "birdspot.tower" },
-    viewpoint:   { glyph: "🔭", i18n: "birdspot.viewpoint" }
+    bird_hide:   { i18n: "birdspot.hide" },
+    observation: { i18n: "birdspot.tower" },
+    viewpoint:   { i18n: "birdspot.viewpoint" }
   };
   // Persistent cache (like eBird hotspots): spots ACCUMULATE across pans and survive
   // reloads, so a wide view shows everything gathered while browsing — and a failed/slow
@@ -7146,10 +7154,20 @@
       Object.keys(store).forEach(function (id) {
         var s = store[id]; if (s.lat == null || s.lon == null) return;
         if (!vb.contains([s.lat, s.lon])) return;
-        var meta = BIRD_SPOT_KINDS[s.kind] || BIRD_SPOT_KINDS.viewpoint, typeLbl = t(meta.i18n);
+        var kind = BIRD_SPOT_KINDS[s.kind] ? s.kind : "viewpoint";
+        var typeLbl = t(BIRD_SPOT_KINDS[kind].i18n), svg = BIRD_SPOT_SVG[kind];
         var nm = s.name || typeLbl;
-        var mk = L.marker([s.lat, s.lon], { icon: L.divIcon({ className: "bird-spot-ico", html: meta.glyph, iconSize: [22, 22], iconAnchor: [11, 11] }), title: nm });
-        mk.bindPopup('<div class="bird-spot-pop"><b>' + escapeHtml(nm) + '</b><br><span>' + escapeHtml(typeLbl) + "</span></div>");
+        var mk = L.marker([s.lat, s.lon], { icon: L.divIcon({ className: "bird-spot-mk bird-spot-" + kind, html: svg, iconSize: [26, 26], iconAnchor: [13, 13] }), title: nm });
+        // Click → the location menu (title + type/coords, then find · add point · route),
+        // the same menu a place-name opens elsewhere.
+        (function (lat, lon, name, tLbl) {
+          mk.on("click", function (e) {
+            if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent);
+            mapClickGuardUntil = Date.now() + 300;   // don't let the map click dismiss the menu
+            var oe = e && e.originalEvent, sx = oe ? oe.clientX : 0, sy = oe ? oe.clientY : 0;
+            showLocPointMenu(lat, lon, name, sx, sy, tLbl + " · " + lat.toFixed(5) + ", " + lon.toFixed(5));
+          });
+        })(s.lat, s.lon, nm, typeLbl);
         grp.addLayer(mk);
       });
     }
@@ -8530,11 +8548,13 @@
   }
   // Tapping a record's location (in the expanded species records) → map actions for
   // that observation point: find it on the map, save it as a point, or add it to the route.
-  function showLocPointMenu(lat, lon, name, x, y) {
+  function showLocPointMenu(lat, lon, name, x, y, subtitle) {
     if (!isFinite(lat) || !isFinite(lon)) return;
     var el = openAnchoredMenu("detrow-menu");
     el.innerHTML = "";
     var h = document.createElement("div"); h.className = "detrow-menu-hdr"; h.textContent = name || (lat.toFixed(4) + ", " + lon.toFixed(4)); el.appendChild(h);
+    // Optional info line under the title (e.g. a birding-spot's type + coordinates).
+    if (subtitle) { var sub = document.createElement("div"); sub.className = "detrow-menu-sub"; sub.textContent = subtitle; el.appendChild(sub); }
     el.appendChild(drmBtn(t("locmenu.find"), function () { focusPointOnMap(lat, lon); }, "pin"));
     el.appendChild(drmBtn(t("locmenu.add"), function () {
       // Reveal the map and open the full point editor at this spot, so the user can

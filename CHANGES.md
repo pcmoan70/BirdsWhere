@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-08-08 — Harmonised birding-spot markers + location menu on tap (sw v971)
+
+- Birding-spot markers are redrawn as **teal badges with white line-glyphs** (a white ring + soft shadow),
+  matching the app's marker language and standing out on any basemap: binoculars = hide/lookout, a lookout
+  tower = observation tower, an eye = viewpoint (replacing the bare 🐦 / 🗼 / 🔭 emoji). `.bird-spot-mk` CSS.
+- **Tapping a spot now opens the location menu** (title · type + coordinates, then find on map · add point ·
+  add to route) — the same `showLocPointMenu` a place-name opens — instead of a plain name/type popup.
+  `showLocPointMenu` gained an optional subtitle line (`.detrow-menu-sub`).
+
 ## 2026-08-08 — Overlay legend follows the UI language; faster birding-spots overlay (sw v970)
 
 - **Map-overlays legend now re-translates on a language change.** The Leaflet overlay layer control built its
