@@ -7095,7 +7095,7 @@
   var BIRD_TILES_CAP = 400;          // max remembered tiles (LRU-evicted together with their spots)
   var BIRD_MAX_TILES_IN_VIEW = 12;   // only fetch once zoomed in enough that the view spans ≤ this many tiles
   var BIRD_TILE_DLAT = BIRD_TILE_KM / 111.32;   // tile height in degrees (~0.449°); width widens with latitude
-  var BIRD_CACHE_VER = 2;            // bump to invalidate the on-device spot cache when the query/classifier changes
+  var BIRD_CACHE_VER = 3;            // bump to invalidate the on-device spot cache when the query/classifier/stored fields change
   var birdKB = 0;                    // cumulative kB downloaded this session
   // White line-glyphs on a teal badge (see .bird-spot-mk) so the spots match the app's
   // marker language and stand out on the map: binoculars = hide/lookout, a lookout
@@ -7213,6 +7213,36 @@
       if (tags.tourism === "viewpoint") return "viewpoint";
       return null;
     }
+    // Curated OSM tags worth showing in the popup (only those present are kept, to keep the
+    // cache small). `out center;` already returns every tag, so this costs no extra fetch.
+    function birdSpotInfo(tags) {
+      var tg = tags || {}, info = {};
+      if (tg.operator) info.operator = tg.operator;
+      if (tg.access) info.access = tg.access;
+      if (tg.wheelchair) info.wheelchair = tg.wheelchair;
+      if (tg.opening_hours) info.hours = tg.opening_hours;
+      if (tg.fee) info.fee = tg.fee;
+      if (tg.height) info.height = tg.height;
+      if (tg.direction) info.direction = tg.direction;
+      if (tg.ele) info.ele = tg.ele;
+      var d = tg.description || tg.note; if (d) info.desc = String(d).slice(0, 240);
+      var web = tg.website || tg["contact:website"] || tg.url; if (web) info.web = web;
+      return Object.keys(info).length ? info : null;
+    }
+    // The popup's info block: labelled lines + Website / OpenStreetMap links, from a stored spot.
+    function birdSpotMenuInfo(s) {
+      var i = s.info || {}, lines = [], links = [], num = function (v) { return /[a-z'"]/i.test(v) ? v : v + " m"; };
+      function ln(key, val) { if (val) lines.push({ label: t("birdspot." + key), value: String(val) }); }
+      ln("operator", i.operator); ln("access", i.access); ln("wheelchair", i.wheelchair);
+      ln("hours", i.hours); ln("fee", i.fee);
+      if (i.height) lines.push({ label: t("birdspot.height"), value: num(i.height) });
+      ln("direction", i.direction);
+      if (i.ele) lines.push({ label: t("birdspot.elevation"), value: num(i.ele) });
+      if (i.desc) lines.push({ label: "", value: i.desc });
+      if (i.web) links.push({ label: t("birdspot.website"), url: i.web });
+      if (s.osm) links.push({ label: t("birdspot.osm"), url: "https://www.openstreetmap.org/" + s.osm });
+      return { lines: lines, links: links };
+    }
     function drawAll() {
       grp.clearLayers();
       if (map.getZoom() < BIRD_SPOTS_SHOW_ZOOM) return;   // hidden at the widest zooms
@@ -7231,14 +7261,14 @@
         var mk = L.marker([s.lat, s.lon], { icon: L.divIcon({ className: "bird-spot-mk bird-spot-" + kind, html: svg, iconSize: [26, 26], iconAnchor: [13, 13] }), title: nm });
         // Click → the location menu (title + type/coords, then find · add point · route),
         // the same menu a place-name opens elsewhere.
-        (function (lat, lon, name, tLbl) {
+        (function (lat, lon, name, tLbl, spot) {
           mk.on("click", function (e) {
             if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent);
             mapClickGuardUntil = Date.now() + 300;   // don't let the map click dismiss the menu
             var oe = e && e.originalEvent, sx = oe ? oe.clientX : 0, sy = oe ? oe.clientY : 0;
-            showLocPointMenu(lat, lon, name, sx, sy, tLbl + " · " + lat.toFixed(5) + ", " + lon.toFixed(5));
+            showLocPointMenu(lat, lon, name, sx, sy, tLbl + " · " + lat.toFixed(5) + ", " + lon.toFixed(5), birdSpotMenuInfo(spot));
           });
-        })(s.lat, s.lon, nm, typeLbl);
+        })(s.lat, s.lon, nm, typeLbl, s);
         grp.addLayer(mk);
       });
     }
@@ -7266,7 +7296,9 @@
           var lat = el.lat != null ? el.lat : (el.center && el.center.lat);
           var lon = el.lon != null ? el.lon : (el.center && el.center.lon);
           if (lat == null || lon == null) return;
-          store[(el.type || "n") + el.id] = { lat: lat, lon: lon, kind: kind, name: (el.tags && el.tags.name) || "", tile: tt.key, ts: now };
+          var rec = { lat: lat, lon: lon, kind: kind, name: (el.tags && el.tags.name) || "", tile: tt.key, ts: now, osm: (el.type || "node") + "/" + el.id };
+          var inf = birdSpotInfo(el.tags); if (inf) rec.info = inf;
+          store[(el.type || "n") + el.id] = rec;
         });
         tiles[tt.key] = { vp: !!withVp, ts: now };   // tile downloaded (survives reloads); empty tiles are remembered too, so we don't re-query barren ground
         store = saveBirdCache(store, tiles);
@@ -8657,13 +8689,23 @@
   }
   // Tapping a record's location (in the expanded species records) → map actions for
   // that observation point: find it on the map, save it as a point, or add it to the route.
-  function showLocPointMenu(lat, lon, name, x, y, subtitle) {
+  function showLocPointMenu(lat, lon, name, x, y, subtitle, info) {
     if (!isFinite(lat) || !isFinite(lon)) return;
     var el = openAnchoredMenu("detrow-menu");
     el.innerHTML = "";
     var h = document.createElement("div"); h.className = "detrow-menu-hdr"; h.textContent = name || (lat.toFixed(4) + ", " + lon.toFixed(4)); el.appendChild(h);
     // Optional info line under the title (e.g. a birding-spot's type + coordinates).
     if (subtitle) { var sub = document.createElement("div"); sub.className = "detrow-menu-sub"; sub.textContent = subtitle; el.appendChild(sub); }
+    // Optional detail block: `info.lines` = [{label,value}] key facts; `info.links` = [{label,url}] external links.
+    if (info && info.lines && info.lines.length) {
+      var box = document.createElement("div"); box.className = "detrow-menu-info";
+      info.lines.forEach(function (l) {
+        var row = document.createElement("div"); row.className = "drm-info-row";
+        row.innerHTML = (l.label ? '<span class="drm-info-k">' + escapeHtml(l.label) + "</span>" : "") + '<span class="drm-info-v">' + escapeHtml(l.value) + "</span>";
+        box.appendChild(row);
+      });
+      el.appendChild(box);
+    }
     el.appendChild(drmBtn(t("locmenu.find"), function () { focusPointOnMap(lat, lon); }, "pin"));
     el.appendChild(drmBtn(t("locmenu.add"), function () {
       // Reveal the map and open the full point editor at this spot, so the user can
@@ -8672,6 +8714,9 @@
       openPointEditor({ lat: lat, lon: lon, name: name || "" });
     }, "dotsplus"));
     el.appendChild(drmBtn(tLabel("route.add"), function () { closeDetRowMenu(); addToRoute(lat, lon, name || ""); }, "navplus"));
+    if (info && info.links) info.links.forEach(function (lk) {
+      el.appendChild(drmBtn(lk.label, (function (u) { return function () { closeDetRowMenu(); openExternal(u); }; })(lk.url)));
+    });
     positionAnchoredMenu(el, x, y);
   }
   // The date-header shortcut menu: On / Before / After the tapped date.

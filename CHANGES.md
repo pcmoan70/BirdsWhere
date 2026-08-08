@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-08-08 — Birding-spot popups show more OSM detail (sw v978)
+
+- A birding-spot's popup now lists the useful OSM tags it carries — **operator, access, wheelchair, opening
+  hours, fee, height, direction, elevation, description** — as labelled lines, plus **Website** and **View on
+  OpenStreetMap** links (the latter always available, from the element type+id). Only present tags are stored
+  (curated subset, description capped) to keep the cache small; `out center;` already returned every tag, so
+  there's no extra fetch. New `birdspot.*` field labels (10 keys × 15 languages), `.detrow-menu-info` styling.
+- Cache reset once (`birdCacheVer` → 3) so existing spots re-fetch to pick up the new fields.
+
 ## 2026-08-08 — Birding spots: bird-relevant towers only (sw v977)
 
 - The observation-tower query matched **every** `man_made=tower` + `tower:type=observation` — fire lookouts,
