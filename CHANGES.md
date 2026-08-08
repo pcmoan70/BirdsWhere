@@ -1,5 +1,14 @@
 # Changes
 
+## 2026-08-08 — Birding spots: finish tiles even after you pan away (sw v975)
+
+- The tile fetcher no longer abandons an area when you move: tiles to download go into a **persistent queue**
+  drained one at a time to completion. Panning/zooming **adds** the newly-visible uncached tiles (deduped;
+  upgrading a queued tile to include viewpoints if you've since zoomed in) but never cancels queued ones — so
+  a half-loaded area finishes filling in the background. Only disabling the overlay clears the queue.
+- A failed tile is kept and retried (rotated behind the others so one bad tile can't block the rest; short
+  backoff, and any map move resumes it) rather than dropped.
+
 ## 2026-08-08 — Birding spots: 50×50 km tile cache (sw v974)
 
 - Replaced the arbitrary padded-box fetch cache with a **deterministic 50×50 km tile grid**. Tile height is

@@ -7267,37 +7267,58 @@
         throw err;
       });
     }
-    // Fill the view: fetch its uncached tiles one at a time, nearest-to-centre first,
-    // re-reading the live view each step so panning/zooming redirects it. Stops when the
-    // view is fully cached, becomes too wide (cancelChain), or a fetch fails (retry on move).
-    var busy = false, cancelChain = false;
-    function step() {
-      if (!active || cancelChain) { busy = false; return; }
-      var b = map.getBounds(), withVp = map.getZoom() >= BIRD_SPOTS_VP_MIN_ZOOM, tiles = loadBirdTiles();
-      var missing = birdTilesInView(b).filter(function (tt) { var e = tiles[tt.key]; return !e || (withVp && !e.vp); });
-      if (!missing.length) { busy = false; return; }
+    // A PERSISTENT queue of tiles to download, drained one at a time to completion.
+    // Panning/zooming ADDS the newly-visible uncached tiles but never cancels the ones
+    // already queued — so moving away from an area still finishes filling it. Only
+    // disabling the overlay clears the queue.
+    var queue = [], queued = Object.create(null), busy = false, retryTimer = null, failStreak = 0;
+    function enqueueView() {
+      if (map.getZoom() < BIRD_SPOTS_MIN_ZOOM) return;
+      var b = map.getBounds(), inview = birdTilesInView(b);
+      if (inview.length > BIRD_MAX_TILES_IN_VIEW) return;   // view too wide → don't add a storm (the queue keeps draining)
+      var withVp = map.getZoom() >= BIRD_SPOTS_VP_MIN_ZOOM, tiles = loadBirdTiles(), add = [];
+      inview.forEach(function (tt) {
+        var pend = queued[tt.key];
+        if (pend) { if (withVp && !pend._vp) pend._vp = true; return; }   // already pending — just upgrade to include viewpoints if now zoomed in
+        var e = tiles[tt.key];
+        if (!e || (withVp && !e.vp)) { tt._vp = withVp; add.push(tt); }
+      });
       var c = b.getCenter();
-      missing.sort(function (a, d) {
+      add.sort(function (a, d) {
         var da = (a.mLat - c.lat) * (a.mLat - c.lat) + (a.mLon - c.lng) * (a.mLon - c.lng);
         var dd = (d.mLat - c.lat) * (d.mLat - c.lat) + (d.mLon - c.lng) * (d.mLon - c.lng);
-        return da - dd;
+        return da - dd;   // nearest to the view centre first
       });
-      fetchTile(missing[0], withVp).then(function () { step(); }, function () { busy = false; });
+      add.forEach(function (tt) { queued[tt.key] = tt; queue.push(tt); });
+    }
+    function pump() {
+      if (busy || !active) return;
+      var tt = queue[0];
+      if (!tt) { failStreak = 0; return; }
+      busy = true;
+      fetchTile(tt, tt._vp).then(function () {
+        queue.shift(); delete queued[tt.key]; failStreak = 0; busy = false; pump();
+      }, function () {   // fetch failed (rate-limit / timeout) — keep the tile queued so it completes later
+        busy = false; failStreak++;
+        if (queue.length > 1) { queue.shift(); queue.push(tt); }   // rotate to the back so one bad tile can't block the rest
+        clearTimeout(retryTimer);
+        if (failStreak < 10) retryTimer = setTimeout(pump, 3000);   // back off, but keep trying; a moveend also resumes
+      });
     }
     function load(fromAdd) {
       if (!active) return;
       drawAll();   // show whatever's cached immediately
       if (map.getZoom() < BIRD_SPOTS_MIN_ZOOM || birdTilesInView(map.getBounds()).length > BIRD_MAX_TILES_IN_VIEW) {
-        cancelChain = true;   // too zoomed out / view spans too many tiles → cached only, no fetch storm
-        if (fromAdd) setStatus(t("birdspot.zoomIn", { n: Object.keys(loadBirdStore()).length }));   // explain the silence on enable, without clobbering status on every pan
-        return;
+        if (fromAdd && !queue.length) setStatus(t("birdspot.zoomIn", { n: Object.keys(loadBirdStore()).length }));   // explain the silence on enable (nothing pending)
+      } else {
+        failStreak = 0;   // user is actively looking here → fresh retry budget
+        enqueueView();
       }
-      cancelChain = false;
-      if (!busy) { busy = true; step(); }
+      pump();   // keep draining regardless of the current view — never cancel queued tiles
     }
     function schedule() { clearTimeout(timer); timer = setTimeout(load, 500); }
     grp.on("add", function () { active = true; map.attributionControl.addAttribution(BIRD_SPOTS_ATTR); load(true); });
-    grp.on("remove", function () { active = false; cancelChain = true; busy = false; clearTimeout(timer); map.attributionControl.removeAttribution(BIRD_SPOTS_ATTR); });
+    grp.on("remove", function () { active = false; busy = false; queue = []; queued = Object.create(null); clearTimeout(timer); clearTimeout(retryTimer); map.attributionControl.removeAttribution(BIRD_SPOTS_ATTR); });
     map.on("moveend", function () { if (active) schedule(); });
     return grp;
   }
