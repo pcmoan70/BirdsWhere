@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-08-08 — Birding spots: bird-relevant towers only (sw v977)
+
+- The observation-tower query matched **every** `man_made=tower` + `tower:type=observation` — fire lookouts,
+  sightseeing towers, etc. — so many "bird towers" were general towers. It now requires an OSM **bird signal**
+  (`bird_hide=yes` or `birdwatching=yes`) on the tower; `kindOf` matches the same. Bird hides
+  (`leisure=bird_hide`, the main bird-watching structures) are unchanged, so towers tagged as bird hides still
+  show. Trade-off: a genuine bird tower tagged only `tower:type=observation` (no bird tag) is now excluded.
+- The on-device spot cache is reset once (`birdCacheVer`) so previously-cached general towers disappear rather
+  than lingering behind the deterministic tile cache.
+
 ## 2026-08-08 — Don't re-fetch observations on app open (sw v976)
 
 - Opening the app restored the last Species-List point via `renderSpeciesList(lat, lon)`, which always ran a

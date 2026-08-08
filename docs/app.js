@@ -7095,6 +7095,7 @@
   var BIRD_TILES_CAP = 400;          // max remembered tiles (LRU-evicted together with their spots)
   var BIRD_MAX_TILES_IN_VIEW = 12;   // only fetch once zoomed in enough that the view spans ≤ this many tiles
   var BIRD_TILE_DLAT = BIRD_TILE_KM / 111.32;   // tile height in degrees (~0.449°); width widens with latitude
+  var BIRD_CACHE_VER = 2;            // bump to invalidate the on-device spot cache when the query/classifier changes
   var birdKB = 0;                    // cumulative kB downloaded this session
   // White line-glyphs on a teal badge (see .bird-spot-mk) so the spots match the app's
   // marker language and stand out on the map: binoculars = hide/lookout, a lookout
@@ -7198,10 +7199,17 @@
   }
   function birdingSpotsLayer() {
     var grp = L.layerGroup(), active = false, timer = null;
+    // One-time cache reset when the query/classifier changes (e.g. tightening towers to
+    // bird-relevant ones) so previously-cached general towers don't linger.
+    if (window.GeoState.get("birdCacheVer", 0) !== BIRD_CACHE_VER) {
+      window.GeoState.save({ birdSpots: {}, birdTiles: {}, birdCacheVer: BIRD_CACHE_VER });
+    }
     function kindOf(tags) {
       if (!tags) return null;
-      if (tags.leisure === "bird_hide") return "bird_hide";
-      if (tags.man_made === "tower" && tags["tower:type"] === "observation") return "observation";
+      if (tags.leisure === "bird_hide") return "bird_hide";   // ground bird hides (binoculars icon)
+      // Towers: ONLY bird-relevant ones. A plain observation tower (fire lookout,
+      // sightseeing) isn't included — it must be tagged as a bird hide / for birdwatching.
+      if (tags.man_made === "tower" && (tags.bird_hide === "yes" || tags.birdwatching === "yes")) return "observation";
       if (tags.tourism === "viewpoint") return "viewpoint";
       return null;
     }
@@ -7239,8 +7247,11 @@
     // the tile UNmarked so it retries on the next visit.
     function fetchTile(tt, withVp) {
       var bbox = tt.s.toFixed(4) + "," + tt.w.toFixed(4) + "," + tt.n.toFixed(4) + "," + tt.e.toFixed(4);
+      // Bird hides + BIRD-relevant towers only (tagged as a bird hide / for birdwatching —
+      // not every observation tower) + viewpoints (when zoomed in).
       var q = "[out:json][timeout:25];(nwr[\"leisure\"=\"bird_hide\"](" + bbox +
-        ");nwr[\"man_made\"=\"tower\"][\"tower:type\"=\"observation\"](" + bbox + ")" +
+        ");nwr[\"man_made\"=\"tower\"][\"bird_hide\"=\"yes\"](" + bbox +
+        ");nwr[\"man_made\"=\"tower\"][\"birdwatching\"=\"yes\"](" + bbox + ")" +
         (withVp ? ";node[\"tourism\"=\"viewpoint\"](" + bbox + ")" : "") + ";);out center;";
       function snippet(x) { return String(x || "").replace(/\s+/g, " ").trim().slice(0, 200); }
       overlayLoadStatus(t("layer.birdSpots"));
