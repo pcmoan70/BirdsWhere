@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-08-08 — Don't re-fetch observations on app open (sw v976)
+
+- Opening the app restored the last Species-List point via `renderSpeciesList(lat, lon)`, which always ran a
+  full observation fetch (eBird/GBIF/…) for that old point — so every launch re-hit the network even though the
+  plotted dots are already restored from `saveDetections`. `restoreSession` now passes a new `noFetch` flag:
+  the view (list or map) and the model list come back as before, but the counts are filled **locally** from the
+  restored map dots (`applySightings` merges `detPlot` from an empty result) — **no fetch on open**. Toggling
+  to the map afterwards doesn't fetch either (the dots are already there). The opt-in "Fetch on open" feature
+  is unaffected.
+
 ## 2026-08-08 — Birding spots: finish tiles even after you pan away (sw v975)
 
 - The tile fetcher no longer abandons an area when you move: tiles to download go into a **persistent queue**

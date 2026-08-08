@@ -17851,7 +17851,10 @@
     renderSpControls();
     scrollSpFiltersIntoView();
   }
-  async function renderSpeciesList(lat, lon, hist) {
+  async function renderSpeciesList(lat, lon, hist, opts) {
+    // `opts.noFetch` = restoring the view on app open — build the (local) model list but
+    // DON'T re-run the observation fetch; fill counts from the already-restored map dots.
+    var noFetch = !!(opts && opts.noFetch);
     // `hist` (optional) = { from, to, range }: Historic-observations mode. The
     // model inference (Probability + stat columns) is identical — only the n(d)
     // counts and the map-plot come from a GBIF fetch over the historic range
@@ -17987,7 +17990,7 @@
           // fetch streams. The list stays rendered-but-hidden until the header
           // List⇄Map switch is tapped, so the user watches points land live.
           sp.style.display = "none";
-          spMapFetch = true;
+          if (!noFetch) spMapFetch = true;
         }
       } else {
         sp.style.display = "block";
@@ -18019,7 +18022,18 @@
       // Augment rows with detection counts + age: recent (last 30 d) for a point,
       // or over the chosen range in Historic mode (with a GBIF page-progress
       // readout in the status line so a long fetch shows activity).
-      if (hist) {
+      if (noFetch) {
+        // Restored on app open — do NOT re-run the observation fetch (its dots are already
+        // back on the map from saveDetections). Populate the list's counts locally from the
+        // restored detections: applySightings merges detPlot even with an empty result.
+        var tbNF = document.getElementById("sp-tbody");
+        if (tbNF) {
+          var tokNF = lat.toFixed(4) + "," + lon.toFixed(4);
+          tbNF.dataset.sightingsToken = tokNF;
+          try { applySightings(tbNF, tokNF, { agg: {}, extras: {}, bySrc: {}, dedupTotal: 0, timedOut: [], failed: [] }, true); } catch (eNF) {}
+        }
+        releaseDot();
+      } else if (hist) {
         var histTok = currentSpView.range;
         // Bring back the page-based progress bar for the (potentially long) GBIF
         // range fetch. It animates (indeterminate) until the first page, then
@@ -18629,7 +18643,7 @@
       // it; otherwise we were on the MAP after it (page cleared) → map-first lands back
       // on the map. Without this, a map-view reload left the toggle hidden.
       if (s.page === "species") urlForceView = "list";
-      renderSpeciesList(s.lat, s.lon);
+      renderSpeciesList(s.lat, s.lon, null, { noFetch: true });   // restore the view only — never re-fetch observations on open
     }
   }
   function restoreControls() {
