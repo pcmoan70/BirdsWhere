@@ -7120,6 +7120,38 @@
     window.GeoState.save({ birdSpots: store });
     return store;
   }
+  // Overpass is frequently overloaded on any one host (429/504) or simply hangs, so a
+  // single fetch with no timeout would spin forever showing nothing. POST the query to
+  // each mirror in turn, each with its own abort timeout; return the first body that
+  // comes back, or throw a combined error naming what failed on each host.
+  var OVERPASS_MIRRORS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.openstreetmap.fr/api/interpreter"
+  ];
+  function overpassPost(query, timeoutMs) {
+    var errs = [];
+    function tryOne(i) {
+      if (i >= OVERPASS_MIRRORS.length) throw new Error("all Overpass servers failed — " + errs.join(" · "));
+      var url = OVERPASS_MIRRORS[i], host = url.replace(/^https?:\/\//, "").split("/")[0];
+      var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+      var to = ctrl ? setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, timeoutMs || 30000) : null;
+      return fetch(url, { method: "POST", body: "data=" + encodeURIComponent(query), signal: ctrl ? ctrl.signal : undefined })
+        .then(function (r) {
+          if (to) { clearTimeout(to); to = null; }
+          return r.text().then(function (txt) {
+            if (!r.ok) throw new Error("HTTP " + r.status + (txt ? " " + String(txt).replace(/\s+/g, " ").trim().slice(0, 120) : ""));
+            return txt;
+          });
+        })
+        .catch(function (err) {
+          if (to) { clearTimeout(to); to = null; }
+          errs.push(host + ": " + ((err && err.name === "AbortError") ? "timeout" : ((err && err.message) || String(err))));
+          return tryOne(i + 1);   // next mirror
+        });
+    }
+    return tryOne(0);
+  }
   // Already-downloaded areas — so we only query GROUND WE HAVEN'T fetched yet. Each box
   // is padded beyond its view, so small pans reuse it. `vp` records whether viewpoints
   // were included (they're only fetched when zoomed in), so re-fetch if they're now wanted.
@@ -7171,14 +7203,17 @@
         grp.addLayer(mk);
       });
     }
-    function load() {
+    function load(fromAdd) {
       if (!active) return;
       drawAll();   // show whatever's cached immediately, at any (non-widest) zoom
-      if (map.getZoom() < BIRD_SPOTS_MIN_ZOOM) return;   // too zoomed out to fetch cheaply — cached only
+      if (map.getZoom() < BIRD_SPOTS_MIN_ZOOM) {   // too zoomed out to fetch cheaply — cached only
+        if (fromAdd) setStatus(t("birdspot.zoomIn", { n: Object.keys(loadBirdStore()).length }));   // explain the silence on enable, but don't clobber status on every pan
+        return;
+      }
       var b = map.getBounds();
       var withVp = map.getZoom() >= BIRD_SPOTS_VP_MIN_ZOOM;
       var boxes = loadBirdBoxes();
-      if (birdViewCovered(b, boxes, withVp)) return;   // this ground is already downloaded → cached only, no re-download
+      if (birdViewCovered(b, boxes, withVp)) return;   // already downloaded → served from the cache (spots already drawn), no re-download and no status spam on every pan
       // Fetch a PADDED box (a bit beyond the view) so nearby pans reuse it instead of re-querying.
       var dLat = (b.getNorth() - b.getSouth()) * BIRD_FETCH_PAD, dLon = (b.getEast() - b.getWest()) * BIRD_FETCH_PAD;
       var s = b.getSouth() - dLat, w = b.getWest() - dLon, n = b.getNorth() + dLat, e = b.getEast() + dLon;
@@ -7189,13 +7224,7 @@
       var mine = ++token;
       overlayLoadStatus(t("layer.birdSpots"));
       function snippet(s) { return String(s || "").replace(/\s+/g, " ").trim().slice(0, 200); }
-      fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: "data=" + encodeURIComponent(q) })
-        .then(function (r) {   // read the body even on error so its detail can be surfaced
-          return r.text().then(function (txt) {
-            if (!r.ok) throw new Error("HTTP " + r.status + (r.statusText ? " " + r.statusText : "") + (txt ? " — " + snippet(txt) : ""));
-            return txt;
-          });
-        })
+      overpassPost(q, 30000)   // per-mirror timeout + fallback across hosts
         .then(function (txt) {
           if (mine !== token || !active) return;
           try { birdKB += (new Blob([txt]).size) / 1024; } catch (e) { birdKB += txt.length / 1024; }
@@ -7210,16 +7239,16 @@
             store[(el.type || "n") + el.id] = { lat: lat, lon: lon, kind: kind, name: (el.tags && el.tags.name) || "", ts: Date.now() };
           });
           store = saveBirdStore(store);
-          boxes.push({ s: s, w: w, n: n, e: e, vp: withVp }); saveBirdBoxes(boxes);   // remember we've now covered this ground
+          boxes.push({ s: s, w: w, n: n, e: e, vp: withVp }); saveBirdBoxes(boxes);   // remember we've now covered this ground (cached across reloads)
           drawAll();
           setStatus(t("birdspot.status", { n: Object.keys(store).length, kb: Math.round(birdKB) }));
-        }).catch(function (err) {   // offline / rate-limited / timeout — keep cached spots, show the full error
+        }).catch(function (err) {   // offline / rate-limited / timeout on every mirror — keep cached spots, show the full error
           if (mine !== token || !active) return;
           setStatus(t("birdspot.statusFail", { n: Object.keys(loadBirdStore()).length, kb: Math.round(birdKB), err: (err && err.message) ? String(err.message) : String(err) }));
         });
     }
     function schedule() { clearTimeout(timer); timer = setTimeout(load, 500); }
-    grp.on("add", function () { active = true; map.attributionControl.addAttribution(BIRD_SPOTS_ATTR); load(); });
+    grp.on("add", function () { active = true; map.attributionControl.addAttribution(BIRD_SPOTS_ATTR); load(true); });
     grp.on("remove", function () { active = false; clearTimeout(timer); map.attributionControl.removeAttribution(BIRD_SPOTS_ATTR); });
     map.on("moveend", function () { if (active) schedule(); });
     return grp;

@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-08-08 — Reliable birding-spots loading (mirrors + timeout) (sw v972)
+
+- The Overpass fetch for birding spots had **no client-side timeout** and used a **single host**, so an
+  overloaded/hung server (429/504 or no response) left it spinning forever with nothing shown and no error.
+  New `overpassPost()` POSTs to **three mirrors in turn** (overpass-api.de → kumi.systems → openstreetmap.fr),
+  each with its own **30 s abort timeout**, and on total failure surfaces a **combined error naming what each
+  host returned** (shown in the status line).
+- **Low zoom no longer looks broken**: enabling the overlay while zoomed out now shows "Zoom in to load bird
+  spots (N cached)" (new `birdspot.zoomIn`, 15 languages) instead of silently doing nothing.
+- **Caching confirmed/kept**: spots persist in `birdSpots` and covered areas in `birdBoxes` (no TTL — they
+  change rarely), so panning back over fetched ground draws from cache with no re-download.
+
 ## 2026-08-08 — Harmonised birding-spot markers + location menu on tap (sw v971)
 
 - Birding-spot markers are redrawn as **teal badges with white line-glyphs** (a white ring + soft shadow),
