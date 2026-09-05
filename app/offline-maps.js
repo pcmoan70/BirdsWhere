@@ -183,6 +183,23 @@ window.AppOffline = (function () {
       renderOfflineFrames();
     });
   }
+  // Delete EVERY downloaded offline area (pinned caches + records + on-map frames) —
+  // used by the Settings "Clear cached data → Offline areas" button.
+  function clearAllOfflineAreas() {
+    var areas = getOfflineAreas();
+    return Promise.all(areas.map(function (a) { return caches.delete("pinned-" + a.id).catch(function () {}); }))
+      .then(function () { saveOfflineAreas([]); renderOfflineAreas(); renderOfflineFrames(); });
+  }
+  // Count of downloaded offline areas + approx bytes (pinned tiles, ~22 KB each).
+  function offlineAreaStats() {
+    var areas = getOfflineAreas();
+    return Promise.all(areas.map(function (a) {
+      return caches.open("pinned-" + a.id).then(function (c) { return c.keys(); }).then(function (k) { return k.length; }).catch(function () { return 0; });
+    })).then(function (counts) {
+      var tiles = counts.reduce(function (s, n) { return s + n; }, 0);
+      return { n: areas.length, bytes: tiles * 22000 };
+    });
+  }
   // A tile layer for an arbitrary basemap (not necessarily the live one), used to
   // rebuild the exact tile URLs when re-downloading a purged area.
   function offlineLayerFor(basemap, labelsModeOverride) {
@@ -275,8 +292,8 @@ window.AppOffline = (function () {
       '<div class="area-dl-est" id="area-est"></div>' +
       '<input class="ui-modal-input" id="area-name" type="text" placeholder="' + escapeHtml(t("offline.namePh")) + '">' +
       '<div class="area-dl-prog" id="area-prog" style="display:none"></div>' +
-      '<div class="ui-modal-btns"><button type="button" class="demo-btn demo-btn-light" id="area-cancel">' + escapeHtml(t("btn.cancel")) + '</button>' +
-        '<button type="button" class="demo-btn" id="area-go">' + escapeHtml(t("offline.download")) + "</button></div>";
+      '<div class="ui-modal-btns"><button type="button" class="btn btn-light" id="area-cancel">' + escapeHtml(t("btn.cancel")) + '</button>' +
+        '<button type="button" class="btn" id="area-go">' + escapeHtml(t("offline.download")) + "</button></div>";
     var est = box.querySelector("#area-est");
     function refreshEstimate() {
       est.textContent = t("offline.estimate", { n: tiles.toLocaleString(), mb: (tiles * OFFLINE_TILE_BYTES / 1048576).toFixed(tiles * OFFLINE_TILE_BYTES < 10485760 ? 1 : 0) });
@@ -457,9 +474,9 @@ window.AppOffline = (function () {
     box.innerHTML = '<div class="ui-modal-msg">' + escapeHtml(t("offline.coverPrompt")) + "</div>" +
       '<div class="offline-pick">' + areas.map(function (a) {
         var bm = a.basemap && a.basemap !== curBase ? " (" + escapeHtml(t("basemap." + a.basemap) || a.basemap) + ")" : "";
-        return '<button type="button" class="demo-btn offline-pick-btn" data-id="' + escapeHtml(a.id) + '">' + escapeHtml(a.name) + bm + "</button>";
+        return '<button type="button" class="btn offline-pick-btn" data-id="' + escapeHtml(a.id) + '">' + escapeHtml(a.name) + bm + "</button>";
       }).join("") + "</div>" +
-      '<div class="ui-modal-btns"><button type="button" class="demo-btn demo-btn-light" id="offc-cancel">' + escapeHtml(t("btn.cancel")) + "</button></div>";
+      '<div class="ui-modal-btns"><button type="button" class="btn btn-light" id="offc-cancel">' + escapeHtml(t("btn.cancel")) + "</button></div>";
     box.querySelector("#offc-cancel").addEventListener("click", close);
     box.querySelectorAll(".offline-pick-btn").forEach(function (b) {
       b.addEventListener("click", function () {
@@ -477,6 +494,8 @@ window.AppOffline = (function () {
     openOfflineManager: openOfflineManager,
     openAreaDialog: openAreaDialog,
     renderOfflineAreas: renderOfflineAreas,
+    clearAllAreas: clearAllOfflineAreas,
+    areaStats: offlineAreaStats,
     offlineLayers: offlineLayers,
     scheduleOfflineCheck: scheduleOfflineCheck,
     refreshOfflineZoomCap: refreshOfflineZoomCap,

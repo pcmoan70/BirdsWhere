@@ -1,5 +1,5 @@
 /**
- * BirdNET Geomodel – Interactive Web Demo
+ * BirdsWhere – Interactive in-browser species distribution & observations explorer (BirdNET Geomodel)
  *
  * Runs the ONNX FP16 model entirely client-side via ONNX Runtime Web.
  * Four modes:
@@ -331,9 +331,9 @@
   // t() with any leading emoji/symbol stripped — for icon buttons rendered
   // dynamically (outside the init-time .ico-label i18n pass).
   function tLabel(key) { return t(key).replace(/^[^\p{L}\p{N}]+/u, ""); }
-  // A demo-button with a leading icon + an i18n label span.
+  // A styled button (.btn) with a leading icon + an i18n label span.
   function icoBtn(id, name, key, fallback, extra) {
-    return '<button type="button" id="' + id + '" class="demo-btn ico-btn"' + (extra || "") + ">" +
+    return '<button type="button" id="' + id + '" class="btn ico-btn"' + (extra || "") + ">" +
       ico(name) + '<span class="ico-label" data-i18n="' + key + '">' + fallback + "</span></button>";
   }
 
@@ -348,7 +348,7 @@
   // it uses the full screen height (overrides the CSS aspect-ratio sizing). The
   // top is read live, so it adapts to the controls bar wrapping or mode changes.
   function fitMapHeight() {
-    var el = document.getElementById("demo-map");
+    var el = document.getElementById("app-map");
     if (!el || el.offsetParent === null) return;   // not visible yet
     var top = el.getBoundingClientRect().top;
     el.style.aspectRatio = "auto";
@@ -514,15 +514,15 @@
       var btns = document.createElement("div");
       btns.className = "ui-modal-btns";
       var cancel = document.createElement("button");
-      cancel.type = "button"; cancel.className = "demo-btn demo-btn-light"; cancel.textContent = t("btn.cancel");
+      cancel.type = "button"; cancel.className = "btn btn-light"; cancel.textContent = t("btn.cancel");
       var ok = document.createElement("button");
-      ok.type = "button"; ok.className = "demo-btn"; ok.textContent = opts.okLabel || t("popup.ok");
+      ok.type = "button"; ok.className = "btn"; ok.textContent = opts.okLabel || t("popup.ok");
       if (colorInput) btns.appendChild(colorInput);   // swatch at the LEFT of the action row (popup opens below it, clear of the buttons)
       // Optional extra action (e.g. "Manage data sources…"): a left-aligned button
       // that dismisses the dialog and runs its handler.
       if (opts.action && opts.action.label) {
         var act = document.createElement("button");
-        act.type = "button"; act.className = "demo-btn demo-btn-light ui-modal-action"; act.textContent = opts.action.label;
+        act.type = "button"; act.className = "btn btn-light ui-modal-action"; act.textContent = opts.action.label;
         act.addEventListener("click", function () { close(result(false)); try { if (opts.action.handler) opts.action.handler(); } catch (e) {} });
         btns.appendChild(act);
       }
@@ -778,14 +778,14 @@
       var m = createModal({ escClose: true });
       m.box.innerHTML = '<div class="ui-modal-msg">' + escapeHtml(t("nudge.ebird")) + "</div>" +
         '<div class="ui-modal-btns">' +
-          '<a class="demo-btn demo-btn-light" href="https://ebird.org/api/keygen" target="_blank" rel="noopener">' + escapeHtml(t("nudge.ebirdGet")) + " \u2197</a>" +
-          '<button type="button" class="demo-btn" id="nudge-ok">OK</button></div>';
+          '<a class="btn btn-light" href="https://ebird.org/api/keygen" target="_blank" rel="noopener">' + escapeHtml(t("nudge.ebirdGet")) + " \u2197</a>" +
+          '<button type="button" class="btn" id="nudge-ok">OK</button></div>';
       m.box.querySelector("#nudge-ok").addEventListener("click", m.close);
     } catch (e) {}
   }
   function setStatus(msg, isErr) {
     if (isErr) appErrLog(msg);
-    var el = document.getElementById("demo-status");
+    var el = document.getElementById("app-status");
     if (el) el.textContent = msg;
     renderStatusDots();   // keep the in-flight-fetch dots after a text update
     if (msg) armStatusClear();
@@ -796,7 +796,7 @@
   // empty↔non-empty EDGE so frequent updates don't thrash the layout.
   var statusWasEmpty = true;
   function syncStatusLayout() {
-    var el = document.getElementById("demo-status");
+    var el = document.getElementById("app-status");
     var empty = !el || el.childNodes.length === 0;
     if (empty === statusWasEmpty) return;
     statusWasEmpty = empty;
@@ -815,7 +815,7 @@
       if (done) return;
       done = true;
       window.removeEventListener("click", run);
-      var el = document.getElementById("demo-status");
+      var el = document.getElementById("app-status");
       if (el) el.textContent = "";
       renderStatusDots();
       syncStatusLayout();
@@ -836,7 +836,7 @@
     var armed = false;
     statusClearFn = function (ev) {
       if (!armed) return;
-      var el = document.getElementById("demo-status");
+      var el = document.getElementById("app-status");
       // Interacting WITH the status itself (e.g. the red error link) must not
       // clear it out from under the click.
       if (el && ev && ev.target && el.contains(ev.target)) return;
@@ -882,7 +882,7 @@
   // blinking fetch fraction — never user input).
   function setStatusHtml(html) {
     if (/status-err/.test(html)) appErrLog(String(html).replace(/<[^>]*>/g, " "));   // fetch failures → the error log
-    var el = document.getElementById("demo-status");
+    var el = document.getElementById("app-status");
     if (el) el.innerHTML = html;
     renderStatusDots();
     if (html) armStatusClear();
@@ -894,7 +894,7 @@
   // Re-appended after every status-text update so it survives textContent/innerHTML resets.
   var mapFetchPending = 0;
   function renderStatusDots() {
-    var el = document.getElementById("demo-status"); if (!el) return;
+    var el = document.getElementById("app-status"); if (!el) return;
     var span = document.getElementById("status-dots");
     // Everything still to be downloaded: queued/in-flight observation fetches
     // and outstanding map tiles. (Overlay point loads indicate via the BLINKING
@@ -1130,7 +1130,7 @@
   // A red crosshair fixed at the middle of the map. Pan the map so a dot sits
   // under it and that dot's info pops up. This is the crosshair's "read" state.
   function ensureReticleEl() {
-    var wrap = document.getElementById("demo-map-wrap"); if (!wrap) return null;
+    var wrap = document.getElementById("map-wrap"); if (!wrap) return null;
     var el = document.getElementById("map-reticle");
     if (!el) {
       el = document.createElement("div"); el.id = "map-reticle";
@@ -2769,8 +2769,8 @@
         '<input id="nle-url" type="url" value="' + escapeHtml(orig ? orig.url : "https://") + '"></label>' +
       '<div class="nle-err" id="nle-err" style="display:none"></div>' +
       '<div class="nle-actions">' +
-        '<button type="button" id="nle-save" class="demo-btn">' + escapeHtml(t("popup.ok")) + '</button>' +
-        '<button type="button" id="nle-cancel" class="demo-btn demo-btn-light">' + escapeHtml(t("btn.close")) + '</button>' +
+        '<button type="button" id="nle-save" class="btn">' + escapeHtml(t("popup.ok")) + '</button>' +
+        '<button type="button" id="nle-cancel" class="btn btn-light">' + escapeHtml(t("btn.close")) + '</button>' +
       '</div>';
     box.querySelector("#nle-cancel").addEventListener("click", close);
     box.querySelector("#nle-save").addEventListener("click", function () {
@@ -3059,7 +3059,7 @@
   // Per-source fetch timeout (seconds). A source still running after this is
   // aborted; whatever it had already paged is kept and its label turns red.
   // 0 = no timeout. Default 30 s.
-  function fetchTimeoutSec() { var n = +window.GeoState.get("fetchTimeoutSec", 30); return (n >= 0 && n <= 600) ? n : 30; }
+  function fetchTimeoutSec() { var n = +window.GeoState.get("fetchTimeoutSec", 120); return (n >= 0 && n <= 600) ? n : 120; }   // default 120 s (0 = no timeout)
   function setFetchTimeoutSec(n) { window.GeoState.save({ fetchTimeoutSec: Math.max(0, Math.min(600, +n || 0)) }); allSightingsCache = {}; }
   // Human label for a radius in km — sub-kilometre shown in metres ("500 m").
   function radiusLabel(km) { var r = (km == null) ? recentRadiusKm() : km; return r < 1 ? Math.round(r * 1000) + " m" : r + " km"; }
@@ -3493,7 +3493,7 @@
     if (id === "laji") {
       h += '<div class="src-detail-field laji-token-req"><label>' + escapeHtml(t("sources.lajiEmail")) + '</label>' +
         '<div class="laji-req-row"><input type="email" class="laji-email" autocomplete="email" spellcheck="false" placeholder="you@example.com" />' +
-        '<button type="button" class="demo-btn laji-req-btn">' + escapeHtml(t("sources.lajiSend")) + '</button></div>' +
+        '<button type="button" class="btn laji-req-btn">' + escapeHtml(t("sources.lajiSend")) + '</button></div>' +
         '<p class="cu-hint">' + escapeHtml(t("sources.lajiHint")) + '</p>' +
         '<p class="cu-hint laji-req-msg"></p></div>';
     }
@@ -3508,7 +3508,7 @@
         '<div class="radius-row"><input type="range" class="src-bw-conf" min="0" max="95" step="5" value="' + Math.round(bwMinConf() * 100) + '" /></div>' +
         '<p class="cu-hint">' + escapeHtml(t("sources.bwHint")) + '</p></div>';
     }
-    if (info.removable) h += '<div class="cu-actions"><button type="button" class="demo-btn demo-btn-light src-del-detail">' + escapeHtml(t("sources.remove")) + "</button></div>";
+    if (info.removable) h += '<div class="cu-actions"><button type="button" class="btn btn-light src-del-detail">' + escapeHtml(t("sources.remove")) + "</button></div>";
     h += "</div>";
     el.innerHTML = h;
     var onCb = el.querySelector(".src-on"); if (onCb) onCb.addEventListener("change", function () { setSourceOff(id, !this.checked); });
@@ -3658,7 +3658,7 @@
         '<label>Lon<input type="number" step="any" id="lp-lon" value="' + esc(isFinite(+p.lon) ? +p.lon : "") + '" /></label></div>' +
       '<label class="kml-row kml-row-col">' + esc(t("points.note")) + '<textarea id="lp-note" rows="3">' + esc(p.note || "") + "</textarea></label>" +
       '<label class="kml-row kml-check"><input type="checkbox" id="lp-note-html"' + (p.noteHtml ? " checked" : "") + " />" + esc(t("points.noteHtml")) + "</label>" +
-      '<div class="kml-actions"><button type="button" id="lp-save" class="demo-btn">' + esc(t("points.save")) + "</button></div>" +
+      '<div class="kml-actions"><button type="button" id="lp-save" class="btn">' + esc(t("points.save")) + "</button></div>" +
       "</div>";
     document.body.appendChild(ov);
     wireMpColorRow();
@@ -3927,9 +3927,22 @@
     });
     return lines;
   }
+  // Open Settings and highlight the Fetch-timeout field — the "increase timeout"
+  // action shown when a source was cut off by the fetch timeout.
+  function openSettingsToTimeout() {
+    closeDropdowns();
+    var p = document.getElementById("settings-panel"); if (p) p.style.display = "block";
+    var inp = document.getElementById("fetch-timeout");
+    if (inp) setTimeout(function () {
+      try { inp.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (e) {}
+      try { inp.focus({ preventScroll: true }); } catch (e2) { try { inp.focus(); } catch (e3) {} }
+      inp.classList.add("setting-flash");
+      setTimeout(function () { inp.classList.remove("setting-flash"); }, 1800);
+    }, 40);
+  }
   // Open a dialog listing each source that failed / timed out and why. Called when
-  // the red fetch-failure text in the status strip is tapped. If a source failed only
-  // for a missing free API key, add a shortcut to the "Manage data sources…" window.
+  // the red fetch-failure text in the status strip is tapped. A missing-key failure adds a
+  // "Manage data sources…" shortcut; a timeout adds an "Increase timeout" shortcut instead.
   function showFetchErrors(failed, timedOut, info, trunc) {
     var lines = fetchIssueLines(failed, timedOut, info, trunc);
     if (!lines.length) return;
@@ -3937,13 +3950,16 @@
     if (splitFailed(failed).needKey.length) {
       msg += "\n\n" + t("fetch.errKeyHint");
       action = { label: t("sources.manage"), handler: openSourcesManager };
+    } else if ((timedOut || []).length) {
+      msg += "\n\n" + t("fetch.timeoutHint");
+      action = { label: t("fetch.raiseTimeout"), handler: openSettingsToTimeout };
     }
     modalAlert(msg, lines, action);
   }
   // Wire any red .status-err text just written into the status strip so tapping it
   // (or Enter/Space when focused) opens the fetch-failure explanation.
   function wireStatusFetchErrs(failed, timedOut, info, trunc) {
-    var el = document.getElementById("demo-status"); if (!el) return;
+    var el = document.getElementById("app-status"); if (!el) return;
     Array.prototype.forEach.call(el.querySelectorAll(".status-err"), function (s) {
       s.addEventListener("click", function (ev) { ev.stopPropagation(); showFetchErrors(failed, timedOut, info, trunc); });
       s.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); showFetchErrors(failed, timedOut, info, trunc); } });
@@ -4047,7 +4063,7 @@
   // General "download — last N days" window for a normal fetch: overrides every
   // source's own default window. 0 = each source keeps its own (GBIF/iNat ~90,
   // eBird 30, BirdWeather 7) — the pre-existing behaviour, so 0 changes nothing.
-  function downloadDays() { var v = +window.GeoState.get("downloadDays", 0); return isFinite(v) && v > 0 ? v : 0; }
+  function downloadDays() { var v = +window.GeoState.get("downloadDays", 30); return isFinite(v) && v > 0 ? v : 0; }   // default 30 days (0 = each source's own default)
   // Bump when the aggregation/matching logic changes so results cached by the
   // previous code are ignored and the next fetch re-aggregates.
   var SIGHT_CACHE_VER = 7;   // bumped: Sweden Artportalen "Corvus corone" (kråka) → Corvus cornix
@@ -4520,9 +4536,15 @@
     if (ld) {
       ld.innerHTML = html; ld.style.display = "";
       Array.prototype.forEach.call(ld.querySelectorAll(".src-fail"), function (s) {
-        s.addEventListener("click", function () { var e = this.getAttribute("data-err"); if (e) modalAlert(e); });
+        s.addEventListener("click", function () {
+          var e = this.getAttribute("data-err"); if (!e) return;
+          // A timed-out source → lead the user to raise the Fetch timeout; others show the plain reason.
+          if (this.classList.contains("src-timeout")) modalAlert(e + "\n\n" + t("fetch.timeoutHint"), null, { label: t("fetch.raiseTimeout"), handler: openSettingsToTimeout });
+          else modalAlert(e);
+        });
       });
     }
+    try { checkStoragePressure(); } catch (e) {}   // a fetch grew the caches → warn if device storage is nearly full
   }
   function hideSourceCounts() { var ld = document.getElementById("sp-loading"); if (ld) ld.style.display = "none"; }
   // The header List⇄Map switch is a pure VIEW toggle (since v820) — switching to the
@@ -4602,6 +4624,7 @@
     try { var rcz = (typeof rarityCfg === "function") ? rarityCfg() : null; if (rcz && rcz.enabled !== false && rcz.showMap !== false) rarRows = rarityNearRows(null) || []; } catch (e) {}
     var extras = mergedExtras(result.extras, rarRows), agg = mergedSightingsAgg(result.agg, rarRows);
     tbody._sightingsAgg = agg;
+    tbody._fetchAgg = (result && result.agg) || {};   // THIS point's fetch only (no detPlot union / rarity) — the PDF/CSV "Seen" column reads this
     if (currentSpView) currentSpView._result = result;   // latest data for plotAllSightings (partial or final)
     updateSpMapBtn();
     var now = Date.now();
@@ -5595,7 +5618,7 @@
   }
 
   async function init() {
-    var root = document.getElementById("demo-root");
+    var root = document.getElementById("app-root");
     if (!root) return;
 
     // Hand the aggregation module live access to the model data + family index
@@ -5638,9 +5661,9 @@
 
 
     root.innerHTML =
-      '<div id="demo-loading"><div class="spinner"></div><span data-i18n="app.loading">Loading\u2026</span></div>' +
-      '<div id="demo-app" style="display:none">' +
-        '<div id="demo-controls">' +
+      '<div id="app-loading"><div class="spinner"></div><span data-i18n="app.loading">Loading\u2026</span></div>' +
+      '<div id="app-main" style="display:none">' +
+        '<div id="app-controls">' +
           '<div class="ctrl-group" id="mode-wrap">' +
             '<label for="mode-select" data-i18n="ctrl.mode">Mode</label>' +
             '<select id="mode-select">' +
@@ -5661,7 +5684,7 @@
             '<div id="hist-range-body">' +
               '<label data-i18n="hist.range">Date range</label>' +
               '<div class="hist-range-row"><input type="date" id="hist-from" /><span>–</span><input type="date" id="hist-to" />' +
-                '<button type="button" id="hist-fetch" class="demo-btn" data-i18n="hist.fetch" disabled>Fetch</button></div>' +
+                '<button type="button" id="hist-fetch" class="btn" data-i18n="hist.fetch" disabled>Fetch</button></div>' +
               '<label class="hist-allareas" data-i18n-title="hist.allAreasHint"><input type="checkbox" id="hist-all-areas" /> <span data-i18n="hist.allAreas">All fetched areas</span></label>' +
               '<details class="hist-months-dd">' +
                 '<summary class="hist-months-sum"><span data-i18n="hist.months">Months</span><span class="hist-months-sel" id="hist-months-sel"></span></summary>' +
@@ -5679,7 +5702,7 @@
             '</div>' +
           '</div>' +
           '<div class="ctrl-group ctrl-group-btn" id="play-btn-wrap">' +
-            '<button id="play-btn" class="demo-btn" data-i18n="btn.play">\u25b6 Play migration</button>' +
+            '<button id="play-btn" class="btn" data-i18n="btn.play">\u25b6 Play migration</button>' +
           '</div>' +
           '<div class="ctrl-group" id="hidden-wrap" style="display:none">' +
             '<label data-i18n="ctrl.hidden">Hidden species</label>' +
@@ -5727,6 +5750,7 @@
                   '<button type="button" class="hs-cycle" id="hotspot-cycle" data-hs="off" data-i18n="ctrl.hsOff">Off</button>' +
                   '<label class="ctrl-check hs-dots"><input type="checkbox" id="showdots-toggle" checked> <span data-i18n="ctrl.showDots">Show dots</span></label>' +
                 '</div>' +
+                '<p class="cu-hint" data-i18n="ctrl.hotspotHint">Shades the map by how much activity each area has — tap to cycle Off → species per area → distinct observers → total counts. A smooth, zoom-steady heat cloud; use “Show dots” to see the heatmap alone, the dots alone, or both.</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label for="group-select" data-i18n="ctrl.group">Species group</label>' +
@@ -5747,10 +5771,12 @@
                   '<div id="group-picker-panel" class="group-quick-panel" style="display:none" role="listbox"></div>' +
                 '</div>' +
                 '<p class="cu-hint" id="group-nomodel-hint" style="display:none" data-i18n="group.noModelHint">No habitat model for this group — observation search only (no range, richness or migration).</p>' +
+                '<p class="cu-hint" data-i18n="ctrl.groupHint">Limit the whole app — lists, Range, Richness and observation search — to one group: birds, mammals, amphibians, insects, plants or fungi.</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label for="recent-radius" data-i18n="ctrl.recentradius">Sightings radius</label>' +
                 '<div class="radius-row"><input type="range" id="recent-radius" min="0" max="18" step="1" /><span id="recent-radius-val" class="radius-val"></span></div>' +
+                '<p class="cu-hint" data-i18n="ctrl.recentradiusHint">How far around a clicked point or stored location each source is searched for recent observations.</p>' +
               '</div>' +
               '<div class="ctrl-group" id="maptype-wrap">' +
                 '<label for="maptype-select" data-i18n="ctrl.basemap">Map type</label>' +
@@ -5763,6 +5789,7 @@
                   '<option value="esritopo" data-i18n="basemap.esritopo">Esri Topo</option>' +
                   '<option value="satellite" data-i18n="basemap.satellite">Satellite</option>' +
                 '</select>' +
+                '<p class="cu-hint" data-i18n="ctrl.basemapHint">The background map style behind the data — Light, Dark, Streets, Topographic or Satellite.</p>' +
                 '<div id="exp-mapkeys-wrap" style="display:none">' +
                   '<input type="text" id="carto-key-input" autocomplete="off" spellcheck="false" data-i18n-ph="ph.cartoKey" placeholder="CARTO API key (for Voyager)" />' +
                   '<p class="cu-hint" data-i18n="ctrl.cartoKeyHint">Experimental. The Voyager map is served by CARTO, which now needs a personal API key (free account at carto.com). Paste it here to enable Voyager; without a key it is hidden from the list and the other maps are used.</p>' +
@@ -5777,6 +5804,7 @@
                   '<option value="on" data-i18n="labels.on">On</option>' +
                   '<option value="more" data-i18n="labels.more">More</option>' +
                 '</select>' +
+                '<p class="cu-hint" data-i18n="ctrl.maplabelsHint">Extra place-name density for the Light, Dark and Satellite maps: Off keeps the map’s own names, On adds a clean label layer, More pulls in the next zoom’s denser names.</p>' +
               '</div>' +
               '<div class="ctrl-group" id="barchart-threshold-wrap" style="display:none">' +
                 '<label data-i18n="ctrl.bcthreshold">Probability range</label>' +
@@ -5786,10 +5814,12 @@
                   '<input type="range" id="prob-max" min="0" max="100" step="1" value="100" />' +
                 '</div>' +
                 '<div id="prob-range-vals"><span id="prob-min-val">0%</span> – <span id="prob-max-val">100%</span></div>' +
+                '<p class="cu-hint" data-i18n="ctrl.bcthresholdHint">Lower and upper model-probability bounds — species (and plotted observations) outside this range are hidden from the list and the map.</p>' +
               '</div>' +
               '<div class="ctrl-group" id="week-select-wrap">' +
                 '<label for="week-select" data-i18n="ctrl.week">Week</label>' +
                 '<select id="week-select"></select>' +
+                '<p class="cu-hint" data-i18n="ctrl.weekHint">The week of the year the model is evaluated for (48 weeks, four per month) — used by Range, Richness and the species-list probabilities.</p>' +
               '</div>' +
               '<div class="ctrl-group" id="compare-wrap" style="display:none">' +
                 '<label for="compare-select" data-i18n="ctrl.compare">Compare to</label>' +
@@ -5801,6 +5831,7 @@
                   '<option value="annualmax" data-i18n="compare.max">Annual max</option>' +
                   '<option value="annualtop" selected data-i18n="compare.annualtop">Annual Top</option>' +
                 '</select>' +
+                '<p class="cu-hint" data-i18n="ctrl.compareHint">Adds a column to the species list comparing the current week with another week or the annual mean/peak, so you can see what’s arriving or at its best now.</p>' +
               '</div>' +
               '<div class="settings-section" data-i18n="settings.secFetch">Fetching &amp; detections</div>' +
               '<div class="ctrl-group">' +
@@ -5842,6 +5873,7 @@
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label class="ctrl-check"><input type="checkbox" id="histo-zero-toggle" checked> <span data-i18n="ctrl.histoZero">Show zero-observation days in bar chart</span></label>' +
+                '<p class="cu-hint" data-i18n="ctrl.histoZeroHint">In the per-day observations bar chart, mark days with no observations as faint stubs (so gaps show) instead of skipping them.</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label class="ctrl-check"><input type="checkbox" id="dot-cluster-toggle"> <span data-i18n="ctrl.dotCluster">Cluster crowded dots</span></label>' +
@@ -5859,14 +5891,17 @@
               '<div class="ctrl-group" id="sources-wrap">' +
                 '<label data-i18n="sources.label">Data sources</label>' +
                 icoBtn("sources-open", "sources", "sources.manage", "Manage data sources…") +
+                '<p class="cu-hint" data-i18n="sources.labelHint">Turn each observation source on or off and enter its API key. GBIF and iNaturalist need no key; eBird and the regional databases each take a free key.</p>' +
               '</div>' +
               '<div class="ctrl-group" id="gbif-ds-wrap">' +
                 '<label data-i18n="ctrl.gbifDatasets">GBIF datasets (fetched separately)</label>' +
                 icoBtn("gbif-ds-open", "datasets", "gbif.manage", "Manage datasets…") +
+                '<p class="cu-hint" data-i18n="ctrl.gbifDatasetsHint">Extra GBIF publisher datasets queried alongside the main GBIF search — toggle each on or off.</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label data-i18n="ctrl.customurls">National databases</label>' +
                 icoBtn("natdb-open", "globe", "natdb.manage", "Manage national databases…") +
+                '<p class="cu-hint" data-i18n="ctrl.customurlsSettingsHint">Manage the national and regional bird-site links shown in a clicked point’s popup — add, edit, hide or delete per country, or reset the defaults.</p>' +
               '</div>' +
               '<div class="settings-section" data-i18n="settings.secRarity">Rarity alerts</div>' +
               '<div class="ctrl-group">' +
@@ -5877,10 +5912,12 @@
               '</div>' +
               '<div class="ctrl-group ctrl-inline">' +
                 '<label class="ctrl-check"><input type="checkbox" id="rarity-sound-toggle" checked> <span data-i18n="rarity.sound">Alarm sound</span></label>' +
-                '<button type="button" id="rarity-sound-test" class="demo-btn demo-btn-light" data-i18n="rarity.soundTest">Test</button>' +
+                '<button type="button" id="rarity-sound-test" class="btn btn-light" data-i18n="rarity.soundTest">Test</button>' +
               '</div>' +
+              '<p class="cu-hint" data-i18n="rarity.soundHint">Play a short chime when a new eBird rarity alert arrives while the app is open.</p>' +
               '<div class="ctrl-group">' +
                 '<label class="ctrl-check"><input type="checkbox" id="rarity-notif-toggle"> <span data-i18n="rarity.sysNotif">System notifications</span></label>' +
+                '<p class="cu-hint" data-i18n="rarity.sysNotifHint">Also raise a system notification for each new rarity alert — needs the browser’s notification permission.</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label class="ctrl-check"><input type="checkbox" id="rarity-country-toggle"> <span data-i18n="rarity.countryWide">Whole-country alerts</span></label>' +
@@ -5903,17 +5940,20 @@
                 '<div class="kml-btn-row">' +
                   icoBtn("points-export", "download", "btn.export", "Export") +
                   icoBtn("points-kml-import", "upload", "btn.import", "Import") +
-                  '<button type="button" id="points-fmt-toggle" class="demo-btn demo-btn-light kml-fmt-toggle" data-i18n-title="btn.fmtToggle" title="Export format">KML</button>' +
+                  '<button type="button" id="points-fmt-toggle" class="btn btn-light kml-fmt-toggle" data-i18n-title="btn.fmtToggle" title="Export format">KML</button>' +
                 "</div>" +
                 '<input type="file" id="points-kml-file" style="display:none" />' +
+                '<p class="cu-hint" data-i18n="ctrl.exportPointsHint">Export the map points you’ve placed as a KML or GeoJSON file, or import points from one.</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label data-i18n="lists.title">Administer lists</label>' +
                 icoBtn("lists-open", "list", "lists.manage", "Administer lists…") +
+                '<p class="cu-hint" data-i18n="lists.titleHint">Open the managers for your saved species lists and observer lists — rename, edit members or delete.</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label data-i18n="blocked.title">Blocked species</label>' +
                 icoBtn("blocked-open", "block", "blocked.manage", "Manage blocked species…") +
+                '<p class="cu-hint" data-i18n="blocked.titleHint">Species you’ve hidden from the lists — review them here and unblock any you want back.</p>' +
               '</div>' +
               '<div class="ctrl-group" id="sync-wrap">' +
                 '<label data-i18n="ctrl.syncData">Share between devices</label>' +
@@ -5925,7 +5965,7 @@
                 '<div class="sync-row" id="gdrive-row">' +
                   icoBtn("gd-connect", "cloud", "gdrive.connect", "Connect Google Drive") +
                   icoBtn("gd-sync", "refresh", "gdrive.syncNow", "Sync now", ' style="display:none"') +
-                  '<button type="button" id="gd-disconnect" class="demo-btn" data-i18n="gdrive.disconnect" style="display:none">Disconnect</button>' +
+                  '<button type="button" id="gd-disconnect" class="btn" data-i18n="gdrive.disconnect" style="display:none">Disconnect</button>' +
                 '</div>' +
                 '<input type="text" id="gd-clientid" autocomplete="off" spellcheck="false" data-i18n-ph="gdrive.clientIdPh" placeholder="Google OAuth client ID" style="display:none" />' +
                 '<div id="gd-status" class="cu-hint"></div>' +
@@ -5933,16 +5973,10 @@
               '</div>' +
               '<div class="settings-section" data-i18n="settings.secStorage">Storage &amp; offline</div>' +
               '<div class="ctrl-group">' +
-                '<label for="map-cache" data-i18n="ctrl.mapcache">Cache</label>' +
-                '<select id="map-cache">' +
-                  '<option value="0" data-i18n="opt.off">Off</option><option value="25">25 MB</option><option value="100">100 MB</option><option value="250">250 MB</option><option value="500">500 MB</option><option value="1000">1 GB</option><option value="-1" data-i18n="opt.unlimited">Unlimited</option>' +
-                '</select>' +
-                '<p class="cu-hint" data-i18n="ctrl.mapcachehint">One shared cache for the data the app fetches as you use it: map tiles, computed range data and overlay responses (least-recently-used dropped first when the size is reached), plus eBird hotspots, birding spots and species names — small, kept without limit. Downloaded offline areas are stored separately and never counted here.</p>' +
-              '</div>' +
-              '<div class="ctrl-group">' +
                 '<label data-i18n="ctrl.storage">Storage</label>' +
                 '<p class="cu-hint" id="storage-usage"></p>' +
-                '<button type="button" id="errlog-open" class="demo-btn demo-btn-light" data-i18n="errlog.title">Error log</button>' +
+                '<p class="cu-hint storage-warn" id="storage-warn" style="display:none"></p>' +
+                '<button type="button" id="errlog-open" class="btn btn-light" data-i18n="errlog.title">Error log</button>' +
               '</div>' +
               '<div class="ctrl-group" id="install-wrap" hidden>' +
                 '<label data-i18n="install.label">Offline mode</label>' +
@@ -5960,6 +5994,7 @@
                   '<button type="button" class="clear-cache-btn" data-clear="birds"><span class="clear-lbl" data-i18n="clear.birds">Birding spots</span><span class="clear-cnt"></span></button>' +
                   '<button type="button" class="clear-cache-btn" data-clear="best"><span class="clear-lbl" data-i18n="clear.best">Best sites</span><span class="clear-cnt"></span></button>' +
                   '<button type="button" class="clear-cache-btn" data-clear="names"><span class="clear-lbl" data-i18n="clear.names">Species names (iNat)</span><span class="clear-cnt"></span></button>' +
+                  '<button type="button" class="clear-cache-btn" data-clear="offline"><span class="clear-lbl" data-i18n="clear.offline">Offline areas</span><span class="clear-cnt"></span></button>' +
                 '</div>' +
               '</div>' +
               '<div class="settings-section" data-i18n="settings.secDisplay">Display &amp; language</div>' +
@@ -5970,16 +6005,11 @@
               '<div class="ctrl-group" id="secondlang-wrap">' +
                 '<label for="secondlang-select" data-i18n="ctrl.secondlang">2nd name</label>' +
                 '<select id="secondlang-select"></select>' +
+                '<p class="cu-hint" data-i18n="ctrl.secondlangHint">Show a second common-name column in the lists, in another language, next to the primary name.</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label class="ctrl-check"><input type="checkbox" id="show-sci-toggle" checked> <span data-i18n="ctrl.showsci">Scientific names</span></label>' +
-              '</div>' +
-              '<div class="ctrl-group">' +
-                '<label for="hold-delay" data-i18n="ctrl.holdDelay">Long-press delay</label>' +
-                '<select id="hold-delay">' +
-                  '<option value="400">0.4 s</option><option value="600">0.6 s</option><option value="800">0.8 s</option><option value="1000">1.0 s</option>' +
-                '</select>' +
-                '<p class="cu-hint" data-i18n="ctrl.holdDelayHint">How long a press must be held before hold actions fire (map long-press, species menu, overlay ⚙, header buttons…). Longer = fewer accidental popups on touch screens.</p>' +
+                '<p class="cu-hint" data-i18n="ctrl.showsciHint">Show the scientific-name column in the species lists.</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label class="ctrl-check"><input type="checkbox" id="experimental-toggle"> <span data-i18n="ctrl.experimental">Experimental features</span></label>' +
@@ -5991,7 +6021,7 @@
             '</div>' +
           '</div>' +
         '</div>' +
-        '<div id="demo-status"></div>' +
+        '<div id="app-status"></div>' +
         // Historic-fetch progress bar — ABOVE the map (historic is map-first, so
         // the bar must not sit in the hidden species panel). Same ids as always;
         // renderSpeciesList's hist branch drives it.
@@ -6000,17 +6030,17 @@
           '<div id="range-species" style="display:none"></div>' +
           '<div id="play-progress" style="display:none"><div class="pp-fill"></div><div class="pp-marker"></div><div class="pp-months"></div></div>' +
         '</div>' +
-        '<div id="demo-map-wrap">' +
-          '<div id="demo-map"></div>' +
+        '<div id="map-wrap">' +
+          '<div id="app-map"></div>' +
           // Per-day observation histogram — a slim scrollable strip DOCKED UNDER the
           // map (fitMapHeight subtracts its height), with a date axis along the bottom.
           '<div id="histo-strip" style="display:none"><button type="button" class="hs-clear" style="display:none">✕</button><button type="button" class="hs-toggle"></button><div class="hs-scroll"><div class="hs-bars"></div><div class="hs-axis"></div></div></div>' +
-          '<div id="demo-computing" style="display:none">' +
+          '<div id="computing-overlay" style="display:none">' +
             '<div class="spinner"></div>' +
             '<div id="computing-text">Computing\u2026</div>' +
             '<div id="computing-progress-wrap"><div id="computing-progress-bar"></div></div>' +
           '</div>' +
-          '<div id="demo-legend"></div>' +
+          '<div id="app-legend"></div>' +
           '<div id="nearby-page" style="display:none">' +
             '<div class="nb-bar">' +
               '<h3 id="nb-title" data-i18n="nearby.title">Close by</h3>' +
@@ -6021,7 +6051,7 @@
           '</div>' +
         '</div>' +
         '<div id="csv-btn-wrap" style="display:none">' +
-          '<button id="csv-download-btn" class="demo-btn ico-btn" title="Download CSV">' + ico("download") + '<span class="ico-label" data-i18n="btn.csv">CSV</span></button>' +
+          '<button id="csv-download-btn" class="btn ico-btn" title="Download CSV">' + ico("download") + '<span class="ico-label" data-i18n="btn.csv">CSV</span></button>' +
         '</div>' +
         '<div id="species-panel">' +
           '<div class="sp-page-bar">' +
@@ -6046,8 +6076,8 @@
             '<tbody id="sp-tbody"></tbody>' +
           '</table>' +
           '<div class="sp-actions sp-actions-dl">' +
-            '<button id="sp-checklist-btn" class="demo-btn ico-btn">' + ico("check") + '<span class="ico-label" data-i18n="btn.checklist">Checklist</span></button>' +
-            '<button id="sp-pdf-btn" class="demo-btn demo-btn-light ico-btn" title="Download PDF">' + ico("download") + "<span>PDF</span></button>" +
+            '<button id="sp-checklist-btn" class="btn ico-btn">' + ico("check") + '<span class="ico-label" data-i18n="btn.checklist">Checklist</span></button>' +
+            '<button id="sp-pdf-btn" class="btn btn-light ico-btn" title="Download PDF">' + ico("download") + "<span>PDF</span></button>" +
           '</div>' +
         '</div>' +
         '<div id="field-page" style="display:none">' +
@@ -6059,7 +6089,7 @@
             '<span class="field-seen" id="field-seen"></span>' +
             '<span class="field-actions">' +
               '<span class="fp-dl-wrap">' +
-                '<button id="field-dl-btn" class="demo-btn" data-i18n-title="btn.actions" title="Actions">⋮</button>' +
+                '<button id="field-dl-btn" class="btn" data-i18n-title="btn.actions" title="Actions">⋮</button>' +
                 '<div id="field-dl-menu" class="fp-dl-menu" style="display:none">' +
                   '<button id="field-pdf" class="fp-dl-item ico-btn">' + ico("download") + "<span>PDF</span></button>" +
                   '<button id="field-csv" class="fp-dl-item ico-btn">' + ico("download") + '<span class="ico-label" data-i18n="btn.csv">CSV</span></button>' +
@@ -6109,7 +6139,7 @@
             '<button id="entry-back" class="fp-back" title="Back">‹</button>' +
             '<span id="entry-title" class="field-place"></span>' +
             '<span class="field-actions">' +
-              '<button id="entry-merge" class="demo-btn" data-i18n="chk.merge">Merge</button>' +
+              '<button id="entry-merge" class="btn" data-i18n="chk.merge">Merge</button>' +
             '</span>' +
           '</div>' +
           '<div id="entry-list"></div>' +
@@ -6119,7 +6149,7 @@
             '<button id="review-back" class="fp-back" title="Back">‹</button>' +
             '<span id="review-title" class="field-place" data-i18n="review.title">Review &amp; upload</span>' +
             '<span class="field-actions">' +
-              '<button id="review-new" class="demo-btn" data-i18n="review.newGroup">+ Checklist</button>' +
+              '<button id="review-new" class="btn" data-i18n="review.newGroup">+ Checklist</button>' +
             '</span>' +
           '</div>' +
           '<div id="review-list"></div>' +
@@ -6170,9 +6200,9 @@
           '<p class="perf-desc" data-i18n="popup.desc">See where birds live, migrate, and are being seen right now — live observations from eBird, GBIF, iNaturalist and national databases, plus range and timing estimates worked out on your device. Everything runs in your browser.</p>' +
           '<p class="perf-privacy" data-i18n="popup.privacy">Private by design: there is no account and no server of ours. Your searches, saved lists and settings stay on this device — nothing is sent anywhere except the direct requests to the observation sources you query.</p>' +
           '<p class="perf-feedback"><span data-i18n="popup.feedback"></span> <button type="button" class="feedback-open ico-btn">' + ico("mail") + '<span class="ico-label" data-i18n="feedback.send">Message</span></button></p>' +
-          '<div class="install-row"><button type="button" id="install-info" class="demo-btn demo-btn-light ico-btn" hidden>' + ico("install") + '<span class="ico-label" data-i18n="install.app">Offline mode</span></button><div class="install-steps cu-hint" hidden></div></div>' +
+          '<div class="install-row"><button type="button" id="install-info" class="btn btn-light ico-btn" hidden>' + ico("install") + '<span class="ico-label" data-i18n="install.app">Offline mode</span></button><div class="install-steps cu-hint" hidden></div></div>' +
           '<div class="perf-version" id="perf-version" style="display:none"></div>' +
-          '<button id="perf-modal-ok" class="demo-btn" data-i18n="popup.ok">OK</button>' +
+          '<button id="perf-modal-ok" class="btn" data-i18n="popup.ok">OK</button>' +
         '</div></div>' +
         '<div id="feedback-modal" style="display:none"><div id="feedback-box">' +
           '<button type="button" id="feedback-close" aria-label="Close">×</button>' +
@@ -6181,8 +6211,8 @@
           '<input type="email" id="feedback-email" autocomplete="email" data-i18n-ph="feedback.emailPh" placeholder="Your email (optional, for a reply)" />' +
           '<div id="feedback-status" class="cu-hint"></div>' +
           '<div class="feedback-actions">' +
-            '<button type="button" id="feedback-cancel" class="demo-btn demo-btn-light" data-i18n="feedback.cancel">Cancel</button>' +
-            '<button type="button" id="feedback-send" class="demo-btn" data-i18n="feedback.sendBtn">Send</button>' +
+            '<button type="button" id="feedback-cancel" class="btn btn-light" data-i18n="feedback.cancel">Cancel</button>' +
+            '<button type="button" id="feedback-send" class="btn" data-i18n="feedback.sendBtn">Send</button>' +
           '</div>' +
         '</div></div>' +
         '<div id="gbif-modal" style="display:none"><div id="gbif-box">' +
@@ -6193,7 +6223,7 @@
             '<input type="text" id="gbif-add-cc" autocomplete="off" spellcheck="false" maxlength="2" data-i18n-ph="gbif.addCcPh" placeholder="CC" class="gbif-add-cc" />' +
             '<input type="text" id="gbif-add" autocomplete="off" spellcheck="false" data-i18n-ph="gbif.addPh" placeholder="Dataset key or gbif.org/dataset/… URL" />' +
             '<input type="text" id="gbif-add-url" autocomplete="off" spellcheck="false" data-i18n-ph="gbif.addUrlPh" placeholder="Homepage URL (optional)" />' +
-            '<button type="button" id="gbif-add-btn" class="demo-btn" data-i18n="gbif.add">Add</button>' +
+            '<button type="button" id="gbif-add-btn" class="btn" data-i18n="gbif.add">Add</button>' +
           '</div>' +
           '<div id="gbif-table"></div>' +
         '</div></div>' +
@@ -6203,8 +6233,8 @@
           '<p class="cu-hint" data-i18n="ctrl.customurlsHint">Open extra sites for a country in the map popups. Country code = ISO-3166 (e.g. NO, GB).</p>' +
           '<div id="custom-urls-list"></div>' +
           '<div class="cu-actions">' +
-            '<button type="button" id="custom-urls-add" class="demo-btn" data-i18n="ctrl.customurlsAdd">+ Add</button>' +
-            '<button type="button" id="custom-urls-reset" class="demo-btn demo-btn-light" data-i18n="ctrl.customurlsReset">Reset</button>' +
+            '<button type="button" id="custom-urls-add" class="btn" data-i18n="ctrl.customurlsAdd">+ Add</button>' +
+            '<button type="button" id="custom-urls-reset" class="btn btn-light" data-i18n="ctrl.customurlsReset">Reset</button>' +
           '</div>' +
         '</div></div>' +
         '<div id="detlist-modal" style="display:none"><div id="detlist-box">' +
@@ -6252,7 +6282,7 @@
           '<h3 id="blogs-title" data-i18n="blogs.title">Birding blogs</h3>' +
           '<p class="cu-hint" data-i18n="blogs.hint">Top birding blogs & resources for this country. Open any, add your own, or remove ones you don\'t want — your changes sync.</p>' +
           '<div id="blogs-list"></div>' +
-          '<div class="cu-actions"><button type="button" id="blogs-add" class="demo-btn demo-btn-light" data-i18n="blogs.add">+ Add blog</button></div>' +
+          '<div class="cu-actions"><button type="button" id="blogs-add" class="btn btn-light" data-i18n="blogs.add">+ Add blog</button></div>' +
         '</div></div>' +
         '<div id="sources-modal" style="display:none"><div id="sources-box">' +
           '<button type="button" id="sources-close" aria-label="Close">×</button>' +
@@ -6260,7 +6290,7 @@
           '<p class="cu-hint" id="sources-hint" data-i18n-html="sources.hint2">Tap a source to enable it and edit its details.</p>' +
           '<div id="sources-table"></div>' +
           '<div class="cu-actions" id="sources-actions">' +
-            '<button type="button" id="sources-reset" class="demo-btn demo-btn-light" data-i18n="sources.reset">Reset to defaults</button>' +
+            '<button type="button" id="sources-reset" class="btn btn-light" data-i18n="sources.reset">Reset to defaults</button>' +
           '</div>' +
         '</div></div>' +
         '<div id="blocked-modal" style="display:none"><div id="blocked-box">' +
@@ -6276,8 +6306,8 @@
           '<label class="ctrl-check lists-edges-row"><input type="checkbox" id="list-edges-toggle"> <span data-i18n="lists.edgesToggle">Show the year/life-list edges on map markers</span></label>' +
           '<div id="lists-list"></div>' +
           '<div class="lists-managers">' +
-            '<button type="button" id="lists-species-btn" class="demo-btn demo-btn-light" data-i18n="lists.speciesLists">Species lists…</button>' +
-            '<button type="button" id="lists-observer-btn" class="demo-btn demo-btn-light" data-i18n="lists.observerLists">Observer lists…</button>' +
+            '<button type="button" id="lists-species-btn" class="btn btn-light" data-i18n="lists.speciesLists">Species lists…</button>' +
+            '<button type="button" id="lists-observer-btn" class="btn btn-light" data-i18n="lists.observerLists">Observer lists…</button>' +
           '</div>' +
         '</div></div>' +
       '</div>';
@@ -6292,8 +6322,8 @@
       // Mark not-yet-downloaded name packs (italics) in the language selects.
       probeLangPacks().then(function () { populateLangSelect(); populateSecondLangSelect(); });
       buildLabelClass();
-      document.getElementById("demo-loading").style.display = "none";
-      document.getElementById("demo-app").style.display = "block";
+      document.getElementById("app-loading").style.display = "none";
+      document.getElementById("app-main").style.display = "block";
       // The header banner holds the bird (settings) icon, the Mode dropdown and
       // the Checklist dropdown.
       var hdr = document.getElementById("site-header");
@@ -6529,8 +6559,8 @@
       if (window.GDriveSync) window.GDriveSync.init();
       hideBootSplash();   // boot complete — drop the static splash from index.html
     } catch (e) {
-      document.getElementById("demo-loading").style.display = "";   // may have been hidden before the failure
-      document.getElementById("demo-loading").innerHTML =
+      document.getElementById("app-loading").style.display = "";   // may have been hidden before the failure
+      document.getElementById("app-loading").innerHTML =
         '<span style="color:red">' + t("app.failed", { msg: e.message }) + '</span>';
       console.error(e);
       hideBootSplash();   // the splash must not cover the error message
@@ -7065,7 +7095,7 @@
     // Constrain to a single world copy so panning can't yield out-of-range
     // longitudes (e.g. a click returning lon = 635) and the range overlay
     // always projects onto the visible map.
-    map = L.map("demo-map", {
+    map = L.map("app-map", {
       center: center, zoom: zoom,
       zoomControl: false,   // added manually below, bottom-right (with search + crosshair)
       // Keep min/max zoom on the H3 grid ladder (H3_ZOOM_PHASE + k·H3_ZOOM_STEP) so
@@ -7321,13 +7351,13 @@
     // Place (location-name) search — a map-pointer button below the crosshairs
     // that expands into a search box. The panel itself lives in the map wrapper
     // (above the map) so it's never clipped/stacked behind the tiles.
-    var psPanel = L.DomUtil.create("div", "place-search-panel", document.getElementById("demo-map-wrap"));
+    var psPanel = L.DomUtil.create("div", "place-search-panel", document.getElementById("map-wrap"));
     psPanel.style.display = "none";
     psPanel.innerHTML = '<input id="place-search" type="text" autocomplete="off" data-i18n-ph="ph.place" placeholder="' + escapeHtml(t("ph.place")) + '" />' +
       '<div id="place-results"></div>';
     function togglePlaceSearch() {
       var btn = document.querySelector(".place-search-btn");
-      var wrap = document.getElementById("demo-map-wrap");
+      var wrap = document.getElementById("map-wrap");
       if (!btn || !wrap) return;
       if (psPanel.style.display === "none") {
         closeOtherPopups();   // the search box replaces whatever transient popup is up
@@ -8310,7 +8340,7 @@
   // name, locate/search/offline header buttons, overlay ⚙ rows, funnel, points
   // panel, rarity bell…). User-adjustable in Settings ("Long-press delay") —
   // longer = fewer accidental popups on finicky touch screens.
-  function holdDelay() { var n = +window.GeoState.get("holdDelayMs", 600); return (n >= 300 && n <= 1500) ? n : 600; }
+  function holdDelay() { return 600; }   // constant 0.6 s long-press delay (setting removed)
   // Standing UX rule: the instant a press-and-hold crosses the threshold on ANY
   // active element, give a "click sensation" so the long-press feels acknowledged
   // (like a native long-press) — before its menu/action even appears. Haptic buzz
@@ -8562,16 +8592,13 @@
   // The range cache lives in localStorage, which browsers hard-cap at ~5 MB, so
   // it takes a small carved-out slice; the tiles get the rest. Both evict
   // least-recently-used first, so the total never exceeds the chosen size.
-  var MAP_CACHE_STEPS = [0, 25, 100, 250, 500, 1000, -1];   // -1 = Unlimited (never trimmed); 0 = Off (no caching)
-  function mapCacheMB() {
-    var saved = window.GeoState.get("mapCacheMB", null);
-    if (saved != null && MAP_CACHE_STEPS.indexOf(+saved) >= 0) return +saved;
-    var old = +window.GeoState.get("tileCacheMB", 100) || 0;   // migrate from the old separate tile setting
-    if (old <= 0) return 0;
-    return [25, 100, 250, 500].reduce(function (a, b) { return Math.abs(b - old) < Math.abs(a - old) ? b : a; }, 25);
-  }
-  function h3BudgetMB() { var mb = mapCacheMB(); return mb < 0 ? 5 : Math.min(5, mb); }   // small slice of the shared pool (Unlimited still caps it at 5 MB)
-  function tileCacheMB() { var mb = mapCacheMB(); return mb < 0 ? -1 : Math.max(0, mb - h3BudgetMB()); }   // the rest goes to map tiles; -1 = unlimited
+  // Fixed 2 GB map cache (the user-facing size selector was removed). The service
+  // worker LRU-prunes the map-pool to the tile budget when it's exceeded. The app
+  // ALSO warns when device storage gets close to full (renderStorageUsage /
+  // #storage-warn), and everything is clearable via the "Clear cached data" buttons.
+  function mapCacheMB() { return 2000; }                          // 2 GB total map cache
+  function h3BudgetMB() { return 5; }                             // computed range-cache slice (localStorage ~5 MB cap)
+  function tileCacheMB() { return mapCacheMB() - h3BudgetMB(); }  // the rest → map tiles; SW LRU-prunes the pool to this
   function sendTileCap() {
     try {
       if (navigator.serviceWorker && navigator.serviceWorker.controller)
@@ -8596,14 +8623,41 @@
     var el = document.getElementById("storage-usage"); if (!el) return;
     var app = fmtBytes(localStorageBytes());
     el.textContent = t("ctrl.storageLine", { app: app, used: "…", quota: "…" });
+    var warn = document.getElementById("storage-warn");
     if (navigator.storage && navigator.storage.estimate) {
       navigator.storage.estimate().then(function (est) {
         var e2 = document.getElementById("storage-usage"); if (!e2) return;
         e2.textContent = t("ctrl.storageLine", { app: app, used: fmtBytes(est.usage || 0), quota: fmtBytes(est.quota || 0) });
-      }).catch(function () { el.textContent = t("ctrl.storageLine", { app: app, used: "—", quota: "—" }); });
+        // Caching is unlimited, so warn when the device's storage quota is getting full —
+        // the "Clear cached data" buttons below are how the user frees space.
+        if (warn) {
+          var q = +est.quota || 0, u = +est.usage || 0, pct = q > 0 ? u / q : 0;
+          if (pct >= 0.80) {
+            warn.style.display = "";
+            warn.textContent = t("storage.warnFull", { pct: Math.round(pct * 100) });
+            warn.classList.toggle("storage-warn-crit", pct >= 0.92);
+          } else warn.style.display = "none";
+        }
+      }).catch(function () { el.textContent = t("ctrl.storageLine", { app: app, used: "—", quota: "—" }); if (warn) warn.style.display = "none"; });
     } else {
       el.textContent = t("ctrl.storageLine", { app: app, used: "—", quota: "—" });   // no StorageManager
+      if (warn) warn.style.display = "none";
     }
+  }
+  // Proactive storage-pressure check: after a cache-growing operation (a fetch,
+  // an offline download) warn via the status strip when the device storage is
+  // nearly full so the user can clear caches in Settings. Throttled to once/minute.
+  var _storageWarnedAt = 0;
+  function checkStoragePressure() {
+    if (!(navigator.storage && navigator.storage.estimate)) return;
+    navigator.storage.estimate().then(function (est) {
+      var q = +est.quota || 0, u = +est.usage || 0; if (!q) return;
+      var pct = u / q;
+      if (pct >= 0.90 && Date.now() - _storageWarnedAt > 60000) {
+        _storageWarnedAt = Date.now();
+        setStatus(t("storage.warnStatus", { pct: Math.round(pct * 100) }), true);
+      }
+    }).catch(function () {});
   }
   // All rows that WOULD be drawn (visible species, passing the recency filter).
   function eachDrawableRow(fn) {
@@ -10118,8 +10172,8 @@
       '<div class="drm-title">' + escapeHtml(t("hist.range")) + "</div>" +
       '<div class="drm-row"><input type="date" class="drm-from" value="' + escapeHtml(from0) + '" />' +
         '<span class="drm-dash">–</span><input type="date" class="drm-to" value="' + escapeHtml(to0) + '" /></div>' +
-      '<div class="drm-btns"><button type="button" class="drm-cancel demo-btn demo-btn-light">' + escapeHtml(t("btn.cancel")) + "</button>" +
-        '<button type="button" class="drm-apply demo-btn">' + escapeHtml(t("date.apply")) + "</button></div>";
+      '<div class="drm-btns"><button type="button" class="drm-cancel btn btn-light">' + escapeHtml(t("btn.cancel")) + "</button>" +
+        '<button type="button" class="drm-apply btn">' + escapeHtml(t("date.apply")) + "</button></div>";
     m.box.querySelector(".drm-cancel").addEventListener("click", m.close);
     m.box.querySelector(".drm-apply").addEventListener("click", function () {
       var f = (m.box.querySelector(".drm-from").value || "").trim();
@@ -11763,7 +11817,7 @@
           (lists.length ? '<select class="obs-ed-pick">' + lists.map(function (Lx, i) {
             return '<option value="' + i + '"' + (i === selLi ? " selected" : "") + ">" + esc(Lx.name) + "</option>";
           }).join("") + "</select>" : "") +
-          '<button type="button" class="obs-ed-new demo-btn demo-btn-light">＋ ' + esc(t("obs.newList")) + "</button>" +
+          '<button type="button" class="obs-ed-new btn btn-light">＋ ' + esc(t("obs.newList")) + "</button>" +
         "</div>";
       if (L) {
         html += '<div class="obs-ed-list">' +
@@ -12199,7 +12253,7 @@
   // shown. Tapping a tile opens that species' row in the list.
   function showRarityTicker(items) {
     closeRarityTicker();
-    var host = document.getElementById("demo-map-wrap"); if (!host) return;
+    var host = document.getElementById("map-wrap"); if (!host) return;
     var mapH = host.clientHeight || 400;
     var fit = Math.max(1, Math.floor((mapH - 24) / 59));   // tile ≈ 53 px + 6 px gap
     if (items.length > fit) items = items.slice(0, fit);   // keep the RAREST when space is short
@@ -13093,7 +13147,7 @@
   }
   function allFiltersBodyHtml() {
     var head = '<div class="aff-head"><b class="aff-title">' + escapeHtml(t("filters.title")) + "</b>" +
-      ((detHasFilter() || speciesFilterActive()) ? '<button type="button" class="aff-clear-all demo-btn demo-btn-light">' + escapeHtml(t("det.clearFilters")) + "</button>" : "") +
+      ((detHasFilter() || speciesFilterActive()) ? '<button type="button" class="aff-clear-all btn btn-light">' + escapeHtml(t("det.clearFilters")) + "</button>" : "") +
       '<button type="button" class="aff-close" aria-label="close">×</button></div>';
 
     // Species selection (currently-isolated species names). The Hidden toggle is its own
@@ -13619,9 +13673,9 @@
       '<textarea id="mp-note" aria-label="' + esc(t("points.note")) + '" placeholder="' + esc(t("points.note")) + '" rows="2">' + esc(p.note || "") + "</textarea>" +
       listSel +
       '<div class="mp-actions">' +
-        '<button type="button" id="mp-save" class="demo-btn">' + esc(t("points.save")) + '</button>' +
-        '<button type="button" id="mp-route" class="demo-btn demo-btn-light ico-btn" title="' + esc(t("route.add")) + '">' + ico("navplus") + '<span class="ico-label">' + esc(tLabel("route.addShort")) + '</span></button>' +
-        (isEdit ? '<button type="button" id="mp-del" class="demo-btn demo-btn-light">' + esc(t("btn.delete")) + '</button>' : "") +
+        '<button type="button" id="mp-save" class="btn">' + esc(t("points.save")) + '</button>' +
+        '<button type="button" id="mp-route" class="btn btn-light ico-btn" title="' + esc(t("route.add")) + '">' + ico("navplus") + '<span class="ico-label">' + esc(tLabel("route.addShort")) + '</span></button>' +
+        (isEdit ? '<button type="button" id="mp-del" class="btn btn-light">' + esc(t("btn.delete")) + '</button>' : "") +
       '</div>' +
     '</div>';
   }
@@ -13904,13 +13958,13 @@
       }).catch(function () { ovlSec.innerHTML = '<div class="mc-ovl-none">' + escapeHtml(t("ovl.none")) + "</div>"; });
     }
     wrap.appendChild(makePopupBtn(t("points.add"), "", function () { map.closePopup(); openPointEditor({ lat: lat, lon: lon, name: "", tags: [], note: "" }); }, "dots"));
-    wrap.appendChild(makePopupBtn(t("loc.save"), "demo-btn-light mc-btn-save", function () { map.closePopup(); registerLocationPrompt(lat, lon); }, "pin"));
-    wrap.appendChild(makePopupBtn(t("share.link"), "demo-btn-light", function () { map.closePopup(); offerShareUrl(pointShareUrl(lat, lon)); }, "share"));
-    wrap.appendChild(makePopupBtn(t("nav.here"), "demo-btn-light", function () { map.closePopup(); navigatePoints([{ lat: lat, lon: lon }]); }, "nav"));
+    wrap.appendChild(makePopupBtn(t("loc.save"), "btn-light mc-btn-save", function () { map.closePopup(); registerLocationPrompt(lat, lon); }, "pin"));
+    wrap.appendChild(makePopupBtn(t("share.link"), "btn-light", function () { map.closePopup(); offerShareUrl(pointShareUrl(lat, lon)); }, "share"));
+    wrap.appendChild(makePopupBtn(t("nav.here"), "btn-light", function () { map.closePopup(); navigatePoints([{ lat: lat, lon: lon }]); }, "nav"));
     // Offline maps moved here from a dedicated map button: download the current
     // view's tiles, or open the saved-areas manager.
-    wrap.appendChild(makePopupBtn(t("ctrl.downloadView"), "demo-btn-light", function () { map.closePopup(); openAreaDialog(map.getBounds()); }, "download"));
-    wrap.appendChild(makePopupBtn(t("offline.maps"), "demo-btn-light", function () { map.closePopup(); openOfflineManager(); }, "folder"));
+    wrap.appendChild(makePopupBtn(t("ctrl.downloadView"), "btn-light", function () { map.closePopup(); openAreaDialog(map.getBounds()); }, "download"));
+    wrap.appendChild(makePopupBtn(t("offline.maps"), "btn-light", function () { map.closePopup(); openOfflineManager(); }, "folder"));
     L.popup({ className: "choose-popup", closeButton: true, autoClose: true, autoPan: true, offset: [0, -2] })
       .setLatLng([lat, lon]).setContent(wrap).openOn(map);
     enableMenuKeys(wrap, function () { map.closePopup(); });   // PC: ↑/↓ + Enter through the actions
@@ -13999,10 +14053,10 @@
       // (import a shared file) is always available.
       '<div class="mp-head mp-head-actions">' +
         (Object.keys(detPlot).length ?
-          '<button type="button" id="mp-share-det" class="demo-btn demo-btn-light" title="' + escapeHtml(t("share.detHover")) + '" data-i18n="share.shareBtn">' + escapeHtml(t("share.shareBtn")) + "</button>" +
-          '<button type="button" id="mp-save-det" class="demo-btn" data-i18n="points.save">' + escapeHtml(t("points.save")) + "</button>"
+          '<button type="button" id="mp-share-det" class="btn btn-light" title="' + escapeHtml(t("share.detHover")) + '" data-i18n="share.shareBtn">' + escapeHtml(t("share.shareBtn")) + "</button>" +
+          '<button type="button" id="mp-save-det" class="btn" data-i18n="points.save">' + escapeHtml(t("points.save")) + "</button>"
           : "") +
-        '<button type="button" id="mp-import-share" class="demo-btn demo-btn-light" title="' + escapeHtml(tLabel("share.importFile")) + '" data-i18n="points.loadFile">' + escapeHtml(t("points.loadFile")) + "</button>" +
+        '<button type="button" id="mp-import-share" class="btn btn-light" title="' + escapeHtml(tLabel("share.importFile")) + '" data-i18n="points.loadFile">' + escapeHtml(t("points.loadFile")) + "</button>" +
         '<input type="file" id="share-file-input" accept=".share,.mcshare,.txt,text/plain" style="display:none" />' +
       "</div>" +
       collSection +
@@ -14992,12 +15046,12 @@
     if (h3CtrlEl) { h3CtrlEl.style.display = isMap ? "" : "none"; updateH3DetailButtons(); }
     // In Range the linked species name above the map is the only label we need,
     // so hide the status line (its "(step°) [cached]" detail just took space).
-    document.getElementById("demo-status").style.display = isRange ? "none" : "";
+    document.getElementById("app-status").style.display = isRange ? "none" : "";
     updateRangeSpecies();   // clickable species name + week above the map (range only)
     relocateCsvButton();
     // In Species distribution the bar holds only the search box, so drop the
     // card chrome and sit it tight under the header.
-    document.getElementById("demo-controls").classList.toggle("controls-bare", isRange);
+    document.getElementById("app-controls").classList.toggle("controls-bare", isRange);
     updateControlsBarVisibility();
     fitMapHeight();         // controls/mode changes shift the map's top edge
   }
@@ -15006,7 +15060,7 @@
   // Species List mode, where its controls live in the header) so it doesn't sit
   // as an empty card between the header and the map.
   function updateControlsBarVisibility() {
-    var bar = document.getElementById("demo-controls");
+    var bar = document.getElementById("app-controls");
     if (!bar) return;
     bar.style.display = "";   // show so children's visibility can be measured
     var anyVisible = Array.prototype.some.call(bar.children, function (ch) { return ch.offsetParent !== null; });
@@ -15159,7 +15213,7 @@
     } else {
       // Below the map (the map-controls bar was removed when its controls
       // moved into Settings).
-      var anchor = document.getElementById("demo-map-wrap");
+      var anchor = document.getElementById("map-wrap");
       if (anchor && wrap.previousElementSibling !== anchor) {
         anchor.parentNode.insertBefore(wrap, anchor.nextSibling);
       }
@@ -15319,6 +15373,7 @@
         try { updateDetLegend(); } catch (e) {}
         try { if (typeof refreshCurrentView === "function") refreshCurrentView(); } catch (e) {}
       }
+      else if (what === "offline") p = (window.AppOffline && AppOffline.clearAllAreas) ? AppOffline.clearAllAreas() : Promise.resolve();   // all downloaded offline map areas (pinned caches + frames)
       else p = Promise.resolve();
       var restore = btn ? btn.innerHTML : "";   // keep the label + count markup to restore after the ✓
       if (btn) btn.disabled = true;
@@ -15348,6 +15403,7 @@
       }
       var hs = loadHotspotStore();
       setCnt("hotspots", Object.keys(hs).length, jsonBytes(hs));
+      if (window.AppOffline && AppOffline.areaStats) AppOffline.areaStats().then(function (s) { setCnt("offline", s.n, s.bytes, true); }).catch(function () {});
       // Species-Range cache: the in-memory Map IS the working set (hydrated from
       // its pool blob at boot) — count its (species,week) tags, size via the same
       // rounded serialization used to persist it.
@@ -15519,14 +15575,6 @@
 
     // Hotspot min/max + birding-spot max moved OUT of Settings — they live in the
     // overlay rows' ⚙ popup (showZoomMenu) only.
-    var hdEl = document.getElementById("hold-delay");
-    if (hdEl) {
-      hdEl.value = String(holdDelay());
-      hdEl.addEventListener("change", function () {
-        window.GeoState.save({ holdDelayMs: +this.value || 600 });   // every hold gesture reads holdDelay() at press time
-      });
-    }
-
     // Numeric Settings inputs: seed from a getter, then on change clamp to an
     // integer in [min,max], write it back into the field, persist via save(v),
     // and run an optional after() (re-render). One implementation for all of them.
@@ -15642,7 +15690,7 @@
         if (document.getElementById("detlist-modal") && document.getElementById("detlist-modal").style.display === "flex" && typeof renderDetListModal === "function") renderDetListModal();
       });
     }
-    wireNumSetting("fetch-timeout", fetchTimeoutSec, 0, 600, 0, setFetchTimeoutSec, null);
+    wireNumSetting("fetch-timeout", fetchTimeoutSec, 0, 600, 120, setFetchTimeoutSec, null);
     wireNumSetting("sight-ttl", sightTtlMin, 0, 10080, 0, function (v) { window.GeoState.save({ sightTtlMin: v }); }, null);
     var fooEl = document.getElementById("fetchonopen-toggle");
     var fooDaysWrap = document.getElementById("fetchonopen-days-wrap");
@@ -15659,7 +15707,7 @@
         if (slp && slp.style.display === "block" && storedLocAnchor) showStoredLocations(storedLocAnchor);
       });
     }
-    wireNumSetting("download-days", downloadDays, 0, 92, 0, function (v) { window.GeoState.save({ downloadDays: v }); refreshRecentModeLabel(); }, null);
+    wireNumSetting("download-days", downloadDays, 0, 92, 30, function (v) { window.GeoState.save({ downloadDays: v }); refreshRecentModeLabel(); }, null);
     wireNumSetting("fetchonopen-days", fetchOnOpenDays, 1, 92, 30, function (v) { window.GeoState.save({ fetchOnOpenDays: v }); }, null);
 
     // Historic-observations date range (defaults: last 5 years), persisted.
@@ -15680,16 +15728,8 @@
       crEl.addEventListener("change", function () { window.GeoState.save({ countryRes: +this.value || 4 }); });
     }
 
-    var mcEl = document.getElementById("map-cache");
-    if (mcEl) {
-      mcEl.value = String(mapCacheMB());
-      mcEl.addEventListener("change", function () {
-        window.GeoState.save({ mapCacheMB: +this.value || 0 });
-        h3CacheMB = h3BudgetMB();   // re-split the shared budget…
-        sendTileCap();              // …tiles get the rest (service worker re-trims)
-        saveH3Cache();              // re-fit the range cache to its new slice (or clear at Off)
-      });
-    }
+    // (The "Map cache" size selector was removed — the cap is a fixed 2 GB, LRU-pruned
+    // by the SW; storage pressure is also surfaced via renderStorageUsage's warning.)
     // Push the tile-cache cap to the SW once it's controlling (and whenever it changes).
     if (navigator.serviceWorker) {
       try { navigator.serviceWorker.ready.then(sendTileCap).catch(function () {}); navigator.serviceWorker.addEventListener("controllerchange", sendTileCap); } catch (e) {}
@@ -15913,7 +15953,7 @@
           '<div class="so-sec">' + escapeHtml(t("sync.include")) + "</div>" +
           catRow("settings", "sync.catSettings") + catRow("lists", "sync.catLists") + catRow("trips", "sync.catTrips") + catRow("checklists", "sync.catChecklists") + catRow("fetched", "sync.catFetched") +
           '<p class="cu-hint">' + escapeHtml(t("sync.mergeNote")) + "</p>" +
-          '<div class="so-actions"><button type="button" class="demo-btn demo-btn-light so-cancel">' + escapeHtml(t("btn.cancel")) + '</button><button type="button" class="demo-btn so-go">' + escapeHtml(t("gdrive.syncNow")) + "</button></div>" +
+          '<div class="so-actions"><button type="button" class="btn btn-light so-cancel">' + escapeHtml(t("btn.cancel")) + '</button><button type="button" class="btn so-go">' + escapeHtml(t("gdrive.syncNow")) + "</button></div>" +
           "</div>";
         document.body.appendChild(ov);
         var close = function () { if (ov.parentNode) ov.parentNode.removeChild(ov); };
@@ -16478,8 +16518,8 @@
         m.box.innerHTML = '<div class="ui-modal-msg">' + escapeHtml(t("errlog.title")) + "</div>" +
           '<div class="errlog-list">' + (rows || '<div class="errlog-empty">' + escapeHtml(t("errlog.empty")) + "</div>") + "</div>" +
           '<div class="ui-modal-btns">' +
-            '<button type="button" class="demo-btn demo-btn-light" id="errlog-clear"' + (log.length ? "" : " disabled") + ">" + escapeHtml(t("btn.clear")) + "</button>" +
-            '<button type="button" class="demo-btn" id="errlog-close">OK</button></div>';
+            '<button type="button" class="btn btn-light" id="errlog-clear"' + (log.length ? "" : " disabled") + ">" + escapeHtml(t("btn.clear")) + "</button>" +
+            '<button type="button" class="btn" id="errlog-close">OK</button></div>';
         m.box.querySelector("#errlog-clear").addEventListener("click", function () { window.GeoState.save({ errorLog: [] }); render(); });
         m.box.querySelector("#errlog-close").addEventListener("click", m.close);
       }
@@ -16644,7 +16684,7 @@
     });
 
     document.getElementById("csv-download-btn").addEventListener("click", function () {
-      if (lastCsvData) downloadCsv(lastCsvData.filename, lastCsvData.content);
+      if (lastCsvData) downloadCsv(lastCsvData.filename, lastCsvData.getContent ? lastCsvData.getContent() : lastCsvData.content);
     });
 
     // A species name (.sp-link, in any list/table) → the ONE unified species
@@ -17257,7 +17297,8 @@
         if (!r || !isFinite(+r.lat) || !isFinite(+r.lon)) continue;
         if (!detRowPasses(r)) continue;                    // date window + observer + source + New + dedup
         var cell = window.h3.latLngToCell(Math.max(-89.9, Math.min(89.9, +r.lat)), wrapLon(+r.lon), res);
-        var c = cells[cell] || (cells[cell] = { sp: Object.create(null), ob: Object.create(null), tot: 0, nSp: 0, nOb: 0 });
+        var c = cells[cell] || (cells[cell] = { sp: Object.create(null), ob: Object.create(null), tot: 0, nSp: 0, nOb: 0, sLa: 0, sLo: 0, n: 0 });
+        c.sLa += (+r.lat); c.sLo += (+r.lon); c.n++;   // running centroid so the blob sits ON the actual dots, not the H3 cell's geometric centre
         if (!c.sp[sk]) { c.sp[sk] = 1; c.nSp++; }
         var cnt = +r.count; c.tot += (isFinite(cnt) && cnt > 0) ? cnt : 1;   // no count -> presence counts as 1
         var obs = detObsSplit(r.observer);
@@ -17353,7 +17394,8 @@
       var val = hotMode === "observers" ? c.nOb : hotMode === "counts" ? c.tot : c.nSp;
       var idx = Math.log1p(val) / lmax;
       if (!(idx > 0.02)) continue;
-      var ll = window.h3.cellToLatLng(ids[i]), pt = map.latLngToContainerPoint([ll[0], ll[1]]);
+      var ll = c.n ? [c.sLa / c.n, c.sLo / c.n] : window.h3.cellToLatLng(ids[i]);   // centroid of the cell's dots → blob sits ON the dots, not the hex centre
+      var pt = map.latLngToContainerPoint([ll[0], ll[1]]);
       if (pt.x < -radius || pt.y < -radius || pt.x > size.x + radius || pt.y > size.y + radius) continue;
       var g = ac.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, radius);
       g.addColorStop(0, "rgba(0,0,0," + Math.min(1, idx).toFixed(3) + ")");
@@ -18141,7 +18183,7 @@
   function makePopupBtn(label, cls, fn, icon) {
     var b = document.createElement("button");
     b.type = "button";
-    b.className = "demo-btn " + (cls || "") + (icon ? " ico-btn" : "");
+    b.className = "btn " + (cls || "") + (icon ? " ico-btn" : "");
     if (icon) { b.innerHTML = ico(icon) + '<span class="ico-label"></span>'; b.querySelector(".ico-label").textContent = label; }
     else b.textContent = label;
     b.addEventListener("click", fn);
@@ -18170,8 +18212,8 @@
         '<input type="text" class="ui-modal-input" id="loc-name" value="' + escapeHtml(suggest) + '" />' +
         '<label class="loc-radius-row">' + escapeHtml(t("loc.radius")) +
           ' <input type="number" id="loc-radius" min="1" max="200" step="1" value="' + recentRadiusKm() + '" /> km</label>' +
-        '<div class="ui-modal-btns"><button type="button" class="demo-btn demo-btn-light" id="loc-cancel">' + escapeHtml(t("btn.cancel")) + "</button>" +
-          '<button type="button" class="demo-btn" id="loc-ok">' + escapeHtml(t("popup.ok")) + "</button></div>";
+        '<div class="ui-modal-btns"><button type="button" class="btn btn-light" id="loc-cancel">' + escapeHtml(t("btn.cancel")) + "</button>" +
+          '<button type="button" class="btn" id="loc-ok">' + escapeHtml(t("popup.ok")) + "</button></div>";
       box.querySelector("#loc-cancel").addEventListener("click", close);
       box.querySelector("#loc-ok").addEventListener("click", function () {
         var name = (box.querySelector("#loc-name").value || "").trim();
@@ -18242,7 +18284,7 @@
   }
   // Pop up the stored-locations list anchored to the crosshair control.
   function showStoredLocations(anchorEl) {
-    var wrap = document.getElementById("demo-map-wrap"); if (!wrap || !anchorEl) return;
+    var wrap = document.getElementById("map-wrap"); if (!wrap || !anchorEl) return;
     storedLocAnchor = anchorEl;   // remembered so the panel can re-render itself (e.g. when "Fetch on open" toggles)
     var panel = document.getElementById("stored-loc-panel");
     if (!panel) {
@@ -18609,16 +18651,16 @@
     wrap.className = "map-choose";
     // The popup's own labels drop the leading pictogram (the mode dropdown keeps it).
     function noIcon(x) { return String(x).replace(/^[^\w\u00C0-\u024F]+/, ""); }
-    wrap.appendChild(makePopupBtn(noIcon(t("mode.list")), "demo-btn-green", function () { mk.closePopup(); renderSpeciesList(lat, lon); }));
+    wrap.appendChild(makePopupBtn(noIcon(t("mode.list")), "btn-green", function () { mk.closePopup(); renderSpeciesList(lat, lon); }));
     // Historic + Migration moved out of the Mode dropdown: they start HERE, at the
     // clicked point. Historic rides the mode switch (the placed marker carries in);
     // Migration switches mode and runs the analysis for this exact spot.
-    wrap.appendChild(makePopupBtn(noIcon(t("mode.historic")), "demo-btn-green", function () {
+    wrap.appendChild(makePopupBtn(noIcon(t("mode.historic")), "btn-green", function () {
       mk.closePopup();
       var sel = document.getElementById("mode-select");
       if (sel && sel.value !== "historic") { sel.value = "historic"; sel.dispatchEvent(new Event("change", { bubbles: true })); }
     }));
-    if (groupHasModel()) wrap.appendChild(makePopupBtn(noIcon(t("mode.barchart")), "demo-btn-green", function () {
+    if (groupHasModel()) wrap.appendChild(makePopupBtn(noIcon(t("mode.barchart")), "btn-green", function () {
       mk.closePopup();
       var sel = document.getElementById("mode-select");
       if (sel && sel.value !== "barchart") { sel.value = "barchart"; sel.dispatchEvent(new Event("change", { bubbles: true })); }
@@ -18633,14 +18675,14 @@
     var moreSub = document.createElement("div");
     moreSub.className = "choose-sub"; moreSub.style.display = "none";
     var moreLbl = t("popup.more");
-    var moreBtn = makePopupBtn(moreLbl + "\u2026", "demo-btn-light", function () {
+    var moreBtn = makePopupBtn(moreLbl + "\u2026", "btn-light", function () {
       var show = moreSub.style.display === "none";
       moreSub.style.display = show ? "" : "none";
       this.textContent = show ? (moreLbl + " \u25be") : (moreLbl + "\u2026");
       var p = mk.getPopup(); if (p && p.isOpen()) p.update();
     });
     wrap.appendChild(moreBtn); wrap.appendChild(moreSub);
-    moreSub.appendChild(makePopupBtn(t("link.birdingplaces") + " ↗", "demo-btn-light", function () {
+    moreSub.appendChild(makePopupBtn(t("link.birdingplaces") + " ↗", "btn-light", function () {
       mk.closePopup(); openExternal(birdingPlacesUrl(lat, lon));
     }));
     // Country resources for the clicked point — the national databases, then Blogs
@@ -18656,7 +18698,7 @@
       // popup entry (not inside "More"), Europe only. Inserted before the More toggle.
       if (continentFor(cc) === "EU") {
         wrap.insertBefore(
-          makePopupBtn(t("link.aloft") + " ↗", "demo-btn-green", function () {
+          makePopupBtn(t("link.aloft") + " ↗", "btn-green", function () {
             mk.closePopup(); openExternal("https://pcmoan70.github.io/BirdsWhere-aloft/");   // the Migration Aloft radar is its own repo/site now
           }),
           moreBtn
@@ -18664,20 +18706,20 @@
         var _pp = mk.getPopup(); if (_pp && _pp.isOpen()) _pp.update();
       }
       natServicesFor(cc).forEach(function (s) {
-        moreSub.appendChild(makePopupBtn(s.label + " ↗", "demo-btn-light", function () { mk.closePopup(); openExternal(s.url); }));
+        moreSub.appendChild(makePopupBtn(s.label + " ↗", "btn-light", function () { mk.closePopup(); openExternal(s.url); }));
       });
       if (cc) {
-        moreSub.appendChild(makePopupBtn(t("blogs.title") + " ▸", "demo-btn-light", function () { mk.closePopup(); openBlogs(cc, cname); }));
-        moreSub.appendChild(makePopupBtn(t("link.birdlife") + " ↗", "demo-btn-light", function () { mk.closePopup(); openExternal(birdLifeCountryUrl(cc, cname)); }));
+        moreSub.appendChild(makePopupBtn(t("blogs.title") + " ▸", "btn-light", function () { mk.closePopup(); openBlogs(cc, cname); }));
+        moreSub.appendChild(makePopupBtn(t("link.birdlife") + " ↗", "btn-light", function () { mk.closePopup(); openExternal(birdLifeCountryUrl(cc, cname)); }));
       }
       var wide = continentServices(cc), wlabel = categoryLabel(continentFor(cc));
       if (wide.length) {
         var wSub = document.createElement("div");
         wSub.className = "choose-sub"; wSub.style.display = "none";
         wide.forEach(function (s) {
-          wSub.appendChild(makePopupBtn(s.label + " ↗", "demo-btn-light", function () { mk.closePopup(); openExternal(s.url); }));
+          wSub.appendChild(makePopupBtn(s.label + " ↗", "btn-light", function () { mk.closePopup(); openExternal(s.url); }));
         });
-        var wBtn = makePopupBtn(wlabel + " ▸", "demo-btn-light", function () {
+        var wBtn = makePopupBtn(wlabel + " ▸", "btn-light", function () {
           var show = wSub.style.display === "none";
           wSub.style.display = show ? "" : "none";
           this.textContent = wlabel + (show ? " ▾" : " ▸");
@@ -18724,12 +18766,12 @@
         return { probs: agg, refLabel: t("compare.max"), kind: "ratio" };
       }
       if (mode === "annualtop") {
-        // Per-species "Annual Top" (focus) value at the current week (0–100).
-        var scratch = new Float32Array(48);
+        // "Annual Top" = current week's probability as a % of the species' annual PEAK
+        // (current ÷ max × 100); NaN → rendered as "-" when the annual peak is 0.
         for (s = 0; s < nSpecies; s++) {
-          var mxt = 0;
-          for (wk = 0; wk < 48; wk++) { v = cell[wk + 1] ? cell[wk + 1][s] : 0; scratch[wk] = v; if (v > mxt) mxt = v; }
-          agg[s] = window.GeoAnalysis.focusSeries(scratch, mxt)[wkIdx];
+          var mxt = 0, curt = cell[week] ? cell[week][s] : 0;
+          for (wk = 1; wk <= 48; wk++) { v = cell[wk] ? cell[wk][s] : 0; if (v > mxt) mxt = v; }
+          agg[s] = mxt > 0 ? Math.min(100, (curt / mxt) * 100) : NaN;
         }
         return { probs: agg, refLabel: t("compare.annualtop"), kind: "focus" };
       }
@@ -18765,16 +18807,18 @@
 
   // Cell for the "Annual Top" comparison: focus value 0–100, tinted red→green.
   function focusCell(v) {
+    if (Number.isNaN(v)) return '<td class="ratio-cell">-</td>';
     var n = Math.max(0, Math.min(100, v));
-    return '<td class="ratio-cell" style="background:' + probHueColor(n / 100) + '">' + Math.round(n) + "</td>";
+    return '<td class="ratio-cell" style="background:' + probHueColor(n / 100) + '">' + Math.round(n) + "%</td>";
   }
 
   // Species List comparison cell as a probability-style bar (used when every
   // value in the column is positive). pct scaled by kind: focus is already
   // 0–100; ratio/delta are fractions → ×100.
   function cmpBarCell(kind, v) {
+    if (Number.isNaN(v)) return '<td class="cmp-bar-cell"><span class="cmp-num">-</span></td>';   // Annual Top with 0 annual peak
     var pct = Math.max(0, Math.min(100, kind === "focus" ? v : v * 100));
-    var label = kind === "focus" ? String(Math.round(v))
+    var label = kind === "focus" ? Math.round(v) + "%"
       : Math.round(v * 100) + "%";
     return '<td class="cmp-bar-cell"><span class="cmp-num">' + label + '</span><div class="cmp-bar" style="width:' + Math.round(pct) + '%;background:' + probHueColor(pct / 100) + '"></div></td>';
   }
@@ -19027,15 +19071,23 @@
     var heading = t("panel.spTitle");
     var meta = (document.getElementById("sp-coords").textContent || "").trim();
     var n2 = !!d.name2Head, cmp = !!d.cmpHead;
+    // "Seen" column: the detection count from THIS point's latest fetch only
+    // (result.agg) — not the accumulated map dots / rarity alerts in the on-screen union.
+    var seenAgg = null;
+    if (d.showSeen) { var _tb = document.getElementById("sp-tbody"); seenAgg = (_tb && _tb._fetchAgg) || {}; }
+    var seen = !!seenAgg;
     var thead = "<tr><th>#</th><th>" + esc(t("th.species")) + "</th>" +
       (n2 ? "<th>" + esc(d.name2Head) + "</th>" : "") +
       "<th>" + esc(t("th.sci")) + "</th><th class='num'>" + esc(t("th.prob")) + "</th>" +
-      (cmp ? "<th class='num'>" + esc(d.cmpHead) + "</th>" : "") + "</tr>";
+      (cmp ? "<th class='num'>" + esc(d.cmpHead) + "</th>" : "") +
+      (seen ? "<th class='num'>" + esc(t("chk.seen")) + "</th>" : "") + "</tr>";
     var body = d.rows.map(function (r, i) {
+      var sc = seen ? ((seenAgg[r.key] && seenAgg[r.key].count) || 0) : 0;
       return "<tr><td>" + (i + 1) + "</td><td>" + esc(r.name) + "</td>" +
         (n2 ? "<td>" + esc(r.name2) + "</td>" : "") +
         "<td class='sci'>" + esc(r.sci) + "</td><td class='num'>" + esc(r.prob) + "</td>" +
-        (cmp ? "<td class='num'>" + esc(r.cmp) + "</td>" : "") + "</tr>";
+        (cmp ? "<td class='num'>" + esc(r.cmp) + "</td>" : "") +
+        (seen ? "<td class='num'>" + (sc ? "✓ " + sc : "") + "</td>" : "") + "</tr>";
     }).join("");
     var html = '<!doctype html><html><head><meta charset="utf-8"><title>' + esc(heading) + "</title><style>" +
       "body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#16302b;margin:32px;}" +
@@ -19695,7 +19747,7 @@
         return '<div class="sp-spf-item"><span>' + escapeHtml(nm) + '</span><button type="button" class="sp-spf-del" data-key="' + escapeHtml(k) + '" aria-label="' + escapeHtml(t("obs.removeFilter")) + '">×</button></div>';
       }).join("") + "</div>";
     }
-    if (speciesFilterActive()) html += '<button type="button" class="sp-spf-clear demo-btn demo-btn-light">' + escapeHtml(t("menu.removeAllSp")) + "</button>";
+    if (speciesFilterActive()) html += '<button type="button" class="sp-spf-clear btn btn-light">' + escapeHtml(t("menu.removeAllSp")) + "</button>";
     // Species lists as a TICKABLE dropdown (multi-select union): tick a saved list or a
     // premade group to add its species to the filter; untick to remove. Editing/deleting
     // saved lists lives in the manager (✎), not inline here.
@@ -19730,7 +19782,7 @@
     // collapsed dropdown. In the header panel it stays collapsed unless the user opened it.
     html += '<details class="sp-lists-dd"' + ((force || spListsDdOpen) ? " open" : "") + '><summary>' + escapeHtml(t("sp.pickLists")) + "</summary>" +
       '<div class="sp-lists-menu">' + (rows || '<div class="sp-list-empty">' + escapeHtml(t("sp.noLists")) + "</div>") + "</div></details>";
-    if (sel.length) html += '<button type="button" class="sp-splist-save demo-btn demo-btn-light">' + escapeHtml(t("sp.saveAsList")) + "</button>";
+    if (sel.length) html += '<button type="button" class="sp-splist-save btn btn-light">' + escapeHtml(t("sp.saveAsList")) + "</button>";
     return html;
   }
   // Wire the species-lists picker (shared by the header panel + the all-filters pane).
@@ -19774,7 +19826,7 @@
         '<button type="button" class="sp-cnt-metric" title="' + escapeHtml(t("th.total") + " / " + t("sort.obs")) + '">' + escapeHtml(metricLbl) + "</button>" +
         '<span class="sp-bound-op">≤</span>' +
         '<input type="number" min="0" step="1" class="sp-cnt-max" value="' + (spCountMax == null ? "" : spCountMax) + '" aria-label="max" />' +
-        (totalFilterActive() ? '<button type="button" class="sp-bound-clear demo-btn demo-btn-light">' + escapeHtml(t("det.clearFilters")) + "</button>" : "") +
+        (totalFilterActive() ? '<button type="button" class="sp-bound-clear btn btn-light">' + escapeHtml(t("det.clearFilters")) + "</button>" : "") +
       "</div></div>";
   }
   function spProbPanelHtml() {
@@ -20009,7 +20061,7 @@
       // When every comparison value is positive, show it as a probability-style
       // bar; otherwise (e.g. week-over-week change) show the value with
       // negatives in red.
-      var cmpAllPositive = hasCompare && results.every(function (r) { return r.cmpVal >= 0; });
+      var cmpAllPositive = hasCompare && results.every(function (r) { return Number.isNaN(r.cmpVal) || r.cmpVal >= 0; });
       // Probability palette is min-max stretched across the visible list (like
       // the analysis heatmap) so the strongest species reads green, weakest red.
       var pHi = results.length ? results[0].prob : 1;            // sorted desc → max first
@@ -20036,7 +20088,7 @@
         var name2Cell = '<td class="name2">' + (secondLang ? escapeHtml(secondName(r.label)) : "") + '</td>';
         var dKey = escapeHtml(r.label.key);
         var pct = Math.round(r.prob * 100);
-        var sortAttrs = ' data-name="' + escapeHtml(speciesName(r.label).toLowerCase()) + '" data-prob="' + r.prob + '"' + (hasCompare ? ' data-cmp="' + r.cmpVal + '"' : "");
+        var sortAttrs = ' data-name="' + escapeHtml(speciesName(r.label).toLowerCase()) + '" data-prob="' + r.prob + '"' + (hasCompare ? ' data-cmp="' + (Number.isNaN(r.cmpVal) ? -1 : r.cmpVal) + '"' : "");
         return '<tr' + sortAttrs + '>' +
                '<td>' + spListDot(r.label.key) + nameLinkHtml(r.label, true) + '</td>' + name2Cell +
                '<td class="sci"><span class="sci-link" data-key="' + dKey + '" title="' + escapeHtml(t("sci.familyTip")) + '">' +
@@ -20081,22 +20133,32 @@
       renderSpControls();   // filter bar + layout dropdown + (records view if not the table)
       setStatus(t("status.spResult", { n: results.length, p: (pmin * 100).toFixed(0), lat: lat.toFixed(2), lon: lon.toFixed(2) }));
 
-      // Build CSV for species list (includes 2nd-name + comparison columns when active)
-      var header = "rank,species_code,common_name";
-      if (secondLang) header += ",common_name_" + secondLang;
-      header += ",scientific_name,probability";
-      if (hasCompare) header += "," + (kind === "ratio" ? "fraction_of_" : kind === "focus" ? "annual_top_" : "delta_vs_") + cmp.refLabel.replace(/[",\s]+/g, "_");
-      var csvLines = [header];
-      results.forEach(function (r, idx) {
-        var line = (idx + 1) + ',"' + r.label.key + '","' + speciesName(r.label).replace(/"/g, '""') + '"';
-        if (secondLang) line += ',"' + secondName(r.label).replace(/"/g, '""') + '"';
-        line += ',"' + r.label.sci.replace(/"/g, '""') + '",' + r.prob.toFixed(6);
-        if (hasCompare) line += "," + r.cmpVal.toFixed(6);
-        csvLines.push(line);
-      });
+      // Build CSV for species list (includes 2nd-name + comparison columns when active,
+      // plus a "seen_count" column filled from the latest fetch). Rebuilt at DOWNLOAD
+      // time so the seen counts reflect the sightings that arrived after this render.
+      var buildSpeciesCsv = function () {
+        // Seen = ONLY this point's own fetch (tbody._fetchAgg = result.agg) — NOT the
+        // accumulated map dots (detPlot) or rarity alerts the on-screen union folds in.
+        var tb = document.getElementById("sp-tbody"), agg = (tb && tb._fetchAgg) || null;
+        var header = "rank,species_code,common_name";
+        if (secondLang) header += ",common_name_" + secondLang;
+        header += ",scientific_name,probability";
+        if (hasCompare) header += "," + (kind === "ratio" ? "fraction_of_" : kind === "focus" ? "annual_top_" : "delta_vs_") + cmp.refLabel.replace(/[",\s]+/g, "_");
+        header += ",seen_count";
+        var csvLines = [header];
+        results.forEach(function (r, idx) {
+          var line = (idx + 1) + ',"' + r.label.key + '","' + speciesName(r.label).replace(/"/g, '""') + '"';
+          if (secondLang) line += ',"' + secondName(r.label).replace(/"/g, '""') + '"';
+          line += ',"' + r.label.sci.replace(/"/g, '""') + '",' + r.prob.toFixed(6);
+          if (hasCompare) line += "," + (Number.isNaN(r.cmpVal) ? "" : r.cmpVal.toFixed(6));
+          line += "," + ((agg && agg[r.label.key] && agg[r.label.key].count) || 0);
+          csvLines.push(line);
+        });
+        return csvLines.join("\n");
+      };
       lastCsvData = {
         filename: "Geomodel_species_list_" + lat.toFixed(2) + "_" + lon.toFixed(2) + "_week" + week + ".csv",
-        content: csvLines.join("\n")
+        getContent: buildSpeciesCsv
       };
       // Snapshot the displayed rows/columns for the printable PDF export.
       // Augment rows with detection counts + age: recent (last 30 d) for a point,
@@ -20145,14 +20207,15 @@
       lastSpeciesPdf = {
         name2Head: secondLang ? window.GeoI18N.langByCode(secondLang).name : "",
         cmpHead: document.getElementById("sp-delta-head").textContent || "",
+        showSeen: true,   // recent/point list → add a "Seen" (latest-fetch count) column, filled live at export
         rows: results.map(function (r) {
           var cmpText = "";
           if (hasCompare) {
             cmpText = kind === "ratio" ? Math.round(r.cmpVal * 100) + "%"
-              : kind === "focus" ? (r.cmpVal * 100).toFixed(0) + "%"
+              : kind === "focus" ? (Number.isNaN(r.cmpVal) ? "-" : Math.round(r.cmpVal) + "%")   // Annual Top: current÷peak %, "-" when peak 0
               : (r.cmpVal >= 0 ? "+" : "") + (r.cmpVal * 100).toFixed(1) + "%";
           }
-          return { name: speciesName(r.label), name2: secondLang ? secondName(r.label) : "", sci: r.label.sci, prob: (r.prob * 100).toFixed(1) + "%", cmp: cmpText };
+          return { key: r.label.key, name: speciesName(r.label), name2: secondLang ? secondName(r.label) : "", sci: r.label.sci, prob: (r.prob * 100).toFixed(1) + "%", cmp: cmpText };
         }),
       };
       showCsvBtn();
@@ -20161,7 +20224,7 @@
 
   // ---- Computing overlay ---------------------------------------------------
   function showComputingOverlay(show, name) {
-    var el = document.getElementById("demo-computing");
+    var el = document.getElementById("computing-overlay");
     if (!el) return;
     el.style.display = show ? "flex" : "none";
     if (show) {
@@ -20172,7 +20235,7 @@
 
   // ---- Legend ---------------------------------------------------------------
   function updateLegend() {
-    var el = document.getElementById("demo-legend");
+    var el = document.getElementById("app-legend");
     if (!el) return;
     if ((currentMode !== "range" && currentMode !== "richness") || !cachedRender) { el.style.display = "none"; return; }
 
