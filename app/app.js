@@ -350,6 +350,12 @@
   function fitMapHeight() {
     var el = document.getElementById("app-map");
     if (!el || el.offsetParent === null) return;   // not visible yet
+    // The map view fills the viewport and must never page-scroll. A transient overflow —
+    // e.g. the histogram strip expanding before the map is re-sized — can scroll the page,
+    // which pushes the map (and its top-corner controls) up UNDER the fixed header and, read
+    // here as a smaller getBoundingClientRect().top, mis-sizes it. Reset the scroll first so
+    // `top` is the true offset below the header. (List view is a fixed overlay — leave it.)
+    if (!onListView() && (window.scrollY || document.documentElement.scrollTop || 0)) window.scrollTo(0, 0);
     var top = el.getBoundingClientRect().top;
     el.style.aspectRatio = "auto";
     el.style.maxHeight = "none";
@@ -847,6 +853,31 @@
     };
     document.addEventListener("pointerdown", statusClearFn, true);
     document.addEventListener("keydown", statusClearFn, true);
+    setTimeout(function () { armed = true; }, 400);
+  }
+  // The persistent species-page "Loaded: eBird (n), GBIF (k)…" line: keep it visible
+  // straight after a fetch, then hide it on the FIRST interaction (the per-area obs
+  // counts in the header carry the totals afterwards). A press ON the line itself
+  // (a clickable error chip) doesn't dismiss it. Short arm delay so the fetch's own
+  // click doesn't wipe it instantly.
+  var spLoadingClearFn = null;
+  function armSpLoadingClear() {
+    if (spLoadingClearFn) {
+      document.removeEventListener("pointerdown", spLoadingClearFn, true);
+      document.removeEventListener("keydown", spLoadingClearFn, true);
+    }
+    var armed = false;
+    spLoadingClearFn = function (ev) {
+      if (!armed) return;
+      var ld = document.getElementById("sp-loading");
+      if (ld && ev && ev.target && ld.contains(ev.target)) return;   // interacting WITH the line (error chip) keeps it
+      document.removeEventListener("pointerdown", spLoadingClearFn, true);
+      document.removeEventListener("keydown", spLoadingClearFn, true);
+      spLoadingClearFn = null;
+      if (ld) ld.style.display = "none";
+    };
+    document.addEventListener("pointerdown", spLoadingClearFn, true);
+    document.addEventListener("keydown", spLoadingClearFn, true);
     setTimeout(function () { armed = true; }, 400);
   }
   // Overlay data-load indicator in the status text above the map (Overpass overlays).
@@ -1797,7 +1828,7 @@
         '<td class="prob-cell sp-ytop" data-key="' + escapeHtml(d.key || "") + '"></td>' : "") +
       (opts.date ? '<td class="sp-d-date">' + dateCell + "</td>" : "") +
       (opts.loc ? '<td class="sp-d-loc">' + (placeAccurate(d)
-        ? '<span class="sp-loc-click" role="button" title="' + escapeHtml(d.place) + '">' + escapeHtml(d.place) + "</span>"
+        ? '<span class="sp-loc-click" role="button" data-loc="' + escapeHtml(String(d.place).trim()) + '" title="' + escapeHtml(d.place) + '">' + escapeHtml(d.place) + "</span>"
         : rgeoSpanHtml(d.lat, d.lon, "sp-loc-click", "", ' role="button"', String(d.place || "").trim(), d.posFuzzM)) + "</td>" : "") +   // lat/lon-only or generic place → map-derived name
       (opts.dist !== false ? '<td class="num">' + km + "</td>" : "") +
       '<td class="num">' + cnt + "</td>" +
@@ -1862,7 +1893,7 @@
           var gLoc = null;
           for (var gli = 0; gli < g.items.length; gli++) { var git = g.items[gli]; if (git && isFinite(+git.lat) && isFinite(+git.lon)) { gLoc = git; break; } }
           locSpan = gLoc
-            ? ' · <span class="dl-loc sp-loc-click" role="button" data-lat="' + (+gLoc.lat) + '" data-lon="' + (+gLoc.lon) + '">' + escapeHtml(g.loc) + "</span>"
+            ? ' · <span class="dl-loc sp-loc-click" role="button" data-lat="' + (+gLoc.lat) + '" data-lon="' + (+gLoc.lon) + '" data-loc="' + escapeHtml(g.loc) + '">' + escapeHtml(g.loc) + "</span>"
             : ' <span class="dl-loc">· ' + escapeHtml(g.loc) + "</span>";
         } else if (g.items[0] && isFinite(+g.items[0].lat) && isFinite(+g.items[0].lon)) {
           // No (accurate) source place → the group is one spot (grouped by its
@@ -2011,7 +2042,7 @@
         e.preventDefault(); e.stopPropagation();
         hideLocHoverMap();
         var c = locClickCoords(this);
-        showLocPointMenu(c.lat, c.lon, this.textContent, e.clientX, e.clientY);
+        showLocPointMenu(c.lat, c.lon, this.textContent, e.clientX, e.clientY, null, { locName: this.getAttribute("data-loc") || "" });
       });
       // Hovering a place name previews it on a small map without leaving the list.
       s.addEventListener("mouseenter", function (e) {
@@ -2501,11 +2532,6 @@
   function xenoCantoUrl(sci) {
     return "https://xeno-canto.org/explore?query=" + encodeURIComponent(sciBinomial(sci));
   }
-  // iNaturalist taxon page (photos for EVERY group — mammals, plants, fungi, …), by
-  // scientific name. The one photo link that works beyond birds.
-  function inatPhotosUrl(sci) {
-    return "https://www.inaturalist.org/taxa/search?q=" + encodeURIComponent(sciBinomial(sci));
-  }
   // iNaturalist's NAME SERVER — the same API that fills in the app's missing names
   // (taxa/autocomplete above), asked here for everything it holds: the accepted
   // scientific name and the common name per language. That is the check for "this
@@ -2602,22 +2628,6 @@
   }
   // NBN Atlas (UK) species search by scientific name.
   function nbnUrl(sci) { return "https://species.nbnatlas.org/search?q=" + encodeURIComponent(String(sci || "").trim()); }
-  // EuroBirdPortal — animated week-by-week European distribution maps. It addresses
-  // a species by a 6-letter code = first 3 of genus + first 3 of species, uppercased
-  // (e.g. Jynx torquilla → JYNTOR), so we can deep-link straight to the species map.
-  // EBP only covers ~105 species; an uncovered code just shows the empty viewer. A
-  // species without a usable binomial falls back to the general viewer.
-  var EBP_URL = "https://eurobirdportal.org/ebp/en/";
-  function ebpCode(sci) {
-    var p = String(sci || "").trim().split(/\s+/);
-    if (p.length < 2) return "";
-    var g = p[0].replace(/[^a-z]/gi, ""), s = p[1].replace(/[^a-z]/gi, "");
-    return (g.length >= 3 && s.length >= 3) ? (g.slice(0, 3) + s.slice(0, 3)).toUpperCase() : "";
-  }
-  function ebpUrl(sci) {
-    var code = ebpCode(sci);
-    return code ? "https://eurobirdportal.org/embedded/ebp/en/" + code + "/traces/2000" : EBP_URL;
-  }
   // National & regional bird sites, the single source of truth for the map
   // popups' country links. A flat [{cc, url, label}] list (cc = ISO-3166 alpha-2;
   // the pseudo-code "EU" is the Europe & Worldwide category). Curated from
@@ -3278,7 +3288,8 @@
       var n = a && a.name ? String(a.name).trim() : "";
       if (n && !seen[n]) { seen[n] = 1; out.push(n); }
     });
-    return out;
+    // Sorted by name so the listing is stable — independent of fetch order/time.
+    return out.sort(function (a, b) { return a.localeCompare(b); });
   }
   function clearFetchedAreas() {
     if (fetchedAreasLayer) fetchedAreasLayer.clearLayers();
@@ -4278,10 +4289,11 @@
       if (ex.rows && ex.rows.length && inGrp(ex.cls)) entries.push({ key: "x:" + k, name: ex.name || ex.sci, rows: ex.rows, cls: ex.cls || "" });
     });
     if (!entries.length) return;
-    if (isFinite(+currentSpView.lat) && isFinite(+currentSpView.lon)) currentFetchAreaId = rememberFetchedArea(+currentSpView.lat, +currentSpView.lon, currentSpView.name || currentSpView.locName);
+    if (isFinite(+currentSpView.lat) && isFinite(+currentSpView.lon)) currentFetchAreaId = rememberFetchedArea(+currentSpView.lat, +currentSpView.lon, recentRadiusKm(), currentSpView.name || currentSpView.locName);
     entries.forEach(function (e) { plotDetections(e.key, e.name, e.rows, false, true, e.cls); });   // defer=true → rebuild once below
     currentFetchAreaId = null;
     rebuildDetLayers(); updateDetLegend();
+    refreshSpCoords();   // the just-fetched square + its obs count now show in the header
   }
   function plotHistoricRecs(recsM, grp) {
     if (!recsM || !recsM.length || typeof plotDetections !== "function") return;
@@ -4503,6 +4515,8 @@
     var cur = obsCurrent(); if (!cur.length) return;   // nothing queried this batch — leave the line as-is
     var parts = cur.map(function (it) { return escapeHtml(it.name) + " (" + it.count + ")"; });
     obsLine(t("sp.loaded", { n: parts.join(", ") }));
+    armSpLoadingClear();   // the persistent line dismisses on the first interaction
+    refreshSpCoords();     // per-area obs counts in the header reflect the finished fetch
   }
   // The species-page loading line, set straight from a fetch's per-source counts
   // (works for a cached fetch too, where obsTrack never ran). Persistent.
@@ -4543,7 +4557,9 @@
           else modalAlert(e);
         });
       });
+      armSpLoadingClear();   // the persistent line dismisses on the first interaction
     }
+    refreshSpCoords();   // per-area obs counts in the header reflect this fetch
     try { checkStoragePressure(); } catch (e) {}   // a fetch grew the caches → warn if device storage is nearly full
   }
   function hideSourceCounts() { var ld = document.getElementById("sp-loading"); if (ld) ld.style.display = "none"; }
@@ -5544,6 +5560,9 @@
   function parseSemiParams() {
     var out = {}, s = (window.location.search || "").replace(/^\?/, "");
     if (!s) return out;
+    // Some QR scanners / share sheets percent-encode the ";" separators (%3B) — decode
+    // the whole string once so the split below still sees them (values never contain ; or &).
+    try { s = decodeURIComponent(s); } catch (e) {}
     s.split(/[&;]/).forEach(function (pair) {
       if (!pair) return;
       var i = pair.indexOf("="), k = i < 0 ? pair : pair.slice(0, i), v = i < 0 ? "" : pair.slice(i + 1);
@@ -5563,9 +5582,10 @@
       default: return null;
     }
   }
-  // Richer shortcut URL: ?location=here;radius=5;show=list;sortby=time_recent
+  // Richer shortcut URL: ?location=here;radius=5;days=7;show=list;sortby=time_recent
   //   location=here | <lat>,<lon>  → geolocate, or go to explicit coordinates
   //   radius=<km>    → set the sightings radius before fetching
+  //   days=<n>       → set the "Download — last N days" window before fetching (1–92)
   //   show=list|map  → land on the list page, or the map with dots dropping in (default)
   //   sortby=…       → rarity_increasing (default) | rarity_decreasing | time_recent
   function maybeUrlLocationParam() {
@@ -5591,6 +5611,13 @@
       window.GeoState.save({ recentRadiusKm: rk }); allSightingsCache = {};
       var rrEl = document.getElementById("recent-radius"); if (rrEl) rrEl.value = String(radiusStepIndex(rk));
       var rrVal = document.getElementById("recent-radius-val"); if (rrVal) rrVal.textContent = radiusLabel(rk);
+    }
+    var dd = parseInt(p.days, 10);
+    if (isFinite(dd) && dd > 0) {   // persist like radius so the fetch + the Settings field agree
+      dd = Math.min(92, dd);
+      window.GeoState.save({ downloadDays: dd });
+      var ddEl = document.getElementById("download-days"); if (ddEl) ddEl.value = String(dd);
+      refreshRecentModeLabel();   // the "📍 Recent" mode label carries the window as a superscript
     }
 
     var sort = urlSortState(p.sortby);
@@ -5744,14 +5771,6 @@
               '<button type="button" id="settings-update" class="settings-update" style="display:none"></button>' +
               '<div id="settings-update-notes" class="cu-hint" style="display:none"></div>' +
               '<div class="settings-section" data-i18n="settings.secView">View</div>' +
-              '<div class="ctrl-group" id="hotspot-wrap">' +
-                '<label data-i18n="ctrl.hotspot">Density heatmap</label>' +
-                '<div class="hs-row">' +
-                  '<button type="button" class="hs-cycle" id="hotspot-cycle" data-hs="off" data-i18n="ctrl.hsOff">Off</button>' +
-                  '<label class="ctrl-check hs-dots"><input type="checkbox" id="showdots-toggle" checked> <span data-i18n="ctrl.showDots">Show dots</span></label>' +
-                '</div>' +
-                '<p class="cu-hint" data-i18n="ctrl.hotspotHint">Shades the map by how much activity each area has — tap to cycle Off → species per area → distinct observers → total counts. A smooth, zoom-steady heat cloud; use “Show dots” to see the heatmap alone, the dots alone, or both.</p>' +
-              '</div>' +
               '<div class="ctrl-group">' +
                 '<label for="group-select" data-i18n="ctrl.group">Species group</label>' +
                 '<select id="group-select" style="display:none">' +
@@ -5790,12 +5809,22 @@
                   '<option value="satellite" data-i18n="basemap.satellite">Satellite</option>' +
                 '</select>' +
                 '<p class="cu-hint" data-i18n="ctrl.basemapHint">The background map style behind the data — Light, Dark, Streets, Topographic or Satellite.</p>' +
-                '<div id="exp-mapkeys-wrap" style="display:none">' +
+                '<div id="carto-key-wrap" style="display:none">' +
                   '<input type="text" id="carto-key-input" autocomplete="off" spellcheck="false" data-i18n-ph="ph.cartoKey" placeholder="CARTO API key (for Voyager)" />' +
-                  '<p class="cu-hint" data-i18n="ctrl.cartoKeyHint">Experimental. The Voyager map is served by CARTO, which now needs a personal API key (free account at carto.com). Paste it here to enable Voyager; without a key it is hidden from the list and the other maps are used.</p>' +
-                  '<input type="text" id="maptiler-key-input" autocomplete="off" spellcheck="false" data-i18n-ph="ph.maptilerKey" placeholder="MapTiler API key (for MapTiler Outdoor)" />' +
-                  '<p class="cu-hint" data-i18n="ctrl.maptilerKeyHint">Experimental. MapTiler Outdoor (trails + terrain) needs a personal MapTiler API key (free account at maptiler.com). Paste it here to enable it; without a key it is hidden from the list.</p>' +
+                  '<p class="cu-hint" data-i18n="ctrl.cartoKeyHint">The Voyager map (CARTO) needs a free personal API key from carto.com — paste it here to use Voyager. Until then a plain Streets map is shown.</p>' +
                 '</div>' +
+                '<div id="maptiler-key-wrap" style="display:none">' +
+                  '<input type="text" id="maptiler-key-input" autocomplete="off" spellcheck="false" data-i18n-ph="ph.maptilerKey" placeholder="MapTiler API key (for MapTiler Outdoor)" />' +
+                  '<p class="cu-hint" data-i18n="ctrl.maptilerKeyHint">MapTiler Outdoor (trails + terrain) needs a free personal MapTiler API key from maptiler.com — paste it here to use it. Until then a plain Streets map is shown.</p>' +
+                '</div>' +
+              '</div>' +
+              '<div class="ctrl-group" id="hotspot-wrap">' +
+                '<label data-i18n="ctrl.hotspot">Density heatmap</label>' +
+                '<div class="hs-row">' +
+                  '<button type="button" class="hs-cycle" id="hotspot-cycle" data-hs="off" data-i18n="ctrl.hsOff">Off</button>' +
+                  '<label class="ctrl-check hs-dots"><input type="checkbox" id="showdots-toggle" checked> <span data-i18n="ctrl.showDots">Show dots</span></label>' +
+                '</div>' +
+                '<p class="cu-hint" data-i18n="ctrl.hotspotHint">Shades the map by how much activity each area has — tap to cycle Off → species per area → distinct observers → total counts. A smooth, zoom-steady heat cloud; use “Show dots” to see the heatmap alone, the dots alone, or both.</p>' +
               '</div>' +
               '<div class="ctrl-group" id="maplabels-wrap">' +
                 '<label for="maplabels-select" data-i18n="ctrl.maplabels">Place labels</label>' +
@@ -5991,7 +6020,7 @@
                   '<button type="button" class="clear-cache-btn" data-clear="range"><span class="clear-lbl" data-i18n="clear.range">Range maps</span><span class="clear-cnt"></span></button>' +
                   '<button type="button" class="clear-cache-btn" data-clear="overlays"><span class="clear-lbl" data-i18n="clear.overlays">Overlays</span><span class="clear-cnt"></span></button>' +
                   '<button type="button" class="clear-cache-btn" data-clear="hotspots"><span class="clear-lbl" data-i18n="clear.hotspots">eBird hotspots</span><span class="clear-cnt"></span></button>' +
-                  '<button type="button" class="clear-cache-btn" data-clear="birds"><span class="clear-lbl" data-i18n="clear.birds">Birding spots</span><span class="clear-cnt"></span></button>' +
+                  '<button type="button" class="clear-cache-btn" data-clear="birds"><span class="clear-lbl" data-i18n="clear.birds">View points</span><span class="clear-cnt"></span></button>' +
                   '<button type="button" class="clear-cache-btn" data-clear="best"><span class="clear-lbl" data-i18n="clear.best">Best sites</span><span class="clear-cnt"></span></button>' +
                   '<button type="button" class="clear-cache-btn" data-clear="names"><span class="clear-lbl" data-i18n="clear.names">Species names (iNat)</span><span class="clear-cnt"></span></button>' +
                   '<button type="button" class="clear-cache-btn" data-clear="offline"><span class="clear-lbl" data-i18n="clear.offline">Offline areas</span><span class="clear-cnt"></span></button>' +
@@ -6013,7 +6042,7 @@
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label class="ctrl-check"><input type="checkbox" id="experimental-toggle"> <span data-i18n="ctrl.experimental">Experimental features</span></label>' +
-                '<p class="cu-hint" data-i18n="ctrl.experimentalHint">Off (default). On: unlocks less-polished extras — currently the NBN Atlas and EuroBirdPortal links in the species menu; more may appear here over time.</p>' +
+                '<p class="cu-hint" data-i18n="ctrl.experimentalHint">Off (default). On: unlocks less-polished extras — currently the NBN Atlas link in the species menu; more may appear here over time.</p>' +
               '</div>' +
               '<div class="app-qr"><img src="qr-app.svg" alt="" width="140" height="140" /><span class="app-qr-cap" data-i18n="settings.qrShare">Scan to open / share this app</span></div>' +
               '<div class="settings-section" data-i18n="settings.secWhatsNew">What’s new</div>' +
@@ -6056,9 +6085,11 @@
         '<div id="species-panel">' +
           '<div class="sp-page-bar">' +
             '<button id="sp-back" class="fp-back" title="Back to map">' + ico("back") + '</button>' +
-            '<h3 id="sp-title"></h3>' +
+            '<div class="sp-head-lines">' +
+              '<h3 id="sp-title"></h3>' +
+              '<div class="sp-coords" id="sp-coords"></div>' +
+            '</div>' +
           '</div>' +
-          '<div class="sp-coords" id="sp-coords"></div>' +
           '<div id="sp-controls" style="display:none">' +
             '<select id="sp-layout" class="detlist-sort-sel" aria-label="Layout"></select>' +
             '<button id="sp-filter-btn" class="sp-filter-btn ico-btn" type="button" aria-label="Filters" title="Filters">' + ico("funnel") + '</button>' +
@@ -6858,6 +6889,7 @@
   function refreshLangUI() {
     if (!langUiReady) { pendingLangUI = true; return; }
     applyI18n();
+    try { updateBasemapOptions(); } catch (e) {}   // re-append the 🔑 to key-maps after applyI18n reset the option text
     populateWeekSelect();   // re-label weeks in the new language
     populateSecondLangSelect();   // re-localize the "(none)" option
     refreshHiddenUI();      // re-localize hidden-species chip names
@@ -7617,28 +7649,33 @@
   }
   // Show the Voyager option only when a CARTO key is present; if it's the current
   // basemap and the key goes away, drop to streets.
-  function cartoAvailable() { return experimentalOn() && !!cartoKey(); }
-  function maptilerAvailable() { return experimentalOn() && !!maptilerKey(); }
+  function cartoAvailable() { return !!cartoKey(); }        // Voyager (CARTO) usable once a key is set
+  function maptilerAvailable() { return !!maptilerKey(); }  // MapTiler usable once a key is set
   function basemapGated(which) { return which === "voyager" ? !cartoAvailable() : which === "maptiler" ? !maptilerAvailable() : false; }
+  function mapNeedsKey(which) { return which === "voyager" ? "carto" : which === "maptiler" ? "maptiler" : null; }   // for the 🔑 + the key field
+  // Show the API-key field ONLY for the currently-selected key-requiring map.
+  function updateMapKeyInputs(which) {
+    var cw = document.getElementById("carto-key-wrap"), mw = document.getElementById("maptiler-key-wrap");
+    if (cw) cw.style.display = (which === "voyager") ? "" : "none";
+    if (mw) mw.style.display = (which === "maptiler") ? "" : "none";
+  }
   function updateBasemapOptions() {
     var sel = document.getElementById("maptype-select"); if (!sel) return;
-    [["voyager", cartoAvailable()], ["maptiler", maptilerAvailable()]].forEach(function (pair) {
-      var opt = sel.querySelector('option[value="' + pair[0] + '"]');
-      if (opt) { opt.hidden = !pair[1]; opt.disabled = !pair[1]; }
+    // ALL maps are always listed; the key-requiring ones get a 🔑 after the name.
+    ["voyager", "maptiler"].forEach(function (v) {
+      var opt = sel.querySelector('option[value="' + v + '"]');
+      if (opt) { opt.hidden = false; opt.disabled = false; opt.textContent = t("basemap." + v) + " 🔑"; }
     });
-    var wrap = document.getElementById("exp-mapkeys-wrap");
-    if (wrap) wrap.style.display = experimentalOn() ? "" : "none";   // the key fields are experimental-only
-    var cur = window.GeoState.get("basemap", "voyager");
-    if (basemapGated(cur)) setBasemap("streets");
+    updateMapKeyInputs(sel.value || window.GeoState.get("basemap", "voyager"));
   }
   function setBasemap(which) {
     if (!BASEMAPS[which]) which = "streets";   // migrate a removed/unknown choice (e.g. the old Light/Dark)
-    if (basemapGated(which)) which = "streets";   // Voyager (CARTO) / MapTiler are experimental + need a key
-    var cfg = BASEMAPS[which];
+    var render = basemapGated(which) ? "streets" : which;   // key-map with no key yet → show a working Streets map, but KEEP `which` as the choice
+    var cfg = BASEMAPS[render];
     if (baseLayer) map.removeLayer(baseLayer);
     // subdomains must not be undefined — Leaflet reads .length even when the
     // URL has no {s} placeholder (e.g. the Esri satellite layer).
-    baseLayer = L.tileLayer(baseUrlFor(which), { attribution: cfg.attribution, maxZoom: MAX_ZOOM, maxNativeZoom: cfg.maxNativeZoom || MAX_ZOOM, subdomains: cfg.subdomains || "abc", noWrap: true });
+    baseLayer = L.tileLayer(baseUrlFor(render), { attribution: cfg.attribution, maxZoom: MAX_ZOOM, maxNativeZoom: cfg.maxNativeZoom || MAX_ZOOM, subdomains: cfg.subdomains || "abc", noWrap: true });
     baseLayer._origMaxNative = cfg.maxNativeZoom || MAX_ZOOM;   // restore target when online / leaving an area
     // Tile fetches failing (even when navigator reports "online" — captive portal /
     // dead connection) → treat like offline so the zoom cap upscales cached tiles
@@ -7648,10 +7685,11 @@
     baseLayer.addTo(map);
     baseLayer.bringToBack();
     refreshOfflineZoomCap();   // if offline inside a shallow download, upscale instead of fetching missing tiles
-    document.body.setAttribute("data-basemap", which);
+    document.body.setAttribute("data-basemap", render);   // label styling follows the RENDERED map
     var sel = document.getElementById("maptype-select");
-    if (sel) sel.value = which;
+    if (sel) sel.value = which;   // keep the user's CHOICE visible in the dropdown (even a key-map without a key yet)
     window.GeoState.save({ basemap: which });
+    updateMapKeyInputs(which);   // reveal the key field for a chosen key-map
     applyLabelsOverlay();   // re-pick label style (dark/light) for the new basemap
   }
   // ---- Extra place-name labels overlay --------------------------------------
@@ -7680,7 +7718,7 @@
     var b = document.getElementById("sp-checklist-btn");
     if (b) b.style.display = "";   // always visible (was experimental-gated in v868)
     if (typeof syncExperimentalOverlays === "function") syncExperimentalOverlays();   // Birding spots + GBIF are experimental-only
-    try { updateBasemapOptions(); } catch (e) {}   // Voyager (CARTO) + its key field are experimental-only
+    try { updateBasemapOptions(); } catch (e) {}   // refresh basemap options (harmless; maps are no longer experimental)
   }
   // A labels-ONLY MapLibre GL style (OpenMapTiles vector tiles via OpenFreeMap, no
   // key). Rendered client-side, so place names appear/disappear smoothly by zoom and
@@ -7820,7 +7858,7 @@
   var GBIF_ATTR = 'Occurrence density &copy; <a href="https://www.gbif.org" target="_blank" rel="noopener">GBIF.org</a>';
   var OSM_PA_ATTR = 'Protected areas &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
   var EBIRD_HS_ATTR = 'Hotspots &copy; <a href="https://ebird.org" target="_blank" rel="noopener">eBird</a> / Cornell Lab';
-  var BIRD_SPOTS_ATTR = 'Birding spots &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
+  var BIRD_SPOTS_ATTR = 'View points &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
   // CORINE Land Cover 2018 (EEA/Copernicus) — Europe/EEA coverage incl. Norway. Layer 1 =
   // the pre-rendered raster (clean filled land cover); same ArcGIS server family as Natura 2000.
   var CLC2018_EXPORT = "https://image.discomap.eea.europa.eu/arcgis/rest/services/Corine/CLC2018_WM/MapServer/export";
@@ -8216,11 +8254,69 @@
     for (var i = 0; i < detObsNames.length; i++) if (obs.indexOf(detObsNames[i]) >= 0) return true;   // substring match
     return false;
   }
+  // Location filter (📍): null = all locations; else a Set of selected accurate
+  // place names ("" = the "no location" bucket). A per-RECORD filter, like the
+  // observer one. A record's "location" is its accurate place name (generic
+  // country/admin names and lat/lon-only rows go in the "(no location)" bucket);
+  // matched EXACTLY (a place is a single string, not a concatenation of names).
+  var detLocFilter = null;              // Set of selected place names (incl "") or null = all
+  var detLocNames = [];                 // selected non-empty place names
+  var detLocAllowNone = false;          // is "(no location)" selected
+  function detLocKey(r) { return placeAccurate(r) ? String(r.place || "").trim() : ""; }
+  function setDetLocFilter(set) {
+    // null = all locations; empty Set = "None" (a base to then tick a few); a Set
+    // holding only "" is the "(no location)" bucket.
+    detLocFilter = set || null; detLocNames = []; detLocAllowNone = false;
+    if (detLocFilter) detLocFilter.forEach(function (n) { if (n) detLocNames.push(n); else detLocAllowNone = true; });
+  }
+  function detLocPasses(r) {
+    if (!detLocFilter) return true;
+    var loc = detLocKey(r);
+    if (!loc) return detLocAllowNone;   // no accurate place → "(no location)" bucket
+    return detLocFilter.has(loc);
+  }
+  // Ticking the location checklist applies on a 1 s debounce: the filter STATE
+  // updates at once (so the checklist stays consistent) but the heavy map/legend/list
+  // rebuild waits until you've stopped toggling — the funnels pulse meanwhile.
+  var detLocApplyTimer = null, detLocBusy = false;
+  function detLocBusySet(on) { if (on === detLocBusy) return; detLocBusy = on; setFunnelBusy(on); }
+  function scheduleLocApply(set) {
+    setDetLocFilter(set);                 // state now; the visible refresh is deferred
+    clearTimeout(detLocApplyTimer);
+    detLocBusySet(true);
+    detLocApplyTimer = setTimeout(function () {
+      detLocBusySet(false);
+      saveLegendState(); detFiltersRefresh();
+    }, 1000);
+  }
+  // Heal a remembered location filter whose selected names aren't among the
+  // currently-plotted locations (else the map silently blanks). Explicit "None"
+  // (empty Set) is left alone. Mirrors reconcileObsFilter.
+  function reconcileLocFilter() {
+    if (!detLocFilter || !detLocFilter.size) return false;
+    if (!Object.keys(detPlot).length) return false;
+    var lo = detAllLocations(), present = detLocAllowNone && lo.hasNone;
+    for (var i = 0; !present && i < detLocNames.length; i++) if (lo.names.indexOf(detLocNames[i]) >= 0) present = true;
+    if (present) return false;
+    setDetLocFilter(null); saveLegendState(); return true;
+  }
+  // Distinct accurate place names among the plotted rows (+ a "(no location)" flag)
+  // — what the location checklist offers.
+  function detAllLocations() {
+    var set = Object.create(null), hasNone = false;
+    Object.keys(detPlot).forEach(function (k) {
+      (detPlot[k].rows || []).forEach(function (r) {
+        var loc = detLocKey(r);
+        if (loc) set[loc] = 1; else hasNone = true;
+      });
+    });
+    return { names: Object.keys(set).sort(function (a, b) { return a.localeCompare(b); }), hasNone: hasNone };
+  }
   // The combined per-row visibility test shared by every list/count/map path: date window +
-  // observer filter (incl. dedup-hidden) + data-source filter + "New" filter. Centralised so the
-  // four sub-filters can't silently drift apart between the list-total, obs-count, map and
-  // restrict-to-view call sites.
-  function detRowPasses(r) { return detDatePasses(r.date) && detObsPasses(r) && detPassesSrc(r) && detPassesNew(r); }
+  // observer filter (incl. dedup-hidden) + location filter + data-source filter + "New" filter.
+  // Centralised so the sub-filters can't silently drift apart between the list-total, obs-count,
+  // map and restrict-to-view call sites.
+  function detRowPasses(r) { return detDatePasses(r.date) && detObsPasses(r) && detLocPasses(r) && detPassesSrc(r) && detPassesNew(r); }
   // A species is an "alert" when its detPlot entry carries injected rarity rows
   // (syncAlertDetections flags the entry `alert`).
   function isAlertSpecies(k) { return !!(detPlot[k] && detPlot[k].alert); }
@@ -8764,6 +8860,7 @@
       (e.rows || []).forEach(function (r) {
         if (!detDatePasses(r.date)) return;
         if (!detObsPasses(r)) return;          // observer filter (legend 👤)
+        if (!detLocPasses(r)) return;          // location filter (📍)
         if (!detPassesSrc(r)) return;          // data-source filter (click a source in the list)
         if (!detPassesNew(r)) return;          // "New" filter (only detections fetched after the baseline)
         if (center) {
@@ -9825,10 +9922,6 @@
       el.appendChild(moreBtn);
       if (lbl) el.appendChild(drmBtn(t("menu.distmap"), function () { closeDetRowMenu(); showDistMap(name, sci, key); }));
       el.appendChild(drmBtn(t("menu.wiki"), function () { closeDetRowMenu(); openWikipedia(sci); }));
-      if (isBird && experimentalOn()) el.appendChild(drmBtn(expMark(t("menu.birdlife")), function () { closeDetRowMenu(); openBirdLife((lbl && lbl.common) || name, sci); }));   // BirdLife DataZone → Experimental
-      // iNaturalist — photos for EVERY group (the one that works beyond birds), and a
-      // name lookup for when the name in the list looks wrong.
-      el.appendChild(drmBtn(t("menu.inat"), function () { closeDetRowMenu(); openExternal(inatPhotosUrl(sci)); }));
       if (isBird) el.appendChild(drmBtn(t("menu.macaulay"), function () { closeDetRowMenu(); openExternal(macaulayUrl(key, sci, d && d.date)); }));   // birds only now
       if (isMammal) el.appendChild(drmBtn(t("menu.adw"), function () { closeDetRowMenu(); openExternal(adwUrl(sci)); }));
       if (isPlant) el.appendChild(drmBtn(t("menu.powo"), function () { closeDetRowMenu(); openExternal(powoUrl(sci)); }));
@@ -9841,8 +9934,6 @@
         var glo = hasLoc ? +d.lon : (marker ? marker.getLatLng().lng : map.getCenter().lng);
         if (gla >= 49 && gla <= 61.2 && glo >= -11.5 && glo <= 2)
           el.appendChild(drmBtn(expMark(t("menu.nbn")), function () { closeDetRowMenu(); openExternal(nbnUrl(sci)); }));
-        if (isBird && gla >= 34 && gla <= 72 && glo >= -25 && glo <= 45)
-          el.appendChild(drmBtn(expMark(t("menu.ebp")), function () { closeDetRowMenu(); openExternal(ebpUrl(sci)); }));
       }
     }
     // 3) Lists & actions — your data (any keyed species).
@@ -10107,6 +10198,18 @@
         box.appendChild(row);
       });
       el.appendChild(box);
+    }
+    // Filter the map/lists to this location (only when the caller supplies an
+    // accurate place name that the location filter can match on).
+    var locName = info && info.locName ? String(info.locName).trim() : "";
+    if (locName) {
+      var inLocFilter = !!detLocFilter && detLocFilter.has(locName);
+      el.appendChild(drmBtn(inLocFilter ? tLabel("loc.removeFilter") : tLabel("loc.filterOnly"), function () {
+        closeDetRowMenu();
+        if (inLocFilter) { var next = new Set(detLocFilter); next["delete"](locName); setDetLocFilter(next.size ? next : null); }
+        else setDetLocFilter(new Set([locName]));
+        saveLegendState(); detFiltersRefresh();
+      }, "funnel"));
     }
     // "Find on map" is pointless when the menu was opened FROM a marker on the map
     // (the birding spots) — callers set info.noFind there.
@@ -10527,6 +10630,7 @@
       if (!detDatePasses(r.date)) return;
       if (allowed && !allowed.has(r)) return;   // global cap: only the newest N are drawn
       if (!detObsPasses(r)) return;             // observer filter (legend 👤)
+      if (!detLocPasses(r)) return;             // location filter (📍)
       if (!detPassesSrc(r)) return;             // data-source filter
       if (!detPassesNew(r)) return;             // "New" filter
       var lk = (+r.lat).toFixed(4) + "," + (+r.lon).toFixed(4);
@@ -10806,6 +10910,7 @@
     clearSpider();
     ensureDedup();
     reconcileObsFilter();   // drop a stale observer filter that no longer matches any plotted observer
+    reconcileLocFilter();   // …and likewise a stale location filter
     if (typeof scheduleHotspot === "function") scheduleHotspot();   // refresh the hotspot heatmap when the plotted set changes
 
     if (detFocusKey && !detPlot[detFocusKey]) detFocusKey = null;   // focused species gone → don't mute everything
@@ -10962,11 +11067,11 @@
     var tbl = document.getElementById("species-list-table"); if (tbl) tbl.style.display = "none";
     var ctrls = document.getElementById("sp-controls"); if (ctrls) ctrls.style.display = "none";   // no per-point controls without a point
     var fw = document.getElementById("sp-filters-wrap"); if (fw) fw.innerHTML = "";
-    // Header: the fetched area's place name ONLY when a single area was fetched; several areas
-    // (or none) show no place name — and no generic "species here" title.
+    // Header: list EVERY fetched square, one line each, ordered by geography (not by
+    // fetch time). No generic "species here" title.
     var spTitle = document.getElementById("sp-title");
-    if (spTitle) { var an1 = fetchedAreaNames(); spTitle.textContent = an1.length === 1 ? an1[0] : ""; }
-    var coords = document.getElementById("sp-coords"); if (coords) coords.textContent = "";
+    if (spTitle) spTitle.textContent = "";
+    renderSpCoordsAreas(document.getElementById("sp-coords"), NaN, NaN, "");
     var rows = collectVisibleDetections(null, false);   // honour the species selection / applied list
     // Restrict to what's inside the current map view — same as the per-point list (restrictListToView),
     // so entering list mode shows only what's on screen, not every plotted detection everywhere.
@@ -11254,7 +11359,7 @@
   // recency days / date range.) Drives the black × (clear all) in both the legend
   // and the detections-list filter bar.
   function detHasFilter() {
-    return detSelectionActive() || detExclusionActive() || detDaySelActive() || detStarFilter || detRareFilter || detYearFilter || detLifeFilter || detAlertFilter || (detLegendRows !== "all") || detNewFilter || !!detObsFilter || !!detSrcFilter || (detRecencyDays() !== 0) || !!detDateRange() || detMonths().length > 0 || countFilterActive() || probFilterActive() || (detRegionMode !== "off");
+    return detSelectionActive() || detExclusionActive() || detDaySelActive() || detStarFilter || detRareFilter || detYearFilter || detLifeFilter || detAlertFilter || (detLegendRows !== "all") || detNewFilter || !!detObsFilter || !!detLocFilter || !!detSrcFilter || (detRecencyDays() !== 0) || !!detDateRange() || detMonths().length > 0 || countFilterActive() || probFilterActive() || (detRegionMode !== "off");
   }
   // Reset every legend filter at once (the black ×): the species selection, the
   // ★/◉/🟡 mode filter, the observer filter, and the recency (days) window → All.
@@ -11264,6 +11369,7 @@
     detStarFilter = 0; detRareFilter = 0; detYearFilter = 0; detLifeFilter = 0; detAlertFilter = 0; detNewFilter = false; detTodayFilter = false;
     detObsPanelOpen = false; detDaysPanelOpen = false; detModePanelOpen = false;
     setDetObsFilter(null);                                                   // observer → all
+    setDetLocFilter(null);                                                   // location → all
     detSrcFilter = null;                                                     // source → all
     detRegionMode = "off";                                                    // region filter → off
     speciesAgeFilterDays = 0;
@@ -11443,7 +11549,7 @@
   // Persist the legend's UI state — collapsed, the starred-only filter, and the
   // row selection — so the map legend comes back the way the user left it.
   function saveLegendState() {
-    window.GeoState.save({ mapLegend: { mini: detLegendMini, starFilter: detStarFilter, rareFilter: detRareFilter, yearFilter: detYearFilter, lifeFilter: detLifeFilter, alertFilter: detAlertFilter, selected: Object.keys(detSelected), excluded: Object.keys(detExcluded), selBase: { sel: Object.keys(detSelBase.sel), exc: Object.keys(detSelBase.exc) }, obsFilter: detObsFilter ? Array.from(detObsFilter) : null, srcFilter: detSrcFilter ? Array.from(detSrcFilter) : null, deleted: deletedSpecies, countMin: spCountMin, countMax: spCountMax, countMetric: spCountMetric, ageDays: speciesAgeFilterDays, newFilter: detNewFilter, newSince: detNewSince, todayFilter: detTodayFilter, daySel: Object.keys(detDaySel), rows: detLegendRows, sort: detLegendSort, regionMode: detRegionMode, regionPick: detRegionPick } });
+    window.GeoState.save({ mapLegend: { mini: detLegendMini, starFilter: detStarFilter, rareFilter: detRareFilter, yearFilter: detYearFilter, lifeFilter: detLifeFilter, alertFilter: detAlertFilter, selected: Object.keys(detSelected), excluded: Object.keys(detExcluded), selBase: { sel: Object.keys(detSelBase.sel), exc: Object.keys(detSelBase.exc) }, obsFilter: detObsFilter ? Array.from(detObsFilter) : null, locFilter: detLocFilter ? Array.from(detLocFilter) : null, srcFilter: detSrcFilter ? Array.from(detSrcFilter) : null, deleted: deletedSpecies, countMin: spCountMin, countMax: spCountMax, countMetric: spCountMetric, ageDays: speciesAgeFilterDays, newFilter: detNewFilter, newSince: detNewSince, todayFilter: detTodayFilter, daySel: Object.keys(detDaySel), rows: detLegendRows, sort: detLegendSort, regionMode: detRegionMode, regionPick: detRegionPick } });
   }
   function loadDetections() {
     // Self-heal a store left over-quota by an older build: cap the stored
@@ -11479,6 +11585,7 @@
     detLifeFilter = stSaved(ls.lifeFilter, -1);
     detAlertFilter = stSaved(ls.alertFilter, 0);
     setDetObsFilter(Array.isArray(ls.obsFilter) ? new Set(ls.obsFilter) : null);
+    setDetLocFilter(Array.isArray(ls.locFilter) ? new Set(ls.locFilter) : null);
     detSrcFilter = (Array.isArray(ls.srcFilter) && ls.srcFilter.length) ? new Set(ls.srcFilter) : null;
     // Heal a stale source filter (none of its sources plotted) so it can't blank the map.
     if (detSrcFilter && Object.keys(detPlot).length) {
@@ -12125,6 +12232,70 @@
     if (!set || set.size !== arr.length) return false;
     for (var i = 0; i < arr.length; i++) if (!set.has(arr[i])) return false;
     return true;
+  }
+  // ---- Location filter UI (mirrors the observer checklist, sans saved lists) ----
+  // Label for the location section summary: All / None / Custom.
+  function locFilterLabel() {
+    if (!detLocFilter) return t("det.allLoc");
+    if (detLocFilter.size === 0) return t("det.locNone");
+    return t("det.locCustom");
+  }
+  // The 📍 checklist: one ticked row per plotted location (+ a "(no location)" row);
+  // ticking restricts the map/list to the selected locations. The name is its own
+  // click target that opens the location filter menu (Show only / Add / Remove).
+  function detLocPanelHtml() {
+    var lo = detAllLocations();
+    if (!lo.names.length && !lo.hasNone) return "";
+    function row(key, label) {
+      var on = !detLocFilter || detLocFilter.has(key);
+      var span = key
+        ? '<span class="det-loc-name det-loc-addable" data-loc="' + escapeHtml(key) + '" title="' + escapeHtml(t("loc.filterHint")) + '">' + escapeHtml(label) + "</span>"
+        : '<span class="det-loc-name">' + escapeHtml(label) + "</span>";
+      return '<div class="det-obs-row"><input type="checkbox" class="det-loc-cb" data-loc="' + escapeHtml(key) + '"' + (on ? " checked" : "") + ' aria-label="' + escapeHtml(label) + '">' + span + "</div>";
+    }
+    var rows = lo.names.map(function (o) { return row(o, o); });
+    if (lo.hasNone) rows.push(row("", t("det.noLocation")));
+    var allOn = !detLocFilter;
+    var allTog = '<label class="det-obs-alltoggle" title="' + escapeHtml(t("det.locToggleAll")) + '"><input type="checkbox" class="det-loc-allcb"' + (allOn ? " checked" : "") + '> ' + escapeHtml(t("det.allLoc")) + "</label>";
+    return '<div class="det-obs-panel">' +
+      '<div class="det-obs-head"><span class="det-obs-scope">' + escapeHtml(locFilterLabel()) + "</span>" + allTog + "</div>" +
+      '<div class="det-loc-list">' + rows.join("") + "</div></div>";
+  }
+  // Clicking a location name → its filter chooser: Show only / Add / Remove / Show all.
+  function locationActionMenu(name, anchor) {
+    name = String(name || "").trim();
+    if (!name) return;
+    var r = anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : anchor;
+    var menu = openAnchoredMenu("obs-addmenu");
+    var inFilter = !!detLocFilter && detLocFilter.has(name);
+    menu.innerHTML = '<div class="obs-addmenu-head">' + escapeHtml(name) + "</div>" +
+      (inFilter ? '<button type="button" class="obs-addmenu-item loc-act-unfilter">' + escapeHtml(t("loc.removeFilter")) + "</button>"
+                : '<button type="button" class="obs-addmenu-item loc-act-filter">' + escapeHtml(t("loc.filterOnly")) + "</button>" +
+                  (detLocFilter ? '<button type="button" class="obs-addmenu-item loc-act-addfilter">' + escapeHtml(t("loc.addToFilter")) + "</button>" : "")) +
+      (detLocFilter ? '<button type="button" class="obs-addmenu-item loc-act-all">' + escapeHtml(t("loc.removeAll")) + "</button>" : "");
+    positionAnchoredMenu(menu, r.left, r.bottom + 2);
+    var unBtn = menu.querySelector(".loc-act-unfilter");
+    if (unBtn) unBtn.addEventListener("click", function (e) {
+      e.stopPropagation(); closeAnchoredMenu();
+      var next = new Set(detLocFilter); next["delete"](name);
+      setDetLocFilter(next.size ? next : null);
+      saveLegendState(); detFiltersRefresh();
+    });
+    var onlyBtn = menu.querySelector(".loc-act-filter");
+    if (onlyBtn) onlyBtn.addEventListener("click", function (e) {
+      e.stopPropagation(); closeAnchoredMenu();
+      setDetLocFilter(new Set([name]));
+      saveLegendState(); detFiltersRefresh();
+    });
+    var addBtn = menu.querySelector(".loc-act-addfilter");
+    if (addBtn) addBtn.addEventListener("click", function (e) {
+      e.stopPropagation(); closeAnchoredMenu();
+      var next = new Set(detLocFilter); next.add(name);
+      setDetLocFilter(next);
+      saveLegendState(); detFiltersRefresh();
+    });
+    var allBtn = menu.querySelector(".loc-act-all");
+    if (allBtn) allBtn.addEventListener("click", function (e) { e.stopPropagation(); closeAnchoredMenu(); setDetLocFilter(null); saveLegendState(); detFiltersRefresh(); });
   }
   // Deduped SPECIMENS of a species passing the active date/observer/source filters,
   // optionally restricted to the current map view (legendViewBounds). The counts match
@@ -13074,6 +13245,21 @@
         nm.addEventListener("mouseleave", function () { clearTimeout(detHoverTimer); unfocusDetObs(); });
       }
     });
+    // Location checklist: All/None master toggle + per-location checkboxes + name→menu.
+    // Applied on a 1 s debounce (scheduleLocApply) so ticking several places rebuilds once.
+    var allLocCb = el.querySelector(".det-loc-allcb");
+    if (allLocCb) allLocCb.addEventListener("change", function (e) { e.stopPropagation(); scheduleLocApply(this.checked ? null : new Set()); });
+    el.querySelectorAll(".det-loc-cb").forEach(function (cb) {
+      cb.addEventListener("change", function (e) {
+        e.stopPropagation();
+        var boxes = el.querySelectorAll(".det-loc-cb"), checked = [], allOn = true;
+        Array.prototype.forEach.call(boxes, function (b) { if (b.checked) checked.push(b.getAttribute("data-loc")); else allOn = false; });
+        scheduleLocApply(allOn ? null : new Set(checked));   // pane isn't rebuilt mid-debounce, so the ticks hold; scroll is restored by renderAllFiltersPane on apply
+      });
+    });
+    el.querySelectorAll(".det-loc-name.det-loc-addable").forEach(function (nm) {
+      nm.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); locationActionMenu(this.getAttribute("data-loc"), this); });
+    });
     // Tickable observer-lists dropdown: tick a list → apply its observers (union).
     var obsDd = el.querySelector(".det-obslists-dd");
     if (obsDd) obsDd.addEventListener("toggle", function () { obsListsDdOpen = obsDd.open; });
@@ -13203,6 +13389,10 @@
       : detMonths().length ? detMonths().map(histMonthShort).join(" ") : t("filters.allTime");
     var secDate = affSection("date", t("det.recency"), dateActive, dateSum, detDaysPanelHtml());
 
+    // Location — a checklist of the plotted places (mirrors the observer panel)
+    var locBody = detLocPanelHtml();
+    var secLoc = locBody ? affSection("loc", t("filters.locations"), !!detLocFilter, locFilterLabel(), locBody) : "";
+
     // Observer — reuse the observer panel
     var secObs = affSection("obs", t("obs.people"), !!detObsFilter, obsFilterLabel(), detObsPanelHtml());
 
@@ -13230,7 +13420,7 @@
     var secRegion = affSection("region", t("region.title"), detRegionMode !== "off", regSum, affRegionHtml());
 
     // Order: "Show last" (date) at the top; Probability sits right under Status; the standalone Hidden checkbox at the very bottom.
-    return head + '<div class="aff-body">' + secDate + secSort + secSel + secLists + secMode + secProb + secNew + secCnt + secName + secObs + secSrc + secRegion + hiddenRow + "</div>";
+    return head + '<div class="aff-body">' + secDate + secSort + secSel + secLists + secMode + secProb + secNew + secCnt + secName + secLoc + secObs + secSrc + secRegion + hiddenRow + "</div>";
   }
   function affRegionHtml() {
     var opts = DET_REGIONS.map(function (n, i) { return '<option value="' + i + '"' + (i === detRegionPick ? " selected" : "") + ">" + escapeHtml(regionName(i)) + "</option>"; }).join("");
@@ -13291,6 +13481,7 @@
             window.GeoState.save({ probMin: 0, probMax: 100 }); rerenderPointList(); renderAllFiltersPane(); break;
           case "name": spNameQuery = ""; detMapSearch = ""; detFiltersRefresh(); break;
           case "date": clearDateFilters(); break;
+          case "loc": setDetLocFilter(null); saveLegendState(); detFiltersRefresh(); break;
           case "obs": setDetObsFilter(null); detFiltersRefresh(); break;
           case "src": setDetSrcFilter(null); break;
         }
@@ -13383,6 +13574,8 @@
     var scrollPos = oldBody ? oldBody.scrollTop : 0;
     var oldObs = allFiltersPane.box.querySelector(".det-obs-list");
     var obsPos = oldObs ? oldObs.scrollTop : 0;
+    var oldLoc = allFiltersPane.box.querySelector(".det-loc-list");
+    var locPos = oldLoc ? oldLoc.scrollTop : 0;
     var oldMenu = allFiltersPane.box.querySelector(".sp-lists-menu");
     var menuPos = oldMenu ? oldMenu.scrollTop : 0;
     allFiltersPane.box.innerHTML = allFiltersBodyHtml();
@@ -13391,6 +13584,8 @@
     if (newBody && scrollPos) newBody.scrollTop = scrollPos;
     var newObs = allFiltersPane.box.querySelector(".det-obs-list");
     if (newObs && obsPos) newObs.scrollTop = obsPos;
+    var newLoc = allFiltersPane.box.querySelector(".det-loc-list");
+    if (newLoc && locPos) newLoc.scrollTop = locPos;
     var newMenu = allFiltersPane.box.querySelector(".sp-lists-menu");
     if (newMenu && menuPos) newMenu.scrollTop = menuPos;
   }
@@ -18830,18 +19025,137 @@
   // Set a coords/summary line, prefixed with the resolved place name. The base
   // summary shows immediately; the place name is prepended once resolved (and
   // re-applied on later renders at the same location via the cache).
+  // The location description stays on ONE line ("place · coords · week · N species
+  // · radius"). `dataset.flat` mirrors the text (used by the PDF export header).
   function setCoordsWithPlace(el, lat, lon, baseSummary) {
     if (!el) return;
     var k = placeKey(lat, lon);
     el.dataset.base = baseSummary;
     el.dataset.placeKey = k;
-    var apply = function (name) { el.textContent = (name ? name + " · " : "") + el.dataset.base; };
+    var apply = function (name) { el.dataset.flat = (name ? name + " · " : "") + el.dataset.base; el.textContent = el.dataset.flat; };
     if (placeCache[k] !== undefined) { apply(placeCache[k]); return; }
-    el.textContent = baseSummary;
+    apply("");   // show the coordinate/summary line while the place name resolves
     reverseGeocode(lat, lon).then(function (name) {
       placeCache[k] = name || "";
       if (el.dataset.placeKey === k) apply(placeCache[k]);
     });
+  }
+  // Species-list header: list EVERY fetched square, one line each, ordered by
+  // geography (north→south, west→east) so the listing is independent of the
+  // order/time the data was fetched — then the clicked point's own coord/week/
+  // species-count summary as the last line. Each square shows its place name
+  // (from the area, else reverse-geocoded from its centre, else its coordinates).
+  // With no fetched areas it falls back to the single clicked-point line.
+  // Observations fetched per fetched-area id (a row can belong to several areas —
+  // it counts once for each owner).
+  function obsCountByArea() {
+    var counts = Object.create(null);
+    Object.keys(detPlot).forEach(function (k) {
+      (detPlot[k].rows || []).forEach(function (r) {
+        var as = r && r._areas; if (!as) return;
+        for (var i = 0; i < as.length; i++) counts[as[i]] = (counts[as[i]] || 0) + 1;
+      });
+    });
+    return counts;
+  }
+  // Remember the last species-list header args so the header can be re-rendered
+  // when the fetch finishes adding its square / its observation counts settle.
+  var lastSpCoords = null;
+  function refreshSpCoords() {
+    if (!lastSpCoords) return;
+    var sp = document.getElementById("species-panel");
+    if (!sp || sp.style.display === "none") return;
+    renderSpCoordsAreas(lastSpCoords.el, lastSpCoords.lat, lastSpCoords.lon, lastSpCoords.summary);
+  }
+  // Radius (km) a fetched square was fetched at — encoded in its id ("lat,lon:rkm").
+  function areaRkm(id) { var v = parseFloat(String(id).split(":")[1]); return isFinite(v) ? v : recentRadiusKm(); }
+  // Model species count above the probability floor at a square's centre for the
+  // current week (matches the per-point "N species above p%"). Synchronous when the
+  // point's prediction cell is already cached; otherwise it fires the inference and
+  // returns undefined ("…"), calling onReady to re-render once it lands.
+  var areaSpPending = Object.create(null);
+  function areaSpeciesCount(clat, clon, week, pmin, pmax, onReady) {
+    var cell = predCell(clat, clon);
+    if (cell[week]) {
+      var out = cell[week], n = 0;
+      for (var i = 0; i < out.length; i++) if (out[i] >= pmin && out[i] <= pmax && inGroup(i)) n++;
+      return n;
+    }
+    var pk = predSnap(clat) + "," + predSnap(clon) + "," + week;
+    if (!areaSpPending[pk]) {
+      areaSpPending[pk] = 1;
+      predictWeek(clat, clon, week).then(function () { delete areaSpPending[pk]; if (onReady) onReady(); },
+                                         function () { delete areaSpPending[pk]; });
+    }
+    return undefined;
+  }
+  function renderSpCoordsAreas(el, lat, lon, summary) {
+    if (!el) return;
+    lastSpCoords = { el: el, lat: lat, lon: lon, summary: summary };
+    var raw = (fetchedAreas || []).map(function (a) {
+      var c = a.bounds && a.bounds.getCenter ? a.bounds.getCenter() : null;
+      return { id: a.id, name: a.name || "", clat: c ? c.lat : NaN, clon: c ? c.lng : NaN };
+    }).filter(function (a) { return isFinite(a.clat) && isFinite(a.clon); });
+    if (!raw.length) {
+      if (isFinite(lat) && isFinite(lon)) setCoordsWithPlace(el, lat, lon, summary);
+      else { el.textContent = ""; el.dataset.flat = ""; delete el.dataset.placeKey; }
+      return;
+    }
+    raw.sort(function (x, y) { return (y.clat - x.clat) || (x.clon - y.clon); });   // N→S, W→E — deterministic
+    var counts = obsCountByArea();
+    // Aggregate by label (same place resolved from two squares → one line): merge ids + sum obs.
+    var order = [], agg = Object.create(null);
+    var reRender = function () { if (el.isConnected) renderSpCoordsAreas(el, lat, lon, summary); };
+    raw.forEach(function (a) {
+      var key = placeKey(a.clat, a.clon), cached = placeCache[key];
+      var label = a.name || (cached ? cached : "");
+      if (!a.name && cached === undefined) {   // resolve this square's name once, then re-render
+        reverseGeocode(a.clat, a.clon).then(function (n) { placeCache[key] = n || ""; reRender(); });
+      }
+      if (!label) label = a.clat.toFixed(4) + "°, " + a.clon.toFixed(4) + "°";
+      if (!(label in agg)) { agg[label] = { ids: [], obs: 0, clat: a.clat, clon: a.clon, rkm: areaRkm(a.id) }; order.push(label); }
+      agg[label].ids.push(a.id); agg[label].obs += counts[a.id] || 0;
+    });
+    // Each square: place · N species · N obs · lat°, lon° (3 dp) · radius. The species
+    // count is the model's species-above-floor at the square's centre for the current
+    // week (per-centre inference, fills in async); omitted for no-model groups and
+    // when the floor is below 10% (the count is then most of the model — meaningless).
+    var week = +document.getElementById("week-select").value;
+    var pmin = +document.getElementById("prob-min").value / 100, pmax = +document.getElementById("prob-max").value / 100;
+    var flatParts = [];
+    var html = order.map(function (l) {
+      var g = agg[l], parts = [l];
+      if (groupHasModel() && pmin >= 0.1) {
+        var sc = areaSpeciesCount(g.clat, g.clon, week, pmin, pmax, reRender);
+        parts.push(t("sp.spN", { n: (sc === undefined ? "…" : sc) }));
+      }
+      parts.push(t("sp.obsN", { n: g.obs }));
+      parts.push(g.clat.toFixed(3) + "°, " + g.clon.toFixed(3) + "°");
+      parts.push(t("sp.radius", { km: g.rkm }));
+      var txt = parts.join(" · ");
+      flatParts.push(txt);
+      return '<span class="sp-area-line">' +
+               '<span class="sp-area-txt" title="' + escapeHtml(txt) + '">' + escapeHtml(txt) + "</span>" +
+               '<button type="button" class="sp-area-del" data-ids="' + escapeHtml(g.ids.join("|")) + '" title="' + escapeHtml(t("area.removeObs")) + '" aria-label="' + escapeHtml(t("area.removeObs")) + '">×</button>' +
+             "</span>";
+    }).join("");
+    el.innerHTML = html;
+    el.dataset.flat = flatParts.join(" · ");
+    delete el.dataset.placeKey;
+    // Delegated once on the container so it survives the innerHTML re-renders (name /
+    // species-count resolving). Red × → remove all observations for that location,
+    // overlap-safe (same deleteFetchedArea the map's per-area × uses).
+    if (!el._areaDelWired) {
+      el._areaDelWired = true;
+      el.addEventListener("click", function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest(".sp-area-del") : null;
+        if (!btn || !el.contains(btn)) return;
+        e.stopPropagation(); e.preventDefault();
+        (btn.getAttribute("data-ids") || "").split("|").filter(Boolean).forEach(function (id) { deleteFetchedArea(id); });
+        refreshSpCoords();
+        if (typeof refreshOpenList === "function") refreshOpenList();
+      });
+    }
   }
 
   // A detailed, specific place name (the actual locality — building/park/road/
@@ -19069,7 +19383,8 @@
     if (!lastSpeciesPdf || !lastSpeciesPdf.rows.length) { setStatus(t("status.selectSpecies")); return; }
     var d = lastSpeciesPdf, esc = escapeHtml;
     var heading = t("panel.spTitle");
-    var meta = (document.getElementById("sp-coords").textContent || "").trim();
+    var spCoordsEl = document.getElementById("sp-coords");
+    var meta = ((spCoordsEl.dataset.flat || spCoordsEl.textContent) || "").trim();
     var n2 = !!d.name2Head, cmp = !!d.cmpHead;
     // "Seen" column: the detection count from THIS point's latest fetch only
     // (result.agg) — not the accumulated map dots / rarity alerts in the on-screen union.
@@ -19343,9 +19658,12 @@
         else if (lastSppError) mergeHint = " · " + t("merge.netErr");
         if (mergeHint) setStatus(mergeHint.replace(/^ \xb7 /, ""));
       }
-      document.getElementById("sp-coords").textContent = (spp
+      var cSummary = (spp
         ? t("sp.countrySummaryMerged", { country: info.name || info.cc, n: cells.length, week: week, ns: results.length - nList, nl: nList, p: (pmin * 100).toFixed(0) })
         : t("sp.countrySummary", { country: info.name || info.cc, n: cells.length, week: week, ns: results.length, p: (pmin * 100).toFixed(0) })) + mergeHint;
+      var cCoordsEl = document.getElementById("sp-coords");
+      cCoordsEl.textContent = cSummary;   // country view: a single summary line (no per-point place list)
+      cCoordsEl.dataset.flat = cSummary; delete cCoordsEl.dataset.placeKey;
       var cProbs = results.filter(function (r) { return r.inModel; }).map(function (r) { return r.prob; });
       var cLo = cProbs.length ? Math.min.apply(null, cProbs) : 0;
       var cHi = cProbs.length ? Math.max.apply(null, cProbs) : 1;
@@ -19995,6 +20313,7 @@
     var dotReleased = false;
     var releaseDot = function () { if (!dotReleased) { dotReleased = true; fetchDotsDone(); } };
     spMapFetch = false;   // reset; set true below only for the map-first point flow
+    var listFirst = false;   // ?show=list opened the list page directly → plot once when the fetch settles
     // Keep the list's ★/◉/🟠/🟡 flag filters in step with the global detection filters
     // (so a fresh fetch's list narrows the same way the map does).
     spFilters.star = detStarFilter === 1; spFilters.rare = detRareFilter === 1; spFilters.year = detYearFilter === -1; spFilters.life = detLifeFilter === -1;
@@ -20078,8 +20397,10 @@
       tbl.classList.toggle("has-name2", !!secondLang);
       tbl.classList.toggle("hide-sci", !showSci);
       document.getElementById("sp-name2-head").textContent = secondLang ? window.GeoI18N.langByCode(secondLang).name : "";
-      setCoordsWithPlace(document.getElementById("sp-coords"), lat, lon,
-        t("sp.summary", { lat: lat.toFixed(4), lon: lon.toFixed(4), week: weekMonthLabel(week), n: results.length, p: (pmin * 100).toFixed(0) }) +
+      renderSpCoordsAreas(document.getElementById("sp-coords"), lat, lon,
+        // The "N species above p%" count only from a 10% floor up — below that it is most of the model.
+        (pmin >= 0.1 ? t("sp.summary", { lat: lat.toFixed(4), lon: lon.toFixed(4), week: weekMonthLabel(week), n: results.length, p: (pmin * 100).toFixed(0) })
+                     : t("sp.summaryShort", { lat: lat.toFixed(4), lon: lon.toFixed(4), week: weekMonthLabel(week) })) +
         " · " + t("sp.radius", { km: recentRadiusKm() }) +
         (hist ? " · " + t("hist.range") + " " + fmtDate(hist.from) + " – " + fmtDate(hist.to) +
           (hist.months && hist.months.length ? " · " + t("hist.months") + " " + hist.months.slice().sort(function (a, b) { return a - b; }).map(histMonthShort).join(", ") : "") : ""));
@@ -20113,6 +20434,7 @@
           // A ?location=…;show=list URL asked for the list explicitly → open the
           // list page directly instead of the map-first default.
           sp.style.display = "block"; if (!keepScroll) sp.scrollTop = 0; navOpen("page", closeAnyFullPage);
+          listFirst = !noFetch;
         } else {
           // Species-List (recent): go straight to the map and drop dots in as the
           // fetch streams. The list stays rendered-but-hidden until the header
@@ -20202,6 +20524,15 @@
         // the flag once the fetch settles so later plots use the normal (fit) path.
         augmentRowsWithSightings(lat, lon).then(function () {
           if (spListGen === fetchGen) spMapFetch = false;
+          // List-first (?show=list): nothing was plotted progressively (the map wasn't the
+          // visible view — see applySightings), so put the settled result on the map now.
+          // Otherwise the dots only appear via the header Map button (goToMapView →
+          // plotAllSightings) and never when the list is left with Back.
+          if (listFirst && spListGen === fetchGen && currentSpView && currentSpView._result &&
+              (currentSpView._plotGen === undefined || currentSpView._plotGen === detPlotGen)) {
+            try { plotSightingsResult(currentSpView._result); } catch (e) {}
+            refreshSpCoords();   // the square registered by that plot now shows in the header (place · N species · N obs …)
+          }
         }).then(releaseDot, releaseDot);   // fetch settled → drop this fetch's status-line dot
       }
       lastSpeciesPdf = {
