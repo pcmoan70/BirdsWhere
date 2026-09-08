@@ -1,6 +1,6 @@
 # BirdsWhere
 
-**Live app:** <https://thebirding.site/> (formerly `pcmoan70.github.io/BirdsWhere`, which now redirects)
+**Live app:** <https://thebirding.site/> (formerly `pcmoan70.github.io/BirdsWhere`, which now redirects; an app installed from the old address shows a *Move to thebirding.site* button that carries your lists and settings across)
 
 An interactive, **100% in-browser** explorer of species **distribution, migration and live
 observations**. Everything runs on your device — there is **no server and no backend of our own**;
