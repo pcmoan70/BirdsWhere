@@ -505,15 +505,25 @@ another app. Options are `;`- or `&`-separated `key=value` pairs.
 **Parameters**
 
 - **`location`** — `here` (geolocate to your current position) **or** explicit `lat,lon` coordinates
-  (e.g. `60.12312,32.00123`; latitude −90…90, longitude −180…180).
+  (e.g. `60.12312,32.00123`; latitude −90…90, longitude −180…180). `here` **waits for a good GPS
+  fix** before fetching: it watches the position until the accuracy is within 100 m (a blinking
+  satellite mid-screen and the status line show the current ±m), and after 20 s falls back to the best fix seen — so a first coarse network
+  position can't send a small-radius search to the wrong place.
 - **`radius`** — sightings search radius in km (e.g. `5`); persisted, so it also updates the Settings
   slider.
 - **`days`** — how many days back to fetch (1–92, e.g. `7` for the last week); persisted as the
   *Download — last N days* setting, so it also updates that Settings field.
+- **`skip`** — comma-separated source ids to leave out of this launch's fetches, e.g.
+  `skip=birdweather` (BirdWeather is slow) or `skip=birdweather,ebird`. Ids: `gbif`, `ebird`, `inat`,
+  `artsobs`, `artportalen`, `laji`, `nbn`, `birdweather`. Applies to the launch only — Settings → Data
+  sources are not changed.
 - **`show`** — `map` (default: land on the map with the dots dropping in as they load) or `list` (open
   the ranked list page directly).
+- **`layout`** — with `show=list`: `table` (default, the ranked species table) or `observation` (the
+  *By observation* layout — one row per record, grouped by day and observer).
 - **`sortby`** — `rarity_increasing` (default; most likely / commonest species first),
-  `rarity_decreasing` (rarest first), or `time_recent` (most recently observed first).
+  `rarity_decreasing` (rarest first), or `time_recent` (most recently observed first); applies to both
+  layouts.
 
 **Examples** (base: `https://pcmoan70.github.io/BirdsWhere/`)
 
@@ -529,6 +539,12 @@ another app. Options are `;`- or `&`-separated `key=value` pairs.
 
 ?location=here;radius=2;days=7;show=list;sortby=rarity_decreasing
     Geolocate, 2 km radius, last week's observations, open the list, rarest species first.
+
+?location=here&radius=2&days=7&skip=birdweather&show=list&sortby=rarity_decreasing
+    Same, without querying BirdWeather (the `&` form is the safest for QR codes).
+
+?location=here&radius=2&days=14&skip=ebird&show=list&layout=observation&sortby=rarity_decreasing
+    Last two weeks within 2 km as a By-observation list, eBird left out.
 
 ?location=60.12312,32.00123;radius=10;show=map;sortby=rarity_decreasing
     Go to those coordinates, 10 km radius, land on the map, rarest species first.

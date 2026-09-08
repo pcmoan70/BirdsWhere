@@ -4033,7 +4033,7 @@
   }
   function obsSources() {
     var list = [
-      { name: "GBIF", id: "gbif", country: null, enabled: function () { return !isSourceOff("gbif"); }, run: function (c) { var gd = c.days ? Math.min((window.AppSources && AppSources.GBIF_MAX_DAYS) || 92, c.days) : gbifDays(); return AppFetch.fetchGbifAll(c.lat, c.lon, c.dateBack(gd) + "," + c.d2, c.rkm, c.cc, c.signal, null, null, function (done, total, names) { obsSub["GBIF"] = { done: done, total: total, names: names }; obsRender(); }).then(AppNormalize.normGbif); } }
+      { name: "GBIF", id: "gbif", country: null, enabled: function () { return !isSourceOff("gbif") && !urlSkipSrc.gbif; }, run: function (c) { var gd = c.days ? Math.min((window.AppSources && AppSources.GBIF_MAX_DAYS) || 92, c.days) : gbifDays(); return AppFetch.fetchGbifAll(c.lat, c.lon, c.dateBack(gd) + "," + c.d2, c.rkm, c.cc, c.signal, null, null, function (done, total, names) { obsSub["GBIF"] = { done: done, total: total, names: names }; obsRender(); }).then(AppNormalize.normGbif); } }
     ];
     directSources().forEach(function (s) {
       // eBird and BirdWeather are bird-only feeds (eBird is birds-only; BirdWeather
@@ -4043,7 +4043,7 @@
       // Enabled = just the on/off toggle. A keyed source with no key still runs
       // (and shows in the loading line), then fails — surfaced as a clear "API key
       // missing" line in the status strip (see splitFailed), not the failure popup.
-      list.push({ name: s.name, id: s.id, country: s.country, enabled: function () { return !isSourceOff(s.id); }, run: function (c) { return runDirectSource(s, c); } });
+      list.push({ name: s.name, id: s.id, country: s.country, enabled: function () { return !isSourceOff(s.id) && !urlSkipSrc[s.id]; }, run: function (c) { return runDirectSource(s, c); } });
     });
     return list;
   }
@@ -5544,14 +5544,54 @@
       modeSel.value = "list";
       modeSel.dispatchEvent(new Event("change", { bubbles: true }));
     }
-    navigator.geolocation.getCurrentPosition(function (pos) {
-      var lat = pos.coords.latitude, lon = pos.coords.longitude;
+    waitForGoodFix(function (lat, lon) {
       if (marker) map.removeLayer(marker);
       marker = L.marker([lat, lon]).addTo(map);
       map.setView([lat, lon], Math.max(map.getZoom() || 0, 11));
       renderSpeciesList(lat, lon);
-    }, function () { setStatus(t("status.locateError")); },
-    { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
+    }, function () { setStatus(t("status.locateError")); });
+  }
+
+  // ?location=here / ?here=1: wait for a GOOD fix before fetching. The first position a
+  // phone hands out is often a coarse network fix (hundreds of metres to kilometres)
+  // or a cached one — with a small radius that lands the search in the wrong place.
+  // Watch until the accuracy is within URL_FIX_M, else use the best fix seen by the
+  // deadline; the status line shows the current ±accuracy while waiting.
+  var URL_FIX_M = 100, URL_FIX_WAIT_MS = 20000;
+  // Satellite glyph (app line-icon style: 24-grid, 2px round strokes) — body + two solar
+  // panels along the diagonal, a dish and a signal arc. Blinks mid-screen while waiting.
+  var GPS_SAT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M9 12l3 3 5-5-3-3z"/><path d="M4.5 16.5l3-3 3 3-3 3z"/><path d="M10.5 13.5L9 15"/>' +
+    '<path d="M15.5 5.5l3-3 3 3-3 3z"/><path d="M15.5 8.5L17 7"/><path d="M11.5 9.5L9.6 7.6"/>' +
+    '<circle cx="8.2" cy="6.2" r="1.9"/><path d="M3.5 6.2a4.7 4.7 0 0 1 4.7-4.7"/></svg>';
+  function gpsWaitShow(accM) {
+    var el = document.getElementById("gps-wait");
+    if (!el) {
+      el = document.createElement("div"); el.id = "gps-wait"; el.setAttribute("aria-hidden", "true");
+      el.innerHTML = '<div class="gps-wait-disc">' + GPS_SAT_SVG + '</div><div class="gps-wait-acc"></div>';
+      document.body.appendChild(el);
+    }
+    var acc = el.querySelector(".gps-wait-acc"); if (acc) acc.textContent = accM != null ? "\u00b1" + Math.round(accM) + " m" : "";
+  }
+  function gpsWaitHide() { var el = document.getElementById("gps-wait"); if (el) el.remove(); }
+  function waitForGoodFix(onFix, onFail) {
+    var best = null, done = false, wid = null, timer = null;
+    function finish() {
+      if (done) return; done = true;
+      if (wid !== null) navigator.geolocation.clearWatch(wid);
+      clearTimeout(timer);
+      gpsWaitHide();
+      if (best) onFix(best.coords.latitude, best.coords.longitude); else onFail();
+    }
+    gpsWaitShow(null);
+    wid = navigator.geolocation.watchPosition(function (pos) {
+      if (!best || pos.coords.accuracy < best.coords.accuracy) best = pos;
+      setStatus(t("status.gpsWait", { m: Math.round(pos.coords.accuracy) }));
+      gpsWaitShow(pos.coords.accuracy);
+      if (pos.coords.accuracy <= URL_FIX_M) finish();
+    }, function (err) { if (err && err.code === 1) finish(); },   // denied → give up now; else the deadline decides
+    { enableHighAccuracy: true, maximumAge: 0, timeout: URL_FIX_WAIT_MS });
+    timer = setTimeout(finish, URL_FIX_WAIT_MS);
   }
 
   // Parse the query string as semicolon- OR ampersand-separated key=value pairs,
@@ -5586,8 +5626,12 @@
   //   location=here | <lat>,<lon>  → geolocate, or go to explicit coordinates
   //   radius=<km>    → set the sightings radius before fetching
   //   days=<n>       → set the "Download — last N days" window before fetching (1–92)
+  //   skip=<id,id…>  → leave these sources out of this launch's fetches (gbif, ebird, inat,
+  //                    artsobs, artportalen, laji, nbn, birdweather); Settings are untouched
   //   show=list|map  → land on the list page, or the map with dots dropping in (default)
-  //   sortby=…       → rarity_increasing (default) | rarity_decreasing | time_recent
+  //   layout=table|observation → the list page's layout: ranked species table (default) or
+  //                    one row per observation ("By observation")
+  //   sortby=…       → rarity_increasing (default) | rarity_decreasing | time_recent (both layouts)
   function maybeUrlLocationParam() {
     var p = parseSemiParams();
     var locRaw = (p.location || "").trim();
@@ -5619,9 +5663,17 @@
       var ddEl = document.getElementById("download-days"); if (ddEl) ddEl.value = String(dd);
       refreshRecentModeLabel();   // the "📍 Recent" mode label carries the window as a superscript
     }
+    urlSkipSrc = {};
+    (p.skip || "").toLowerCase().split(",").forEach(function (id) { id = id.trim(); if (id) urlSkipSrc[id] = 1; });
 
+    var lay = (p.layout || "").toLowerCase();
+    if (lay === "observation" || lay === "observations" || lay === "obs") spLayout = "observation";
+    else if (lay === "table" || lay === "species") spLayout = "table";
     var sort = urlSortState(p.sortby);
-    if (sort) speciesListSort = sort;
+    if (sort) {
+      speciesListSort = sort;
+      spObsSort = sort.col === "recent" ? { col: "date", dir: "desc" } : { col: sort.col, dir: sort.dir };   // same order in the By-observation layout
+    }
     updateSortIndicators();
     urlForceView = (p.show || "").toLowerCase() === "list" ? "list" : null;   // else map-first (also 'map')
 
@@ -5637,10 +5689,7 @@
       renderSpeciesList(lat, lon);
     }
     if (coords) openAt(coords[0], coords[1]);
-    else navigator.geolocation.getCurrentPosition(
-      function (pos) { openAt(pos.coords.latitude, pos.coords.longitude); },
-      function () { setStatus(t("status.locateError")); },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
+    else waitForGoodFix(openAt, function () { setStatus(t("status.locateError")); });
     return true;
   }
 
@@ -19440,6 +19489,7 @@
   var spListGen = 0;
   var spMapFetch = false;   // Species-List point fetch in "map-first" mode → drop dots as they load
   var urlForceView = null;  // one-shot: a ?location=…;show=list URL wants the LIST page (not the map-first default)
+  var urlSkipSrc = {};      // ?skip=birdweather,… → source ids left out of this launch's fetches (Settings untouched)
   var plotNoFit = false;    // suppress plotSightingsResult's fitBounds (progressive partial plots)
   // eBird country species list (all species ever recorded in the region) —
   // used as the "official" national bird list to merge against the model's
