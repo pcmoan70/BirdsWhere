@@ -85,7 +85,8 @@
   var TRAITS_REV = 2;                        // bump when species-traits.json changes
 
   // ---- i18n / species names ------------------------------------------------
-  var lang = "en";            // current UI + species-name language code
+  var lang = "en";            // current UI + species-name language code (resolved)
+  var langChoice = "system";  // what the user picked: "system" (follow the device) or a language code
   var langTaxCol = "com_name"; // taxonomy.csv column for current language
   var taxByCode = {};          // species_code -> { com_name, class_name, common_name_xx, ... }
   var secondLang = "";         // optional 2nd species-name language ("" = off)
@@ -1253,19 +1254,16 @@
     if (!navigator.geolocation) { setStatus(t("status.locateError")); return; }
     oneShotBusy = true;
     var b = crossBtn(); if (b) b.classList.add("cross-locating");
-    navigator.geolocation.getCurrentPosition(function (pos) {
+    sharedPosition(function (pos) {   // shares any request already in flight (one permission prompt)
       oneShotBusy = false;
       var b2 = crossBtn(); if (b2) b2.classList.remove("cross-locating");
+      if (!pos) { setStatus(t("status.locateError")); return; }
       if (!map || crossState !== 0) return;   // user switched to follow/read meanwhile
       var ll = L.latLng(pos.coords.latitude, pos.coords.longitude);
       if (posFixedMarker) { map.removeLayer(posFixedMarker); }
       posFixedMarker = L.marker(ll, { icon: livePosIcon("red"), interactive: false, keyboard: false, zIndexOffset: 1000 }).addTo(map);
       map.setView(ll, Math.max(map.getZoom() || 0, 14));
       if (["list", "barchart", "range"].indexOf(currentMode) >= 0) onMapClick({ latlng: ll });
-    }, function () {
-      oneShotBusy = false;
-      var b2 = crossBtn(); if (b2) b2.classList.remove("cross-locating");
-      setStatus(t("status.locateError"));
     }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 });
   }
   function crossTap() {
@@ -5586,13 +5584,37 @@
     var acc = el.querySelector(".gps-wait-acc"); if (acc) acc.textContent = accM != null ? "\u00b1" + Math.round(accM) + " m" : "";
   }
   function gpsWaitHide() { var el = document.getElementById("gps-wait"); if (el) el.remove(); }
+  // ONE geolocation request at a time. iOS Safari raises a separate permission prompt
+  // for every outstanding request, so two boot-time callers (e.g. the ⟳ Here row of
+  // Fetch-on-open and the rarity poll, or a ?location=here launch plus either) asked
+  // the user twice. Concurrent callers now share the in-flight request — including a
+  // running waitForGoodFix watch, whose best fix they receive when it finishes.
+  var geoWaiters = null;   // callbacks waiting for the in-flight fix (null = nothing in flight)
+  var geoLastPos = null;   // { pos, at }: the newest fix this session — reused within a caller's maximumAge
+  function geoSettle(pos, err) {
+    if (pos) geoLastPos = { pos: pos, at: Date.now() };
+    var w = geoWaiters || []; geoWaiters = null; w.forEach(function (f) { try { f(pos, err); } catch (e) {} });
+  }
+  function sharedPosition(cb, opts) {
+    if (!navigator.geolocation) { cb(null, { code: 2 }); return; }
+    if (geoLastPos && opts && opts.maximumAge > 0 && Date.now() - geoLastPos.at <= opts.maximumAge) { cb(geoLastPos.pos, null); return; }   // a fresh fix — no new request (and no new prompt)
+    if (geoWaiters) { geoWaiters.push(cb); return; }
+    geoWaiters = [cb];
+    navigator.geolocation.getCurrentPosition(function (pos) { geoSettle(pos, null); }, function (err) { geoSettle(null, err); }, opts);
+  }
   function waitForGoodFix(onFix, onFail) {
     var best = null, done = false, wid = null, timer = null;
+    if (geoWaiters) {   // a request is already in flight — reuse its answer instead of prompting again
+      geoWaiters.push(function (pos) { if (pos) onFix(pos.coords.latitude, pos.coords.longitude); else onFail(); });
+      return;
+    }
+    geoWaiters = [];    // gate: callers arriving during the watch queue up here
     function finish() {
       if (done) return; done = true;
       if (wid !== null) navigator.geolocation.clearWatch(wid);
       clearTimeout(timer);
       gpsWaitHide();
+      geoSettle(best, best ? null : { code: 3 });
       if (best) onFix(best.coords.latitude, best.coords.longitude); else onFail();
     }
     gpsWaitShow(null);
@@ -5823,8 +5845,16 @@
           '<div class="ctrl-group" id="settings-wrap">' +
             '<button type="button" id="settings-toggle" class="settings-icon-btn" aria-haspopup="true" aria-label="Settings" data-i18n-title="ctrl.settingsHold" title="Settings"></button>' +
             '<div id="settings-panel" class="dd-panel settings-panel" style="display:none">' +
+              // Feedback form, first thing in Settings (the delegated ".feedback-open" click handler opens it).
+              '<div class="settings-toprow">' +
+                '<button type="button" class="btn ico-btn feedback-open settings-feedback">' + ico("mail") + '<span class="ico-label" data-i18n="feedback.send">Feedback</span></button>' +
+              '</div>' +
               '<p class="settings-intro" data-i18n="settings.appIntro">BirdsWhere shows where species live, migrate, and are being seen right now — the BirdNET habitat model runs entirely in your browser, overlaid with live observations from eBird, GBIF, iNaturalist and national databases.</p>' +
-              '<button type="button" id="about-open" class="settings-about" data-i18n="ctrl.about">About &amp; how it works</button>' +
+              // "About ↗" (the short web summary, in the UI language) beside "How it works" (the in-app panel).
+              '<div class="settings-aboutrow">' +
+                '<a class="settings-about about-page-link" href="about/" target="_blank" rel="noopener" data-i18n="settings.aboutPage">About ↗</a>' +
+                '<button type="button" id="about-open" class="settings-about" data-i18n="ctrl.about">How it works</button>' +
+              '</div>' +
               '<div id="settings-version" class="settings-version" style="display:none"></div>' +
               '<button type="button" id="settings-update" class="settings-update" style="display:none"></button>' +
               '<div id="settings-update-notes" class="cu-hint" style="display:none"></div>' +
@@ -6063,8 +6093,7 @@
                 '<label class="ctrl-check"><input type="checkbox" id="experimental-toggle"> <span data-i18n="ctrl.experimental">Experimental features</span></label>' +
                 '<p class="cu-hint" data-i18n="ctrl.experimentalHint">Off (default). On: unlocks less-polished extras — currently the NBN Atlas link in the species menu; more may appear here over time.</p>' +
               '</div>' +
-              '<div class="app-qr"><img src="qr-app.svg" alt="" width="140" height="140" /><span class="app-qr-cap" data-i18n="settings.qrShare">Scan to open / share this app</span>' +
-                '<a id="about-page-link" class="app-about-link" href="about/" target="_blank" rel="noopener" data-i18n="settings.aboutPage">About BirdsWhere ↗</a></div>' +
+              '<div class="app-qr"><img src="qr-app.svg" alt="" width="140" height="140" /><span class="app-qr-cap" data-i18n="settings.qrShare">Scan to open / share this app</span></div>' +
               '<div class="settings-section" data-i18n="settings.secWhatsNew">What’s new</div>' +
               '<div id="whatsnew-list" class="whatsnew-list"></div>' +
             '</div>' +
@@ -6253,12 +6282,13 @@
           '<p class="perf-privacy" data-i18n="popup.privacy">Private by design: there is no account and no server of ours. Your searches, saved lists and settings stay on this device — nothing is sent anywhere except the direct requests to the observation sources you query.</p>' +
           '<p class="perf-feedback"><span data-i18n="popup.feedback"></span> <button type="button" class="feedback-open ico-btn">' + ico("mail") + '<span class="ico-label" data-i18n="feedback.send">Message</span></button></p>' +
           '<div class="install-row"><button type="button" id="install-info" class="btn btn-light ico-btn" hidden>' + ico("install") + '<span class="ico-label" data-i18n="install.app">Offline mode</span></button><div class="install-steps cu-hint" hidden></div></div>' +
+          '<p class="perf-about"><a class="about-page-link" href="about/" target="_blank" rel="noopener" data-i18n="settings.aboutPage">About ↗</a></p>' +
           '<div class="perf-version" id="perf-version" style="display:none"></div>' +
           '<button id="perf-modal-ok" class="btn" data-i18n="popup.ok">OK</button>' +
         '</div></div>' +
         '<div id="feedback-modal" style="display:none"><div id="feedback-box">' +
           '<button type="button" id="feedback-close" aria-label="Close">×</button>' +
-          '<h3 data-i18n="feedback.title">Message</h3>' +
+          '<h3 data-i18n="feedback.title">Feedback</h3>' +
           '<textarea id="feedback-msg" rows="5" data-i18n-ph="feedback.msgPh" placeholder="Your message…"></textarea>' +
           '<input type="email" id="feedback-email" autocomplete="email" data-i18n-ph="feedback.emailPh" placeholder="Your email (optional, for a reply)" />' +
           '<div id="feedback-status" class="cu-hint"></div>' +
@@ -6352,7 +6382,7 @@
       '</div>';
 
     // Restore saved language before building the UI text.
-    setLang(window.GeoState.get("lang", defaultLang()), true);
+    setLang(window.GeoState.get("lang", "system"), true);   // "system" (default) follows the device language
 
     try {
       await Promise.all([initWorker(), loadLabels(), loadTaxonomy()]);
@@ -6922,8 +6952,12 @@
     return "en";
   }
 
+  // The stored choice: "system" (or nothing) → the device language via defaultLang()
+  // (English when unsupported); a code → that language.
+  function resolveLangChoice(choice) { return (!choice || choice === "system") ? defaultLang() : choice; }
   function setLang(code, skipRefresh) {
-    var L = window.GeoI18N.langByCode(code);
+    langChoice = (!code || code === "system") ? "system" : code;
+    var L = window.GeoI18N.langByCode(resolveLangChoice(code));
     lang = L.code;
     langTaxCol = L.taxCol;
     document.documentElement.setAttribute("lang", lang);
@@ -6933,7 +6967,7 @@
       if (loaded && lang === L.code) refreshLangUI();
     });
     if (skipRefresh) return;
-    window.GeoState.save({ lang: lang });
+    window.GeoState.save({ lang: langChoice });
     refreshLangUI();
   }
   // Everything that renders in the CURRENT language — run on a language switch
@@ -6942,13 +6976,17 @@
   var langUiReady = false, pendingLangUI = false;
   // Static "About BirdsWhere" pages exist for every full UI language (app/about/<code>/).
   var ABOUT_PAGE_LANGS = { cs: 1, da: 1, de: 1, es: 1, et: 1, fi: 1, fr: 1, it: 1, lt: 1, nl: 1, no: 1, pl: 1, pt: 1, sv: 1 };
-  function syncAboutLink() { var a = document.getElementById("about-page-link"); if (a) a.href = ABOUT_PAGE_LANGS[lang] ? "about/" + lang + "/" : "about/"; }
+  function syncAboutLink() {
+    var href = ABOUT_PAGE_LANGS[lang] ? "about/" + lang + "/" : "about/";
+    Array.prototype.forEach.call(document.querySelectorAll(".about-page-link"), function (a) { a.href = href; });
+  }
   function refreshLangUI() {
     if (!langUiReady) { pendingLangUI = true; return; }
     applyI18n();
     syncAboutLink();
     try { updateBasemapOptions(); } catch (e) {}   // re-append the 🔑 to key-maps after applyI18n reset the option text
     populateWeekSelect();   // re-label weeks in the new language
+    populateLangSelect();         // re-localize the "(System)" option
     populateSecondLangSelect();   // re-localize the "(none)" option
     refreshChecklists();    // re-localize the "Checklist (N)" button text
     if (document.getElementById("field-page").style.display === "flex") renderFieldList();  // re-localize activity labels if open
@@ -6971,13 +7009,18 @@
       if (!!a.full !== !!b.full) return a.full ? -1 : 1;
       return a.name.localeCompare(b.name);
     });
-    sel.innerHTML = ordered.map(function (L) {
+    // "(System)" first: follow the device language (English when it isn't supported);
+    // the resolved language is shown after it so the choice is transparent.
+    var sysL = window.GeoI18N.langByCode(defaultLang());
+    sel.innerHTML = '<option value="system" class="lang-system"' + (langChoice === "system" ? " selected" : "") + ">" +
+        escapeHtml(t("lang.system")) + " — " + escapeHtml(sysL.name) + "</option>" +
+      ordered.map(function (L) {
       // ★ marks languages whose interface is fully translated (others fall
       // back to English for UI text). Italics = species-name pack not yet
       // downloaded (fetched on first use).
       var label = L.name + (L.full ? " ★" : "");
       var cls = langPackMissing(L.taxCol) ? ' class="lang-nopack"' : "";
-      return '<option value="' + L.code + '"' + cls + (L.code === lang ? " selected" : "") + ">" + label + "</option>";
+      return '<option value="' + L.code + '"' + cls + (langChoice !== "system" && L.code === lang ? " selected" : "") + ">" + label + "</option>";
     }).join("");
   }
 
@@ -7558,10 +7601,17 @@
         fsBtn.innerHTML = fsIconSvg();
         fsBtn.addEventListener("click", function (e) { e.preventDefault(); toggleFullscreen(); });
       }
-      document.addEventListener("fullscreenchange", function () {
+      // iPad/iPhone Safari draws its own large ✕ (exit full-screen) over the top-left
+      // corner, right where the settings (bird) button sits — while full-screen on an
+      // Apple touch device the header is pushed right so every control stays reachable.
+      var appleTouch = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      function onFsChange() {
         var b = document.querySelector(".fs-toggle-btn"); if (b) b.innerHTML = fsIconSvg();
+        document.body.classList.toggle("fs-apple", appleTouch && isFullscreen());
         fitMapHeight();
-      });
+      }
+      document.addEventListener("fullscreenchange", onFsChange);
+      document.addEventListener("webkitfullscreenchange", onFsChange);   // Safari's name for it
     }
 
     // One leaflet-bar on the right, holding (top) a red × that clears all plotted
@@ -8603,7 +8653,7 @@
     }).catch(function () {});
   }
   function extraVernacName(sci) {
-    var key = (window.GeoState.get("lang", "en") || "en") + "|" + sci.toLowerCase();
+    var key = (lang || "en") + "|" + sci.toLowerCase();
     var cache = vernacCache();
     if (key in cache) return cache[key] || "";   // "" = looked up before, none found
     if (!vernacPending[key]) { vernacPending[key] = sci; scheduleVernacFetch(); }
@@ -14677,11 +14727,24 @@
   // runtime language change would leave them stale (e.g. still "Fugleplasser" after
   // switching to English). Keep a name-key per layer so the control can be re-labelled.
   var overlayLayersCtrl = null, overlayDefsRef = null;
+  // Detailed explanation of one overlay (what it shows, why it helps, how to use it,
+  // caveats) — opened from the ⓘ-style "?" badge at the right of its row. The texts are
+  // English so far; other languages get the English one with a small note.
+  function showOverlayHelp(def) {
+    var m = createModal({ escClose: true, backdropClose: true, boxClass: "ovl-help-box" });
+    var html = t(def.key + "Help");
+    var enOnly = (lang !== "en") && !window.GeoI18N.hasOwn(lang, def.key + "Help");
+    m.box.innerHTML = '<div class="ui-modal-msg ovl-help-title">' + escapeHtml(t(def.key)) + "</div>" +
+      (enOnly ? '<p class="cu-hint">' + escapeHtml(t("layer.helpEnOnly")) + "</p>" : "") +
+      '<div class="ovl-help-body">' + html + "</div>" +
+      '<div class="ui-modal-btns"><button type="button" class="btn ovl-help-ok">' + escapeHtml(t("popup.ok")) + "</button></div>";
+    m.box.querySelector(".ovl-help-ok").addEventListener("click", m.close);
+  }
   function applyOverlayTips() {
     if (!overlayLayersCtrl || !overlayDefsRef) return;
     try {
-      var tips = {};
-      overlayDefsRef.forEach(function (d) { if (d.tip) tips[t(d.key)] = t(d.tip); });
+      var tips = {}, defsByName = {};
+      overlayDefsRef.forEach(function (d) { if (d.tip) tips[t(d.key)] = t(d.tip); defsByName[t(d.key)] = d; });
       var wantBird = t("layer.birdSpots");
       Array.prototype.forEach.call(overlayLayersCtrl.getContainer().querySelectorAll(".leaflet-control-layers-overlays label"), function (lab) {
         // The zoom-hint badge (added below) lives in its own span; exclude it when
@@ -14692,6 +14755,16 @@
         txt = txt.trim();
         if (txt.slice(-1) === EXP_STAR) txt = txt.slice(0, -1).trim();   // drop the experimental "*" before matching
         lab.title = tips[txt] || "";
+        // "?" badge at the right edge of every row → the overlay's detailed explanation.
+        var def = defsByName[txt];
+        if (def && !lab.querySelector(".ovl-help")) {
+          var q = document.createElement("span");
+          q.className = "ovl-help"; q.setAttribute("role", "button"); q.tabIndex = 0;
+          q.textContent = "?"; q.title = t("layer.helpBtn"); q.setAttribute("aria-label", t("layer.helpBtn"));
+          q.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); showOverlayHelp(def); });
+          q.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); showOverlayHelp(def); } });
+          lab.appendChild(q);
+        }
         // Birding spots + eBird hotspots + Best sites have related settings
         // (visibility zoom, max shown, min species) — a ⚙-badge marks that on the
         // row; tapping the gear (or long-pressing the row) opens the settings popup.
@@ -18505,11 +18578,12 @@
   function getHereFix(cb) {
     var last = window.GeoState.get("hereFix", null);
     if (!navigator.geolocation) { cb(last); return; }
-    navigator.geolocation.getCurrentPosition(function (pos) {
+    sharedPosition(function (pos) {
+      if (!pos) { cb(last); return; }
       var fix = { lat: pos.coords.latitude, lon: pos.coords.longitude, at: Date.now() };
       window.GeoState.save({ hereFix: fix });
       cb(fix);
-    }, function () { cb(last); }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 120000 });
+    }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 120000 });
   }
   function hideStoredLocations() { var p = document.getElementById("stored-loc-panel"); if (p) p.style.display = "none"; if (storedLocFramesLayer) storedLocFramesLayer.clearLayers(); }   // drop the selection preview; fetched areas are remembered separately
   // Draw a square (the ± radius box that gets fetched) on the map for every
@@ -18954,8 +19028,8 @@
     AppGeo.countryInfo(lat, lon).then(function (info) {
       var cc = (info && info.cc) || "", cname = (info && info.name) || "";
       // Radar → Migration Aloft (European weather-radar migration map). A MAIN-level
-      // popup entry (not inside "More"), Europe only. Inserted before the More toggle.
-      if (continentFor(cc) === "EU") {
+      // popup entry (not inside "More"), Europe only, Experimental-gated. Inserted before the More toggle.
+      if (continentFor(cc) === "EU" && experimentalOn()) {
         wrap.insertBefore(
           makePopupBtn(t("link.aloft") + " ↗", "btn-green", function () {
             mk.closePopup(); openExternal("https://pcmoan70.github.io/BirdsWhere-aloft/");   // the Migration Aloft radar is its own repo/site now
@@ -19818,8 +19892,7 @@
   // Selecting some restricts the fetch to those months across ALL years in the
   // range (GBIF's &month filter); selecting none = every month.
   function histMonthShort(m) {
-    var lang = (window.GeoState.get("lang", defaultLang()) || "en");
-    var fmt; try { fmt = new Intl.DateTimeFormat(lang, { month: "short" }); } catch (e) { fmt = null; }
+    var fmt; try { fmt = new Intl.DateTimeFormat(lang, { month: "short" }); } catch (e) { fmt = null; }   // `lang` = the resolved UI language
     return fmt ? fmt.format(new Date(2021, m - 1, 15)) : String(m);
   }
   // Reflect the current selection in the collapsed dropdown's summary so the user
@@ -20864,7 +20937,7 @@
         var monthClass = (w3 % 4 === 0) ? " bc-month-start" : "";
         var curClass = (w3 === wkIdx) ? " bc-cur" : "";
         var detClass = (ctx.detWeek && w3 === ctx.detWeek - 1) ? " bc-det" : "";   // the observation's week
-        html += '<div class="bc-bar' + monthClass + curClass + detClass + '" style="height:' + pct.toFixed(1) + '%;background:' + probHueColor(norm) + '" title="' + (w3 + 1) + ": " + (prob * 100).toFixed(1) + '%' + (detClass ? " · " + escapeHtml(t("bc.detWeek")) : "") + '"></div>';
+        html += '<div class="bc-bar' + monthClass + curClass + detClass + '" style="height:' + pct.toFixed(1) + '%;background:' + window.GeoAnalysis.probColor(norm) + '" title="' + (w3 + 1) + ": " + (prob * 100).toFixed(1) + '%' + (detClass ? " · " + escapeHtml(t("bc.detWeek")) : "") + '"></div>';
       }
       html += '</div><div class="bc-months">';
       for (var m = 0; m < 12; m++) html += "<span>" + escapeHtml(MONTH_LABELS[m]) + "</span>";

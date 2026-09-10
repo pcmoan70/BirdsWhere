@@ -114,7 +114,9 @@ observed species with a thin red observers line, the species turnover, and — w
 features* on — the AI model's own year profile for the spot), and
 **eBird hotspots** (clickable — each opens a popup
 with an eBird link and *Navigate*; needs the eBird key). All are streamed from the providers;
-nothing is stored. Hover a layer's checkbox for a tip on what it shows. Overlays that carry a colour
+nothing is stored. Hover a layer's checkbox for a short tip, or tap the **?** at the right of its row
+for a detailed explanation (what it shows, why it helps birding, how to use it, caveats — English
+for now). Overlays that carry a colour
 key (WDPA, Natura 2000, Emerald, GBIF density, CORINE land cover) show a **legend in the lower-right**;
 with several on, the legends stack as separate cards you can individually **minimise**.
 
@@ -167,9 +169,9 @@ Click the map in **Migration** mode for a tabbed panel derived from a single 48-
 prediction at that point:
 
 - **Timeline** — per-species phenology bars across the year.
-- **Probability** — species × 48-week heatmap (red → green).
+- **Probability** — species × 48-week heatmap (orange → green).
 - **Arrivals** — a diverging heatmap of the arrival score `(P[next] − P[prev]) / max_year`
-  (green = arriving, red = departing).
+  (green = arriving, orange = departing).
 - **Annual Top** — a running total of arrival scores; the part of the year each species is most present.
 - **Scatter** — the top-N species plotted as *(arrival, probability)*, with a sortable table.
 
@@ -570,7 +572,7 @@ https://thebirding.site/f/
 
 **Short link for print** — `https://thebirding.site/f/` is a tiny redirect page
 (`app/f/index.html`, served by the service worker even offline) that forwards to
-`?location=here&radius=2&days=14&skip=ebird&show=list&sortby=distance` (the species list, nearest
+`?location=here&radius=3&days=21&skip=ebird&show=list&sortby=distance` (the species list, nearest
 first, ties by rarity). Being 27 characters
 instead of ~120 it makes a much coarser QR code (33×33 modules at the highest error-correction level,
 instead of 57×57), which survives print wear far better. Change the target by editing that file.
@@ -743,7 +745,9 @@ no direction can delete data on the other device.
   pl, cs, no, da, fi, et, lt); other languages fall back to English UI text while still showing
   localised species names. **Species common names are available in ~45 languages**, loaded as
   small on-demand per-language name packs (`i18n/names/`) so startup only downloads the
-  language(s) you actually use.
+  language(s) you actually use. The language picker's first entry, *(System)* in italics, follows
+  the device language (the default) and falls back to English when that language is not supported;
+  picking a language explicitly overrides it until you choose *(System)* again.
 - **CSV export** throughout (recent detections, species lists, checklist CSV/Log, eBird
   Record-Format CSV). A **Share between devices** section also **exports/imports all your data as a
   backup file** (merging checklists on import) and shows the app QR.
@@ -816,7 +820,7 @@ alerts, lists, offline use — plus the data sources and the responsible-birding
 `tools/about-content.json` by `node tools/gen-about-pages.mjs` (edit the JSON, re-run, commit).
 `robots.txt` allows everything and points at `sitemap.xml` (root + all about pages); `index.html`
 carries a canonical URL, description, Open Graph tags and a `<noscript>` intro linking to the pages,
-and Settings has an **About BirdsWhere ↗** link in the current UI language. The service worker leaves
+and an **About ↗** link (on the welcome screen, and in Settings beside **How it works**) opens the page in the current UI language. The service worker leaves
 `/about/`, `robots.txt` and `sitemap.xml` to the network so an installed app never swallows them.
 The RC channel is deployed with `noindex` on every page and without the crawler files, so only
 thebirding.site is indexed.

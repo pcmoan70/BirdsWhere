@@ -466,6 +466,15 @@ input:focus-visible {
 #mode-wrap { display: none; }
 /* "Zoom in" badge on the birding-spots overlay row (spots only draw past a zoom level). */
 .ovl-zoomhint { color: #e8801f; font-size: var(--fs-s); white-space: nowrap; cursor: pointer; }
+/* "?" badge at the right of every overlay row → the overlay's explanation dialog. */
+.leaflet-control-layers-overlays label { position: relative; padding-right: 26px; }
+.ovl-help { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; border: 1.5px solid var(--brand, #2e8b74); border-radius: 50%; color: var(--brand, #2e8b74); font-size: 12px; font-weight: 700; line-height: 15px; text-align: center; cursor: pointer; user-select: none; }
+.ovl-help:hover, .ovl-help:focus { background: var(--brand, #2e8b74); color: #fff; outline: none; }
+.ui-modal.ovl-help-box { width: min(520px, 94vw); max-height: 88vh; overflow-y: auto; }
+.ovl-help-title { font-weight: 700; color: var(--brand-deep, #0b3a3a); margin-bottom: 4px; }
+.ovl-help-body { font-size: var(--fs-b); line-height: 1.45; }
+.ovl-help-body p { margin: 8px 0; }
+.ovl-help-body b { color: var(--brand-deep, #0b3a3a); }
 .ovl-zoomhint.ok { color: var(--ink-muted, #888); }   /* current zoom already shows the icons */
 /* Overlay legend stack (bottom-right): a collapsible card per active overlay. */
 .legend-stack { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; margin: 0 10px 10px 0 !important; }
@@ -1214,6 +1223,9 @@ body {
   overflow-y: hidden;
   scrollbar-width: thin;
 }
+/* Full-screen on iPad/iPhone Safari: the browser's own large ✕ sits over the top-left
+   corner — clear it so the settings button (first in the row) can still be tapped. */
+body.fs-apple #site-header { padding-left: calc(64px + env(safe-area-inset-left)); }
 #site-header::-webkit-scrollbar { height: 4px; }
 #site-header::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.35); border-radius: 2px; }
 /* iPadOS/iOS ONLY: in fullscreen the OS overlays its own exit-fullscreen "×" in the top-LEFT corner,
@@ -2465,6 +2477,18 @@ button.dd-name:hover { text-decoration: underline; }
   cursor: pointer;
 }
 .settings-about::before { content: "\2139  "; }   /* ℹ */
+.settings-toprow { display: flex; gap: 8px; margin: 2px 0 10px; }   /* Feedback, top of Settings */
+.settings-toprow > .btn { flex: 1 1 0; justify-content: center; }
+/* Bordered button look (.feedback-open is otherwise a text link). */
+.settings-toprow > .settings-feedback { background: var(--surface, #fff); border: 1px solid var(--border, #ccc); color: var(--ink); text-decoration: none; font-weight: 600; padding: 6px 9px; }
+.settings-toprow > .settings-feedback:hover { background: var(--surface-2, #f2f5f4); color: var(--ink); }
+/* "About ↗" (web summary) beside "How it works" (in-app panel), under the intro text. */
+.settings-aboutrow { display: flex; gap: 4px; }
+.settings-aboutrow > .settings-about { flex: 0 1 auto; width: auto; text-decoration: none; }
+.settings-aboutrow > a.settings-about::before { content: none; }
+.perf-about { margin: 2px 0 6px; }
+.perf-about a { color: var(--brand); font-weight: 600; text-decoration: none; }
+.perf-about a:hover { text-decoration: underline; }
 .settings-about:hover { background: var(--surface-2); }
 /* Running version (+ last-change time), directly under "About & how it works". */
 .settings-version { padding: 0 6px 6px; font-size: var(--fs-s); color: var(--ink-muted); font-variant-numeric: tabular-nums; }
@@ -2484,8 +2508,6 @@ button.dd-name:hover { text-decoration: underline; }
 .app-qr { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 14px 0 6px; }
 .app-qr img { display: block; background: #fff; padding: 8px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
 .app-qr-cap { font-size: var(--fs-s); color: var(--ink); opacity: .7; text-align: center; }
-.app-about-link { font-size: var(--fs-s); color: var(--brand); text-decoration: none; }
-.app-about-link:hover { text-decoration: underline; }
 /* "Install for offline use" section in the About panel */
 #about-install { margin-top: 14px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
 #about-install h4 { margin: 0 0 6px; font-size: var(--fs-h); }
@@ -4293,6 +4315,7 @@ a.place-search-btn.is-open { background: var(--brand-soft, #e6f0ee); }
    best-effort — native mobile pickers ignore it. */
 #lang-select option, #secondlang-select option { font-weight: 700; }
 #lang-select option.lang-nopack, #secondlang-select option.lang-nopack { font-weight: 400; font-style: italic; }
+#lang-select option.lang-system { font-style: italic; }   /* "(System)" — follow the device language */
 
 /* Red "!" in front of a rarity record's name — observation list rows, Birds
    close by, the dot-hover tooltip, and (as a row class) the Recent species
