@@ -280,7 +280,7 @@ window.AppOffline = (function () {
     var tiles = offlineTileCount(bounds, zStart, zMax) * layers.length;
     var m = createModal({ boxClass: "area-dl", backdropClose: false });   // no backdrop close mid-download
     var box = m.box, close = m.close;
-    // The max-zoom is chosen IN the dialog (same ladder as the Settings option);
+    // The max-zoom is chosen IN the dialog (the only place it is set; remembered as the default);
     // levels below the current view zoom are pointless and left out.
     var Z_STEPS = [11, 13, 15, 17, 19];
     var zOpts = Z_STEPS.filter(function (z) { return z >= zStart && z <= baseMaxNative; });
@@ -311,10 +311,9 @@ window.AppOffline = (function () {
       zMax = Math.max(zStart, Math.min(baseMaxNative, +this.value || zMax));
       tiles = offlineTileCount(bounds, zStart, zMax) * layers.length;
       refreshEstimate();
-      // Remember as the new default (kept in sync with the Settings option).
+      // Remember as the new default for the next download.
       offlineMaxZoom = +this.value || offlineMaxZoom;
       window.GeoState.save({ offlineMaxZoom: offlineMaxZoom });
-      var oz = document.getElementById("offline-zoom"); if (oz) oz.value = String(offlineMaxZoom);
     });
     // Suggest the most specific place name at the view centre (locality, not
     // country) — unless the user starts typing their own.
@@ -357,9 +356,11 @@ window.AppOffline = (function () {
     if (!areas.length) { list.innerHTML = '<p class="dd-empty">' + escapeHtml(t("offline.empty")) + "</p>"; return; }
     list.innerHTML = areas.map(function (a, i) {
       var mb = (a.bytes / 1048576).toFixed(a.bytes < 10485760 ? 1 : 0);
-      return '<div class="offline-row" data-id="' + escapeHtml(a.id) + '"><span class="offline-sw" style="background:' + offlineColor(i) + '"></span><span class="offline-name" title="z' + a.zStart + "–" + a.zMax + '">' + escapeHtml(a.name) +
+      // Two lines per area: name (with the colour key) on top, tiles · size · zoom range
+      // below, so long names get the panel's width; ⟳ / × sit at the right edge.
+      return '<div class="offline-row" data-id="' + escapeHtml(a.id) + '"><span class="offline-sw" style="background:' + offlineColor(i) + '"></span><span class="offline-name" title="' + escapeHtml(a.name) + '">' + escapeHtml(a.name) +
         '<span class="offline-purged" title="' + escapeHtml(t("offline.purged")) + '" style="display:none">⚠</span></span>' +
-        '<span class="offline-meta">' + a.tiles.toLocaleString() + " · ~" + mb + " MB</span>" +
+        '<span class="offline-meta">' + a.tiles.toLocaleString() + " · ~" + mb + " MB · z" + a.zStart + "–" + a.zMax + "</span>" +
         '<button type="button" class="offline-redl ico-btn" data-id="' + escapeHtml(a.id) + '" title="' + escapeHtml(t("offline.redownload")) + '" aria-label="' + escapeHtml(t("offline.redownload")) + '">' + ico("refresh") + "</button>" +
         '<button type="button" class="dd-del offline-del" data-id="' + escapeHtml(a.id) + '" aria-label="' + escapeHtml(t("offline.delete")) + '">×</button></div>';
     }).join("");

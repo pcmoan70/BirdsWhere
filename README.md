@@ -61,7 +61,7 @@ layered on top are the real sightings.
 - [Navigation & GPS](#navigation--gps)
 - [Offline use & install (PWA)](#offline-use--install-pwa)
 - [Persistence, settings & languages](#persistence-settings--languages)
-- [Run locally](#run-locally) · [Deploy](#deploy-github-pages) · [Project layout](#project-layout) · [Attribution](#attribution--licensing)
+- [Run locally](#run-locally) · [Deploy](#deploy-github-pages) · [Search engines](#search-engines-crawlable-pages) · [Project layout](#project-layout) · [Attribution](#attribution--licensing)
 
 ---
 
@@ -79,7 +79,7 @@ With observations plotted, a slim **per-day histogram strip docks under the map*
 mobile), counting only the observations **inside the current map view** (re-counted as you
 pan/zoom) and honouring the species selection + active filters: one bar per day from the oldest plotted observation to
 **today** (right end), **horizontally scrollable** with date labels along the bottom, and faint
-stubs on zero-observation days (toggleable in Settings). **Hover** a bar to preview just that
+stubs on zero-observation days. **Hover** a bar to preview just that
 day's dots on the map and in the legend; **click** it (green → orange) to add that date to the
 filters — multi-select, click again to remove; clears with *Clear filters*.
 
@@ -95,13 +95,12 @@ Insects · Plants · Fungi**. It restricts every view — model layers, the spec
 map dots and the observation fetch. The model covers birds/mammals/amphibians/insects;
 **Plants 🌿 and Fungi 🍄 are observation-only** (Range/Richness/Migration are hidden for them).
 
-**Overlay layers** (layer control): **WDPA · Protected Planet**, **Ramsar wetlands**,
-**Natura 2000** (EU SPA/SCI), **Emerald Network** (Bern Convention — the non-EU counterpart
+**Overlay layers** (layer control): **WDPA · Protected Planet** (*Experimental* — enable in Settings), **Ramsar wetlands**,
+**Natura 2000** (EU SPA/SCI; *Experimental* — enable in Settings), **Emerald Network** (Bern Convention — the non-EU counterpart
 to Natura 2000), **Land cover** (CORINE / Copernicus-EEA — habitat backdrop, Europe/EEA, with a
 colour-coded class legend in the lower-right while it's on),
 **GBIF occurrence density** (*Experimental* — enable in Settings; a seasonal heatmap of where records concentrate),
-**OSM protected areas**, **View points** (*Experimental* — enable in Settings → Experimental features;
-a **bundled worldwide snapshot** of 71k+ OSM bird hides, bird-watching towers and birdwatching
+**OSM protected areas**, **View points** (a **bundled worldwide snapshot** of 71k+ OSM bird hides, bird-watching towers and birdwatching
 viewpoints — incl. towers/viewpoints validated by proximity to an eBird hotspot — served from the
 app's own origin as small on-demand tiles, cached for offline; no live Overpass involved. Tap a
 marker for its name, type, coordinates and any OSM details it carries — operator, access, wheelchair,
@@ -110,8 +109,9 @@ opening hours, fee, height, website… — plus map actions find · add point ·
 each with its full 53-week profile, at **three detail levels**: single sites · 25 km areas · 75 km
 regions (each level pools the one below it), following the map zoom by default or pinned in the
 overlay's ⚙. Blue dots count species per
-visit for the selected week; tap one for its year chart — species/visit with an upper-estimate trend,
-or observed species against the AI model's species count above a cutoff you choose), and
+visit for the current week; tap one for its year chart — species/visit with an upper-estimate trend,
+observed species with a thin red observers line, the species turnover, and — with *Experimental
+features* on — the AI model's own year profile for the spot), and
 **eBird hotspots** (clickable — each opens a popup
 with an eBird link and *Navigate*; needs the eBird key). All are streamed from the providers;
 nothing is stored. Hover a layer's checkbox for a tip on what it shows. Overlays that carry a colour
@@ -146,8 +146,8 @@ holding a button:
 ## Species Range & Richness (the model)
 
 - **Species Range** — pick a species; the map shades occurrence probability (red → green) for
-  the selected week. **▶ Play migration** animates the range across all 48 weeks without
-  changing your selected week; **⏸ Pause** stops it.
+  the current week (opened from an observation, for the week it was seen). **▶ Play migration**
+  animates the range across all 48 weeks; **⏸ Pause** stops it.
 - **Species Richness** — the predicted number of species per grid cell, also animatable across
   the year.
 
@@ -210,7 +210,6 @@ marker does — no separate status columns:
 | centre dot | rare here |
 | bronze ring | not on this year's list |
 | yellow ring | not on your life list |
-| red slash | blocked |
 
 **"Rare here"** means the **habitat model** gives the species at most the *Rare species
 threshold* probability at that point (Settings, default 10 %) — it is **not** a count of
@@ -238,7 +237,12 @@ selector; it keeps its scroll position as you tick things). The **name search** 
 fuzzily against the displayed, English and scientific names, shows a live **match count**, and
 narrows the table, the legend *and* the map dots together. Active funnels turn **orange only when
 the filters actually remove observations**, with a tiny green/red bar underneath showing the
-kept-vs-removed fraction. **Sorting** is separate: **click a column name** to sort by it
+kept-vs-removed fraction. The **? button** beside the funnel (orange when on, remembered) also
+lists the species the model *predicts* here that have **no observations yet** — down to the list's
+probability floor (Settings → Probability range; with the floor at 0 % the rare-species threshold guards
+instead) — slotted into the current sort with their probability, season and comparison columns and
+empty observation columns; the species-flag, rarity and selection filters still apply to them, and
+they stay listed when the list is opened from the map (they have no dots to be "in view"). **Sorting** is separate: **click a column name** to sort by it
 (Species / Total / Last / Probability / Distance / Season), cycling ascending → descending → off.
 
 The filter pane also holds **species lists**: build a selection and *Save selection as list* to
@@ -263,7 +267,8 @@ plotted on the map like any other detections.
 
 Recent real-world sightings are fetched directly from third-party APIs, matched to the
 model's species, and merged — around a configurable **sightings radius**. Managed in
-**Settings → Data sources** (per-source *On* toggle, name, key, fetch-window days, endpoint);
+**Settings → Data sources** (per-source *On* toggle, name, key, fetch-window days, fetch timeout in
+seconds — default 120, `0` = none — and endpoint);
 failed or timed-out sources are flagged in the status line.
 
 **Direct sources**
@@ -287,7 +292,7 @@ country. **BirdWeather** collapses machine detections to one "present" record pe
 station and day, tunable by **min detections/day** and **min confidence**. **eBird** and
 **BirdWeather** are birds-only; the other sources honour the species-group filter.
 
-**GBIF datasets** (Settings → *GBIF datasets*, each individually toggled): **Observation.org**,
+**GBIF datasets** (Settings → Data sources → GBIF → *Datasets…*, each individually toggled): **Observation.org**,
 **Birda**, **Xeno-canto** (georeferenced bird sound recordings, live), **Pl@ntNet** and
 **eBird EOD** (global, historic) — plus nation-tagged
 **Artportalen (SE)**, **Artsobservasjoner (NO)**, **Laji.fi / Notebook (FI)**, **DOFbasen (DK)**,
@@ -301,7 +306,7 @@ code + dataset key or gbif.org URL).
 box for Recent/Historic mode (previewed as a live dashed square), and sets the default radius
 of newly saved locations.
 
-**Fetching & detections** settings include a **Fetch timeout**, a **Download — last N days**
+**Fetching & detections** settings include a **Download — last N days**
 window (how far back a normal fetch reaches, applied to every source — eBird stays capped at its
 30-day API limit, GBIF at ~92; `0` = each source's own default; Fetch on open keeps its own
 separate window), a **Reuse downloads (min)** window (reopening reuses a location's
@@ -459,7 +464,7 @@ view**.
   the **point editor**: name, tags, a per-point colour (or automatic), a note (optionally
   rendered as HTML), a copyable-coordinates pill, and a *Save to list* picker. The **Points**
   header button (badge = number of lists) opens a panel of tick-to-show lists, per-tag filter
-  chips, a Distance/Name sort, and the merged points sorted by distance. **Press-and-hold or
+  chips, a one-button Distance ⇄ Name sort toggle, and the merged points sorted by distance. **Press-and-hold or
   right-click** that button for the **Edit & protect lists** admin: rename a list, set its
   colour/tags for every point, **protect** it from deletion (🔒), delete it, or expand it to
   edit/remove individual points.
@@ -486,7 +491,7 @@ view**.
 
 ## Sharing
 
-- **A location** — the point popup's *Location ▸ → 🔗 Share link* makes a **plain, readable URL**
+- **A location** — the map right-click / long-press menu's *🔗 Share point* makes a **plain, readable URL**
   carrying just the coordinates (`…?lat=&lon=&zoom=`). Open it to land on that exact spot with the
   pin down; it stays in the address bar, so it's bookmarkable.
 - **A list or detection set** — the **🔗** on its Points-panel row makes a self-contained link.
@@ -567,6 +572,10 @@ instead of 57×57), which survives print wear far better. Change the target by e
 
 ---
 
+Opening any shared link (a point, a point list, a detection set) goes **straight to the map**: no
+welcome splash, no restored previous view and nothing fetched from the observation servers — the
+shared payload is all that is shown.
+
 ## The species menu
 
 Right-click / long-press / tap any species name for a menu **led by the species name in bold**
@@ -580,11 +589,8 @@ Right-click / long-press / tap any species name for a menu **led by the species 
   **NBN Atlas (UK)** link.
 - **Lists & actions** — **Show only this species** (when it has observations plotted: isolates that
   species on the map + detections list, like a legend selection; tap again on the same species to show
-  everything), then state-showing **toggles**: **Interesting** (★), **Year list**, **Life
-  list** (each coloured when the species is in that set, greyed when not), and **Hidden**, which
-  toggles both ways (**red** = this click hides the species, **green** = this click brings it
-  back — so a blocked species surfaced via the list's 🚫 filter can be unblocked here). Also
-  **＋ Add to route**.
+  everything), then state-showing **toggles**: **Interesting** (★), **Year list** and **Life
+  list** (each coloured when the species is in that set, greyed when not). Also **＋ Add to route**.
 
 ---
 
@@ -657,8 +663,9 @@ an **eBird Record Format CSV** ready for [ebird.org/import](https://ebird.org/im
 
 ## Country resources & place links
 
-- **Map-click popup** — **📍 Recent** (species list), a **📍 Location** submenu (*Save location*,
-  *Share link*, *Copy coordinates*), a **Birdingplaces** link (birdingplaces.eu at the point),
+- **Map right-click / long-press menu** — *Add point*, *Share point*, *Save location*, *Navigate
+  here*, *Add to route* and *Offline maps* (the coordinates line copies them); the click popup adds
+  a **Birdingplaces** link (birdingplaces.eu at the point),
   and, for Sweden & Norway, a **Fågelkartan** link to that point's county / fylke page.
 - **Country button (globe, right side)** — reads the country at the map centre and opens **Birding
   blogs** (a curated, per-country list of personal birder blogs you can add to and remove — synced),
@@ -707,8 +714,9 @@ Settings** (a quiet no-op while offline).
 - **Android:** in **Chrome** (or Edge / Firefox / Brave) → **⋮ → Install app**; or tap the in-app
   **⤓ Offline mode** button when it appears.
 
-**Offline maps** — download the areas you need with the map's **⤓** button (**press-and-hold** for
-the manager). Areas are colour-coded frames you can delete individually; if the browser evicts
+**Offline maps** — right-click / long-press the map → **Offline maps** opens the panel; its
+**⬇ Download map** button saves the area on screen (pan/zoom first, – shrinks the panel).
+Areas are colour-coded frames you can delete individually; if the browser evicts
 tiles, the app detects it and offers to re-download. Pinned areas are never auto-purged.
 
 **Google Drive sync** — an optional **manual, one-shot** sync: tapping *Synchronize* opens a small
@@ -722,7 +730,7 @@ no direction can delete data on the other device.
 
 ## Persistence, settings & languages
 
-- **Persistence** — settings, week, view, species/year/life lists, checklists, points and plotted
+- **Persistence** — settings, view, species/year/life lists, checklists, points and plotted
   detections survive across visits. Small settings live in **localStorage**; bulky per-list data
   (saved sets, detections) lives in **IndexedDB** to avoid the ~5 MB cap, hydrated into memory once
   at boot.
@@ -743,7 +751,7 @@ no direction can delete data on the other device.
 ## Your data & privacy
 
 Everything you create — saved **points**, **lists / trips**, **field checklists** (and attached
-photos), **stored locations**, your ★/year/life/hidden species, observer lists and all **settings**
+photos), **stored locations**, your ★/year/life species, observer lists and all **settings**
 — is kept **only on your device** (localStorage + IndexedDB). There is **no account and no server of
 ours**; nothing is uploaded on its own.
 
@@ -790,6 +798,23 @@ isolates itself from production (own localStorage key, IndexedDB database and se
 while map tiles/pinned areas are shared) and shows an **RC** badge in the title and Settings
 version line. The RC starts with empty user data — pull yours in via Drive sync (download-only) or
 a backup import.
+
+## Search engines (crawlable pages)
+
+The app itself is a JavaScript application, so the site also carries **static, text-only "About"
+pages** for crawlers and for people without the app: `https://thebirding.site/about/` (English) and
+`/about/<code>/` for the 14 other UI languages (Norwegian, Swedish, Danish, Finnish, German, Spanish,
+French, Dutch, Italian, Portuguese, Polish, Czech, Estonian, Lithuanian). Each page describes what
+BirdsWhere does — trip planning, finding birds nearby, migration timing, distribution maps, rarity
+alerts, lists, offline use — plus the data sources and the responsible-birding stance, with
+`hreflang` alternates, Open Graph tags and schema.org `WebApplication` data. They are generated from
+`tools/about-content.json` by `node tools/gen-about-pages.mjs` (edit the JSON, re-run, commit).
+`robots.txt` allows everything and points at `sitemap.xml` (root + all about pages); `index.html`
+carries a canonical URL, description, Open Graph tags and a `<noscript>` intro linking to the pages,
+and Settings has an **About BirdsWhere ↗** link in the current UI language. The service worker leaves
+`/about/`, `robots.txt` and `sitemap.xml` to the network so an installed app never swallows them.
+The RC channel is deployed with `noindex` on every page and without the crawler files, so only
+thebirding.site is indexed.
 
 ## Project layout
 
