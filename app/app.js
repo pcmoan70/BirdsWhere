@@ -6069,7 +6069,7 @@
                   '<button type="button" class="clear-cache-btn" data-clear="range"><span class="clear-lbl" data-i18n="clear.range">Range maps</span><span class="clear-cnt"></span></button>' +
                   '<button type="button" class="clear-cache-btn" data-clear="overlays"><span class="clear-lbl" data-i18n="clear.overlays">Overlays</span><span class="clear-cnt"></span></button>' +
                   '<button type="button" class="clear-cache-btn" data-clear="hotspots"><span class="clear-lbl" data-i18n="clear.hotspots">eBird hotspots</span><span class="clear-cnt"></span></button>' +
-                  '<button type="button" class="clear-cache-btn" data-clear="birds"><span class="clear-lbl" data-i18n="clear.birds">View points</span><span class="clear-cnt"></span></button>' +
+                  '<button type="button" class="clear-cache-btn" data-clear="birds"><span class="clear-lbl" data-i18n="clear.birds">Viewpoints</span><span class="clear-cnt"></span></button>' +
                   '<button type="button" class="clear-cache-btn" data-clear="best"><span class="clear-lbl" data-i18n="clear.best">Best sites</span><span class="clear-cnt"></span></button>' +
                   '<button type="button" class="clear-cache-btn" data-clear="names"><span class="clear-lbl" data-i18n="clear.names">Species names (iNat)</span><span class="clear-cnt"></span></button>' +
                   '<button type="button" class="clear-cache-btn" data-clear="offline"><span class="clear-lbl" data-i18n="clear.offline">Offline areas</span><span class="clear-cnt"></span></button>' +
@@ -7114,6 +7114,7 @@
   // "Last change" timestamp. Rebuilt on language change and when the timestamp
   // resolves, so both survive re-renders.
   var lastChangeText = "";
+  var posterBadgeImg = null;   // the poster-scan badge <img>, fetched once per page load (see renderAboutBody)
   function renderAboutBody() {
     var about = document.getElementById("about-body");
     if (!about) return;
@@ -7128,8 +7129,22 @@
       '<div id="about-credits">' + t("about.creditsHtml") + "</div>" +
       '<div id="about-footer">' +
         '<div id="visit-counter"><img src="https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fthebirding.site&label=page%20visits&labelColor=%230f1b24&countColor=%232f6f4f" alt="page visits" /></div>' +
+        '<div id="poster-counter"></div>' +
         (lastChangeText ? '<div id="last-change">' + escapeHtml(t("footer.lastchange", { t: lastChangeText })) + "</div>" : "") +
       "</div>";
+    // Poster-scan badge next to the page-visit one. The badge service counts every fetch and
+    // forbids caching, so the image element is created ONCE per page load and re-attached on
+    // later renders (no refetch) — one extra tick per app session that opens this panel, not
+    // one per view; never from a local dev server.
+    var pc = document.getElementById("poster-counter");
+    if (pc) {
+      if (!posterBadgeImg && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
+        posterBadgeImg = new Image();
+        posterBadgeImg.alt = "poster scans";
+        posterBadgeImg.src = "https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fthebirding.site%2Ff&label=poster%20scans&labelColor=%230f1b24&countColor=%23e8801f";
+      }
+      if (posterBadgeImg) pc.appendChild(posterBadgeImg);
+    }
     // Localize the embedded [data-i18n] bits (e.g. the feedback button), scoped
     // to the About body — NOT applyI18n(), which calls back here (infinite loop).
     var i18nEls = about.querySelectorAll("[data-i18n]");
@@ -7977,7 +7992,7 @@
   var GBIF_ATTR = 'Occurrence density &copy; <a href="https://www.gbif.org" target="_blank" rel="noopener">GBIF.org</a>';
   var OSM_PA_ATTR = 'Protected areas &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
   var EBIRD_HS_ATTR = 'Hotspots &copy; <a href="https://ebird.org" target="_blank" rel="noopener">eBird</a> / Cornell Lab';
-  var BIRD_SPOTS_ATTR = 'View points &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
+  var BIRD_SPOTS_ATTR = 'Viewpoints &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
   // CORINE Land Cover 2018 (EEA/Copernicus) — Europe/EEA coverage incl. Norway. Layer 1 =
   // the pre-rendered raster (clean filled land cover); same ArcGIS server family as Natura 2000.
   var CLC2018_EXPORT = "https://image.discomap.eea.europa.eu/arcgis/rest/services/Corine/CLC2018_WM/MapServer/export";
@@ -8344,11 +8359,13 @@
   function isObsTag(n) { return !!OBS_TAGS[String(n || "").trim().toLowerCase()]; }
   function detObsSplit(s) { return String(s || "").split(/\s*[|;]\s*/).map(function (x) { return x.trim(); }).filter(Boolean); }
   function detObsRealNames(s) { return detObsSplit(s).filter(function (n) { return !isObsTag(n); }); }   // single names, tags removed
-  function setDetObsFilter(set) {
+  var detObsRestored = false;   // true while the filter is the one restored from storage (not chosen this session)
+  function setDetObsFilter(set, restored) {
     // null = all observers; an empty Set = "None" (show nothing) — a deliberate,
     // useful base state for then ticking just a few. A Set holding only "" is the
     // "(no observer)" bucket.
     detObsFilter = set || null; detObsNames = []; detObsAllowNone = false;
+    detObsRestored = !!restored && !!detObsFilter;
     if (detObsFilter) detObsFilter.forEach(function (n) { if (n) detObsNames.push(n); else detObsAllowNone = true; });
   }
   // A remembered observer filter whose SELECTED names aren't among the currently-
@@ -8358,10 +8375,15 @@
   // base for building a few-observer selection.
   function reconcileObsFilter() {
     if (!detObsFilter || !detObsFilter.size) return false;   // null = all, empty = intentional None → leave both
+    if (!detObsRestored) return false;   // chosen in this session (a ticked list, a checkbox) → the user's call, even if nothing matches yet
     if (!Object.keys(detPlot).length) return false;   // nothing plotted → keep the filter (clearing the map keeps filters; a fetch may be incoming)
     var ob = detAllObservers(), present = detObsAllowNone && ob.hasNone;
-    for (var i = 0; !present && i < detObsNames.length; i++) if (ob.names.indexOf(detObsNames[i]) >= 0) present = true;
-    if (present) return false;
+    // Same substring semantics as detObsPasses: a list entry may be a joined "A | B" string.
+    for (var i = 0; !present && i < detObsNames.length; i++) {
+      var nm = detObsNames[i];
+      for (var j = 0; j < ob.names.length; j++) if (ob.names[j].indexOf(nm) >= 0 || nm.indexOf(ob.names[j]) >= 0) { present = true; break; }
+    }
+    if (present) { detObsRestored = false; return false; }   // it fits the plotted data → treat as confirmed
     setDetObsFilter(null); saveLegendState(); return true;
   }
   function detObsPasses(r) {
@@ -11721,7 +11743,7 @@
     detYearFilter = stSaved(ls.yearFilter, -1);
     detLifeFilter = stSaved(ls.lifeFilter, -1);
     detAlertFilter = stSaved(ls.alertFilter, 0);
-    setDetObsFilter(Array.isArray(ls.obsFilter) ? new Set(ls.obsFilter) : null);
+    setDetObsFilter(Array.isArray(ls.obsFilter) ? new Set(ls.obsFilter) : null, true);   // restored → may be healed if stale
     setDetLocFilter(Array.isArray(ls.locFilter) ? new Set(ls.locFilter) : null);
     detSrcFilter = (Array.isArray(ls.srcFilter) && ls.srcFilter.length) ? new Set(ls.srcFilter) : null;
     // Heal a stale source filter (none of its sources plotted) so it can't blank the map.
@@ -12275,7 +12297,7 @@
     // individual-observer checklist below.
     var oLists = getObserverLists(), head;
     if (oLists.length) {
-      head = '<details class="det-obslists-dd"' + (obsListsDdOpen ? " open" : "") + '><summary>' + escapeHtml(obsFilterLabel()) + "</summary>" +
+      head = '<details class="det-obslists-dd"' + (obsListsDdOpen ? " open" : "") + '><summary>' + escapeHtml(t("obs.lists") + ": " + obsFilterLabel()) + "</summary>" +
         '<div class="det-obslists-menu">' + oLists.map(function (L, i) {
           return '<label class="sp-list-row"><input type="checkbox" class="det-obslist-tick" data-i="' + i + '"' + (obsListTicked(L) ? " checked" : "") + " /> <span class=\"sp-list-nm\">" + escapeHtml(L.name) + '</span> <span class="sp-list-n">(' + ((L.observers || []).length) + ")</span></label>";
         }).join("") + "</div></details>";
@@ -14737,8 +14759,28 @@
   // Detailed explanation of one overlay (what it shows, why it helps, how to use it,
   // caveats) — opened from the ⓘ-style "?" badge at the right of its row. The texts are
   // English so far; other languages get the English one with a small note.
+  // While the help dialog is up, Leaflet's layers control must not fold away (its
+  // mouseleave / map-click collapse fires as the pointer moves onto the dialog): any
+  // collapse is undone at once, and after the dialog closes the panel is re-expanded
+  // so it stays open until the user closes it themselves (tap the map / move off it).
+  var ovlPinObs = null;
+  function pinOverlayCtrl(on) {
+    var c = overlayLayersCtrl; if (!c) return;
+    var el = c.getContainer();
+    if (on) {
+      try { c.expand(); } catch (e) {}
+      if (!ovlPinObs && window.MutationObserver) {
+        ovlPinObs = new MutationObserver(function () { if (!el.classList.contains("leaflet-control-layers-expanded")) { try { c.expand(); } catch (e) {} } });
+        ovlPinObs.observe(el, { attributes: true, attributeFilter: ["class"] });
+      }
+    } else {
+      if (ovlPinObs) { ovlPinObs.disconnect(); ovlPinObs = null; }
+      setTimeout(function () { try { c.expand(); } catch (e) {} }, 0);
+    }
+  }
   function showOverlayHelp(def) {
-    var m = createModal({ escClose: true, backdropClose: true, boxClass: "ovl-help-box" });
+    pinOverlayCtrl(true);
+    var m = createModal({ escClose: true, backdropClose: true, boxClass: "ovl-help-box", onClose: function () { pinOverlayCtrl(false); } });
     var html = t(def.key + "Help");
     var enOnly = (lang !== "en") && !window.GeoI18N.hasOwn(lang, def.key + "Help");
     m.box.innerHTML = '<div class="ui-modal-msg ovl-help-title">' + escapeHtml(t(def.key)) + "</div>" +
