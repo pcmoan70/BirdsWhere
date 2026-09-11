@@ -6289,6 +6289,10 @@
         '<div id="feedback-modal" style="display:none"><div id="feedback-box">' +
           '<button type="button" id="feedback-close" aria-label="Close">×</button>' +
           '<h3 data-i18n="feedback.title">Feedback</h3>' +
+          // One-tap thumbs: sends straight away (with whatever is typed below, if anything).
+          '<div class="feedback-quick"><span class="feedback-quick-lbl" data-i18n="feedback.quick">Quick feedback</span>' +
+            '<button type="button" class="feedback-thumb" data-thumb="up" data-i18n-title="feedback.thumbsUp" title="Works well" aria-label="Works well">👍</button>' +
+            '<button type="button" class="feedback-thumb" data-thumb="down" data-i18n-title="feedback.thumbsDown" title="Something’s off" aria-label="Something’s off">👎</button></div>' +
           '<textarea id="feedback-msg" rows="5" data-i18n-ph="feedback.msgPh" placeholder="Your message…"></textarea>' +
           '<input type="email" id="feedback-email" autocomplete="email" data-i18n-ph="feedback.emailPh" placeholder="Your email (optional, for a reply)" />' +
           '<div id="feedback-status" class="cu-hint"></div>' +
@@ -6619,6 +6623,7 @@
       var bellEl = document.getElementById("rarity-bell");
       if (bellEl) bellEl.addEventListener("click", function () { maybeEbirdNudge(); });
       if (!hasHere && !hasLocParam && !sharedOpen) restoreSession();   // return to the view we left (reload-safe)
+      countPosterScan();   // ?from=poster (the /f/ QR link) → one anonymous tick on the scan counter
       if (hasLocParam) maybeUrlLocationParam();   // ?location=here;radius=…;show=…;sortby=… → geolocate + open list/map
       else maybeUrlAutoLocate();                  // ?here=1 → geolocate + open species list
       maybeOpenSharedPoint();   // ?lat=&lon= → a shared location: go there, drop the pin
@@ -15466,6 +15471,20 @@
     if (sv) { sv.textContent = parts.join(" · "); sv.style.display = parts.length ? "" : "none"; }
   }
 
+  // The printed QR poster forwards through /f/ with ?from=poster. Count that launch on the
+  // same anonymous hit counter the About footer uses for page visits — a number, nothing
+  // else: no position, no id, no cookie. Read it at
+  // https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fthebirding.site%2Ff (each view of that badge adds one).
+  var posterCounted = false;
+  function countPosterScan() {
+    try {
+      if (posterCounted || !/[?&;]from=poster(?:[&;]|$)/.test(location.search)) return;
+      posterCounted = true;
+      if (navigator.onLine === false) return;
+      var img = new Image();
+      img.src = "https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fthebirding.site%2Ff&label=poster%20scans&t=" + Date.now();
+    } catch (e) {}
+  }
   // One-time performance note shown over the page on load.
   function showPerfModal() {
     var m = document.getElementById("perf-modal");
@@ -15532,15 +15551,22 @@
     var ta = document.getElementById("feedback-msg"); if (ta) ta.focus();
   }
   function hideFeedback() { document.getElementById("feedback-modal").style.display = "none"; }
-  function sendFeedback() {
+  // `thumb` = "up" | "down" for the one-tap quick feedback: no message needed — the
+  // thumb, any typed text, and the app version / language / browser go out at once.
+  function sendFeedback(thumb) {
     var msg = (document.getElementById("feedback-msg").value || "").trim();
     var email = (document.getElementById("feedback-email").value || "").trim();
     var st = document.getElementById("feedback-status");
-    if (!msg) { st.textContent = t("feedback.empty"); return; }
+    if (thumb === "up" || thumb === "down") {
+      var ctx = (appVersion || "") + " · " + lang + " · " + (navigator.userAgent || "").slice(0, 160);
+      msg = (thumb === "up" ? "👍 Thumbs up" : "👎 Thumbs down") + (msg ? "\n\n" + msg : "") + "\n\n— " + ctx;
+    } else if (!msg) { st.textContent = t("feedback.empty"); return; }
     if (!window.emailjs || !EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY) {
       st.textContent = t("feedback.unavailable"); return;
     }
     var btn = document.getElementById("feedback-send"); btn.disabled = true;
+    var thumbs = document.querySelectorAll(".feedback-thumb");
+    Array.prototype.forEach.call(thumbs, function (b) { b.disabled = true; b.classList.toggle("chosen", b.getAttribute("data-thumb") === thumb); });
     st.textContent = t("feedback.sending");
     window.emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID,
       { message: msg, reply_to: email, from_name: email || "anonymous" },
@@ -15551,7 +15577,7 @@
         setTimeout(function () { navClose("feedback"); }, 1200);
       })
       .catch(function () { st.textContent = t("feedback.sendFail"); })
-      .then(function () { btn.disabled = false; });
+      .then(function () { btn.disabled = false; Array.prototype.forEach.call(thumbs, function (b) { b.disabled = false; b.classList.remove("chosen"); }); });
   }
 
   // In Species List mode the CSV button sits next to the "＋ Checklist" button;
@@ -16914,7 +16940,10 @@
     });
     document.getElementById("feedback-close").addEventListener("click", function () { navClose("feedback"); });
     document.getElementById("feedback-cancel").addEventListener("click", function () { navClose("feedback"); });
-    document.getElementById("feedback-send").addEventListener("click", sendFeedback);
+    document.getElementById("feedback-send").addEventListener("click", function () { sendFeedback(""); });
+    Array.prototype.forEach.call(document.querySelectorAll(".feedback-thumb"), function (b) {
+      b.addEventListener("click", function () { sendFeedback(this.getAttribute("data-thumb")); });
+    });
     document.getElementById("feedback-modal").addEventListener("click", function (e) {
       if (e.target === this) navClose("feedback");
     });
