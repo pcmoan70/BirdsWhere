@@ -184,12 +184,22 @@ prediction at that point:
 
 ## Recent Observations (species list)
 
-The fetch can be shown three ways (layout dropdown above the list): the ranked **Species list** table,
+The fetch can be shown three ways (layout dropdown above the list — the choice is remembered on the
+device; a `layout=` link parameter applies to that visit only): the ranked **Species list** table,
 the **Observation list** (one row per record) and **Images** — a gallery with one card per species in
-the table's current order: photo, name, scientific name, Total, Last seen, Distance and Probability.
-Photos are the lead image of the species' Wikipedia article, loaded from Wikimedia Commons as cards
-scroll into view (nothing bundled or stored beyond the browser cache) and credited under each picture
-to their author and licence, linked to the Commons file page. The name opens the usual species menu.
+the table's current order: photo, name with the scientific name in parentheses, Total, Last seen,
+Distance and Probability. Photos are the lead image of the species' Wikipedia article, loaded from
+Wikimedia Commons as cards scroll into view (nothing bundled or stored beyond the browser cache) and
+credited under each picture to their author and licence, linked to the Commons file page. The name
+opens the usual species menu and the scientific name the Family menu, as in the table; the small **☰**
+button on a card jumps to that species' record sub-list in the Species list table (expanded, scrolled
+into view). Tapping a bird's **photo** opens its **Macaulay Library** catalogue narrowed to the month
+it was last seen (±1 month — the same link as the species menu's *Photos*); tapping the
+**Probability** opens the **Migration** view (Location analysis → Timeline) for that species, and on
+a mouse device hovering it previews the same 48-week probability bars at the fetch point (current
+week outlined, the last-seen week in blue). Downloaded photos are kept in their own on-device cache
+(cache-first, survives app updates, capped at 1500) — see **Settings → Storage → Species photos** for
+the count and size, and to clear them.
 
 Click the map in **Recent** mode for the predicted species at that point, ranked by
 probability. Options:
@@ -639,6 +649,11 @@ habitat model puts above 0 % at your point/week and ranks them by local likeliho
   (habitat, trophic niche, lifestyle, migration) — matching traits tinted green, differing ones amber — and
   both birds' 48-week presence curves on **one shared-scale chart** so
   their seasons line up directly.
+- **Confusion species (images)** — the next menu entry shows the same ranked look-alikes as **photo
+  cards**: the species itself first (green border, "This species"), then left to right by Score, wrapping
+  onto further rows (two per row on narrow phones). Each card carries the Wikipedia/Commons lead photo
+  with its credit, the name, the scientific name and **Match · misID · Here · Score** as small bars;
+  tapping a look-alike opens the same compare card.
 
 ### How the look-alike model works
 
@@ -722,8 +737,8 @@ an **eBird Record Format CSV** ready for [ebird.org/import](https://ebird.org/im
 Installable as a Progressive Web App. A **service worker** serves the app shell **cache-first**
 (once installed, code runs from the device and isn't re-downloaded while online — fresh code
 arrives only when the app's `VERSION` is bumped on deploy, after a full reload), with the model /
-labels / taxonomy / vendor libraries cache-first too, and map tiles + computed range data in a
-size-capped pool.
+labels / taxonomy / vendor libraries cache-first too, map tiles + computed range data in a
+size-capped pool, and the species photos of the Images layout in a capped cache of their own.
 
 **Updates never interrupt you**: when a new version is ready a small **red badge** appears on the
 Settings gear and a *Reload to update* button lights up inside Settings — you reload when you
