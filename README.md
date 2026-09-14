@@ -178,6 +178,12 @@ prediction at that point:
 - **Annual Top** — a running total of arrival scores; the part of the year each species is most present.
 - **Scatter** — the top-N species plotted as *(arrival, probability)*, with a sortable table.
 
+**‹ returns to where you came from.** Migration and Species distribution can be opened from another
+full view — the species list (a card's Probability, or the species menu), the checklist page, the
+Location analysis page itself, or Range mode. The page's **‹** button (and the browser Back) then
+returns to that view, chaining as deep as you went (list → Migration → distribution → ‹ → ‹ → ‹ lands
+back on the map); ‹ goes straight to the map only when the page was opened from the map.
+
 **Top N** and **Rank by** (Arrivals / Probability / Both) tune which species are shown.
 
 ---
@@ -185,7 +191,8 @@ prediction at that point:
 ## Recent Observations (species list)
 
 The fetch can be shown three ways (layout dropdown above the list — the choice is remembered on the
-device; a `layout=` link parameter applies to that visit only): the ranked **Species list** table,
+device; a `layout=` link parameter applies to that visit only; changing the UI or second-name language
+relabels the open list in place): the ranked **Species list** table,
 the **Observation list** (one row per record) and **Images** — a gallery with one card per species in
 the table's current order: photo, name with the scientific name in parentheses, Total, Last seen,
 Distance and Probability. Photos are the lead image of the species' Wikipedia article, loaded from
@@ -197,7 +204,9 @@ into view). Tapping a bird's **photo** opens its **Macaulay Library** catalogue 
 it was last seen (±1 month — the same link as the species menu's *Photos*); tapping the
 **Probability** opens the **Migration** view (Location analysis → Timeline) for that species, and on
 a mouse device hovering it previews the same 48-week probability bars at the fetch point (current
-week outlined, the last-seen week in blue). Downloaded photos are kept in their own on-device cache
+week outlined, the last-seen week in blue). The same hover chart appears over every probability-derived
+number in the list views — the table's Probability, Season and comparison cells (Annual Top, % of max,
+Δ), and the observation rows' Probability, Season and Yr-peak cells. Downloaded photos are kept in their own on-device cache
 (cache-first, survives app updates, capped at 1500) — see **Settings → Storage → Species photos** for
 the count and size, and to clear them.
 
@@ -670,10 +679,19 @@ habitat model puts above 0 % at your point/week and ranks them by local likeliho
 4. **Ecological niche** (0.09) — matching habitat / trophic niche / primary lifestyle.
 5. **Genus** (0.15) — a same-genus boost.
 
+Two **gates** then scale everything inferred from morphology, colour and taxonomy: a **major size
+difference** (about 1.4× in linear size or 3× in body mass halves it; 2× / 9× cuts it to a fifth) and a
+**different family** (keeps about a third). Real iNaturalist confusions are never gated, so a
+Sparrowhawk still lists the Goshawk (Match 55, misID 75 %), while a Goldcrest's leaf-warbler
+"look-alikes" fall from ~58 to ~18.
+
 A **plumage-colour** score is then averaged in (≈ half the final Match): per-sex RGB histograms
 (6×6×6 = 216 bins) from the HBW-RGB illustration dataset, matched separately for male and female so a
 look-alike must resemble the bird in both plumages. Pairs iNaturalist has no confusion data for fall
 back to the morphology + colour axes alone; pairs with no colour data keep the morphology score.
+Species that AVONET (2022 taxonomy) predates — recent splits such as the Hudsonian Whimbrel — borrow the
+measurements of their strongest same-genus iNaturalist confusion partner (the split sister), so they get a
+list too (266 species, e.g. the barn owls and warbling vireos) instead of none at all.
 
 Data files: `app/confusion.csv` (per-bird partner list, `code:Match:misID`), `app/species-traits.json`
 (per-species colour / size / ecology for the compare card, built by `tools/gen-species-traits.py`), and

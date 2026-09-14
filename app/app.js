@@ -80,7 +80,7 @@
   var TAX_URL = "taxonomy-base.csv";        // species_code + English name + class (split from taxonomy.csv)
   var TAX_NAMES_BASE = "i18n/names/";       // per-language name packs, line-aligned to taxonomy-base.csv rows
   var CONFUSION_URL = "confusion.csv";      // per-bird look-alike (confusion) partner codes; fetched on first use
-  var CONFUSION_REV = 11;                     // bump when confusion.csv changes — busts the runtime (cache-first) copy
+  var CONFUSION_REV = 13;                     // bump when confusion.csv changes — busts the runtime (cache-first) copy
   var TRAITS_URL = "species-traits.json";   // per-species characteristics (AVONET morphology/ecology + HBW colour)
   var TRAITS_REV = 2;                        // bump when species-traits.json changes
 
@@ -1995,12 +1995,25 @@
     clearTimeout(locHoverTimer);
     if (locHoverEl) locHoverEl.style.display = "none";
   }
+  // The hovered name only fires mouseleave while it is still in the document: a
+  // re-render under a resting pointer (layout switch, filter, sort, page close) removes
+  // it and would leave the preview up. Re-renders call hideLocHoverMap() directly; this
+  // pointer-move fallback catches everything else — the preview goes as soon as the
+  // pointer is over anything that is not a place name.
+  function hideLocHoverMapIfStray(e) {
+    if (!locHoverEl || locHoverEl.style.display === "none") return;
+    var t = e.target;
+    if (t && t.closest && t.closest(".sp-loc-click, [data-lhm]")) return;
+    hideLocHoverMap();
+  }
+  document.addEventListener("mouseover", hideLocHoverMapIfStray, true);
   // Hover (hover-capable pointers only — the schedule itself gates on that) on
   // ANY element carrying a position → the ~4 km × 4 km preview map. `getLL`
   // extracts {lat, lon} from the element at hover time.
   function wireLocHover(el, getLL) {
     if (el._lhmWired) return;
     el._lhmWired = true;
+    el.setAttribute("data-lhm", "1");   // recognised by the pointer-move fallback in hideLocHoverMapIfStray
     el.addEventListener("mouseenter", function (e) {
       var c = getLL(this);
       if (c && isFinite(+c.lat) && isFinite(+c.lon)) scheduleLocHoverMap(+c.lat, +c.lon, e.clientX, e.clientY);
@@ -2461,10 +2474,65 @@
     if (!navStack.length) return;
     var top = navStack.pop();
     try { top.close(); } catch (e) {}
+    if (top.id === "page") popViewBack();   // a page opened from another view: Back returns there
+  }
+  // With the Mode dropdown gone, leaving a mode's page returns to Recent (the map).
+  function exitToRecentMode() {
+    if (!viewRestoring) viewBackStack.length = 0;   // an explicit "to the map" ends the chain of previous views
+    var sel = document.getElementById("mode-select");
+    if (sel && sel.value !== "list") { sel.value = "list"; sel.dispatchEvent(new Event("change", { bubbles: true })); }
+  }
+  // ---- Back to the PREVIOUS view -------------------------------------------
+  // Migration and Species distribution can be opened from another full view (the
+  // species list, the checklist page, the analysis page, or Range mode). Opening one
+  // pushes a restorer for the view being left; the page's ‹ button (and the browser
+  // Back) pops it — so ‹ returns to where you came from, and only to the map when
+  // nothing is left. Each restorer carries its kind so re-opening the same view
+  // (Migration for another species from the Migration page) pushes nothing.
+  var viewBackStack = [], viewRestoring = false;
+  function currentViewRestorer() {
+    var fp = document.getElementById("field-page");
+    if (fp && fp.style.display !== "none") return { kind: "field", go: reshowFieldPage };
+    var sp = document.getElementById("species-panel");
+    if (sp && sp.classList.contains("as-page") && sp.style.display !== "none") return { kind: "list", go: function () { exitToRecentMode(); showListView(); } };
+    var bc = document.getElementById("barchart-panel");
+    if (bc && bc.classList.contains("as-page") && bc.style.display !== "none") return { kind: "migration", go: reshowAnalysisPage };
+    if (currentMode === "range") {
+      var k = (document.getElementById("species-search") || {}).dataset; k = k && k.selectedKey;
+      if (k) return { kind: "range", go: function () { showSpeciesRange(k); } };
+    }
+    return null;
+  }
+  function pushViewBack(back, kind) { if (back && !viewRestoring && back.kind !== kind) viewBackStack.push(back); }
+  // Pop and run the previous view's restorer; returns false when there was none.
+  function popViewBack() {
+    var r = viewBackStack.pop(); if (!r) return false;
+    viewRestoring = true;
+    try { r.go(); } catch (e) {} finally { viewRestoring = false; }
+    return true;
+  }
+  function reshowAnalysisPage() {
+    if (!analysisData) { exitToRecentMode(); return; }
+    var modeEl = document.getElementById("mode-select");
+    if (modeEl.value !== "barchart") { modeEl.value = "barchart"; modeEl.dispatchEvent(new Event("change", { bubbles: true })); }
+    setPointMarker(analysisData.lat, analysisData.lon);   // the mode change dropped the pin
+    saveSession({ mode: "barchart", page: "migration", lat: analysisData.lat, lon: analysisData.lon });
+    var bc = document.getElementById("barchart-panel");
+    bc.classList.add("as-page"); bc.style.display = "block";
+    navOpen("page", closeAnyFullPage);
+    updateAnalysisControls(); renderActiveTab();
+  }
+  function reshowFieldPage() {
+    var fp = document.getElementById("field-page"); if (!fp) return;
+    exitToRecentMode();   // the checklist page sits over Recent mode, as when opened normally
+    fp.style.display = "flex";
+    navOpen("page", closeAnyFullPage);
+    try { window.AppField.renderFieldList(); } catch (e) {}
   }
   // Hide whichever full-screen page (species list / migration / checklist) is
   // open and return to the map. Used as the registered close for the "page" slot.
   function closeAnyFullPage() {
+    try { hideLocHoverMap(); } catch (e) {}   // a place-name preview belongs to the page being closed
     var fp = document.getElementById("field-page");
     if (fp && fp.style.display !== "none") {
       if (typeof hideFcPicker === "function") hideFcPicker();
@@ -6938,7 +7006,33 @@
   function refreshSpeciesNames() {
     if (typeof refreshChecklists === "function") refreshChecklists();
     if (typeof refreshDetections === "function") refreshDetections();
-    if (typeof refreshCurrentView === "function") refreshCurrentView();
+    // The open species list is relabelled IN PLACE. refreshCurrentView() would run
+    // renderSpeciesList — a full re-render that re-fires the observation fetch and, in
+    // the map-first flow, closes the list page; every later refresh then saw a hidden
+    // panel and skipped, which is why a language change left "[English]" names behind.
+    if (speciesPanelPopulated() && document.getElementById("species-panel").style.display !== "none") relabelSpeciesList();
+    else if (onListView() && typeof renderPlottedObsPage === "function") renderPlottedObsPage();   // the no-point "By observation" page
+    else if (currentSpView && currentSpView.mode === "country" && document.getElementById("species-panel").style.display !== "none") renderSpeciesInCountry(currentSpView.lat, currentSpView.lon);
+    if (currentMode === "barchart" && analysisData) renderActiveTab();
+    else if ((currentMode === "range" || currentMode === "richness") && cachedRender) showCachedWeek();
+    if (document.getElementById("field-page").style.display === "flex") renderFieldList();
+  }
+  // Rewrite each species row's name (+ its sort key) and second name in the current
+  // language(s), then rebuild the layout body — expanded sub-rows, gallery cards or
+  // observation rows — through renderSpControls (header labels + filters + renderSpBody).
+  function relabelSpeciesList() {
+    var tbody = document.getElementById("sp-tbody"); if (!tbody) return;
+    Array.prototype.forEach.call(tbody.children, function (tr) {
+      var link = tr.querySelector(".sp-link[data-key]"); if (!link) return;
+      var lbl = labelsByKey[link.getAttribute("data-key")]; if (!lbl) return;
+      var nm = speciesName(lbl);
+      for (var n = link.lastChild; n; n = n.previousSibling) if (n.nodeType === 3) { n.nodeValue = nm; break; }   // the name text (after any ★)
+      link.setAttribute("data-name", nm);
+      tr.setAttribute("data-name", nm.toLowerCase());
+      var n2 = tr.querySelector("td.name2"); if (n2) n2.textContent = secondLang ? secondName(lbl) : "";
+    });
+    var tbl = document.getElementById("species-list-table"); if (tbl) tbl.classList.toggle("has-name2", !!secondLang);   // the column shows only with a second language
+    renderSpControls();
   }
   // The model's bundled taxonomy mislabels brnowl (Tyto alba — the Western/European Barn
   // Owl) with the AMERICAN Barn Owl's names in every language, identical to the real
@@ -7050,9 +7144,9 @@
     if (typeof refreshDetections === "function") refreshDetections();   // re-localize plotted "Show in map" species names + legend
     if (typeof relabelOverlays === "function") relabelOverlays();   // re-translate the map-overlays layer control
     if (typeof renderClcLegend === "function") renderClcLegend();   // re-translate the CORINE land-cover legend
-    refreshCurrentView();   // re-render species names in the active panel
+    refreshSpeciesNames();   // relabel species names in the active panel (in place — no re-fetch)
     // Species names for the new language come from an on-demand pack; until it
-    // arrives everything above showed [English] fallbacks — re-render on merge.
+    // arrives everything above showed [English] fallbacks — relabel again on merge.
     ensureLangNames(langTaxCol).then(function (loaded) { if (loaded) refreshSpeciesNames(); });
   }
 
@@ -10004,8 +10098,10 @@
     if (!arr.length) { wait.textContent = t("confusion.noneHere"); positionAnchoredMenu(el, x, y); return; }
     if (wait.parentNode) wait.parentNode.removeChild(wait);
     var L = { match: t("confusion.colScore"), misid: t("confusion.colMisid"), here: t("confusion.colHere"), score: t("confusion.colCombined") };
-    function row(cls, label, txt, pct, color, tip) {
-      return '<div class="cfi-row ' + cls + '" title="' + escapeHtml(tip) + '"><i class="cfi-bar" style="width:' + Math.max(0, Math.min(100, pct)).toFixed(0) + '%' + (color ? ";background:" + color : "") + '"></i>' +
+    // Each metric row carries data-hintkey → the wrapped hover tooltip the table headers
+    // use (a native title can't wrap these explanations); phones have the legend below.
+    function row(cls, label, txt, pct, color, tipKey) {
+      return '<div class="cfi-row ' + cls + '" data-hintkey="' + tipKey + '"><i class="cfi-bar" style="width:' + Math.max(0, Math.min(100, pct)).toFixed(0) + '%' + (color ? ";background:" + color : "") + '"></i>' +
         '<span class="cfi-k">' + escapeHtml(label) + '</span><span class="cfi-v">' + escapeHtml(txt) + "</span></div>";
     }
     function pctTxt(p) { var v = p * 100; return v >= 0.5 ? Math.round(v) + "%" : "<1%"; }
@@ -10017,10 +10113,10 @@
         '<div class="cfi-name">' + (isBase ? '<span class="cfi-tag">' + escapeHtml(t("confusion.base")) + "</span>" : "") + escapeHtml(nm) + "</div>" +
         '<div class="cfi-sci">' + escapeHtml(m.sci) + "</div>" +
         '<div class="cfi-stats">' +
-          row("cfi-match", L.match, isBase ? "—" : String(Math.round(w.w * 100)), isBase ? 0 : w.w * 100, "", t("confusion.tipMatch")) +
-          row("cfi-misid", L.misid, (!isBase && w.mid > 0) ? w.mid + "%" : "—", (!isBase && w.mid > 0) ? Math.max(6, w.mid) : 0, "", t("confusion.tipMisid")) +
-          row("cfi-here", L.here, here >= 0 ? pctTxt(here) : "—", here >= 0 ? Math.max(4, here * 100) : 0, here >= 0 ? probHueColor(here) : "", t("confusion.tipHere")) +
-          row("cfi-score", L.score, sv >= 0 ? (sv >= 0.5 ? String(Math.round(sv)) : (sv > 0 ? "<1" : "0")) : "—", sv >= 0 ? Math.max(2, sv) : 0, sv >= 0 ? probHueColor(sv / 100) : "", t("confusion.tipScore")) +
+          row("cfi-match", L.match, isBase ? "—" : String(Math.round(w.w * 100)), isBase ? 0 : w.w * 100, "", "confusion.tipMatch") +
+          row("cfi-misid", L.misid, (!isBase && w.mid > 0) ? w.mid + "%" : "—", (!isBase && w.mid > 0) ? Math.max(6, w.mid) : 0, "", "confusion.tipMisid") +
+          row("cfi-here", L.here, here >= 0 ? pctTxt(here) : "—", here >= 0 ? Math.max(4, here * 100) : 0, here >= 0 ? probHueColor(here) : "", "confusion.tipHere") +
+          row("cfi-score", L.score, sv >= 0 ? (sv >= 0.5 ? String(Math.round(sv)) : (sv > 0 ? "<1" : "0")) : "—", sv >= 0 ? Math.max(2, sv) : 0, sv >= 0 ? probHueColor(sv / 100) : "", "confusion.tipScore") +
         "</div>" +
         '<div class="spg-credit"></div>' +
       "</div>";
@@ -11455,6 +11551,7 @@
   }
   function goToMapView() {
     if (!viewToggleAvail()) return;
+    viewBackStack.length = 0;   // an explicit "to the map" ends the chain of previous views
     if (onListView()) navClose("page");   // close the list page (hides the panel + rewinds Back)
     // Per-point list: (re)plot its sightings — but NOT if the red × purged the map
     // after this list's fetch (same generation guard the partial-plot path uses):
@@ -15863,9 +15960,10 @@
     document.getElementById("secondlang-select").addEventListener("change", function () {
       var v = this.value;
       window.GeoState.save({ secondLang: v });
-      // Re-render only once the language's name pack is on the device — a rendered-but-
-      // hidden list (map-first) is rebuilt too, so opening it later shows the new column.
-      setSecondLang(v).then(function () { rerenderPointList(); });
+      // Relabel once the language's name pack is on the device (setSecondLang does it
+      // when the pack has just arrived; do it here when it was already loaded). In place —
+      // a full re-render would re-fetch and, map-first, close an open list page.
+      setSecondLang(v).then(function (loaded) { if (!loaded) refreshSpeciesNames(); });
     });
 
     // Scientific-name column toggle — pure CSS show/hide on the live table,
@@ -16942,17 +17040,12 @@
       fcMergeEntries(ids); renderEntryEdit();
     });
 
-    // Back from the full-screen Species-List page to the map.
-    document.getElementById("sp-back").addEventListener("click", function () { navClose("page"); });
-    // Back from the full-screen Migration analysis page to the map.
-    // With the Mode dropdown gone, leaving a mode's page returns to Recent.
-    function exitToRecentMode() {
-      var sel = document.getElementById("mode-select");
-      if (sel && sel.value !== "list") { sel.value = "list"; sel.dispatchEvent(new Event("change", { bubbles: true })); }
-    }
-    document.getElementById("bc-back").addEventListener("click", function () { navClose("page"); exitToRecentMode(); });
+    // ‹ on the full-screen pages: back to the view the page was opened from (see
+    // viewBackStack), else to the map.
+    document.getElementById("sp-back").addEventListener("click", function () { navClose("page"); popViewBack(); });
+    document.getElementById("bc-back").addEventListener("click", function () { navClose("page"); if (!popViewBack()) exitToRecentMode(); });
     var rb = document.getElementById("range-back");
-    if (rb) rb.addEventListener("click", exitToRecentMode);
+    if (rb) rb.addEventListener("click", function () { if (!popViewBack()) exitToRecentMode(); });
 
     document.getElementById("an-filter").addEventListener("input", function () { renderActiveTab(); });
     document.getElementById("an-topn").addEventListener("input", function () {
@@ -17590,9 +17683,11 @@
   }
   function showSpeciesRange(key, dateStr) {
     if (!labelsByKey[key]) return;
+    var back = currentViewRestorer();   // where ‹ should return to
     setWeekFromDate(dateStr);   // the map shows the distribution for the observation's week
     var modeEl = document.getElementById("mode-select");
     if (modeEl.value !== "range") { modeEl.value = "range"; modeEl.dispatchEvent(new Event("change", { bubbles: true })); }
+    pushViewBack(back, "range");
     var ep = document.getElementById("entry-page"); if (ep) ep.style.display = "none";
     selectSpecies(key);
     if (map) map.invalidateSize();
@@ -17613,10 +17708,12 @@
   function showSpeciesMigration(key, dateStr) {
     var lbl = labelsByKey[key];
     if (!lbl) return;
+    var back = currentViewRestorer();   // where ‹ should return to
     var detWeek = dateStr ? (weekOfDate(dateStr) || 0) : 0;   // mark the detection week on the timeline
     var pt = migrationPoint();
     var modeEl = document.getElementById("mode-select");
     if (modeEl.value !== "barchart") { modeEl.value = "barchart"; modeEl.dispatchEvent(new Event("change", { bubbles: true })); }
+    pushViewBack(back, "migration");
     analysisTab = "timeline";
     window.GeoState.save({ analysisTab: analysisTab });
     document.getElementById("an-filter").value = speciesName(lbl);
@@ -20346,6 +20443,9 @@
   function renderSpBody() {
     var tbl = document.getElementById("species-list-table"), rec = document.getElementById("sp-records");
     if (!tbl || !rec) return;
+    hideLocHoverMap();   // the hovered place name is about to be re-rendered away
+    hideSpgTip();
+    wireYearProbTips(document.getElementById("species-panel"));   // once; delegated, so re-renders need nothing
     if (spLayout === "table" || spLayout === "gallery") {
       // The gallery is the table's rows as picture cards: run the table pipeline (filters,
       // distances, sort) so the cards follow the same order, then swap the presentation.
@@ -20483,9 +20583,41 @@
   // Hover preview of a species' 48-week probability at the fetch point — the Timeline
   // tab's bars (same colours; current week outlined black, the Last-seen week blue),
   // from the point's cached 48-week prediction (predictAllWeeks, shared with the Season
-  // column). Hover-capable devices only; tapping the Probability opens the full view.
+  // column). Shown over every probability-derived cell of the list views — the table's
+  // Probability / Season / comparison (Annual Top, % of max, Δ) cells, the observation
+  // rows' Probability / Season / Yr-peak cells, and the gallery card's Probability.
+  // Hover-capable devices only; tapping the gallery Probability opens the full view.
   var spgTipEl = null, spgTipKey = "";
   function hideSpgTip() { spgTipKey = ""; if (spgTipEl) spgTipEl.style.display = "none"; }
+  var YEAR_TIP_CELLS = ".prob-cell, .sp-season, .sp-ytop, .cmp-bar-cell, .delta-up, .delta-down, .delta-flat, .spg-prob";
+  // The species + last-seen date a hovered cell belongs to: the cell's own data-key
+  // (Season / Yr-peak cells), else its row's or card's (observation rows, gallery cards
+  // carry data-key), else the table row's species link.
+  function yearTipTarget(cell) {
+    var h = cell.closest("[data-key]"), key = h ? h.getAttribute("data-key") : "";
+    var tr = cell.closest("tr");
+    if (!key && tr) { var l = tr.querySelector(".sp-link[data-key]"); key = l ? l.getAttribute("data-key") : ""; }
+    var dh = cell.closest("[data-date]"), date = dh ? dh.getAttribute("data-date") : "";
+    if (!date && tr) { var dc = tr.querySelector(".dl-date-click[data-date]"); date = dc ? dc.getAttribute("data-date") : ""; }
+    return key ? { key: key, date: date || "" } : null;
+  }
+  function wireYearProbTips(panel) {
+    if (!panel || panel._yearTipWired) return;
+    panel._yearTipWired = true;
+    if (window.matchMedia && !window.matchMedia("(hover: hover)").matches) return;   // touch: no hover
+    panel.addEventListener("mouseover", function (e) {
+      var c = e.target.closest && e.target.closest(YEAR_TIP_CELLS); if (!c) return;
+      var tg = yearTipTarget(c); if (!tg) { hideSpgTip(); return; }
+      showSpgProbTip(c, tg.key, tg.date);
+    });
+    panel.addEventListener("mouseout", function (e) {
+      var c = e.target.closest && e.target.closest(YEAR_TIP_CELLS); if (!c) return;
+      var to = e.relatedTarget; if (to && to.closest && to.closest(YEAR_TIP_CELLS) === c) return;
+      hideSpgTip();
+    });
+    window.addEventListener("scroll", hideSpgTip, true);
+    document.addEventListener("mousedown", hideSpgTip, true);
+  }
   function spgYearBarsHtml(probs, curWeek, detWeek) {
     var mx = 0, w; for (w = 0; w < 48; w++) if (probs[w] > mx) mx = probs[w];
     if (mx < 0.01) mx = 0.01;
@@ -20500,6 +20632,7 @@
   }
   function showSpgProbTip(el, key, dateStr) {
     var lbl = labelsByKey[key]; if (!lbl || !currentSpView || !isFinite(+currentSpView.lat)) return;
+    if (currentSpView.mode !== "point" && currentSpView.mode !== "historic") return;   // a country list has no single point
     spgTipKey = key;
     predictAllWeeks(+currentSpView.lat, +currentSpView.lon).then(function (cell) {
       if (spgTipKey !== key || !el.isConnected) return;   // moved on before the model answered
@@ -20530,19 +20663,6 @@
         }
         if (e.target.closest(".spg-prob")) { e.preventDefault(); hideSpgTip(); showSpeciesMigration(key, date); }
       });
-      if (!window.matchMedia || window.matchMedia("(hover: hover)").matches) {
-        rec.addEventListener("mouseover", function (e) {
-          var p = e.target.closest && e.target.closest(".spg-prob"); if (!p) return;
-          var card = p.closest(".spg-card");
-          showSpgProbTip(p, card.getAttribute("data-key"), card.getAttribute("data-date") || "");
-        });
-        rec.addEventListener("mouseout", function (e) {
-          var p = e.target.closest && e.target.closest(".spg-prob"); if (!p) return;
-          var to = e.relatedTarget; if (to && to.closest && to.closest(".spg-prob") === p) return;
-          hideSpgTip();
-        });
-        window.addEventListener("scroll", hideSpgTip, true);
-      }
     }
     function fill(card) {
       if (card._spgDone) return; card._spgDone = true;
