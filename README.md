@@ -208,9 +208,10 @@ week outlined, the last-seen week in blue). The same hover chart appears over ev
 number in the list views — the table's Probability, Season and comparison cells (Annual Top, % of max,
 Δ), and the observation rows' Probability, Season and Yr-peak cells. The **?** button (the same
 "show predicted species" toggle as the table's) adds the model's commonest species for the point,
-interleaved with the observed ones and ranked commonest first — predicted cards are dashed and
-labelled, and their photos load as you scroll; the button reads **!** while on, and tapping it returns
-to the observed species in the previous order. Downloaded photos are kept in their own on-device cache
+interleaved with the observed ones and ranked commonest first (probability ↓ — in the table too, with
+the arrow on the Probability header) — predicted cards are dashed and labelled, and their photos load
+as you scroll; the button reads **!** while on, and tapping it returns to the observed species in the
+previous order (a sort you picked meanwhile is kept). Downloaded photos are kept in their own on-device cache
 (cache-first, survives app updates, capped at 1500) — see **Settings → Storage → Species photos** for
 the count and size, and to clear them.
 
@@ -545,6 +546,11 @@ view**.
 Open the app straight onto a point's observations — handy as a home-screen bookmark or a link from
 another app. Options are `;`- or `&`-separated `key=value` pairs.
 
+A shortcut launch **asks first**: the welcome popup appears at once — before the model, labels and
+taxonomy download, before the service worker precaches them, and before any location request or
+observation fetch — with **Cancel** and **OK**. OK starts the load and then the shortcut; Cancel ends
+it there (nothing was downloaded or asked for) and leaves a *Load now* button that asks again.
+
 The shortcut runs **once per launch**: as soon as its parameters are consumed they are removed from
 the address bar, so a reload — phones discard background tabs and reload them when you return — a
 restored tab, or a home-screen shortcut saved from that page is a normal app open that restores the
@@ -613,7 +619,8 @@ https://thebirding.site/f/
 **Short link for print** — `https://thebirding.site/f/` is a tiny redirect page
 (`app/f/index.html`, served by the service worker even offline) that forwards to
 `?location=here&radius=3&days=90&skip=ebird&show=list&sortby=distance&layout=images&from=poster` (the
-Images gallery, nearest first, ties by rarity). The `from=poster` tag makes the app add one tick to an anonymous
+Images gallery, nearest first, ties by rarity). Like every shortcut launch it asks first (welcome popup with
+Cancel / OK before anything loads, locates or fetches). The `from=poster` tag makes the app add one tick to an anonymous
 **poster-scans** counter (Abacus, `abacus.jasoncameron.dev`, namespace `thebirding.site` — a number
 only, no position, id or cookie; a **page-visits** counter ticks once per app open the same way), then
 strips the tag from the address bar so a reload, a restored tab or a home-screen shortcut saved from

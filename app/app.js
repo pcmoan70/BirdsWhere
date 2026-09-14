@@ -2106,9 +2106,7 @@
     if (spExpanded[key]) delete spExpanded[key]; else spExpanded[key] = 1;
     refreshSpExpansions();
   }
-  // `override` (optional {col, dir}) sorts by that instead of speciesListSort — the Images
-  // layout's [?] mode ranks commonest-first ({col: ""}) without touching the user's sort.
-  function sortSpeciesList(override) {
+  function sortSpeciesList() {
     var tbody = document.getElementById("sp-tbody");
     if (!tbody) return;
     var agg = tbody._sightingsAgg || {};
@@ -2118,8 +2116,7 @@
     var all = Array.prototype.slice.call(tbody.children);
     var extras = all.filter(function (tr) { return tr.classList.contains("sp-extra"); });
     var rows = all.filter(function (tr) { return !tr.classList.contains("sp-extra"); });
-    var sortSpec = override || speciesListSort;
-    var col = sortSpec.col;   // "" = sort OFF → natural ranking (model probability, desc)
+    var col = speciesListSort.col;   // "" = sort OFF → natural ranking (model probability, desc)
     rows.sort(function (a, b) {
       var ka, kb;
       if (!col) return (+b.getAttribute("data-prob") || 0) - (+a.getAttribute("data-prob") || 0);
@@ -2178,7 +2175,7 @@
         kb = (agg[keyB] && agg[keyB].count) || 0;
       }
       var cmp = ka < kb ? -1 : ka > kb ? 1 : 0;
-      return sortSpec.dir === "asc" ? cmp : -cmp;
+      return speciesListSort.dir === "asc" ? cmp : -cmp;
     });
     var frag = document.createDocumentFragment();
     rows.forEach(function (tr) { frag.appendChild(tr); });
@@ -6408,7 +6405,8 @@
           '<div class="install-row"><button type="button" id="install-info" class="btn btn-light ico-btn" hidden>' + ico("install") + '<span class="ico-label" data-i18n="install.app">Offline mode</span></button><div class="install-steps cu-hint" hidden></div></div>' +
           '<p class="perf-about"><a class="about-page-link" href="about/" target="_blank" rel="noopener" data-i18n="settings.aboutPage">About ↗</a></p>' +
           '<div class="perf-version" id="perf-version" style="display:none"></div>' +
-          '<button id="perf-modal-ok" class="btn" data-i18n="popup.ok">OK</button>' +
+          '<div class="perf-btns"><button id="perf-modal-cancel" class="btn btn-light" data-i18n="btn.cancel" hidden>Cancel</button>' +
+          '<button id="perf-modal-ok" class="btn" data-i18n="popup.ok">OK</button></div>' +
         '</div></div>' +
         '<div id="feedback-modal" style="display:none"><div id="feedback-box">' +
           '<button type="button" id="feedback-close" aria-label="Close">×</button>' +
@@ -6513,6 +6511,15 @@
 
     // Restore saved language before building the UI text.
     setLang(window.GeoState.get("lang", "system"), true);   // "system" (default) follows the device language
+
+    // A shortcut launch (the QR poster's /f/ link → ?location=here…, or ?here=1) asks
+    // FIRST: the welcome popup shows now — before the model, labels and taxonomy load,
+    // before the service worker precaches them, before any location request or
+    // observation fetch — with OK and Cancel. Cancel ends the load right here.
+    if (isShortcutLaunch()) {
+      countPosterScan();   // a scan is a scan — counted whether or not the launch goes on (live site only)
+      if (!(await launchGate())) { showLaunchCancelled(); return; }
+    }
 
     try {
       await Promise.all([initWorker(), loadLabels(), loadTaxonomy()]);
@@ -6752,7 +6759,7 @@
         sharedOpen = qp.has("lat") || qp.has("lon") || qp.has("s") || /[#&]s=/.test(location.hash || "");
         plainOpen = !(hasHere || sharedOpen || hasLocParam);
       } catch (e) {}
-      if (!sharedOpen) showPerfModal();
+      if (!sharedOpen && !launchGated) showPerfModal();   // a gated launch already showed (and dismissed) it
       initOfflineIndicator();
       maybeShowMovedNotice();
       maybeImportMigrated();   // arriving from the old origin with #migrate=… → merge the carried data
@@ -15813,6 +15820,56 @@
       counterHit("poster-scans");   // live site only (countersLive)
     } catch (e) {}
   }
+  // ---- Shortcut-launch gate ---------------------------------------------------
+  // ?location=… (the QR poster) / ?here=1: the welcome popup doubles as a consent gate,
+  // shown before anything heavy happens (see init). OK → the load goes on (and the
+  // service worker may register: "birdswhere:launch-ok"); Cancel → showLaunchCancelled.
+  var launchGated = false;
+  function isShortcutLaunch() { return /[?&;](location|here)=/i.test(location.search || ""); }
+  // Localise one subtree now (applyI18n runs over the whole page only after the load).
+  function localizeSubtree(root) {
+    Array.prototype.forEach.call(root.querySelectorAll("[data-i18n]"), function (el) {
+      var v = t(el.getAttribute("data-i18n"));
+      if (el.classList.contains("ico-label")) v = v.replace(/^[^\p{L}\p{N}]+/u, "");
+      el.textContent = v;
+    });
+  }
+  function launchGate() {
+    return new Promise(function (resolve) {
+      var m = document.getElementById("perf-modal"), ok = document.getElementById("perf-modal-ok"), cancel = document.getElementById("perf-modal-cancel");
+      if (!m || !ok) { resolve(true); return; }
+      launchGated = true;
+      localizeSubtree(m); updatePerfMeta();
+      if (cancel) cancel.hidden = false;
+      if (m.parentNode !== document.body) document.body.appendChild(m);   // #app-main is still hidden at this point; the overlay is position:fixed, so it lives fine on <body>
+      m.classList.add("perf-gate"); m.style.display = "flex";
+      hideBootSplash();   // the static splash would cover the popup
+      var loading = document.getElementById("app-loading"); if (loading) loading.style.display = "none";   // nothing is loading while we ask
+      var done = false;
+      function finish(go) {
+        if (done) return; done = true;
+        m.style.display = "none"; m.classList.remove("perf-gate"); if (cancel) cancel.hidden = true;
+        if (go && loading) loading.style.display = "";   // OK → the load starts now, spinner back
+        if (go) { window.__launchOk = true; try { window.dispatchEvent(new Event("birdswhere:launch-ok")); } catch (e) {} }
+        resolve(go);
+      }
+      ok.addEventListener("click", function () { finish(true); });
+      if (cancel) cancel.addEventListener("click", function () { finish(false); });
+    });
+  }
+  // Cancel on the gate: nothing was loaded or asked for; say so and offer to load after all
+  // (a reload — the shortcut parameters are still in the address bar, so it asks again).
+  function showLaunchCancelled() {
+    var el = document.getElementById("app-loading"), main = document.getElementById("app-main");
+    if (main) main.style.display = "none";
+    if (el) {
+      el.style.display = "";
+      el.innerHTML = '<p class="launch-cancelled">' + escapeHtml(t("popup.cancelled")) + '</p>' +
+        '<button type="button" id="launch-again" class="btn">' + escapeHtml(t("popup.loadNow")) + "</button>";
+      var b = document.getElementById("launch-again"); if (b) b.addEventListener("click", function () { location.reload(); });
+    }
+    hideBootSplash();
+  }
   // One-time performance note shown over the page on load.
   function showPerfModal() {
     var m = document.getElementById("perf-modal");
@@ -17322,9 +17379,20 @@
     var spFilterBtn = document.getElementById("sp-filter-btn");
     if (spFilterBtn) spFilterBtn.addEventListener("click", function (e) { e.stopPropagation(); openAllFiltersPane(); });
     var spMissingBtn = document.getElementById("sp-missing-btn");
+    // [?] also ranks the list commonest first (probability ↓) — in the table and the Images
+    // layout alike — and [!] brings the previous sort back (unless the user re-sorted meanwhile).
+    var spSortBeforeMissing = null;
     if (spMissingBtn) spMissingBtn.addEventListener("click", function (e) {
       e.stopPropagation();
       spShowMissing = !spShowMissing; window.GeoState.save({ spShowMissing: spShowMissing });
+      if (spShowMissing) {
+        spSortBeforeMissing = { col: speciesListSort.col, dir: speciesListSort.dir };
+        speciesListSort = { col: "prob", dir: "desc" };
+      } else if (spSortBeforeMissing) {
+        if (speciesListSort.col === "prob" && speciesListSort.dir === "desc") speciesListSort = spSortBeforeMissing;
+        spSortBeforeMissing = null;
+      }
+      updateSortIndicators();
       renderSpControls();   // relabels the button ("?" ↔ "!") and rebuilds the body (table rows / Images cards)
     });
     var vtBtn = document.getElementById("viewtoggle-btn");
@@ -20499,10 +20567,7 @@
       rec.style.display = "none"; tbl.style.display = "";
       applyAgeFilter();
       refreshSpDistCells();   // fresh distances before sorting by them
-      // Images + [?]: the model's commonest species for the point, interleaved with the
-      // observed ones, commonest first — regardless of the table's sort (restored on [!]).
-      if (spLayout === "gallery" && spShowMissing) sortSpeciesList({ col: "", dir: "" });
-      else if (speciesListSort.col) sortSpeciesList();
+      if (speciesListSort.col) sortSpeciesList();   // [?] sets probability ↓ (commonest first) in both layouts
       if (spLayout === "gallery") {
         tbl.style.display = "none"; rec.style.display = "";
         rec.innerHTML = buildSpGalleryHtml();
