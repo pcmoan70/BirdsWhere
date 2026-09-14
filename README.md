@@ -546,6 +546,9 @@ view**.
 Open the app straight onto a point's observations — handy as a home-screen bookmark or a link from
 another app. Options are `;`- or `&`-separated `key=value` pairs.
 
+The welcome popup also recommends a free eBird account (API key) and an account with the national bird
+database for much better coverage (Settings → Data sources).
+
 A shortcut launch **asks first**: the welcome popup appears at once — before the model, labels and
 taxonomy download, before the service worker precaches them, and before any location request or
 observation fetch — with **Cancel** and **OK**. OK starts the load and then the shortcut; Cancel ends
@@ -622,7 +625,10 @@ https://thebirding.site/f/
 app scripts — that **asks first**: *Fortsett · Continue* opens
 `?location=here&radius=3&days=90&skip=ebird&show=list&sortby=distance&layout=images&go=1` (the Images
 gallery, nearest first, ties by rarity; `go=1` = already confirmed, so the app does not ask again), and
-*Avbryt · Cancel* loads nothing at all (a *Continue anyway* link stays). The page itself adds one tick to an anonymous
+*Avbryt · Cancel* loads nothing at all (a *Continue anyway* link stays). When such a keyless launch finds
+fewer than 25 unique sightings, a one-off note under the *Loaded:* line says that a free eBird account
+(API key) and accounts for the national databases improve the results considerably, with a button to
+Data sources. The page itself adds one tick to an anonymous
 **poster-scans** counter (Abacus, `abacus.jasoncameron.dev`, namespace `thebirding.site` — a number
 only, no position, id or cookie; a **page-visits** counter ticks once per app open the same way), then
 the app strips the shortcut parameters from the address bar so a reload, a restored tab or a home-screen

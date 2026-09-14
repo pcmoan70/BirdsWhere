@@ -4627,6 +4627,20 @@
     armSpLoadingClear();   // the persistent line dismisses on the first interaction
     refreshSpCoords();     // per-area obs counts in the header reflect the finished fetch
   }
+  // A shortcut launch (the QR poster: keyless — eBird skipped, the regional databases only
+  // as far as their public APIs go) that finds FEW sightings gets a one-off note: a free
+  // eBird key and accounts for the national databases would improve this a lot. Shown once
+  // per launch under the "Loaded:" line, dismissed with its ×; opens Data sources.
+  var launchNotePending = false, LAUNCH_NOTE_MAX = 25;
+  function showLaunchNote() {
+    var el = document.getElementById("sp-launch-note"); if (!el) return;
+    el.innerHTML = '<span class="launch-note-txt">' + escapeHtml(t("launch.fewNote")) + "</span> " +
+      '<button type="button" class="btn btn-light launch-note-btn">' + escapeHtml(t("sources.manage")) + "</button>" +
+      '<button type="button" class="launch-note-x" aria-label="Close">×</button>';
+    el.style.display = "";
+    el.querySelector(".launch-note-btn").addEventListener("click", function () { openSourcesManager(); });
+    el.querySelector(".launch-note-x").addEventListener("click", function () { el.style.display = "none"; el.innerHTML = ""; });
+  }
   // The species-page loading line, set straight from a fetch's per-source counts
   // (works for a cached fetch too, where obsTrack never ran). Persistent.
   function showSourceCounts(bySrc, dedupTotal, timedOut, failed, trunc) {
@@ -4655,6 +4669,7 @@
     if (!parts.length) return;
     var html = t("sp.loaded", { n: parts.join(", ") });
     if (dedupTotal != null && keys.length) html += " · " + escapeHtml(t("sp.deduped", { n: dedupTotal }));   // unique kept after de-dup
+    if (launchNotePending && dedupTotal != null) { launchNotePending = false; if (dedupTotal < LAUNCH_NOTE_MAX) showLaunchNote(); }
     var ld = document.getElementById("sp-loading");
     if (ld) {
       ld.innerHTML = html; ld.style.display = "";
@@ -5831,6 +5846,7 @@
     }
     updateSortIndicators();
     urlForceView = (p.show || "").toLowerCase() === "list" ? "list" : null;   // else map-first (also 'map')
+    launchNotePending = true;   // the first settled fetch may add the "few sightings — add keys" note
     stripShortcutParams();   // everything above is consumed — a reload must not run the shortcut again
 
     var modeSel = document.getElementById("mode-select");
@@ -6269,6 +6285,7 @@
           '<div id="sp-filters-wrap"></div>' +
           '<div id="sp-recency-note" class="sp-recency-note" style="display:none"></div>' +
           '<div class="sp-loading" id="sp-loading" style="display:none"></div>' +
+          '<div id="sp-launch-note" style="display:none"></div>' +
           '<div id="sp-records" style="display:none"></div>' +
           '<table id="species-list-table">' +
             '<thead><tr>' +
@@ -6401,11 +6418,12 @@
           '<h2 class="perf-title" data-i18n="popup.title">Species — distributions &amp; observations</h2>' +
           '<p class="perf-desc" data-i18n="popup.desc">See where birds live, migrate, and are being seen right now — live observations from eBird, GBIF, iNaturalist and national databases, plus range and timing estimates worked out on your device. Everything runs in your browser.</p>' +
           '<p class="perf-privacy" data-i18n="popup.privacy">Private by design: there is no account and no server of ours. Your searches, saved lists and settings stay on this device — nothing is sent anywhere except the direct requests to the observation sources you query.</p>' +
+          '<p class="perf-keys" data-i18n="popup.keysTip"></p>' +
           '<p class="perf-feedback"><span data-i18n="popup.feedback"></span> <button type="button" class="feedback-open ico-btn">' + ico("mail") + '<span class="ico-label" data-i18n="feedback.send">Message</span></button></p>' +
           '<div class="install-row"><button type="button" id="install-info" class="btn btn-light ico-btn" hidden>' + ico("install") + '<span class="ico-label" data-i18n="install.app">Offline mode</span></button><div class="install-steps cu-hint" hidden></div></div>' +
-          '<p class="perf-about"><a class="about-page-link" href="about/" target="_blank" rel="noopener" data-i18n="settings.aboutPage">About ↗</a></p>' +
           '<div class="perf-version" id="perf-version" style="display:none"></div>' +
-          '<div class="perf-btns"><button id="perf-modal-cancel" class="btn btn-light" data-i18n="btn.cancel" hidden>Cancel</button>' +
+          '<div class="perf-btns"><a class="perf-about about-page-link" href="about/" target="_blank" rel="noopener" data-i18n="settings.aboutPage">About ↗</a>' +
+          '<button id="perf-modal-cancel" class="btn btn-light" data-i18n="btn.cancel" hidden>Cancel</button>' +
           '<button id="perf-modal-ok" class="btn" data-i18n="popup.ok">OK</button></div>' +
         '</div></div>' +
         '<div id="feedback-modal" style="display:none"><div id="feedback-box">' +
@@ -15843,6 +15861,12 @@
       if (!m || !ok) { resolve(true); return; }
       launchGated = true;
       localizeSubtree(m); updatePerfMeta();
+      // Version line: the running version normally comes from the service worker, which is
+      // not registered yet here — read it from the (tiny) manifest instead, plus the last-change
+      // stamp; updatePerfMeta fills the line as each arrives.
+      if (!appVersion) fetch("files.json", { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) { if (j && j._version && !appVersion) { appVersion = String(j._version); updatePerfMeta(); } }).catch(function () {});
+      if (!lastChangeText) showLastChange();
       if (cancel) cancel.hidden = false;
       if (m.parentNode !== document.body) document.body.appendChild(m);   // #app-main is still hidden at this point; the overlay is position:fixed, so it lives fine on <body>
       m.classList.add("perf-gate"); m.style.display = "flex";
