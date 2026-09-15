@@ -28,7 +28,7 @@ layered on top are the real sightings.
 |---|---|
 | **"Where should I go birding today?"** | Fetch live observations around you (or all your stored locations at once), sort the list by **probability low→high** so the locally-rarest finds top it, check the **Dist** column, and browse **eBird hotspots** and OSM **viewpoints** (hides, towers & viewpoints) on the map. |
 | **"What's arriving this week?"** | **Migration mode**: per-point arrival/departure heatmaps, phenology timelines and a scatter of *arrival × probability*. The **Season** column (↑ arriving · ● peak · ↓ leaving) puts the same signal in every species list. |
-| **Chasing / studying one species** | Its **Range map** animated across 48 weeks, **"More of these"** (recent sightings within 50 km from eBird/GBIF/iNaturalist), Macaulay photos matched to the season, Xeno-canto audio, Wikipedia — all from one tap on any species name. |
+| **Chasing / studying one species** | Its **Range map** animated across 48 weeks, **"More of these"** (the last 90 days of sightings within 1.5 × your fetch radius from eBird/GBIF/iNaturalist), Macaulay photos matched to the season, Xeno-canto audio, Wikipedia — all from one tap on any species name. |
 | **Planning a trip** | **Historic mode** shows what was seen there in your travel months in previous years; premade **taxonomic groups** and saved species lists focus the view; build a **route** of stops (hides, points, spots) and open it in Google Maps; **download offline maps** for the areas you'll bird without signal. |
 | **Field logging** | The per-location **field checklist**: tick, count, activity/sex, note and 📷 photos per species, all GPS-stamped — exported as PDF/CSV or an **eBird Record Format CSV** ready for upload. |
 | **Year & life listing** | Mark what you've seen; dots, legend and lists show **bronze/yellow "needs" rings** for species missing from this year's or your life list, and one tap filters the map to just the birds you still need. |
@@ -176,9 +176,11 @@ prediction at that point:
 - **Arrivals** — a diverging heatmap of the arrival score `(P[next] − P[prev]) / max_year`
   (green = arriving, orange = departing).
 - **Annual Top** — a running total of arrival scores; the part of the year each species is most present.
+  Arrivals and Annual Top only list species whose yearly peak probability reaches **1 %** — both are
+  normalised by that peak, so near-absent species would show loud but meaningless patterns.
 - **Scatter** — the top-N species plotted as *(arrival, probability)*, with a sortable table.
 
-**‹ returns to where you came from.** Migration and Species distribution can be opened from another
+**‹ returns to where you came from.** Migration and Distribution can be opened from another
 full view — the species list (a card's Probability, or the species menu), the checklist page, the
 Location analysis page itself, or Range mode. The page's **‹** button (and the browser Back) then
 returns to that view, chaining as deep as you went (list → Migration → distribution → ‹ → ‹ → ‹ lands
@@ -194,19 +196,21 @@ The fetch can be shown three ways (layout dropdown above the list — the choice
 device; a `layout=` link parameter applies to that visit only; changing the UI or second-name language
 relabels the open list in place): the ranked **Species list** table,
 the **Observation list** (one row per record) and **Images** — a gallery with one card per species in
-the table's current order: photo, name with the scientific name in parentheses, Total, Last seen and
-Distance, then **Probability · Season · Yr peak** as three bar cells on one line (the same cells as the
+the table's current order: photo, name with the scientific name in parentheses, a compact
+"#total(n) · last seen · distance" line, then **Probability · Season · Yr peak** as three bar cells on one line (the same cells as the
 lists; any of them opens the Migration view, and hovering shows the year curve). Photos are the lead image of the species' Wikipedia article, loaded from
 Wikimedia Commons as cards scroll into view (nothing bundled or stored beyond the browser cache) and
 credited under each picture to their author and licence, linked to the Commons file page. The name
-opens the usual species menu and the scientific name the Family menu, as in the table; the small **☰**
-button on a card jumps to that species' record sub-list in the Species list table (expanded, scrolled
-into view). Tapping a bird's **photo** opens its **Macaulay Library** catalogue narrowed to the month
+opens the usual species menu and the scientific name the Family menu, as in the table. The small **☰**
+button on a card shows the species' record sub-list: on a computer, hovering it opens the list in a
+small popover and clicking it jumps to the Species list table (expanded on that species, scrolled into
+view); on a phone, a short tap opens the popover (tapping the button again closes it) and a long press
+jumps to the table. Tapping a bird's **photo** opens its **Macaulay Library** catalogue narrowed to the month
 it was last seen (±1 month — the same link as the species menu's *Photos*); tapping the
 **Probability** opens the **Migration** view (Location analysis → Timeline) for that species, and on
 a mouse device hovering it previews the same 48-week probability bars at the fetch point (current
-week outlined, the last-seen week in blue). The same hover chart appears over every probability-derived
-number in the list views — the table's Probability, Season and comparison cells (Annual Top, % of max,
+week outlined, the last-seen week in blue; on a phone, press and hold a bar for the same chart). The same
+hover chart appears over every probability-derived number in the list views — the table's Probability, Season and comparison cells (Annual Top, % of max,
 Δ), and the observation rows' Probability, Season and Yr-peak cells. The **?** button (the same
 "show predicted species" toggle as the table's) adds the model's commonest species for the point,
 interleaved with the observed ones and ranked commonest first (probability ↓ — in the table too, with
@@ -224,16 +228,16 @@ probability. Options:
 - With live sources enabled, each row fills in a **recent-observation count** and a
   **"days since most recent"** age (*n(d)*), updating progressively as each source returns.
   Click a count to open the merged recent-observations modal (CSV-downloadable, plottable) — the
-  same panel as **"More of these"** in a species menu, which fetches recent sightings of that
-  species within **50 km** (eBird / GBIF / iNaturalist).
+  same panel as **"More of these"** in a species menu, which fetches that species' sightings of the
+  **last 90 days** within **1.5 × your fetch radius** (eBird / GBIF / iNaturalist).
 - Species the model doesn't cover but that the sources reported are appended below the
   predicted rows, tagged with a class glyph.
 
 **The panel header** lists **every fetched square on its own line**, ordered by geography
 (north→south, west→east) rather than fetch order: *place name · N species · N obs · lat, lon ·
-radius* — the species count is the model's species above the probability floor at that square's
-centre, shown only when the floor is **10 % or higher** (below that it is most of the model, so the
-number says nothing). Each line has a **red ×** that removes all observations for that location (a record
+radius* — the species count is the model's species at that square's centre above **15 %** (or the
+Probability slider's floor when that is higher), the same floor the "N species above …%" summary
+lines use; a 0 % floor would count most of the model, so the number would say nothing. Each line has a **red ×** that removes all observations for that location (a record
 fetched by two overlapping squares is kept until its last owning square is removed). The
 **back button** sits to the left of these lines. A square fetched by a plain map click gets its
 own named line as soon as its fetch lands.
@@ -447,7 +451,10 @@ The control line opens three mutually-exclusive **filter subwindows**:
   accurate place name (coordinate-only, or bare country/region names) group under **"(no
   location)"**. Ticking applies after a ~1 s pause, so several boxes rebuild the map once. You can
   also filter straight from a record: tap a **location name** in a species' expanded records or
-  the per-observation list and choose **"Show only this location"** (or add / remove it).
+  the per-observation list and choose **"Show only this location"** (or add / remove it). The same
+  menu offers **Find on map**, **Add as point**, **Add to route**, **Navigate to**, and — green, like
+  the point popup's mode buttons — **Historic** (switch to Historic with that spot placed, pick the
+  range, Fetch) and **Migration** (the Location analysis for that spot; ‹ returns to the list).
 - **👤 Observers** — a checklist of observers with a scope button that cycles **All → None →
   each saved observer list**, plus an editor (**✎**).
 
@@ -649,10 +656,14 @@ shared payload is all that is shown.
 ## The species menu
 
 Right-click / long-press / tap any species name for a menu **led by the species name in bold**
-(wrapping when long), followed by the observation-specific actions when opened from a record, then:
+(wrapping when long), followed by the record's *Open source* link when opened from an observation, then:
 
-- **Information** — Distribution map (a Wikipedia range image, with a BirdLife link in its popup),
-  **Wikipedia**, then group-specific references: **Macaulay Library** photos/audio (narrowed to the
+- **Information**, in this order — **Confusion species** (birds), **Distribution**: the model's own
+  range map or Wikipedia's range image (with a BirdLife link in its popup; **Settings → Distribution**
+  picks which opens first, model by default, each falling back to the other when it has nothing for the
+  species, Wikipedia also when offline; the Wikipedia dialog links to the model map), **Migration**,
+  **Images** (Macaulay Library, birds), **Audio** (Xeno-canto, animals), **More of these**, **Wikipedia**,
+  then **Family** and the group-specific references: **Macaulay Library** photos/audio (narrowed to the
   observation's season — a ±1-month `beginMonth`/`endMonth` window — so images match the time of
   year) and **eBird photos** for birds, **Kew POWO** for plants, **Animal Diversity Web** for
   mammals, plus **Xeno-canto** audio (animals). *Experimental features* (Settings) adds the
@@ -661,6 +672,8 @@ Right-click / long-press / tap any species name for a menu **led by the species 
   species on the map + detections list, like a legend selection; tap again on the same species to show
   everything), then state-showing **toggles**: **Interesting** (★), **Year list** and **Life
   list** (each coloured when the species is in that set, greyed when not). Also **＋ Add to route**.
+- **This observation** (bottom, when opened from a record with a location) — **Show on map**,
+  **Navigate here**, **Add to route** and **Add point to list…**.
 
 ---
 
@@ -686,11 +699,16 @@ habitat model puts above 0 % at your point/week and ranks them by local likeliho
   (habitat, trophic niche, lifestyle, migration) — matching traits tinted green, differing ones amber — and
   both birds' 48-week presence curves on **one shared-scale chart** so
   their seasons line up directly.
-- **Confusion species (images)** — the next menu entry shows the same ranked look-alikes as **photo
+- **Photo cards by default** — the Confusion species entry shows the same ranked look-alikes as **photo
   cards**: the species itself first (green border, "This species"), then left to right by Score, wrapping
   onto further rows (two per row on narrow phones). Each card carries the Wikipedia/Commons lead photo
   with its credit, the name, the scientific name and **Match · misID · Here · Score** as small bars;
-  tapping a look-alike opens the same compare card.
+  tapping a look-alike opens the same compare card. **Settings → Confusion species** switches between
+  *Photo cards* (default) and the *Table*; offline the table is used automatically, and each popup has a
+  single **Text / Images** button (top right, next to ×) that switches to the other view on the spot. Photos are shared
+  with the Images list layout through the on-device photo cache, so a bird seen there needs no new
+  download here; a photo that is not cached while offline shows a small no-internet mark and loads as
+  soon as the connection is back.
 
 ### How the look-alike model works
 

@@ -901,7 +901,10 @@
       document.removeEventListener("pointerdown", spLoadingClearFn, true);
       document.removeEventListener("keydown", spLoadingClearFn, true);
       spLoadingClearFn = null;
-      if (ld) ld.style.display = "none";
+      // Hide AFTER the gesture completes, not on the press: collapsing the line on pointerdown
+      // shifted the list ~26 px under the finger/pointer, so the release (and the click) landed
+      // on a different element — the first tap after a fetch did the wrong thing or nothing.
+      if (ld) setTimeout(function () { ld.style.display = "none"; }, 400);
     };
     document.addEventListener("pointerdown", spLoadingClearFn, true);
     document.addEventListener("keydown", spLoadingClearFn, true);
@@ -3166,6 +3169,16 @@
   // GBIF / eBird / iNaturalist. eBird's API caps dist at 50 km, so values
   // above that affect GBIF/iNat only.
   function recentRadiusKm() { return +window.GeoState.get("recentRadiusKm", 25) || 25; }
+  // The "N species above P%" summary lines count species that are actually plausible here:
+  // at least 15 %, or the Probability slider's own floor when that is higher. (With the
+  // slider at its default 0 % the count used to be "N above 0 %" — nearly the whole model.)
+  var SUMMARY_MIN_PROB = 0.15;
+  function summaryProbFloor(pmin) { return Math.max(+pmin || 0, SUMMARY_MIN_PROB); }
+  function summaryPct(pmin) { return (summaryProbFloor(pmin) * 100).toFixed(0); }
+  function summaryCount(rows, pmin) {
+    var f = summaryProbFloor(pmin);
+    return rows.filter(function (r) { return (+r.prob || 0) >= f; }).length;
+  }
   // BirdWeather: a species counts as "here" on a day only with at least bwMinDet()
   // detections at confidence ≥ bwMinConf(). Both tunable in the BirdWeather entry
   // of the Data-sources card.
@@ -5420,9 +5433,9 @@
     var fmtD = function (d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); };
     var d1, d2;
     if (customRange) { var cr = String(customRange).split(","); d1 = cr[0]; d2 = cr[1] || fmtD(new Date()); }   // Historic mode passes its own range
-    else { var to = new Date(), from = new Date(); from.setMonth(from.getMonth() - 3); d1 = fmtD(from); d2 = fmtD(to); }
+    else { var to = new Date(), from = new Date(); from.setDate(from.getDate() - 90); d1 = fmtD(from); d2 = fmtD(to); }   // the last 90 days
     var range = d1 + "," + d2;
-    var rkm = 50;   // "More of these" searches a fixed 50 km radius around the point
+    var rkm = Math.round(recentRadiusKm() * 1.5 * 10) / 10;   // "More of these": the last fetch radius, widened by half
 
     var inatWeb = "https://www.inaturalist.org/observations?taxon_name=" + encodeURIComponent(sci) +
       "&lat=" + lat.toFixed(4) + "&lng=" + lon.toFixed(4) + "&radius=" + rkm + "&d1=" + d1 + "&d2=" + d2 + "&order_by=observed_on&order=desc";
@@ -5551,9 +5564,27 @@
   }
 
   function hideDistMap() { document.getElementById("distmap-modal").style.display = "none"; }
+  // Which distribution view the species menu's "Distribution" opens first — the app's own model
+  // range map ("model", default) or Wikipedia's range image ("wiki"); Settings → Distribution.
+  // Either falls back to the other when it has nothing for the species (Wikipedia: no map, or
+  // offline; model: not a model species).
+  function distView() { return window.GeoState.get("distView", "model") === "wiki" ? "wiki" : "model"; }
+  function showDistribution(key, name, sci, dateStr) {
+    var lbl = key && labelsByKey[key];
+    if (distView() === "model") {
+      if (lbl) showSpeciesRange(key, dateStr); else showDistMap(name, sci, key);
+    } else {
+      if (lbl && navigator.onLine === false) { showSpeciesRange(key, dateStr); return; }   // no Wikipedia offline
+      showDistMap(name, sci, key, lbl ? function () { showSpeciesRange(key, dateStr); } : null);
+    }
+  }
   function hideAbout() { document.getElementById("about-modal").style.display = "none"; }
 
-  function showDistMap(name, sci, key) {
+  // `onNone` (optional): called — with the dialog closed — instead of the "no map found"
+  // note when Wikipedia has no range image (the Distribution entry's fallback to the model).
+  var distMapKey = null;   // the species the distribution dialog shows (for its "Species distribution" link)
+  function showDistMap(name, sci, key, onNone) {
+    distMapKey = key || null;
     var modal = document.getElementById("distmap-modal");
     var body = document.getElementById("distmap-body");
     document.getElementById("distmap-title").textContent = name;
@@ -5566,12 +5597,14 @@
     // Reference links shown in the pop-up: Wikipedia, plus BirdLife (birds only).
     function refLinks(fullUrl) {
       var h = "";
+      if (lbl) h += '<a class="dm-model" href="#" role="button">' + escapeHtml(t("menu.apprange")) + '</a> · ';   // the app's own (model) range map
       if (fullUrl) h += '<a href="' + escapeHtml(fullUrl) + '" target="_blank" rel="noopener">' + escapeHtml(t("distmap.download")) + '</a> · ';
       h += '<a class="dm-wiki" data-sci="' + escapeHtml(sci) + '" href="' + escapeHtml(wikipediaUrl(sci)) + '" target="_blank" rel="noopener">Wikipedia</a>';
       if (bird) h += ' · <a class="dm-birdlife" data-en="' + escapeHtml(en) + '" data-sci="' + escapeHtml(sci) + '" href="' + escapeHtml(birdlifeUrl(en, sci)) + '" target="_blank" rel="noopener">BirdLife</a>';
       return h;
     }
     function showNone() {
+      if (onNone) { navClose("distmap"); onNone(); return; }
       body.innerHTML = '<p class="distmap-none">' + escapeHtml(t("distmap.none")) + '</p>' +
         '<div class="distmap-links">' + refLinks(null) + '</div>';
     }
@@ -6225,6 +6258,16 @@
               '<div class="ctrl-group">' +
                 '<label class="ctrl-check"><input type="checkbox" id="show-sci-toggle" checked> <span data-i18n="ctrl.showsci">Scientific names</span></label>' +
                 '<p class="cu-hint" data-i18n="ctrl.showsciHint">Show the scientific-name column in the species lists.</p>' +
+              '</div>' +
+              '<div class="ctrl-group">' +
+                '<label for="confusion-view-select" data-i18n="ctrl.confusionView">Confusion species</label>' +
+                '<select id="confusion-view-select"><option value="images" data-i18n="ctrl.confusionImages">Photo cards</option><option value="table" data-i18n="ctrl.confusionTable">Table (no photos)</option></select>' +
+                '<p class="cu-hint" data-i18n="ctrl.confusionViewHint">How the species menu shows look-alikes. Photo cards need an internet connection — offline, the table is shown.</p>' +
+              '</div>' +
+              '<div class="ctrl-group">' +
+                '<label for="dist-view-select" data-i18n="ctrl.distView">Distribution</label>' +
+                '<select id="dist-view-select"><option value="model" data-i18n="ctrl.distModel">Species distribution (model)</option><option value="wiki" data-i18n="ctrl.distWiki">Distribution map (Wikipedia)</option></select>' +
+                '<p class="cu-hint" data-i18n="ctrl.distViewHint">Which map the species menu\u2019s Distribution opens first. Each falls back to the other when it has nothing for the species (Wikipedia also when offline).</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label class="ctrl-check"><input type="checkbox" id="experimental-toggle"> <span data-i18n="ctrl.experimental">Experimental features</span></label>' +
@@ -9792,9 +9835,9 @@
     b.addEventListener("click", function (e) { e.stopPropagation(); onClick(e); });
     return b;
   }
-  function drmBtn(label, onClick, iconName) {
+  function drmBtn(label, onClick, iconName, cls) {
     var b = document.createElement("button");
-    b.type = "button"; b.className = "detrow-menu-item";
+    b.type = "button"; b.className = "detrow-menu-item" + (cls ? " " + cls : "");
     if (iconName) { b.classList.add("ico-btn"); b.innerHTML = ico(iconName) + "<span></span>"; b.lastChild.textContent = label; }
     else b.textContent = label;
     b.addEventListener("click", function (e) { e.stopPropagation(); onClick(); });
@@ -10144,6 +10187,15 @@
     }
     return { arr: arr, out: out };
   }
+  function confusionView() { return window.GeoState.get("confusionView", "images") === "table" ? "table" : "images"; }
+  // The view switch in the popup's top-right (next to ×): table ↔ photo cards, one-off (the
+  // Settings default is untouched); reopens the other view at the same anchor.
+  function confSwitchBtn(el, label, open) {
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "conf-switch"; b.textContent = label;
+    b.addEventListener("click", function (e) { e.stopPropagation(); closeAnchoredMenu(); open(); });
+    el.appendChild(b);
+  }
   // "Confusion species (images)": the same ranked look-alikes as picture cards, left →
   // right by Score (Match without a point) and wrapping onto further rows, the species
   // itself first as the reference. Each card: photo (credited), name, scientific name, Match · misID · Here ·
@@ -10155,13 +10207,14 @@
     el.style.width = "min(97vw,900px)";
     var hdr = document.createElement("div");
     hdr.className = "detrow-menu-hdr detrow-menu-name";
-    hdr.textContent = t("menu.confusionImg");
+    hdr.textContent = t("menu.confusion");   // same title as the text view — the pictures speak for themselves
     el.appendChild(hdr);
     var closeBtn = document.createElement("button");
     closeBtn.type = "button"; closeBtn.className = "conf-close"; closeBtn.textContent = "×";
     closeBtn.setAttribute("aria-label", "Close");
     closeBtn.addEventListener("click", function (e) { e.stopPropagation(); closeAnchoredMenu(); });
     el.appendChild(closeBtn);
+    confSwitchBtn(el, t("confusion.toText"), function () { openConfusionMenu(key, x, y); });   // "Text" → the table view
     var wait = document.createElement("div"); wait.className = "detrow-menu-hdr"; wait.textContent = "…";
     el.appendChild(wait); positionAnchoredMenu(el, x, y);
     var rk = await confusionRanked(key);
@@ -10227,6 +10280,7 @@
     closeBtn.setAttribute("aria-label", "Close");
     closeBtn.addEventListener("click", function (e) { e.stopPropagation(); closeAnchoredMenu(); });
     el.appendChild(closeBtn);
+    confSwitchBtn(el, t("splay.gallery"), function () { openConfusionImages(key, x, y); });   // "Images" → the photo cards
     positionAnchoredMenu(el, x, y);
     var wait = document.createElement("div"); wait.className = "detrow-menu-hdr"; wait.textContent = "…";
     el.appendChild(wait); positionAnchoredMenu(el, x, y);
@@ -10324,15 +10378,12 @@
     el.appendChild(nameHdr);
     // 1) This observation — record-specific (source / map / route / lists). Top
     // of the menu when the menu was opened from a dot/pin.
+    // (Show on map · Navigate here · Add to route · Add to point list moved to the BOTTOM — section 4.)
+    var topAny = false;
     if (hasObs) {
-      if (d.url) el.appendChild(drmBtn(t("det.openSource"), function () { closeDetRowMenu(); openExternal(d.url); }));
-      if (hasLoc) {
-        if (!d.fromPin) el.appendChild(drmBtn(tLabel("detmenu.focusMap"), function () { focusPointOnMap(+d.lat, +d.lon); }, "pin"));   // green pin icon only (strip the 🎯 emoji); a map pin is already on the map
-        el.appendChild(drmBtn(t("nav.here"), function () { closeDetRowMenu(); navigatePoints([{ lat: +d.lat, lon: +d.lon }]); }, "nav"));
-        el.appendChild(drmBtn(tLabel("route.add"), function () { closeDetRowMenu(); addToRoute(+d.lat, +d.lon, name); }, "navplus"));
-      }
-      el.appendChild(drmBtn(tLabel("detmenu.addList"), function () { drmRenderLists(el, d); }, "dotsplus"));   // green dots+ icon only (strip the 📍 emoji)
+      if (d.url) { el.appendChild(drmBtn(t("det.openSource"), function () { closeDetRowMenu(); openExternal(d.url); })); topAny = true; }
       if (d.mpId && d.listName) {
+        topAny = true;
         // Opened from a map pin: "Delete" — the pin belongs to a saved list, so confirm the
         // removal from that list first. From a list row: the plain "Remove from list".
         if (d.fromPin) el.appendChild(drmBtn(t("btn.delete"), function () {
@@ -10348,10 +10399,38 @@
     if (lbl || (sci && /\s/.test(sci))) {
       // The name header is at the very top; when record actions precede this
       // section, a plain divider keeps the two visually separate.
-      if (hasObs) { var dv = document.createElement("div"); dv.className = "detrow-menu-div"; el.appendChild(dv); }
+      if (topAny) { var dv = document.createElement("div"); dv.className = "detrow-menu-div"; el.appendChild(dv); }
       if (lbl) {
-        el.appendChild(drmBtn(t("menu.apprange"), function () { closeDetRowMenu(); showSpeciesRange(key, d && d.date); }));
+        // Order: Confusion species · Distribution · Migration · Images · Audio · More of these ·
+        // Wikipedia — then Family and the group-specific references.
+        // Confusion species — look-alikes for this bird (morphology + genus), ranked by local
+        // probability. Birds only (AVONET covers birds). Photo cards by default; the table when
+        // offline (no photos to fetch) or when the user chose it in Settings → Confusion species.
+        if (isBird) {
+          var confBtn = drmBtn(t("menu.confusion"), function () {
+            var r = confBtn.getBoundingClientRect();
+            closeDetRowMenu();
+            if (confusionView() === "images" && navigator.onLine !== false) openConfusionImages(key, Math.round(r.left), Math.round(r.top));
+            else openConfusionMenu(key, Math.round(r.left), Math.round(r.top));
+          });
+          confBtn.title = t("confusion.tip");
+          el.appendChild(confBtn);
+        }
+        el.appendChild(drmBtn(t("menu.distribution"), function () { closeDetRowMenu(); showDistribution(key, name, sci, d && d.date); }));   // model map or Wikipedia map per Settings, each falling back to the other
         el.appendChild(drmBtn(t("menu.appmig"), function () { closeDetRowMenu(); showSpeciesMigration(key, d && d.date); }));
+      }
+      if (isBird) el.appendChild(drmBtn(t("menu.macaulay"), function () { closeDetRowMenu(); openExternal(macaulayUrl(key, sci, d && d.date)); }));   // Images (Macaulay Library) — birds only
+      if (!isPlant && !isFungi) el.appendChild(drmBtn(t("menu.xeno"), function () { closeDetRowMenu(); openExternal(xenoCantoUrl(sci)); }));   // Audio (Xeno-canto) — animals only
+      var moreBtn = drmBtn(t("menu.recent"), function () {
+        closeDetRowMenu();
+        var la = hasLoc ? +d.lat : (marker ? marker.getLatLng().lat : map.getCenter().lat);
+        var lo = hasLoc ? +d.lon : (marker ? marker.getLatLng().lng : map.getCenter().lng);
+        showRecent(name, sci, la, lo, key);
+      });
+      moreBtn.title = t("menu.recentHint");   // hover description
+      el.appendChild(moreBtn);
+      el.appendChild(drmBtn(t("menu.wiki"), function () { closeDetRowMenu(); openWikipedia(sci); }));
+      if (lbl) {
         // Family browser — every model species in the same family, ranked by the
         // model's probability at the current point (same view as clicking a sci name).
         var famBtn = drmBtn(t("menu.family"), function () {
@@ -10361,39 +10440,9 @@
         });
         famBtn.title = t("sci.familyTip");
         el.appendChild(famBtn);
-        // Confusion species — look-alikes for this bird (morphology + genus),
-        // ranked by local probability. Birds only (AVONET covers birds).
-        if (isBird) {
-          var confBtn = drmBtn(t("menu.confusion"), function () {
-            var r = confBtn.getBoundingClientRect();
-            closeDetRowMenu();
-            openConfusionMenu(key, Math.round(r.left), Math.round(r.top));
-          });
-          confBtn.title = t("confusion.tip");
-          el.appendChild(confBtn);
-          var confImgBtn = drmBtn(t("menu.confusionImg"), function () {
-            var r = confImgBtn.getBoundingClientRect();
-            closeDetRowMenu();
-            openConfusionImages(key, Math.round(r.left), Math.round(r.top));
-          });
-          confImgBtn.title = t("confusion.tip");
-          el.appendChild(confImgBtn);
-        }
       }
-      var moreBtn = drmBtn(t("menu.recent"), function () {
-        closeDetRowMenu();
-        var la = hasLoc ? +d.lat : (marker ? marker.getLatLng().lat : map.getCenter().lat);
-        var lo = hasLoc ? +d.lon : (marker ? marker.getLatLng().lng : map.getCenter().lng);
-        showRecent(name, sci, la, lo, key);
-      });
-      moreBtn.title = t("menu.recentHint");   // hover description
-      el.appendChild(moreBtn);
-      if (lbl) el.appendChild(drmBtn(t("menu.distmap"), function () { closeDetRowMenu(); showDistMap(name, sci, key); }));
-      el.appendChild(drmBtn(t("menu.wiki"), function () { closeDetRowMenu(); openWikipedia(sci); }));
-      if (isBird) el.appendChild(drmBtn(t("menu.macaulay"), function () { closeDetRowMenu(); openExternal(macaulayUrl(key, sci, d && d.date)); }));   // birds only now
       if (isMammal) el.appendChild(drmBtn(t("menu.adw"), function () { closeDetRowMenu(); openExternal(adwUrl(sci)); }));
       if (isPlant) el.appendChild(drmBtn(t("menu.powo"), function () { closeDetRowMenu(); openExternal(powoUrl(sci)); }));
-      if (!isPlant && !isFungi) el.appendChild(drmBtn(t("menu.xeno"), function () { closeDetRowMenu(); openExternal(xenoCantoUrl(sci)); }));   // sounds — animals only
       // Experimental references (Settings → Experimental) — off by default.
       // Region-gated on the record's location (map centre when the species has none):
       // NBN Atlas only covers the British Isles, EuroBirdPortal only Europe.
@@ -10440,6 +10489,17 @@
         function () { toggleYearList(key); closeDetRowMenu(); redraw(); }));
       el.appendChild(drmToggle({ html: ico("sprout") }, inLifeList(key), t("menu.lifelist"),
         function () { toggleLifeList(key); closeDetRowMenu(); redraw(); }));
+    }
+    // 4) This observation on the map — at the bottom, after the list actions: Show on map ·
+    //    Navigate here · Add to route · Add to point list.
+    if (hasObs) {
+      var dv4 = document.createElement("div"); dv4.className = "detrow-menu-div"; el.appendChild(dv4);
+      if (hasLoc) {
+        if (!d.fromPin) el.appendChild(drmBtn(tLabel("detmenu.focusMap"), function () { focusPointOnMap(+d.lat, +d.lon); }, "pin"));   // green pin icon only (strip the 🎯 emoji); a map pin is already on the map
+        el.appendChild(drmBtn(t("nav.here"), function () { closeDetRowMenu(); navigatePoints([{ lat: +d.lat, lon: +d.lon }]); }, "nav"));
+        el.appendChild(drmBtn(tLabel("route.add"), function () { closeDetRowMenu(); addToRoute(+d.lat, +d.lon, name); }, "navplus"));
+      }
+      el.appendChild(drmBtn(tLabel("detmenu.addList"), function () { drmRenderLists(el, d); }, "dotsplus"));   // green dots+ icon only (strip the 📍 emoji)
     }
   }
   function drmRenderLists(el, d) {
@@ -10605,8 +10665,12 @@
     el.innerHTML = "";
     var h = document.createElement("div"); h.className = "detrow-menu-hdr"; h.textContent = label; el.appendChild(h);
     el.appendChild(drmBtn(t("src.only", { src: label }), function () { closeDetRowMenu(); setDetSrcFilter(new Set([label])); }));
-    if (present.length > 1) el.appendChild(drmBtn(t("src.hide", { src: label }), function () {
-      closeDetRowMenu(); setDetSrcFilter(new Set(present.filter(function (s) { return s !== label; })));
+    // "Hide" removes this source from the CURRENTLY kept set (so hides accumulate — it used to
+    // rebuild the set from every present source, un-hiding the ones hidden before); never the last one.
+    var kept = detSrcFilter ? new Set(detSrcFilter) : new Set(present);
+    if (kept.has(label) && kept.size > 1) el.appendChild(drmBtn(t("src.hide", { src: label }), function () {
+      closeDetRowMenu(); kept.delete(label);
+      setDetSrcFilter(present.every(function (p) { return kept.has(p); }) ? null : kept);
     }));
     if (detSrcFilter) el.appendChild(drmBtn(t("src.all"), function () { closeDetRowMenu(); setDetSrcFilter(null); }));
     positionAnchoredMenu(el, x, y);
@@ -10682,7 +10746,24 @@
       openPointEditor({ lat: lat, lon: lon, name: name || "" });
     }, "dotsplus"));
     el.appendChild(drmBtn(tLabel("route.add"), function () { closeDetRowMenu(); addToRoute(lat, lon, name || ""); }, "navplus"));
-    el.appendChild(drmBtn(t("nav.title"), function () { closeDetRowMenu(); navigatePoints([{ lat: lat, lon: lon }]); }, "nav"));
+    el.appendChild(drmBtn(t("locmenu.navigate"), function () { closeDetRowMenu(); navigatePoints([{ lat: lat, lon: lon }]); }, "nav"));
+    // Historic / Migration for THIS spot (green, like the point popup's mode buttons):
+    // Historic switches mode with the point placed (pick the range, then Fetch); Migration
+    // runs the location analysis here — ‹ returns to the list it was opened from.
+    el.appendChild(drmBtn(t("mode.historic"), function () {
+      closeDetRowMenu();
+      var sel = document.getElementById("mode-select");
+      if (sel && sel.value !== "historic") { sel.value = "historic"; sel.dispatchEvent(new Event("change", { bubbles: true })); }
+      placeHistoricPoint(lat, lon);
+    }, null, "drm-green"));
+    if (groupHasModel()) el.appendChild(drmBtn(t("mode.barchart").replace(/^[^\p{L}\p{N}]+/u, ""), function () {
+      closeDetRowMenu();
+      var back = currentViewRestorer();
+      var sel = document.getElementById("mode-select");
+      if (sel && sel.value !== "barchart") { sel.value = "barchart"; sel.dispatchEvent(new Event("change", { bubbles: true })); }
+      pushViewBack(back, "migration");
+      renderAnalysis(lat, lon);
+    }, null, "drm-green"));
     if (info && info.links) info.links.forEach(function (lk) {
       el.appendChild(drmBtn(lk.label, (function (u) { return function () { closeDetRowMenu(); openExternal(u); }; })(lk.url)));
     });
@@ -16105,6 +16186,16 @@
       window.GeoState.save({ showSci: showSci });
       applyShowSci();
     });
+    var cvSel = document.getElementById("confusion-view-select");
+    if (cvSel) {
+      cvSel.value = confusionView();
+      cvSel.addEventListener("change", function () { window.GeoState.save({ confusionView: this.value === "table" ? "table" : "images" }); });
+    }
+    var dvSel = document.getElementById("dist-view-select");
+    if (dvSel) {
+      dvSel.value = distView();
+      dvSel.addEventListener("change", function () { window.GeoState.save({ distView: this.value === "wiki" ? "wiki" : "model" }); });
+    }
     var expCb = document.getElementById("experimental-toggle");
     if (expCb) {
       expCb.checked = experimentalOn();
@@ -16841,6 +16932,8 @@
       if (!e.target.closest) return;
       var wk = e.target.closest(".dm-wiki");
       if (wk) { e.preventDefault(); openWikipedia(wk.getAttribute("data-sci")); return; }
+      var dm = e.target.closest(".dm-model");   // the app's model range map for the species shown
+      if (dm) { e.preventDefault(); var k = distMapKey; navClose("distmap"); if (k) showSpeciesRange(k); return; }
       var bl = e.target.closest(".dm-birdlife");
       if (bl) { e.preventDefault(); openBirdLife(bl.getAttribute("data-en"), bl.getAttribute("data-sci")); }
     });
@@ -19756,8 +19849,9 @@
     var flatParts = [];
     var html = order.map(function (l) {
       var g = agg[l], parts = [l];
-      if (groupHasModel() && pmin >= 0.1) {
-        var sc = areaSpeciesCount(g.clat, g.clon, week, pmin, pmax, reRender);
+      if (groupHasModel()) {
+        // Same floor as the summary lines: ≥ 15 %, or the slider's own floor when higher.
+        var sc = areaSpeciesCount(g.clat, g.clon, week, summaryProbFloor(pmin), pmax, reRender);
         parts.push(t("sp.spN", { n: (sc === undefined ? "…" : sc) }));
       }
       parts.push(t("sp.obsN", { n: g.obs }));
@@ -20315,8 +20409,8 @@
         if (mergeHint) setStatus(mergeHint.replace(/^ \xb7 /, ""));
       }
       var cSummary = (spp
-        ? t("sp.countrySummaryMerged", { country: info.name || info.cc, n: cells.length, week: week, ns: results.length - nList, nl: nList, p: (pmin * 100).toFixed(0) })
-        : t("sp.countrySummary", { country: info.name || info.cc, n: cells.length, week: week, ns: results.length, p: (pmin * 100).toFixed(0) })) + mergeHint;
+        ? t("sp.countrySummaryMerged", { country: info.name || info.cc, n: cells.length, week: week, ns: summaryCount(results, pmin), nl: nList, p: summaryPct(pmin) })
+        : t("sp.countrySummary", { country: info.name || info.cc, n: cells.length, week: week, ns: summaryCount(results, pmin), p: summaryPct(pmin) })) + mergeHint;
       var cCoordsEl = document.getElementById("sp-coords");
       cCoordsEl.textContent = cSummary;   // country view: a single summary line (no per-point place list)
       cCoordsEl.dataset.flat = cSummary; delete cCoordsEl.dataset.placeKey;
@@ -20645,9 +20739,12 @@
   }
   function spImageFor(sci) {
     var c = spImgStore(); if (c[sci]) return Promise.resolve(c[sci]);
+    if (navigator.onLine === false) return Promise.resolve({ none: 1, tmp: 1 });   // offline: don't even ask (the SW would answer 503) — retried later
     var title = encodeURIComponent(sci.trim().replace(/\s+/g, "_"));
     return fetch("https://en.wikipedia.org/api/rest_v1/page/summary/" + title, { headers: { Accept: "application/json" } })
-      .then(function (r) { return r.ok ? r.json() : null; })
+      // Only a definite 404 means "no article" (remembered below); any other failure —
+      // offline 503 from the service worker, 429, 5xx — is transient and must not be remembered.
+      .then(function (r) { if (r.ok) return r.json(); if (r.status === 404) return null; throw new Error("summary " + r.status); })
       .then(function (j) {
         var thumb = j && j.thumbnail && j.thumbnail.source, orig = j && j.originalimage && j.originalimage.source;
         if (!thumb || (j && j.type === "disambiguation")) { spImgRemember(sci, { none: 1 }); return { none: 1 }; }
@@ -20672,6 +20769,10 @@
   }
   function buildSpGalleryHtml() {
     var tbody = document.getElementById("sp-tbody"); if (!tbody) return "";
+    // Before the observations have landed the table holds the model's whole prediction list
+    // (default sort: rarest first) — as cards that would be a wall of exotic species whose
+    // photos start downloading. Wait for the fetch instead; [?] (predictions wanted) still shows.
+    if (!tbody._sightingsAgg && !spShowMissing) return '<div class="dl-empty spg-wait"><div class="spinner"></div>' + escapeHtml(t("status.loadingDet")) + "</div>";
     var rows = Array.prototype.filter.call(tbody.children, function (tr) { return tr.style.display !== "none" && !tr.classList.contains("sp-detail-row"); });
     if (!rows.length) return '<div class="dl-empty">' + escapeHtml(t("detlist.empty")) + "</div>";
     var lbl = { total: t("th.total"), last: t("th.last"), dist: t("th.dist"), prob: t("th.prob") };
@@ -20690,6 +20791,7 @@
       var photoLink = !!key && isBirdKey(key);   // Macaulay Library is birds-only (as in the species menu)
       var probLink = !!key && !!labelsByKey[key];   // model species only: the Migration view / year curve need the model
       var predicted = !!key && !tr.classList.contains("sp-has-det") && !tr.classList.contains("sp-extra");   // [?] mode: a model prediction with no records here
+      function plain(prefix, el) { var v = el ? el.textContent.trim() : ""; return v ? '<span class="spg-m">' + escapeHtml(prefix + v) + "</span>" : ""; }
       function cell(label, el, attrs) { var v = el ? el.textContent.trim() : ""; return v ? '<span class="spg-m' + (attrs ? " " + attrs.cls : "") + '"' + (attrs ? attrs.a : "") + '><span class="spg-k">' + escapeHtml(label) + "</span> " + escapeHtml(v) + "</span>" : ""; }
       // Prob · Season · Yr peak as bar cells on one line (the table's / observation list's cells);
       // Season + Yr peak are filled once the point's 48-week prediction is in (fillSpGalleryBars).
@@ -20704,7 +20806,9 @@
           '<span class="spg-none" style="display:none">' + escapeHtml(t("spg.noImage")) + "</span></div>" +
         '<div class="spg-name"><span class="spg-nm">' + (dot ? dot.outerHTML : "") + (link ? link.outerHTML : "") +
           (showSci ? ' <span class="spg-sci">(' + (sciEl ? sciEl.outerHTML : escapeHtml(sci)) + ")</span>" : "") + "</span>" + subBtn + "</div>" +
-        '<div class="spg-meta">' + cell(lbl.total, nd) + cell(lbl.last, last) + cell(lbl.dist, dist) + (barsRow ? "" : cell(lbl.prob, prob)) + "</div>" +
+        // Compact, label-free meta line: "#total(n)  last-seen  distance" (the bars row below
+        // carries the probabilities; a card without the bars keeps a labelled Probability).
+        '<div class="spg-meta">' + plain("#", nd) + plain("", last) + plain("", dist) + (barsRow ? "" : cell(lbl.prob, prob)) + "</div>" +
         barsRow +
         '<div class="spg-credit"></div>' +
       "</div>";
@@ -20714,14 +20818,38 @@
   // into `cr` (linked to the Commons file page), or reveal `none`. Resolves true when
   // a picture was found, false when there is none, null on network trouble (not
   // remembered, so a later call retries).
+  // Offline (or the photo can't be reached and isn't in the on-device cache): a small
+  // "no internet" mark instead of the "No image" text, and the card stays retryable.
+  var OFFLINE_ICO = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M2 8.5a16 16 0 0 1 20 0"/><path d="M5 12a11 11 0 0 1 14 0"/><path d="M8.5 15.5a6 6 0 0 1 7 0"/><circle cx="12" cy="19" r="1" fill="currentColor"/><line x1="3" y1="3" x2="21" y2="21"/></svg>';
+  function markOffline(box, none) {
+    if (!box || box.querySelector(".spg-offline")) return;
+    var o = document.createElement("span"); o.className = "spg-offline"; o.title = t("spg.offline"); o.setAttribute("aria-label", t("spg.offline"));
+    o.innerHTML = OFFLINE_ICO; box.appendChild(o);
+    if (none) none.style.display = "none";
+  }
+  // Back online: retry every photo that was marked offline (gallery cards + confusion cards).
+  window.addEventListener("online", function () {
+    Array.prototype.forEach.call(document.querySelectorAll(".spg-offline"), function (o) {
+      var box = o.parentNode, card = box && box.closest(".spg-card, .cfi-card"); o.remove();
+      if (!card) return;
+      if (card.classList.contains("spg-card")) card._spgDone = false;
+      loadSpPhoto(box, card.querySelector(".spg-none"), card.querySelector(".spg-credit"), card.getAttribute("data-sci"))
+        .then(function (ok) { if (card.classList.contains("spg-card") && ok !== null) card._spgDone = true; });
+    });
+  });
   function loadSpPhoto(box, none, cr, sci) {
     if (!sci) { if (none) none.style.display = ""; return Promise.resolve(false); }
     return spImageFor(sci).then(function (r) {
-      if (!r || r.none) { if (none) none.style.display = ""; return (r && r.tmp) ? null : false; }
+      if (r && r.tmp) { markOffline(box, none); return null; }   // lookup unreachable: not remembered, retried later
+      if (!r || r.none) { if (none) none.style.display = ""; return false; }
       var img = document.createElement("img"); img.alt = sci; img.decoding = "async";
       img.crossOrigin = "anonymous";   // CORS load → the SW's species-images cache stores a real (sized) response, not an opaque one
       img.src = r.t;
-      img.addEventListener("error", function () { img.remove(); if (none) none.style.display = ""; });
+      img.addEventListener("error", function () {
+        img.remove();
+        if (navigator.onLine === false) markOffline(box, none);   // known photo, just not cached on the device
+        else if (none) none.style.display = "";
+      });
       box.insertBefore(img, box.firstChild);
       if (cr) {
         var page = "https://" + (r.h || "commons.wikimedia.org") + "/wiki/File:" + encodeURIComponent((r.f || "").replace(/ /g, "_"));
@@ -20766,6 +20894,16 @@
   // Hover-capable devices only; tapping the gallery Probability opens the full view.
   var spgTipEl = null, spgTipKey = "";
   function hideSpgTip() { spgTipKey = ""; if (spgTipEl) spgTipEl.style.display = "none"; }
+  // Touch: after a long-press opened the year curve, the next touch anywhere dismisses it
+  // (the popup itself is pointer-events:none, so nothing under it is blocked meanwhile).
+  function armSpgTipDismiss() {
+    setTimeout(function () {
+      document.addEventListener("touchstart", function off() {
+        document.removeEventListener("touchstart", off, true);
+        hideSpgTip();
+      }, true);
+    }, 0);
+  }
   var YEAR_TIP_CELLS = ".prob-cell, .sp-season, .sp-ytop, .cmp-bar-cell, .delta-up, .delta-down, .delta-flat, .spg-prob";
   // The species + last-seen date a hovered cell belongs to: the cell's own data-key
   // (Season / Yr-peak cells), else its row's or card's (observation rows, gallery cards
@@ -20826,20 +20964,106 @@
       spgTipEl.style.left = Math.round(left) + "px"; spgTipEl.style.top = Math.round(top) + "px";
     }).catch(function () {});
   }
+  // The ☰ button's record popover: the species' record sub-list (the table's expanded rows)
+  // in a small anchored panel. Desktop: shown on hover (click → the table view); touch: a
+  // short tap opens it, a long press goes to the table view.
+  var spgRecPop = null, spgPopTimer = null, spgHoldAt = 0, spgPopWasOpen = false;
+  function showSpgRecordsPop(btn, key) {
+    var recs = spDetailRowsFor(key); if (!recs.length) return;
+    clearTimeout(spgPopTimer);
+    if (spgRecPop && _anchMenuEl === spgRecPop && spgRecPop.getAttribute("data-key") === key) return;   // already up for this species
+    var r = btn.getBoundingClientRect();
+    var el = openAnchoredMenu("detrow-menu spg-recpop");
+    el.setAttribute("data-key", key);
+    // Sized to the table's own width (all columns shown when the screen is wide enough),
+    // capped at the viewport — a narrow phone scrolls the table sideways instead.
+    el.style.width = "max-content"; el.style.maxWidth = "96vw"; el.style.minWidth = "min(96vw,360px)";
+    el.style.maxHeight = "min(60vh,420px)"; el.style.overflow = "auto";
+    var lbl = labelsByKey[key];
+    el.innerHTML = '<div class="detrow-menu-hdr detrow-menu-name">' + escapeHtml(lbl ? speciesName(lbl) : key) + ' <span class="spg-recpop-n">(' + recs.length + ")</span></div>" + spDetailTableHtml(key, recs);
+    wireSpDetail(el);
+    el.addEventListener("mouseenter", function () { clearTimeout(spgPopTimer); });
+    el.addEventListener("mouseleave", function () { scheduleSpgPopClose(); });
+    spgRecPop = el;
+    positionAnchoredMenu(el, Math.round(r.left), Math.round(r.bottom + 4));
+  }
+  function scheduleSpgPopClose() {
+    clearTimeout(spgPopTimer);
+    spgPopTimer = setTimeout(function () { if (spgRecPop && _anchMenuEl === spgRecPop) closeAnchoredMenu(); spgRecPop = null; }, 250);
+  }
   function wireSpGallery(rec) {
     if (spGalleryObs) { spGalleryObs.disconnect(); spGalleryObs = null; }
     if (!rec._spgSubWired) {
       rec._spgSubWired = true;
+      var canHover = !window.matchMedia || window.matchMedia("(hover: hover)").matches;
       rec.addEventListener("click", function (e) {
         var b = e.target.closest && e.target.closest(".spg-sub");
-        if (b) { e.preventDefault(); e.stopPropagation(); openSpGalleryRecords(b.getAttribute("data-key")); return; }
+        if (b) {
+          e.preventDefault(); e.stopPropagation();
+          if (Date.now() - spgHoldAt < 800) return;   // a long press just acted — swallow the click that follows it
+          if (canHover) { openSpGalleryRecords(b.getAttribute("data-key")); return; }   // mouse: click → the table, expanded on this species
+          // Touch: tap → the record popover; tapping the SAME button again closes it. Whether it
+          // WAS open is recorded at touch-start: the anchored-menu's own outside-click handler
+          // (document, capture) has already closed it by the time this click runs.
+          if (spgPopWasOpen) { spgPopWasOpen = false; closeAnchoredMenu(); spgRecPop = null; return; }
+          showSpgRecordsPop(b, b.getAttribute("data-key"));
+          return;
+        }
         var card = e.target.closest && e.target.closest(".spg-card"); if (!card) return;
         var key = card.getAttribute("data-key"), date = card.getAttribute("data-date") || "";
         if (e.target.closest(".spg-img-link")) {   // the photo → Macaulay Library, ±1 month around the last sighting
           e.preventDefault(); openExternal(macaulayUrl(key, card.getAttribute("data-sci"), date)); return;
         }
-        if (e.target.closest(".spg-prob, .spg-bar")) { e.preventDefault(); hideSpgTip(); showSpeciesMigration(key, date); }   // any of the three bars → Migration view
+        if (e.target.closest(".spg-prob, .spg-bar")) {
+          e.preventDefault();
+          if (Date.now() - spgHoldAt < 800) return;   // a long press just showed the year curve — swallow its click
+          hideSpgTip(); showSpeciesMigration(key, date);   // any of the three bars → Migration view
+        }
       });
+      if (canHover) {
+        // Hover ☰ → the record popover (a short delay so scanning past buttons doesn't flash it);
+        // it stays while the pointer is on the button or the popover, and closes shortly after.
+        var hoverT = null;
+        rec.addEventListener("mouseover", function (e) {
+          var b = e.target.closest && e.target.closest(".spg-sub"); if (!b) return;
+          clearTimeout(spgPopTimer); clearTimeout(hoverT);
+          hoverT = setTimeout(function () { if (b.isConnected) showSpgRecordsPop(b, b.getAttribute("data-key")); }, 180);
+        });
+        rec.addEventListener("mouseout", function (e) {
+          var b = e.target.closest && e.target.closest(".spg-sub"); if (!b) return;
+          var to = e.relatedTarget; if (to && to.closest && (to.closest(".spg-sub") === b || to.closest(".spg-recpop"))) return;
+          clearTimeout(hoverT); scheduleSpgPopClose();
+        });
+      } else {
+        // Touch: press-and-hold ☰ → the table view; press-and-hold a Prob / Season / Yr-peak
+        // bar → the species' year curve (the popup the mouse gets on hover). Both give the
+        // click sensation the moment they fire, and swallow the click that follows.
+        var lpT = null, lpX = 0, lpY = 0;
+        rec.addEventListener("touchstart", function (e) {
+          var b = e.target.closest && e.target.closest(".spg-sub");
+          var bar = b ? null : (e.target.closest && e.target.closest(".spg-bar"));
+          // Note NOW whether this ☰'s popover is open — the click that follows arrives after the
+          // outside-click handler has closed it, so the tap-to-close state must be read here.
+          spgPopWasOpen = !!(b && spgRecPop && _anchMenuEl === spgRecPop && spgRecPop.getAttribute("data-key") === b.getAttribute("data-key"));
+          if (!b && !bar) return;
+          var tt = e.touches && e.touches[0]; lpX = tt ? tt.clientX : 0; lpY = tt ? tt.clientY : 0;
+          clearTimeout(lpT);
+          lpT = setTimeout(function () {
+            spgHoldAt = Date.now();
+            if (b) { holdFeedback(b); closeAnchoredMenu(); openSpGalleryRecords(b.getAttribute("data-key")); return; }
+            var card = bar.closest(".spg-card"); if (!card) return;
+            holdFeedback(bar);
+            showSpgProbTip(bar, card.getAttribute("data-key"), card.getAttribute("data-date") || "");
+            armSpgTipDismiss();   // the next touch anywhere puts it away
+          }, holdDelay());
+        }, { passive: true });
+        rec.addEventListener("touchmove", function (e) {
+          var tt = e.touches && e.touches[0];
+          if (tt && (Math.abs(tt.clientX - lpX) > 12 || Math.abs(tt.clientY - lpY) > 12)) clearTimeout(lpT);
+        }, { passive: true });
+        rec.addEventListener("touchend", function () { clearTimeout(lpT); }, { passive: true });
+        rec.addEventListener("touchcancel", function () { clearTimeout(lpT); }, { passive: true });
+      }
     }
     function fill(card) {
       if (card._spgDone) return; card._spgDone = true;
@@ -20847,14 +21071,15 @@
         .then(function (ok) { if (ok === null) card._spgDone = false; });   // network trouble: retried when it scrolls in again
     }
     var cards = rec.querySelectorAll(".spg-card");
-    // The first cards load at once (a first screen plus a little), the rest resolve as
-    // they come within two screens of the viewport while scrolling.
+    // Need-to-fetch: the first cards load at once (a first screen), the rest only as they
+    // come into view while scrolling (a small look-ahead so the next row is ready when it
+    // appears). Every photo is served from the on-device cache when it is already there.
     var SPG_PRELOAD = 8;
     Array.prototype.forEach.call(cards, function (c, i) { if (i < SPG_PRELOAD) fill(c); });
     if (window.IntersectionObserver) {
       spGalleryObs = new IntersectionObserver(function (entries) {
         entries.forEach(function (en) { if (en.isIntersecting) { fill(en.target); spGalleryObs.unobserve(en.target); } });
-      }, { root: null, rootMargin: "1200px 0px" });
+      }, { root: null, rootMargin: "300px 0px" });
       Array.prototype.forEach.call(cards, function (c, i) { if (i >= SPG_PRELOAD) spGalleryObs.observe(c); });
     } else Array.prototype.forEach.call(cards, fill);
   }
@@ -21317,13 +21542,15 @@
       tbl.classList.toggle("hide-sci", !showSci);
       document.getElementById("sp-name2-head").textContent = secondLang ? window.GeoI18N.langByCode(secondLang).name : "";
       renderSpCoordsAreas(document.getElementById("sp-coords"), lat, lon,
-        // The "N species above p%" count only from a 10% floor up — below that it is most of the model.
-        (pmin >= 0.1 ? t("sp.summary", { lat: lat.toFixed(4), lon: lon.toFixed(4), week: weekMonthLabel(week), n: results.length, p: (pmin * 100).toFixed(0) })
-                     : t("sp.summaryShort", { lat: lat.toFixed(4), lon: lon.toFixed(4), week: weekMonthLabel(week) })) +
+        // "N species above p%": always counted from the summary floor (≥ 15 %, or the slider's
+        // own floor when higher) — below that it would be most of the model.
+        t("sp.summary", { lat: lat.toFixed(4), lon: lon.toFixed(4), week: weekMonthLabel(week), n: summaryCount(results, pmin), p: summaryPct(pmin) }) +
         " · " + t("sp.radius", { km: recentRadiusKm() }) +
         (hist ? " · " + t("hist.range") + " " + fmtDate(hist.from) + " – " + fmtDate(hist.to) +
           (hist.months && hist.months.length ? " · " + t("hist.months") + " " + hist.months.slice().sort(function (a, b) { return a - b; }).map(histMonthShort).join(", ") : "") : ""));
-      document.getElementById("sp-tbody").innerHTML = results.map(function (r) {
+      var tb0 = document.getElementById("sp-tbody");
+      tb0._sightingsAgg = null; tb0._fetchAgg = null;   // a fresh list: no sightings yet (the previous point's must not leak in until this fetch lands)
+      tb0.innerHTML = results.map(function (r) {
         var cmpCell = !hasCompare ? "<td></td>" : cmpAllPositive ? cmpBarCell(kind, r.cmpVal) : deltaCell(r.cmpVal);
         var name2Cell = '<td class="name2">' + (secondLang ? escapeHtml(secondName(r.label)) : "") + '</td>';
         var dKey = escapeHtml(r.label.key);
@@ -21372,7 +21599,7 @@
       document.getElementById("barchart-panel").style.display = "none";
       updateViewToggle();   // a fresh list → the header List⇄Map switch applies now
       renderSpControls();   // filter bar + layout dropdown + (records view if not the table)
-      setStatus(t("status.spResult", { n: results.length, p: (pmin * 100).toFixed(0), lat: lat.toFixed(2), lon: lon.toFixed(2) }));
+      setStatus(t("status.spResult", { n: summaryCount(results, pmin), p: summaryPct(pmin), lat: lat.toFixed(2), lon: lon.toFixed(2) }));
 
       // Build CSV for species list (includes 2nd-name + comparison columns when active,
       // plus a "seen_count" column filled from the latest fetch). Rebuilt at DOWNLOAD
@@ -21640,11 +21867,13 @@
     var container = document.getElementById("bc-container");
     var ctx = analysisCtx();
     var lat = analysisData.lat, lon = analysisData.lon;
-    var nVisible = window.GeoAnalysis.visibleSpecies(ctx).length;
+    // The header counts the species actually plausible at this point (≥ 15 %, or the
+    // slider floor when higher) — `curProb` is each species' probability this week.
+    var nVisible = window.GeoAnalysis.visibleSpecies(ctx).filter(function (r) { return r.curProb >= summaryProbFloor(ctx.thresholdFrac); }).length;
 
     setCoordsWithPlace(document.getElementById("bc-coords"), lat, lon,
-      t("sp.summary", { lat: lat.toFixed(4), lon: lon.toFixed(4), week: ctx.week, n: nVisible, p: (ctx.thresholdFrac * 100).toFixed(0) }));
-    setStatus(t("status.spResult", { n: nVisible, p: (ctx.thresholdFrac * 100).toFixed(0), lat: lat.toFixed(2), lon: lon.toFixed(2) }));
+      t("sp.summary", { lat: lat.toFixed(4), lon: lon.toFixed(4), week: ctx.week, n: nVisible, p: summaryPct(ctx.thresholdFrac) }));
+    setStatus(t("status.spResult", { n: nVisible, p: summaryPct(ctx.thresholdFrac), lat: lat.toFixed(2), lon: lon.toFixed(2) }));
 
     if (analysisTab === "timeline") renderTimelineTab(container, ctx);
     else if (analysisTab === "scatter") window.GeoAnalysis.renderScatter(container, ctx);

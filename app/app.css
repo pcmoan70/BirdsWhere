@@ -858,6 +858,10 @@ input:focus-visible {
   padding: 2px 7px; border-radius: 5px;
 }
 .conf-close:hover { background: var(--hover, #eef4f2); color: var(--ink, #222); }
+/* View switch (table ↔ photo cards), left of the ×. */
+.conf-switch { position: absolute; top: 6px; right: 34px; z-index: 3; border: 1px solid var(--border, #d7ded9); background: var(--surface-2, #f2f6f4); color: var(--ink, #222); font: inherit; font-size: var(--fs-xs); padding: 3px 8px; border-radius: 6px; cursor: pointer; }
+.conf-switch:hover { background: var(--brand-soft, #e3efe9); }
+.conf-menu .detrow-menu-name { padding-right: 120px; }   /* room for the switch + × */
 /* Confusion COMPARE card: focal vs look-alike across colour / shape / ecology. */
 .cmp-menu .detrow-menu-name { padding-right: 28px; }
 .cmp-table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
@@ -3591,6 +3595,8 @@ a.dl-row:hover, .dl-row-menu:hover { background: var(--surface-2, rgba(0,0,0,.05
   font: inherit; font-size: var(--fs-b); color: var(--ink); cursor: pointer; border-radius: var(--radius-xs); white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; }
 .detrow-menu-item:hover { background: var(--surface-2); }
+.detrow-menu-item.drm-green { background: var(--good, #2e7d32); color: #fff; font-weight: 600; margin: 2px 0; }   /* mode entries (Historic / Migration), like the point popup's green buttons */
+.detrow-menu-item.drm-green:hover { background: #24672a; }
 /* Active date-filter row: label left, a red × on the right that removes the filter. */
 .detrow-menu-item.drm-active { display: flex; align-items: center; justify-content: space-between; font-weight: 700; }
 .drm-clear-x { display: inline-flex; align-items: center; margin-left: 10px; color: var(--danger, #b42318); cursor: pointer; flex: 0 0 auto; }
@@ -4385,6 +4391,9 @@ tr.sp-flash > td { animation: spFlash 1.6s ease-in-out 1; }
 .spg-img { position: relative; aspect-ratio: 4 / 3; overflow: hidden; background: var(--surface-2, #eef3f1); display: flex; align-items: center; justify-content: center; }
 .spg-img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }   /* whole photo, true aspect ratio, letterboxed in a uniform 4:3 tile — never cropped */
 .spg-none { font-size: var(--fs-xs); color: var(--ink-muted, #888); }
+.spg-wait { display: flex; align-items: center; gap: 10px; justify-content: center; padding: 28px 8px; }
+.spg-wait .spinner { margin: 0; }
+.spg-offline { color: var(--ink-muted, #888); opacity: .7; display: inline-flex; }   /* no internet / photo not cached */
 .spg-card.spg-pred { border-style: dashed; }                                                         /* [?] mode: predicted here, no records */
 .spg-tag { position: absolute; top: 6px; left: 6px; z-index: 1; font-size: 10px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: #fff; background: rgba(15,27,36,.72); padding: 1px 6px; border-radius: 4px; }
 .spg-name { padding: 6px 8px 0; font-size: var(--fs-b); font-weight: 600; line-height: 1.25; display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
@@ -4394,6 +4403,12 @@ tr.sp-flash > td { animation: spFlash 1.6s ease-in-out 1; }
 .spg-sci { font-size: var(--fs-xs); font-weight: 400; font-style: italic; color: var(--ink-muted, #777); overflow-wrap: anywhere; }   /* "(Scientific name)" right after the name */
 .spg-sub { flex: 0 0 auto; margin-left: auto; width: 26px; height: 26px; padding: 0; border: 1px solid var(--border, #d7ded9); border-radius: 6px; background: var(--surface-2, #f2f6f4); color: var(--ink-muted, #555); font-size: 13px; line-height: 1; cursor: pointer; }   /* ☰ → this species' record sub-list (Table layout) */
 .spg-sub:hover { background: var(--brand-soft, #e3efe9); color: var(--ink); }
+/* The ☰ record popover (hover on desktop, tap on touch): the species' record sub-list. */
+.spg-recpop { padding: 4px 6px 6px; }
+.spg-recpop .detrow-menu-name { padding-right: 8px; }
+.spg-recpop .spg-recpop-n { font-weight: 400; color: var(--ink-muted, #777); }
+.spg-recpop .sp-detail-tbl { font-size: var(--fs-xs); width: auto; min-width: 100%; }   /* content-sized: every column fits when the screen is wide */
+.spg-recpop .sp-detail-tbl td.sp-d-loc, .spg-recpop .sp-detail-tbl td.sp-d-src { max-width: none; }
 .spg-img-link { cursor: pointer; }                                                    /* photo → Macaulay Library (birds) */
 /* Prob · Season · Yr peak as three bar cells on one line (the lists' .prob-cell / .season-cell
    markup on spans); any of them → Migration view, hover = the year curve. */
@@ -4433,7 +4448,7 @@ tr.sp-flash > td { animation: spFlash 1.6s ease-in-out 1; }
 .cfi-v { font-variant-numeric: tabular-nums; }
 .cfi-card .spg-credit { padding: 2px 7px 6px; }
 @media (max-width: 400px) { .cfi-card { flex-basis: calc(50% - 4px); width: calc(50% - 4px); } }   /* two per row on narrow phones */
-.spg-meta { padding: 4px 8px 2px; display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: var(--fs-xs); color: var(--ink); }
+.spg-meta { padding: 4px 8px 2px; display: flex; flex-wrap: nowrap; gap: 2px 10px; font-size: var(--fs-xs); color: var(--ink); white-space: nowrap; overflow: hidden; font-variant-numeric: tabular-nums; }   /* "#8(6)  09/13/2026  227 m" on one line */
 .spg-k { color: var(--ink-muted, #777); }
 .spg-credit { padding: 0 8px 6px; font-size: 10px; line-height: 1.3; color: var(--ink-faint, #9aa5a1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 12px; }
 .spg-credit a { color: inherit; text-decoration: none; }
