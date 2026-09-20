@@ -2,13 +2,13 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>https://thebirding.site/</loc>
-    <lastmod>2026-09-10</lastmod>
+    <lastmod>2026-09-20</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://thebirding.site/about/</loc>
-    <lastmod>2026-09-10</lastmod>
+    <lastmod>2026-09-20</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://thebirding.site/about/"/>
@@ -30,7 +30,7 @@
   </url>
   <url>
     <loc>https://thebirding.site/about/no/</loc>
-    <lastmod>2026-09-10</lastmod>
+    <lastmod>2026-09-20</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://thebirding.site/about/"/>
@@ -52,7 +52,7 @@
   </url>
   <url>
     <loc>https://thebirding.site/about/sv/</loc>
-    <lastmod>2026-09-10</lastmod>
+    <lastmod>2026-09-20</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://thebirding.site/about/"/>
@@ -74,7 +74,7 @@
   </url>
   <url>
     <loc>https://thebirding.site/about/da/</loc>
-    <lastmod>2026-09-10</lastmod>
+    <lastmod>2026-09-20</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://thebirding.site/about/"/>
@@ -96,7 +96,7 @@
   </url>
   <url>
     <loc>https://thebirding.site/about/fi/</loc>
-    <lastmod>2026-09-10</lastmod>
+    <lastmod>2026-09-20</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://thebirding.site/about/"/>
@@ -118,7 +118,7 @@
   </url>
   <url>
     <loc>https://thebirding.site/about/de/</loc>
-    <lastmod>2026-09-10</lastmod>
+    <lastmod>2026-09-20</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://thebirding.site/about/"/>
@@ -140,7 +140,7 @@
   </url>
   <url>
     <loc>https://thebirding.site/about/es/</loc>
-    <lastmod>2026-09-10</lastmod>
+    <lastmod>2026-09-20</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://thebirding.site/about/"/>
@@ -162,7 +162,7 @@
   </url>
   <url>
     <loc>https://thebirding.site/about/fr/</loc>
-    <lastmod>2026-09-10</lastmod>
+    <lastmod>2026-09-20</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://thebirding.site/about/"/>
@@ -184,7 +184,7 @@
   </url>
   <url>
     <loc>https://thebirding.site/about/nl/</loc>
-    <lastmod>2026-09-10</lastmod>
+    <lastmod>2026-09-20</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://thebirding.site/about/"/>
@@ -206,7 +206,7 @@
   </url>
   <url>
     <loc>https://thebirding.site/about/it/</loc>
-    <lastmod>2026-09-10</lastmod>
+    <lastmod>2026-09-20</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://thebirding.site/about/"/>
@@ -228,7 +228,7 @@
   </url>
   <url>
     <loc>https://thebirding.site/about/pt/</loc>
-    <lastmod>2026-09-10</lastmod>
+    <lastmod>2026-09-20</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://thebirding.site/about/"/>
@@ -250,7 +250,7 @@
   </url>
   <url>
     <loc>https://thebirding.site/about/pl/</loc>
-    <lastmod>2026-09-10</lastmod>
+    <lastmod>2026-09-20</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://thebirding.site/about/"/>
@@ -272,7 +272,7 @@
   </url>
   <url>
     <loc>https://thebirding.site/about/cs/</loc>
-    <lastmod>2026-09-10</lastmod>
+    <lastmod>2026-09-20</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://thebirding.site/about/"/>
@@ -294,7 +294,7 @@
   </url>
   <url>
     <loc>https://thebirding.site/about/et/</loc>
-    <lastmod>2026-09-10</lastmod>
+    <lastmod>2026-09-20</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://thebirding.site/about/"/>
@@ -316,7 +316,7 @@
   </url>
   <url>
     <loc>https://thebirding.site/about/lt/</loc>
-    <lastmod>2026-09-10</lastmod>
+    <lastmod>2026-09-20</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://thebirding.site/about/"/>

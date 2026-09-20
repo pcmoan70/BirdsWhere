@@ -19,6 +19,7 @@ iframe[src*="accounts.google.com"] {
    place (no MkDocs runtime is present, so these names would otherwise be unset).
    =========================================================================== */
 :root {
+  color-scheme: light;   /* see index.html: keeps browser auto-dark off the map tiles */
   /* ---- UI size system (audit 2026-08-20): 4 font sizes + 3 icon sizes.
      Every UI font-size / icon width-height references these; chart-internal
      text, print styles, count badges and data-sized map markers are exempt. */
@@ -88,6 +89,11 @@ input:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 1px;
 }
+
+/* Every slider in the app is brand green, not the browser's blue. The dual-thumb
+   ranges (#prob-range, .pr-range) hide the native track and paint their own thumbs
+   var(--brand), so all of them match. */
+input[type="range"] { accent-color: var(--brand); }
 
 /* ===== App Layout ===== */
 #app-root {
@@ -389,6 +395,10 @@ input:focus-visible {
   z-index: 1;
 }
 
+/* Invisible-but-tappable hit targets (trip-overlay dots). An SVG path with no paint
+   is skipped by the default `visiblePainted` hit-testing, so these used to be painted
+   at 1 % — which stacked into dark blobs wherever records piled up. */
+.leaflet-container .leaflet-overlay-pane svg path.det-hit { pointer-events: all; }
 /* Canvas overlay on map for range heatmap */
 .heatmap-overlay {
   image-rendering: auto;
@@ -1275,8 +1285,16 @@ body.fs-apple #site-header { padding-left: calc(64px + env(safe-area-inset-left)
   color: #fff; font-size: 9px; font-weight: 700; line-height: 14px; text-align: center;
 }
 .rarity-onoff { display: flex; align-items: center; gap: 6px; margin: 2px 0 2px; font-size: var(--fs-b); }
-.rarity-title { display: flex; align-items: center; gap: 7px; }
-.rarity-title .btn-ico { width: var(--ico-m); height: var(--ico-m); flex: 0 0 auto; }
+/* The pane wears the same page furniture as the Species list / Migration pages:
+   ‹ page bar + title, a muted "last check" line, then one row of controls. */
+.rarity-bar h3 { display: flex; align-items: center; gap: 7px; margin: 0; }
+.rarity-bar h3 .btn-ico { width: var(--ico-m); height: var(--ico-m); flex: 0 0 auto; }
+.rarity-bar .fp-back { display: inline-flex; margin-top: 2px; flex: 0 0 auto; }
+.rarity-panel .rarity-sub { margin-bottom: 0; display: flex; align-items: center; gap: 6px; }
+.rarity-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 8px 0 4px; }
+.rarity-controls .ctrl-check { margin: 0; font-size: var(--fs-b); }
+.rarity-controls .rt-days { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-b); }
+.rarity-controls .rt-clear { margin-left: auto; }
 .rarity-lastpull { font-size: var(--fs-xs); color: var(--ink-muted, #888); margin: 0 0 6px; }
 #rarity-badge {
   position: absolute; top: -2px; right: -4px; display: none; min-width: 15px; height: 15px;
@@ -1306,13 +1324,14 @@ body.fs-apple #site-header { padding-left: calc(64px + env(safe-area-inset-left)
 }
 /* Full-screen view, like the species list: the box fills the viewport and the
    table scrolls inside it (title/toggles pinned above, buttons below). */
-.ui-modal.rarity-panel {
-  width: 100vw; height: 100vh; height: 100dvh; max-width: none; max-height: none;
-  border-radius: 0; box-shadow: none;
-  display: flex; flex-direction: column; overflow: hidden;
-  padding: calc(12px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
+#rarity-page.rarity-panel {
+  position: fixed; top: var(--header-h, 60px); left: 0; right: 0; bottom: 0;
+  z-index: 1500; display: none; flex-direction: column; overflow: hidden;
+  background: var(--page-bg); color: var(--ink);
+  padding: 12px calc(14px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
 }
-.rarity-panel .rarity-list { flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto; margin: 6px 0; }
+.rarity-panel .rarity-list { flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto; margin: 4px 0 0; }
+.rarity-panel .rarity-tbl { background: var(--surface); }
 .rarity-panel .rarity-empty { flex: 1 1 auto; }
 .rarity-list { max-height: min(55vh, 400px); overflow-y: auto; margin: 6px 0; }
 /* Detections window opened from a RARITY dot: the same narrow orange frame. */
@@ -1332,6 +1351,9 @@ body.fs-apple #site-header { padding-left: calc(64px + env(safe-area-inset-left)
 .rarity-tbl .rt-row { cursor: pointer; }
 /* Red "!" left of the species dot: this group carries the alert(s) behind the red bell. */
 .rarity-tbl .rt-new { color: var(--danger, #d61f2c); font-weight: 800; margin-right: 4px; }
+/* New since you last looked = the whole row in bold; everything already seen is normal. */
+.rarity-tbl .rt-row td { font-weight: 400; }
+.rarity-tbl .rt-row.rt-fresh td, .rarity-tbl .rt-row.rt-fresh .sp-link { font-weight: 700; }
 /* ✕-dismissed rows stay listed, dimmed; ⊘ restores the map dot. */
 .rarity-tbl .rt-dismissed td { opacity: 0.55; }
 .rarity-tbl .rt-unhide { border: none; background: none; color: var(--danger, #c0392b); font-size: var(--fs-h); line-height: 1; cursor: pointer; padding: 0 4px 0 0; vertical-align: -1px; }
@@ -1729,7 +1751,11 @@ table.an-scatter-table td.an-tint { color: #fff; font-weight: 600; text-shadow: 
 }
 .dd-empty { color: var(--ink-faint); font-size: var(--fs-s); padding: 8px 10px; }
 /* Quick "Species group" picker on a long-press / right-click of the Settings gear. */
-.group-quick-panel { min-width: 180px; }
+/* The gear's press-and-hold panel: seven species groups plus the radius slider is
+   taller than .dd-panel's 300 px, and a scrollbar on a menu this small reads as a
+   glitch. Let it size to its content, capped by the viewport (a short screen still
+   scrolls rather than overflowing). */
+.group-quick-panel { min-width: 180px; max-height: min(86vh, 520px); }
 /* Settings species-group picker (custom stand-in for the hidden native select). */
 #group-picker-wrap { position: relative; }
 #group-picker-btn {
@@ -1752,6 +1778,14 @@ table.an-scatter-table td.an-tint { color: #fff; font-weight: 600; text-shadow: 
 .group-quick-panel .gq-item:hover { background: var(--surface-2, #f0f0f0); }
 .group-quick-panel .gq-item.gq-cur { font-weight: 600; }
 .group-quick-panel .gq-item.gq-cur::before { content: "\2713\00a0"; color: var(--brand, #2e8b74); }
+/* Fetch radius and fetch window, under the species groups in the gear's quick panel. */
+.group-quick-panel .gq-head-2 { border-top: 1px solid var(--border, rgba(0,0,0,.1)); margin-top: 4px; padding-top: 7px; display: flex; align-items: baseline; gap: 6px; }
+.group-quick-panel .gq-radius-val, .group-quick-panel .gq-days-val { text-transform: none; letter-spacing: 0; font-weight: 700; color: var(--ink, #222); }
+.group-quick-panel .gq-radius { padding: 2px 8px 6px; }
+.group-quick-panel .gq-radius input[type="range"] { width: 100%; box-sizing: border-box; margin: 0; }
+/* Footer row: the way into full Settings for anyone who never finds the hold. */
+.group-quick-panel .gq-foot { border-top: 1px solid var(--border, rgba(0,0,0,.1)); margin-top: 4px; padding-top: 4px; }
+.group-quick-panel .gq-item .btn-ico { width: var(--ico-m, 16px); height: var(--ico-m, 16px); flex: 0 0 auto; color: var(--brand-deep, #1f5b48); }
 .dd-row {
   display: flex;
   align-items: center;
@@ -2380,7 +2414,7 @@ button.dd-name:hover { text-decoration: underline; }
 #sources-box .cu-actions { display: flex; gap: 8px; margin-top: 12px; }
 /* Fetch-radius slider: range input + the current value label beside it. */
 .radius-row { display: flex; align-items: center; gap: 12px; }
-.radius-row input[type="range"] { flex: 1 1 auto; min-width: 0; accent-color: var(--brand); cursor: pointer; }
+.radius-row input[type="range"] { flex: 1 1 auto; min-width: 0; cursor: pointer; }
 .radius-val { flex: 0 0 auto; min-width: 4em; text-align: right; font-size: var(--fs-b); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--brand-deep); }
 #natdb-box .cu-row { margin-bottom: 6px; }
 #natdb-box .cu-actions { display: flex; gap: 8px; margin-top: 10px; }
@@ -2446,26 +2480,11 @@ button.dd-name:hover { text-decoration: underline; }
 .settings-section { margin: 16px 0 6px; padding-top: 13px; border-top: 1px solid var(--border, #e3e3e3);
   font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--brand, #0b7a5a); }
 .settings-panel .settings-section:first-of-type { margin-top: 8px; }
-/* Density-heatmap control: one button that cycles Off -> Species -> Observers ->
-   Counts on each click. Off is black-on-white; the three active metrics are
-   white-on-green. The independent "Show dots" checkbox sits on the same row. */
-.hs-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
-.hs-cycle { appearance: none; border: 1px solid var(--border, #d5d5d5); border-radius: 7px;
-  background: #fff; color: #222; font: inherit; font-size: var(--fs-xs); font-weight: 600;
-  padding: 4px 12px; cursor: pointer; line-height: 1.4; min-width: 6.5em; text-align: center; }
-.hs-cycle[data-hs="species"], .hs-cycle[data-hs="observers"], .hs-cycle[data-hs="counts"] {
-  background: var(--brand, #2e8b74); color: #fff; border-color: var(--brand, #2e8b74); }
-.hs-dots { display: inline-flex; align-items: center; gap: 5px; margin: 0; white-space: nowrap;
-  text-transform: none; letter-spacing: 0; font-weight: 600; }
-.hs-dots input { margin: 0; }
 /* "What's new" — dated list of major features at the bottom of Settings. */
 .whatsnew-list { display: flex; flex-direction: column; gap: 9px; margin-top: 4px; }
 .wn-item { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-s); line-height: 1.3; }
 .wn-head { font-weight: 700; color: var(--ink, #222); font-variant-numeric: tabular-nums; }
 .wn-text { color: var(--ink, #222); }
-.settings-intro {
-  margin: 2px 6px 8px; font-size: var(--fs-s); line-height: 1.45; color: var(--ink-muted, #5b6f69);
-}
 .settings-about {
   display: block;
   width: 100%;
@@ -2481,7 +2500,7 @@ button.dd-name:hover { text-decoration: underline; }
   cursor: pointer;
 }
 .settings-about::before { content: "\2139  "; }   /* ℹ */
-.settings-toprow { display: flex; gap: 8px; margin: 2px 0 10px; }   /* Feedback, top of Settings */
+.settings-toprow { display: flex; gap: 8px; margin: 12px 0 10px; }   /* Feedback, just above the QR code */
 .settings-toprow > .btn { flex: 1 1 0; justify-content: center; }
 /* Bordered button look (.feedback-open is otherwise a text link). */
 .settings-toprow > .settings-feedback { background: var(--surface, #fff); border: 1px solid var(--border, #ccc); color: var(--ink); text-decoration: none; font-weight: 600; padding: 6px 9px; }
@@ -2512,6 +2531,9 @@ button.dd-name:hover { text-decoration: underline; }
 .app-qr { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 14px 0 6px; }
 .app-qr img { display: block; background: #fff; padding: 8px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
 .app-qr-cap { font-size: var(--fs-s); color: var(--ink); opacity: .7; text-align: center; }
+/* The site's own address, above the QR that encodes it. */
+.app-qr-url { font-size: var(--fs-b); font-weight: 600; color: var(--brand, #2e8b74); text-decoration: none; }
+.app-qr-url:hover { text-decoration: underline; }
 /* "Install for offline use" section in the About panel */
 #about-install { margin-top: 14px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
 #about-install h4 { margin: 0 0 6px; font-size: var(--fs-h); }
@@ -2778,6 +2800,25 @@ button.dd-name:hover { text-decoration: underline; }
 .sync-opts-box .so-dir, .sync-opts-box .so-cat { display: flex; align-items: center; gap: 8px; padding: 5px 2px; cursor: pointer; }
 .sync-opts-box .so-dir input, .sync-opts-box .so-cat input { flex: 0 0 auto; }
 .sync-opts-box .so-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+/* Dated backups in Drive's app-data folder — Drive's own UI cannot list them, so
+   this is the only way to reach the history. */
+.sync-opts-box .so-backups { margin-top: 10px; }
+.sync-opts-box .so-baklist { margin: 8px 0 2px; max-height: 190px; overflow-y: auto; font-size: var(--fs-s); }
+.sync-opts-box .so-bak { display: flex; align-items: center; gap: 8px; padding: 4px 2px; border-top: 1px solid var(--border, rgba(0,0,0,.08)); }
+.sync-opts-box .so-bak-when { flex: 1 1 auto; }
+.sync-opts-box .so-bak-size { color: var(--ink-muted, #777); font-variant-numeric: tabular-nums; }
+/* "Your lists have grown since the last backup": the gear gets a small orange !,
+   and the Sync button turns orange, until a sync catches up. */
+.settings-icon-btn { position: relative; }
+.settings-icon-btn.backup-due::after {
+  content: "!"; position: absolute; top: -2px; right: -2px;
+  font-size: 10px; font-weight: 800; line-height: 1;
+  color: var(--warn, #e8801f); background: var(--surface, #fff);
+  border-radius: 50%; padding: 1px 3px; pointer-events: none;
+}
+#gd-sync.backup-due { color: var(--warn, #e8801f); border-color: var(--warn, #e8801f); }
+.mp-backup-line { font-size: var(--fs-xs); color: var(--ink-muted, #888); padding: 2px 4px 6px; }
+.mp-backup-line.backup-due { color: var(--warn, #e8801f); }
 /* Overlays suspended via press-and-hold on the layers button → the button goes
    palette-orange (--warn, like an active filter) until the set is restored. */
 .leaflet-control-layers-toggle.ovl-suspended { background-color: var(--warn); }
@@ -3035,10 +3076,11 @@ table.chk-table .chk-text { min-width: 100px; }
 /* PWA install affordance (in the info screen + Settings; no floating pill).
    Explicit hide rules because the hidden attribute alone is overridden by the
    .ctrl-group / .btn display values. */
-#install-info[hidden], #install-wrap[hidden] { display: none !important; }
-.install-row { margin: 4px 0 16px; }
-.install-steps { margin-top: 8px; font-size: var(--fs-s); line-height: 1.45; color: var(--ink-muted); }
-.install-steps[hidden] { display: none; }
+#install-row[hidden], #install-wrap[hidden] { display: none !important; }
+/* How to keep a copy for offline use: one line of guidance with the icon in front. */
+.install-row { display: flex; align-items: center; justify-content: center; gap: 7px; margin: 4px 0 16px; }
+.install-row .btn-ico { width: var(--ico-m, 18px); height: var(--ico-m, 18px); flex: 0 0 auto; color: var(--ink-muted); }
+.install-steps { font-size: var(--fs-s); line-height: 1.45; color: var(--ink-muted); }
 
 /* "Last change" line in the footer */
 #last-change { font-size: var(--fs-xs); opacity: 0.6; }
@@ -3507,7 +3549,7 @@ tr.sp-open { background: var(--surface-2, rgba(0,0,0,.05)); }
 }
 .sp-detail-tbl td.sp-d-src { overflow: hidden; text-overflow: ellipsis; }
 /* The observation-list layout keeps pinned columns (its own widths follow below). */
-table.sp-detail-tbl.sp-obs-tbl { table-layout: fixed; min-width: calc(59.5ch + 42px); }   /* name column ≥ 31ch (~27 letters + dot): count 4.5ch + 3 × 8ch + ⓘ 26px + padding; narrower screens scroll sideways */
+table.sp-detail-tbl.sp-obs-tbl { table-layout: fixed; min-width: calc(59.5ch + 68px); }   /* name column ≥ 31ch (~27 letters + dot): count 4.5ch + 3 × 8ch + 📷 26px + ⓘ 26px + padding; narrower screens scroll sideways */
 #sp-records { overflow-x: auto; }
 /* Observation-list variant (name [2nd name] prob season ytop dist count src): the
    generic sub-table widths above mis-map onto this column set, so pin its own —
@@ -3524,7 +3566,8 @@ table.sp-detail-tbl.sp-obs-tbl th:nth-child(5) { width: 8ch; }       /* yr peak 
    uppercase header labels may break onto two lines instead of clipping. */
 table.sp-detail-tbl.sp-obs-tbl th.sp-obs-h { white-space: normal; line-height: 1.15; overflow: visible; text-overflow: clip; }
 table.sp-detail-tbl.sp-obs-tbl td, table.sp-detail-tbl.sp-obs-tbl th { padding-left: 4px; padding-right: 4px; }
-table.sp-detail-tbl.sp-obs-tbl th:nth-child(6) { width: 26px; }      /* ⓘ */
+table.sp-detail-tbl.sp-obs-tbl th:nth-child(6) { width: 26px; }      /* 📷 */
+table.sp-detail-tbl.sp-obs-tbl th:nth-child(7) { width: 26px; }      /* ⓘ */
 /* With the 2nd-language name column everything shifts one right. */
 table.sp-detail-tbl.sp-obs-tbl.has-n2 th:nth-child(1) { width: 4.5ch; }   /* count */
 table.sp-detail-tbl.sp-obs-tbl.has-n2 th:nth-child(2) { width: auto; }    /* name */
@@ -3532,11 +3575,11 @@ table.sp-detail-tbl.sp-obs-tbl.has-n2 th:nth-child(3) { width: 16%; }     /* 2nd
 table.sp-detail-tbl.sp-obs-tbl.has-n2 th:nth-child(4) { width: 8ch; }     /* prob */
 table.sp-detail-tbl.sp-obs-tbl.has-n2 th:nth-child(5) { width: 8ch; }     /* season */
 table.sp-detail-tbl.sp-obs-tbl.has-n2 th:nth-child(6) { width: 8ch; }     /* yr peak */
-table.sp-detail-tbl.sp-obs-tbl.has-n2 th:nth-child(7) { width: 26px; }    /* ⓘ */
-table.sp-detail-tbl.sp-obs-tbl.has-n2 th:nth-child(7) { width: 26px; }
+table.sp-detail-tbl.sp-obs-tbl.has-n2 th:nth-child(7) { width: 26px; }    /* 📷 */
+table.sp-detail-tbl.sp-obs-tbl.has-n2 th:nth-child(8) { width: 26px; }    /* ⓘ */
 .sp-obs-tbl td.sp-d-name { overflow: hidden; text-overflow: ellipsis; }
 .sp-obs-tbl th.sp-obs-h { overflow: hidden; text-overflow: ellipsis; }
-.sp-obs-tbl td.sp-d-info { text-align: center; white-space: nowrap; }
+.sp-obs-tbl td.sp-d-info, .sp-detail-tbl td.sp-d-pho { text-align: center; white-space: nowrap; }
 .sp-obs-tbl td.sp-d-info .obs-info { margin-left: 0; }
 /* Exact observation time on rarity records (eBird checklist HH:MM). */
 .sp-d-time { font-size: var(--fs-xs); color: var(--ink-muted, #666); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -3557,6 +3600,10 @@ table.sp-detail-tbl.sp-obs-tbl.has-n2 th:nth-child(7) { width: 26px; }
 .sp-detail-tbl .sp-d-row:hover { background: var(--surface, rgba(0,0,0,.05)); }
 .sp-obs-filter, .sp-loc-click, .sp-detail-tbl .dl-date-click, .sp-obs-head .dl-date-click { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
 .sp-obs-filter:hover, .sp-loc-click:hover, .sp-detail-tbl .dl-date-click:hover, .sp-obs-head .dl-date-click:hover { color: var(--brand); }
+/* The observation window's title is that spot's place name: when it can act as one
+   (a named place, one spot) it carries the same dotted-underline affordance. */
+#detlist-title.detlist-title-loc { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+#detlist-title.detlist-title-loc:hover { color: var(--brand); }
 /* "+N" to reveal the rest of a truncated observer list. */
 .sp-obs-more { cursor: pointer; color: var(--brand); font-weight: 700; white-space: nowrap; margin-left: 3px; }   /* "…" → tap for all observers */
 .sp-obs-more:hover { text-decoration: underline; }
@@ -4327,6 +4374,8 @@ a.place-search-btn.is-open { background: var(--brand-soft, #e6f0ee); }
 
 /* Hover mini-map: previews a place name from the species list without leaving
    it. Non-interactive; the centre dot marks the exact location. */
+/* A popup pushed down to clear the top edge no longer points at its marker — drop the tail. */
+.leaflet-popup.popup-shifted .leaflet-popup-tip-container { display: none; }
 #loc-hover-map { position: fixed; right: 12px; bottom: 12px; z-index: 9500; width: 220px; height: 220px; display: none; border: 1px solid var(--border, #ccc); border-radius: 8px; overflow: hidden; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28); pointer-events: none; background: #e8e8e8; }
 #loc-hover-map .lhm-map { position: absolute; inset: 0; }
 #loc-hover-map .lhm-dot { position: absolute; left: 50%; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--danger, #d33); border: 2px solid #fff; box-shadow: 0 0 4px rgba(0, 0, 0, 0.5); z-index: 500; }
@@ -4393,12 +4442,15 @@ tr.sp-flash > td { animation: spFlash 1.6s ease-in-out 1; }
 .spg-none { font-size: var(--fs-xs); color: var(--ink-muted, #888); }
 .spg-wait { display: flex; align-items: center; gap: 10px; justify-content: center; padding: 28px 8px; }
 .spg-wait .spinner { margin: 0; }
-.spg-offline { color: var(--ink-muted, #888); opacity: .7; display: inline-flex; }   /* no internet / photo not cached */
+.spg-offline { color: var(--ink-muted, #888); opacity: .55; display: inline-flex; }   /* no internet / photo not cached */
+/* Said once above the cards when photo lookups are failing, instead of a wall of marks. */
+.spg-photonote { display: flex; align-items: center; gap: 8px; margin: 0 8px 8px; padding: 7px 10px; border: 1px solid var(--border, #d7ded9); border-radius: 8px; background: var(--surface-2, #f2f6f4); color: var(--ink-muted, #666); font-size: var(--fs-s); }
+.spg-photonote svg { flex: none; width: 18px; height: 18px; }
 .spg-card.spg-pred { border-style: dashed; }                                                         /* [?] mode: predicted here, no records */
 .spg-tag { position: absolute; top: 6px; left: 6px; z-index: 1; font-size: 10px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: #fff; background: rgba(15,27,36,.72); padding: 1px 6px; border-radius: 4px; }
 .spg-name { padding: 6px 8px 0; font-size: var(--fs-b); font-weight: 600; line-height: 1.25; display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
 .spg-nm { flex: 1 1 auto; min-width: 0; }
-.spg-nm .sp-cdot, .spg-nm .det-sw { vertical-align: middle; margin-right: 4px; }
+.spg-nm .sp-dot, .spg-nm .sp-cdot, .spg-nm .det-sw { vertical-align: middle; margin-right: 4px; }
 .spg-name .sp-link { cursor: pointer; overflow-wrap: anywhere; }
 .spg-sci { font-size: var(--fs-xs); font-weight: 400; font-style: italic; color: var(--ink-muted, #777); overflow-wrap: anywhere; }   /* "(Scientific name)" right after the name */
 .spg-sub { flex: 0 0 auto; margin-left: auto; width: 26px; height: 26px; padding: 0; border: 1px solid var(--border, #d7ded9); border-radius: 6px; background: var(--surface-2, #f2f6f4); color: var(--ink-muted, #555); font-size: 13px; line-height: 1; cursor: pointer; }   /* ☰ → this species' record sub-list (Table layout) */
@@ -4432,10 +4484,9 @@ tr.sp-flash > td { animation: spFlash 1.6s ease-in-out 1; }
 .cfi-strip { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 8px 6px; align-items: flex-start; }
 .cfi-card { flex: 0 0 150px; width: 150px; background: var(--surface, #fff); border: 1px solid var(--border, #e0e6e3); border-radius: 10px; overflow: hidden; cursor: pointer; font-weight: 400; }
 .cfi-card:hover { background: var(--hover, #eef4f2); }
-.cfi-card.cfi-base { cursor: default; border-color: var(--brand, #2e8b74); box-shadow: inset 0 0 0 1px var(--brand, #2e8b74); }
+.cfi-card.cfi-base { cursor: default; border: 3px solid var(--brand, #2e8b74); }   /* the species the list is FOR: a thicker frame, no label */
 .cfi-card.cfi-base:hover { background: var(--surface, #fff); }
 .cfi-name { padding: 5px 7px 0; font-size: var(--fs-s); font-weight: 600; line-height: 1.2; overflow-wrap: anywhere; }
-.cfi-tag { display: block; font-size: 10px; font-weight: 600; color: var(--brand, #2e8b74); text-transform: uppercase; letter-spacing: .03em; }
 .cfi-sci { padding: 0 7px; font-size: var(--fs-xs); font-style: italic; color: var(--ink-muted, #777); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cfi-stats { padding: 4px 7px 2px; display: grid; gap: 2px; }
 .cfi-row { position: relative; display: flex; justify-content: space-between; gap: 6px; padding: 0 3px; font-size: var(--fs-xs); line-height: 1.35; border-radius: 3px; overflow: hidden; }
@@ -4446,7 +4497,14 @@ tr.sp-flash > td { animation: spFlash 1.6s ease-in-out 1; }
 .cfi-row[data-hintkey] { cursor: help; }                                            /* hover = the metric's explanation (wrapped tooltip) */
 .cfi-row[data-hintkey] .cfi-k { text-decoration: underline dotted 1px; text-underline-offset: 2px; }
 .cfi-v { font-variant-numeric: tabular-nums; }
+.cfi-row.cfi-season .cfi-bar { opacity: .22; }                                     /* the phase colour is also the glyph's: keep the tint quieter */
+.cfi-sg { margin-right: 3px; font-weight: 700; }                                    /* ↑ arriving · ● peak · ↓ leaving · · off-season */
 .cfi-card .spg-credit { padding: 2px 7px 6px; }
+/* While the strip's one batched lookup is out, a quiet pulse instead of 164 empty grey
+   tiles — the cards are about to fill all at once, not one at a time. */
+.cfi-strip.cfi-loading .cfi-card .spg-img { animation: cfi-pulse 1.4s ease-in-out infinite; }
+@keyframes cfi-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .cfi-strip.cfi-loading .cfi-card .spg-img { animation: none; } }
 @media (max-width: 400px) { .cfi-card { flex-basis: calc(50% - 4px); width: calc(50% - 4px); } }   /* two per row on narrow phones */
 .spg-meta { padding: 4px 8px 2px; display: flex; flex-wrap: nowrap; gap: 2px 10px; font-size: var(--fs-xs); color: var(--ink); white-space: nowrap; overflow: hidden; font-variant-numeric: tabular-nums; }   /* "#8(6)  09/13/2026  227 m" on one line */
 .spg-k { color: var(--ink-muted, #777); }
@@ -4461,3 +4519,54 @@ tr.sp-flash > td { animation: spFlash 1.6s ease-in-out 1; }
 .perf-btns .btn { flex: 1 1 0; min-width: 0; max-width: 46%; margin: 0; padding: 11px 14px; box-sizing: border-box; line-height: 1.2; text-align: center; }   /* Cancel + OK equal, to the right */
 .launch-cancelled { margin: 12px 0; }
 
+/* The observation's own photo: a camera button on the record row → the picture itself. */
+.obs-photo { display: inline-flex; align-items: center; vertical-align: middle; color: var(--brand, #2e8b74); cursor: pointer; }
+.obs-photo svg { width: 15px; height: 15px; }
+.obs-photo:hover { color: var(--brand-deep, #14504a); }
+/* The box is a flex item in the overlay (static), so `relative` only gives the × a
+   containing block — it changes no layout. */
+.obs-photo-box { position: relative; max-width: min(96vw, 760px); }
+.obs-photo-box .ui-modal-msg { padding-right: 28px; }   /* room for the × */
+.obs-photo-x { top: 6px; right: 8px; font-size: var(--fs-glyph, 20px); }
+.obs-photo-wrap { display: flex; justify-content: center; align-items: center; min-height: 120px; margin: 6px 0 4px; }
+.obs-photo-wrap img { max-width: 100%; max-height: min(70vh, 620px); border-radius: 8px; display: block; }
+.obs-photo-cred { font-size: var(--fs-xs); color: var(--ink-muted, #777); text-align: center; }
+.obs-photo-cred a { color: var(--brand, #2e8b74); }
+/* How many pictures this record has, beside the camera (only when there are several). */
+.obs-photo-n { font-size: 10px; line-height: 1; margin-left: 1px; font-variant-numeric: tabular-nums; }
+/* The hover/tap mosaic: every picture of one observation, square tiles 2–3 to a row
+   (a single picture is shown whole). Loaded only when the mosaic opens. */
+/* NB: no position here — .detrow-menu is position:fixed and does the anchoring (and is
+   already the containing block the × positions against). Overriding it drops the popover
+   into normal flow, which lands it off-screen. */
+.obs-mosaic { padding: 6px 8px 5px; width: max-content; max-width: min(94vw, 470px); }
+.obs-mosaic-hdr { font-weight: 600; margin-bottom: 5px; white-space: nowrap; padding-right: 26px; }   /* room for the × */
+.obs-mosaic-x { top: 1px; right: 2px; font-size: var(--fs-glyph, 18px); }
+.obs-mosaic-n { font-weight: 400; color: var(--ink-muted, #777); }
+.obs-mosaic-grid { display: grid; grid-template-columns: repeat(var(--mos-cols, 3), var(--mos-tile, 104px)); gap: 4px; justify-content: start; }
+.obs-mos-tile { display: block; width: var(--mos-tile, 104px); height: var(--mos-tile, 104px); overflow: hidden; border-radius: 6px; background: var(--panel-2, #eee); cursor: zoom-in; }
+@media (max-width: 480px) { .obs-mosaic { --mos-tile: 84px; } }
+.obs-mos-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.obs-mos-tile.bad { display: none; }   /* a dead URL leaves no hole in the grid */
+.obs-mosaic-grid.one .obs-mos-tile { width: auto; height: auto; max-width: min(78vw, 420px); }
+.obs-mosaic-grid.one .obs-mos-tile img { height: auto; max-height: min(60vh, 420px); object-fit: contain; }
+.obs-mosaic .obs-photo-cred { margin-top: 5px; max-width: 100%; white-space: normal; }
+/* National red-list category (NT → CR), from the Nordic sources that report it. */
+.rl-tag { display: inline-block; font-size: 10px; font-weight: 700; line-height: 1.5; padding: 0 4px; border-radius: 3px; vertical-align: middle; margin-left: 4px; letter-spacing: .02em; color: #fff; background: #9aa5a1; }
+.rl-dd { background: #8a8f8d; }
+.rl-nt { background: #b8a533; }
+.rl-vu { background: #e8801f; }
+.rl-en { background: #d4522a; }
+.rl-cr, .rl-re { background: #b3261e; }
+
+
+/* Settings → "Species types to fetch": the six ticks, two per row, each with its group icon. */
+.fetch-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 2px 10px; margin: 4px 0 2px; }
+.fetch-groups .fg-item { display: flex; align-items: center; gap: 6px; }
+.fetch-groups .fg-item .bird-ico { width: var(--ico-m, 16px); height: var(--ico-m, 16px); flex: 0 0 auto; color: var(--brand-deep, #1f5b48); }
+.fetch-groups .fg-item input[disabled] + .bird-ico,
+.fetch-groups .fg-item input[disabled] ~ span { opacity: .65; }   /* the type being viewed: always fetched */
+
+/* The probability sort toggle beside [?] — one button, ↓ commonest / ↑ rarest. */
+#sp-probsort-btn .ps-gly { font-size: var(--fs-b); line-height: 1; font-weight: 700; }
+#sp-probsort-btn.on { color: var(--brand-deep, #0b3a3a); border-color: var(--brand, #2e8b74); }

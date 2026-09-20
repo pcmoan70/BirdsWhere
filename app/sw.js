@@ -21,16 +21,21 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v1736";
-// The changelog highlights shown under the lit "Reload to update" button in
-// Settings (one bullet per line, ~4–5 bullets). Refresh whenever VERSION is
-// bumped for a user-visible change — replace stale bullets, don't accumulate.
+var VERSION = "v1840";
+// The changelog shown under the lit "Reload to update" button in Settings.
+// THIS RELEASE ONLY — replace it wholesale on every version bump, never append.
+// A returning user wants to know what the update they are about to install changes,
+// not a scroll of things they already have; the feature history lives in Settings →
+// What's new, and the full record in CHANGES.md.
 var NOTES = [
-  "• The Images list now waits for the observations before showing cards — no more wall of exotic model predictions (and their photos) while the fetch is still running.",
-  "• Images: hover the ☰ on a card (short tap on a phone) to see the species’ records in a small popover; click (long-press on a phone) still opens the table view on that species. Also fixed: the first tap after a fetch could land on the wrong element because the “Loaded:” line vanished under it.",
-  "• Confusion species now opens as photo cards (the bird itself first, then its look-alikes by Score); Settings → Confusion species switches to the table, which is also used offline. Photos are cached on the device and shared with the Images list; offline, an uncached photo shows a no-internet mark and loads when you’re back online.",
-  "• Scanning the QR poster now lands on a small page with Cancel and Continue before the app even loads; other shortcut links ask in the welcome popup (Cancel / OK). Nothing is downloaded, no location is requested and nothing is fetched until you confirm.",
-  "• The ? button (species list and Images) adds the model’s commonest birds for the spot, mixed with the ones observed and ranked commonest first (predicted cards are dashed and labelled); it turns into ! — tap to go back to the observed birds in your previous order.",
+  "• Beyond birds. Plants, fungi, insects, mammals and amphibians are now first-class: names in your language for 41 650 species bundled with the app, photographs, and no dependence on the bird model \u2014 groups it does not cover simply run on the observations. Settings decides which types are downloaded, so you need not pay for the ones you never look at.",
+  "• A butterflies-only filter, on the funnel, for the insect group.",
+  "• Family, as pictures. Tapping a scientific name opens the whole family as photo cards, each with Here, Season and Yr peak, so you can see at a glance which relatives are around now and which never get likely where you are.",
+  "• Press and hold any probability, Season or Yr-peak number \u2014 anywhere, on any device \u2014 for that species\u2019 year curve. A single arrow button sorts either list by probability.",
+  "• Faster. Filtering takes about half the work it did, and switching between Species list, Observation list and Images went from seconds of frozen screen to immediate, with the funnel blinking while it works.",
+  "• More observer photographs: Artportalen and Laji.fi records now bring their own pictures, as Artsobservasjoner and iNaturalist already did.",
+  "• Rarity alerts went over end to end \u2014 they watch every source rather than eBird alone, need no eBird key, can reach you by email, and no longer stop mid-check.",
+  "• The Settings gear: a tap opens a quick panel (species group, fetch radius, how far back to fetch), press and hold opens the full settings.",
 ].join("\n");
 // RC channel isolation: an RC deployment (SW served from a "…-rc/" path) shares the
 // browser ORIGIN with production, so its caches must be namespaced — and its activate
@@ -211,7 +216,10 @@ var LAZY = [
   "i18n/lang/no.json", "i18n/lang/pl.json", "i18n/lang/pt.json", "i18n/lang/sv.json",
 ];
 
-var TILE_HOSTS = /(\.basemaps\.cartocdn\.com|\.tile\.openstreetmap\.org|\.tile\.opentopomap\.org|server\.arcgisonline\.com|data-gis\.unep-wcmc\.org|bio\.discomap\.eea\.europa\.eu)/;
+// Every basemap / overlay tile host the app can draw from. A host missing here is never
+// intercepted: its tiles bypass the cache entirely, so they re-download on every view and
+// a downloaded offline area can never serve them (CycloSM and MapTiler were missing).
+var TILE_HOSTS = /(\.basemaps\.cartocdn\.com|\.tile\.openstreetmap\.org|\.tile-cyclosm\.openstreetmap\.fr|\.tile\.opentopomap\.org|api\.maptiler\.com|server\.arcgisonline\.com|data-gis\.unep-wcmc\.org|bio\.discomap\.eea\.europa\.eu)/;
 var API_HOSTS = /(nominatim\.openstreetmap\.org|photon\.komoot\.io|overpass-api\.de|api\.inaturalist\.org|api\.gbif\.org|api\.ebird\.org|artskart\.artsdatabanken\.no|api\.artdatabanken\.se|wikipedia\.org|wikidata\.org|wikimedia\.org)/;
 
 // ---- Incremental updates ---------------------------------------------------
@@ -363,7 +371,11 @@ self.addEventListener("fetch", function (event) {
     event.respondWith(tileResponse(req));
     return;
   }
-  if (url.hostname === "upload.wikimedia.org") {   // species photo bytes (the lookups on wikipedia/commons stay API)
+  // Species photo BYTES (the lookups on wikipedia/commons/wikidata/inaturalist stay API).
+  // iNaturalist's own photos are the fallback for species Wikimedia has no picture of
+  // (v1815) and belong in the same capped, version-independent store.
+  if (url.hostname === "upload.wikimedia.org" ||
+      (/(^|\.)(inaturalist-open-data\.s3\.amazonaws\.com|static\.inaturalist\.org|inaturalist\.org)$/.test(url.hostname) && /\/photos\//.test(url.pathname))) {
     event.respondWith(cacheFirstCapped(req, IMG_CACHE, IMG_CAP));
     return;
   }

@@ -362,6 +362,14 @@ window.AppFetch = (function () {
     noteTrunc("inat", tr);
     return all;
   }
+  // No observer photos from eBird: the public API 2.0 has no media anywhere in its
+  // responses — neither data/obs/… (speciesCode, comName, sciName, locId, locName, obsDt,
+  // howMany, lat, lng, obsValid, obsReviewed, locationPrivate, subId, exoticCategory) nor
+  // product/checklist/view/{subId}, whose obs[] entries carry the same fields and no asset
+  // ids or media counts. Photos uploaded through eBird live in the Macaulay Library, whose
+  // only per-checklist search (search.macaulaylibrary.org/api/v2) is undocumented AND sits
+  // behind an anti-bot challenge, so it is not usable from the browser. Checked 2026-09-20;
+  // the species-level Macaulay link in the species menu remains the nearest thing.
   async function fetchEbirdAll(lat, lon, tok, rkm, ep, back, signal) {
     var dist = Math.max(1, Math.min(50, rkm));
     var bk = Math.max(1, Math.min(30, +back || 30));   // eBird caps "back" at 30 days
@@ -517,15 +525,34 @@ window.AppFetch = (function () {
     return { Observations: all };
   }
   // Sweden — SLU Artdatabanken SOS API (free subscription key; Artportalen + more).
+  // The observer's own photo. SOS carries it as `occurrence.media` (a GBIF Multimedia
+  // collection: identifier = the image, references = its Artportalen page, rightsHolder =
+  // the photographer), and `occurrence.associatedMedia` is DEPRECATED — "no longer used"
+  // in SOS's own Docs/Observation.md. Neither is in the Minimum or Extended field set, so
+  // asking for "Extended" alone returned records that never had a picture on them however
+  // many the observer had uploaded. `output.fields` is UNIONED with the field set rather
+  // than replacing it (SOS's PopulateFields: it starts from the set's fields and adds
+  // yours), so naming the one extra field cannot cost us the rest.
+  var apNoMedia = false;   // set for the session if the API ever rejects the extra field
   async function fetchArtportalenAll(lat, lon, d1, d2, rkm, key, ep, signal) {
-    var body = { geographics: { geometries: [{ type: "point", coordinates: [lon, lat] }], maxDistanceFromPoint: Math.round(rkm * 1000) },
-      date: { startDate: d1, endDate: d2, dateFilterType: "OverlappingStartDateAndEndDate" }, output: { fieldSet: "Extended" } };
+    function bodyFor(withMedia) {
+      var out = withMedia ? { fieldSet: "Extended", fields: ["occurrence.media"] } : { fieldSet: "Extended" };
+      return JSON.stringify({ geographics: { geometries: [{ type: "point", coordinates: [lon, lat] }], maxDistanceFromPoint: Math.round(rkm * 1000) },
+        date: { startDate: d1, endDate: d2, dateFilterType: "OverlappingStartDateAndEndDate" }, output: out });
+    }
     var endpoint = ep || "https://api.artdatabanken.se/species-observation-system/v1/Observations/Search";
-    var post = { method: "POST", headers: { "Content-Type": "application/json", "Ocp-Apim-Subscription-Key": key }, body: JSON.stringify(body) };
+    function postFor(withMedia) { return { method: "POST", headers: { "Content-Type": "application/json", "Ocp-Apim-Subscription-Key": key }, body: bodyFor(withMedia) }; }
+    var post = postFor(!apNoMedia);
     var all = [];
     for (var p = 0; p < 6; p++) {
       if (signal && signal.aborted) break;   // fetch timeout → keep the pages we have
       var resp = await fetchRetry(joinUrl(endpoint, "skip=" + (p * 300) + "&take=300"), post, signal);
+      // A rejected field must never cost Sweden its observations (the same guard the Laji
+      // adapter already has): drop the photo field once for the session and ask again.
+      if (resp && resp.status === 400 && p === 0 && !apNoMedia && !(signal && signal.aborted)) {
+        apNoMedia = true; post = postFor(false);
+        resp = await fetchRetry(joinUrl(endpoint, "skip=0&take=300"), post, signal);
+      }
       if (!resp || !resp.ok) {
         if (p === 0 && !(signal && signal.aborted)) throw new Error("Artportalen " + (resp ? "HTTP " + resp.status : "unreachable"));
         break;   // a later page failed (or aborted) → keep what we have
@@ -544,24 +571,64 @@ window.AppFetch = (function () {
   // personal access_token. GeoJSON output (coords from the feature geometry);
   // filtered by a WGS84 bounding box + a date range. Field paths are the valid
   // warehouse "selected" fields (verified against FinBIF's own tooling).
-  var LAJI_FIELDS = "unit.linkings.taxon.scientificName,unit.linkings.taxon.nameEnglish,unit.linkings.taxon.nameFinnish,unit.interpretations.individualCount,gathering.displayDateTime,gathering.locality,gathering.interpretations.municipalityDisplayname,gathering.interpretations.coordinateAccuracy,document.documentId,unit.linkings.taxon.kingdomScientificName,unit.linkings.taxon.informalTaxonGroups,unit.notes,gathering.notes";
+  // The warehouse validates every "selected" path against its own list and answers a
+  // whole query with HTTP 400 if one is unknown — so the record fields (LAJI_CORE) and
+  // the nice-to-haves (LAJI_EXTRA: the observer's photo + the red-list status behind
+  // the rarity tag) are kept apart, and a rejected selection falls back to the core.
+  // "unit.media" is NOT selectable: its leaves are (unit.media.fullURL etc.).
+  var LAJI_CORE = "unit.linkings.taxon.scientificName,unit.linkings.taxon.nameEnglish,unit.linkings.taxon.nameFinnish,unit.interpretations.individualCount,gathering.displayDateTime,gathering.locality,gathering.interpretations.municipalityDisplayname,gathering.interpretations.coordinateAccuracy,document.documentId,unit.linkings.taxon.kingdomScientificName,unit.linkings.taxon.informalTaxonGroups,unit.notes,gathering.notes";
+  // The observer's pictures hang off THREE levels in the warehouse, and the app used to ask
+  // for only two: the unit (one determination), the document (the form), and — added
+  // 2026-09-20 after checking the endpoint's own `selected` enum, which lists all three —
+  // the GATHERING (one visit to one spot), where Finnish records very often carry them.
+  var LAJI_MEDIA = ["unit", "document", "gathering"].map(function (pre) {
+    return ["squareThumbnailURL", "thumbnailURL", "fullURL", "mediaType", "author"].map(function (f) { return pre + ".media." + f; }).join(",");
+  }).join(",");
+  var LAJI_RED = "unit.linkings.taxon.latestRedListStatusFinland.status";
+  // The warehouse validates every "selected" path and answers the WHOLE query with 400 if
+  // one is unknown, so the nice-to-haves are dropped separately: media and the red-list tag
+  // used to share one string, which meant anything wrong with the red-list path silently
+  // cost every Finnish record its photos for the rest of the session.
+  var lajiNoMedia = false, lajiNoRed = false;
+  // The API answers an error with {"status":400,"message":"..."} — quote it, so a
+  // rejected parameter says what it was instead of just its number.
+  async function lajiErrText(resp) {
+    if (!resp) return "unreachable";
+    var msg = "";
+    try { msg = ((await resp.clone().json()) || {}).message || ""; } catch (e) {}
+    return "HTTP " + resp.status + (msg ? " — " + String(msg).slice(0, 140) : "");
+  }
   async function fetchLajiAll(lat, lon, d1, d2, rkm, key, ep, signal) {
     if (!key) throw new Error("Laji.fi: no API key");   // surfaced as a failed source
     var dLat = rkm / 111.32, cos = Math.cos(lat * Math.PI / 180);
     var dLon = rkm / (111.32 * (cos > 0.01 ? cos : 0.01));
     var box = (lat - dLat).toFixed(4) + ":" + (lat + dLat).toFixed(4) + ":" + (lon - dLon).toFixed(4) + ":" + (lon + dLon).toFixed(4) + ":WGS84";
-    var base = (ep || "https://api.laji.fi/v0/warehouse/query/unit/list") +
-      "?format=geojson&featureType=CENTER_POINT&crs=WGS84" +
-      "&selected=" + encodeURIComponent(LAJI_FIELDS) +
-      "&wgs84CenterPoint=" + encodeURIComponent(box) +   // latMin:latMax:lonMin:lonMax:WGS84
-      "&time=" + encodeURIComponent(d1 + "/" + d2) +
-      "&pageSize=1000&access_token=" + encodeURIComponent(key);
+    function urlFor(fields) {
+      return (ep || "https://api.laji.fi/v0/warehouse/query/unit/list") +
+        "?format=geojson&featureType=CENTER_POINT&crs=WGS84" +
+        "&selected=" + encodeURIComponent(fields) +
+        "&wgs84CenterPoint=" + encodeURIComponent(box) +   // latMin:latMax:lonMin:lonMax:WGS84
+        "&time=" + encodeURIComponent(d1 + "/" + d2) +
+        "&pageSize=1000&access_token=" + encodeURIComponent(key);
+    }
+    function fields() {
+      return LAJI_CORE + (lajiNoMedia ? "" : "," + LAJI_MEDIA) + (lajiNoRed ? "" : "," + LAJI_RED);
+    }
+    var base = urlFor(fields());
     var all = [];
     for (var p = 1; p <= 6; p++) {
       if (signal && signal.aborted) break;   // fetch timeout → keep the pages we have
       var resp = await fetchRetry(base + "&page=" + p, null, signal);
+      // A rejected selection (400) must not cost Finland its observations — but it must not
+      // quietly cost them their photos either. Drop the red-list tag first, the photos only
+      // if that was not what the warehouse objected to.
+      while (resp && resp.status === 400 && p === 1 && !(signal && signal.aborted) && !(lajiNoRed && lajiNoMedia)) {
+        if (!lajiNoRed) lajiNoRed = true; else lajiNoMedia = true;
+        base = urlFor(fields());
+        resp = await fetchRetry(base + "&page=" + p, null, signal);
+      }
       if (!resp || !resp.ok) {
-        if (p === 1 && !(signal && signal.aborted)) throw new Error("Laji.fi " + (resp ? "HTTP " + resp.status : "unreachable"));
+        if (p === 1 && !(signal && signal.aborted)) throw new Error("Laji.fi " + (await lajiErrText(resp)));
         break;   // page 1 fails loudly (unless aborted); later pages keep partial
       }
       var res = ((await resp.json().catch(function () { return null; })) || {}).features || [];

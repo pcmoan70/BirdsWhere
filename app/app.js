@@ -80,7 +80,7 @@
   var TAX_URL = "taxonomy-base.csv";        // species_code + English name + class (split from taxonomy.csv)
   var TAX_NAMES_BASE = "i18n/names/";       // per-language name packs, line-aligned to taxonomy-base.csv rows
   var CONFUSION_URL = "confusion.csv";      // per-bird look-alike (confusion) partner codes; fetched on first use
-  var CONFUSION_REV = 13;                     // bump when confusion.csv changes — busts the runtime (cache-first) copy
+  var CONFUSION_REV = 15;                     // bump when confusion.csv changes — busts the runtime (cache-first) copy
   var TRAITS_URL = "species-traits.json";   // per-species characteristics (AVONET morphology/ecology + HBW colour)
   var TRAITS_REV = 2;                        // bump when species-traits.json changes
 
@@ -125,7 +125,22 @@
     return (label && (label.sci || label.key)) || "";
   }
 
-  function speciesName(label) { return nameInCol(label, lang, langTaxCol); }
+  function speciesName(label) {
+    var nm = nameInCol(label, lang, langTaxCol);
+    // nameInCol brackets a name it could not translate ("[Snoring Cicada]"): the pack
+    // has no entry for this language, or its entry is the English one. That is the
+    // signal to reach for a harvested iNaturalist name — and, the first time, to ask
+    // for one. Birds are translated throughout; this fires for the groups that are not.
+    if (nm && nm.charCodeAt(0) === 91 && lang !== "en" && label && label.sci) {
+      var h = harvestedName(label.sci);
+      if (h) return speciesCase(lang, h);
+      queueNameHarvest(label.sci);
+      // Still nothing in this language → the scientific name rather than a bracketed
+      // English one, for the groups whose common names are patchy.
+      if (sciFallbackFor((taxByCode[label.key] || {}).class_name)) return sciCase(label.sci);
+    }
+    return nm;
+  }
 
   // Name in the optional second language ("" when the feature is off).
   function secondName(label) { return secondLang ? nameInCol(label, secondLang, secondTaxCol) : ""; }
@@ -148,6 +163,7 @@
   // ---- Species-group filter (taxonomic class) ------------------------------
   // Groups present in the model: aves, mammalia, amphibia, insecta.
   var speciesGroup = "all";   // "all" or a class_name value
+  var fetchGroupsRender = null;   // re-renders the Settings fetch-type ticks (set when they are wired)
   // Per-group source filters: GBIF backbone class taxonKeys + iNat iconic-taxon
   // names. "all" unions every supported group. eBird/BirdWeather are bird-only
   // feeds (queried only for Birds/All); the Nordic DBs can't filter by taxon at
@@ -187,17 +203,63 @@
     var hint = document.getElementById("group-nomodel-hint");
     if (hint) hint.style.display = hasModel ? "none" : "";
   }
+  // WHAT A FETCH RETRIEVES, as opposed to what the app is currently showing. Since
+  // v1809 a fetch is not limited to the group on screen: the active group filters what
+  // is DISPLAYED (detPassesGroup, extraInGroup, the legend, the lists), so switching
+  // group is instant instead of leaving an empty map, and a location behaves the same
+  // whatever you are looking at.
+  //
+  // Which types a fetch asks for is a Settings choice (v1811) — every source shares one
+  // paging budget across the types requested, so fetching fewer of them returns more of
+  // each before a source's limit is reached. Default: all six, as in v1809.
+  var FETCH_GROUP_IDS = ["aves", "mammalia", "amphibia", "insecta", "plantae", "fungi"];
+  // A poster launch (/f/ → ?location=here) is a BIRD errand: the first fetch asks for
+  // birds only, so the visitor waits for one taxon rather than six. Everything after it
+  // follows the Settings ticks again. One-shot, consumed by the next fetch.
+  var launchBirdsOnce = false;
+  function fetchGroupsOn() {
+    if (launchBirdsOnce) return { aves: true, mammalia: false, amphibia: false, insecta: false, plantae: false, fungi: false };
+    var saved = window.GeoState.get("fetchGroups", null);
+    var out = {};
+    FETCH_GROUP_IDS.forEach(function (g) { out[g] = saved && typeof saved === "object" ? saved[g] !== false : true; });
+    // Never fetch nothing: an empty selection falls back to the group on screen (or birds).
+    if (!FETCH_GROUP_IDS.some(function (g) { return out[g]; })) out[speciesGroup === "all" ? "aves" : speciesGroup] = true;
+    // The group being VIEWED is always fetched, whatever the ticks say — otherwise
+    // selecting it would show an empty map with no way to see why.
+    if (speciesGroup !== "all" && out[speciesGroup] === false) out[speciesGroup] = true;
+    return out;
+  }
+  function fetchGroupList() { var on = fetchGroupsOn(); return FETCH_GROUP_IDS.filter(function (g) { return on[g]; }); }
+  // Switch what is DISPLAYED without touching the stored preference — for a launch that
+  // knows what it is about (the poster), not for a choice the user made.
+  function showGroupWithoutSaving(g) {
+    if (!g || speciesGroup === g) return;
+    speciesGroup = g;
+    var sel = document.getElementById("group-select"); if (sel) sel.value = g;
+    try { updateSettingsIcon(); renderGroupPicker(); refreshGroupModeOptions(); } catch (e) {}
+    if (typeof fetchGroupsRender === "function") fetchGroupsRender();
+    // Everything the group-picker's own handler does short of saving: the list is built
+    // for ONE group, so without this it keeps the previous group's rows — which is how a
+    // butterflies filter applied over a bird list could only ever show nothing.
+    try { rerenderPointList({ noFetch: true }); } catch (e) {}
+    try { rebuildDetLayers(); updateDetLegend(); } catch (e) {}
+  }
+  // "all" while more than one type is requested (the per-dataset gating in fetch.js reads
+  // this), else that single type.
+  function fetchScopeGroup() { var l = fetchGroupList(); return l.length === 1 ? l[0] : "all"; }
   function groupTaxaList() {
     // "All" now spans every supported kingdom (animals + plants + fungi) so a
     // cached All fetch is a true superset — All → any single group can be derived
     // by filtering instead of refetching. (Heavier: it shares the sources' paging
     // budget across more taxa, so a dense spot can truncate sooner.)
-    if (speciesGroup === "all") return [GROUP_TAXA.aves, GROUP_TAXA.mammalia, GROUP_TAXA.amphibia, GROUP_TAXA.insecta, GROUP_TAXA.plantae, GROUP_TAXA.fungi];
-    return [GROUP_TAXA[speciesGroup] || GROUP_TAXA.aves];
+    return fetchGroupList().map(function (g) { return GROUP_TAXA[g]; }).filter(Boolean);
   }
   function gbifTaxonParam() { return groupTaxaList().map(function (g) { return "&taxonKey=" + g.gbif; }).join(""); }   // GBIF ORs repeated taxonKey
   function inatIconicTaxa() { return groupTaxaList().map(function (g) { return g.inat; }).join(","); }
-  function groupIsBirds() { return speciesGroup === "all" || speciesGroup === "aves"; }
+  // Bird-only feeds (eBird, BirdWeather, NBN): queried whenever the FETCH covers birds,
+  // which under the superset policy is always — their records are filtered out of the
+  // view like any other when a non-bird group is selected.
+  function groupIsBirds() { return !!fetchGroupsOn().aves; }
   var hiResFactor = 0;        // detail offset in zoom levels / H3 resolutions (0 = auto, ±N = coarser/finer)
   var distMapToken = 0;       // guards against stale distribution-map fetches
   var recentToken = 0;        // guards against stale recent-detections fetches
@@ -287,6 +349,7 @@
       sources:  '<circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 16.2a6 6 0 0 0 0-8.4M4.9 4.9a10 10 0 0 0 0 14.2M19.1 19.1a10 10 0 0 0 0-14.2"/>',
       datasets: '<path d="M12 3 3 7.5 12 12l9-4.5L12 3zM3 12l9 4.5 9-4.5M3 16.5 12 21l9-4.5"/>',
       globe:    '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 2.6 15.4 0 18M12 3c-2.6 2.6-2.6 15.4 0 18"/>',
+      camera:   '<path d="M4 8h3l1.6-2.2h6.8L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.2" r="3.4"/>',
       download: '<path d="M12 3v11M7.5 9.5 12 14l4.5-4.5M5 20h14"/>',
       upload:   '<path d="M12 21V10M7.5 14.5 12 10l4.5 4.5M5 4h14"/>',
       folder:   '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
@@ -1029,13 +1092,28 @@
   // Display an ISO date (YYYY-MM-DD) in the current locale's format (day/month
   // order + separators). Partial/odd values (year-only, ranges, empty) are kept
   // as-is. Parsed at local midnight so the day never shifts across time zones.
+  // toLocaleDateString builds a fresh Intl formatter on every call, and this is called
+  // once per observation row: switching to the observation list was 3.8 s of blocked main
+  // thread on a 90-day Oslo fetch, 1.79 s of it in here (measured 2026-09-20). One
+  // formatter per language, and each date string remembered — a list of thousands of rows
+  // holds only a few hundred distinct dates.
+  var _fmtDateCache = Object.create(null), _fmtDateLang = null, _fmtDateFmt = null;
   function fmtDate(s) {
     s = String(s || "");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    if (_fmtDateLang !== lang) {
+      _fmtDateLang = lang; _fmtDateCache = Object.create(null);
+      try { _fmtDateFmt = new Intl.DateTimeFormat(lang, { year: "numeric", month: "2-digit", day: "2-digit" }); }
+      catch (e) { _fmtDateFmt = null; }
+    }
+    var hit = _fmtDateCache[s];
+    if (hit !== undefined) return hit;
     var d = new Date(s + "T00:00:00");
-    if (isNaN(d.getTime())) return s;
-    try { return d.toLocaleDateString(lang, { year: "numeric", month: "2-digit", day: "2-digit" }); }
-    catch (e) { return s; }
+    if (isNaN(d.getTime())) return (_fmtDateCache[s] = s);
+    var out;
+    try { out = _fmtDateFmt ? _fmtDateFmt.format(d) : d.toLocaleDateString(lang, { year: "numeric", month: "2-digit", day: "2-digit" }); }
+    catch (e) { out = s; }
+    return (_fmtDateCache[s] = out);
   }
   // The LOCAL calendar date (YYYY-MM-DD) of a timestamp. Never toISOString() here —
   // that's UTC, which shifts the day for any non-UTC timezone (e.g. a local-midnight
@@ -1472,6 +1550,11 @@
   // above the rare threshold — slotted into the current sort with their probability / season /
   // comparison columns; persisted.
   var spShowMissing = !!window.GeoState.get("spShowMissing", false);
+  // A spot with NO observations at all fills the list with the model's own prediction
+  // instead of showing nothing — the same set [?] shows, commonest first. It lasts for
+  // that fetch only and leaves the user's own [?] setting (spShowMissing) alone.
+  var spMissingAuto = false;
+  function spMissingOn() { return spShowMissing || spMissingAuto; }
   var spCountMin = 1, spCountMax = null;   // Total-column lower/upper bounds (inclusive; null = open). Default: Total ≥ 1 — list only species actually observed.
   var spCountMetric = "total";                // which count the bounds restrict: "total" (specimens) or "pairs" (observations)
   var spNameQuery = "";                       // species-list name filter (raw text; lowercased at compare time)
@@ -1599,6 +1682,21 @@
   }
   // Refresh the sort-arrow indicator on the sortable column headers. Class-based
   // (▲/▼ via CSS ::after) so it doesn't disturb the headers' dynamic labels.
+  // The arrow button and the Prob column header are two faces of one setting, so the
+  // button is redrawn by updateSortIndicators() — the single point every sort change
+  // passes through (header clicks, the button itself, a ?sortby= link, [?] switching to
+  // probability ↓). Click either and the other follows.
+  // ↓ = commonest first, ↑ = rarest first, ⇅ = the list is ordered by something else.
+  function renderProbSortBtn() {
+    var psb = document.getElementById("sp-probsort-btn"); if (!psb) return;
+    var onProb = speciesListSort.col === "prob";
+    var asc = onProb && speciesListSort.dir === "asc";
+    psb.classList.toggle("on", onProb);
+    var gly = psb.querySelector(".ps-gly"); if (gly) gly.textContent = onProb ? (asc ? "↑" : "↓") : "⇅";
+    psb.title = t(onProb ? (asc ? "sp.probSortAsc" : "sp.probSortDesc") : "sp.probSort");
+    psb.setAttribute("aria-label", psb.title);
+    psb.style.display = (spLayout === "table" || spLayout === "gallery") ? "" : "none";
+  }
   function updateSortIndicators() {
     var cols = { "sp-species-head": "name", "sp-name2-head": "name2", "sp-sci-head": "sci", "sp-nd-head": "total", "sp-last-head": "last", "sp-prob-head": "prob", "sp-dist-head": "dist", "sp-season-head": "season", "sp-delta-head": "cmp" };
     Object.keys(cols).forEach(function (id) {
@@ -1608,6 +1706,7 @@
       el.classList.toggle("sort-desc", on && speciesListSort.dir === "desc");
     });
     updateDistSortPulse();
+    renderProbSortBtn();   // the arrow button IS this state — keep the two in step
   }
   // Pulse the DIST sort arrow blue while the list is sorted by distance AND live
   // tracking is on (the order recalculates as you move). Covers both list layouts;
@@ -1643,7 +1742,9 @@
       e.rows.forEach(function (r) {
         if (!detRowPasses(r)) return;
         rows.push({ key: key, name: nm, color: spCol, lat: r.lat, lon: r.lon, date: r.date || "", src: r.src || "", origin: r.origin || "",
-          url: r.url || "", place: r.place || "", placeCoarse: !!r.placeCoarse, posFuzzM: +r.posFuzzM || 0, count: (r.count != null ? r.count : ""), act: r.act || "", note: r.note || "", flags: r.flags || "", observer: r.observer || "", prob: (r._prob != null ? r._prob : -1) });
+          url: r.url || "", place: r.place || "", placeCoarse: !!r.placeCoarse, posFuzzM: +r.posFuzzM || 0, count: (r.count != null ? r.count : ""), act: r.act || "", note: r.note || "", flags: r.flags || "", observer: r.observer || "",
+          photo: r.photo || "", photoBig: r.photoBig || "", photoBy: r.photoBy || "", photos: r.photos || null, rl: r.rl || "",   // the observer's own pictures + red-list code
+          prob: (r._prob != null ? r._prob : -1) });
       });
     } else {
       rows = collectVisibleDetections(null, true).filter(function (d) { return d.key === key; });   // extras / no agg → fall back to plotted rows
@@ -1715,6 +1816,32 @@
     var color = (typeof detPlot !== "undefined" && detPlot[key] && detPlot[key].color) || speciesColor(key);
     return '<span class="sp-dot' + '" data-key="' + escapeHtml(key || "") + '">' +
       detSwatch(color, !!key && isInteresting(key), !!rare, key) + "</span>";
+  }
+  // Every species dot OUTSIDE the prediction table: the Images cards clone the table's dot,
+  // the observation rows and the ☰ record popover build their own. Starring a species (or
+  // ticking a year/life list) must change those dots in place — rebuilding the gallery would
+  // re-resolve and reload every photo.
+  function repaintDotsOutsideTable(rareSet) {
+    var tbody = document.getElementById("sp-tbody");
+    Array.prototype.forEach.call(document.querySelectorAll(".sp-dot[data-key]"), function (h) {
+      if (tbody && tbody.contains(h)) return;   // the table's own dots are repainted above
+      var k = h.getAttribute("data-key");
+      paintSpDot(h, !!(rareSet ? rareSet[k] : detIsRare(k)));
+    });
+  }
+  // ---- Red list (IUCN-style national categories) -----------------------------
+  // Artsobservasjoner, Artportalen and Laji.fi ship the species' national red-list
+  // category on the record itself. Keep the strongest one seen per species and show it as
+  // a small tag — the shorthand a Nordic birder reads at a glance.
+  var spRedList = Object.create(null);
+  var RL_RANK = { DD: 1, NT: 2, VU: 3, EN: 4, CR: 5, RE: 6 };
+  function noteRedList(key, code) {
+    if (!key || !code || !RL_RANK[code]) return;
+    if (!spRedList[key] || RL_RANK[code] > RL_RANK[spRedList[key]]) spRedList[key] = code;
+  }
+  function rlTagHtml(code) {
+    if (!code || !RL_RANK[code]) return "";
+    return ' <span class="rl-tag rl-' + code.toLowerCase() + '" title="' + escapeHtml(t("rl." + code.toLowerCase()) + " — " + t("rl.src")) + '">' + code + "</span>";
   }
   function paintSpDot(holder, rare) {
     if (!holder) return;
@@ -1827,12 +1954,23 @@
       '" data-lat="' + (d.lat == null ? "" : d.lat) + '" data-lon="' + (d.lon == null ? "" : d.lon) +
       '" data-date="' + escapeHtml(d.date || "") + '" data-url="' + escapeHtml(d.url || "") + '"';
     var nameLink = (d.rarity ? '<span class="det-rar">!</span> ' : "") +
-      '<span class="sp-link"' + recAttrs + ">" + escapeHtml(dispName) + "</span>";
+      '<span class="sp-link"' + recAttrs + ">" + escapeHtml(dispName) + "</span>" + rlTagHtml(d.rl);
     // When the record carries an activity and/or a note (source-dependent — GBIF,
     // iNaturalist, Artsobservasjoner, Artportalen have them; eBird/BirdNET don't),
     // an ⓘ opens a small formatted popup with those details.
     var infoAl = d.act ? actLabel(d.act) : "", infoNt = String(d.note || "").trim(), infoFl = String(d.flags || "").trim();
     var hasLink = /https?:\/\//i.test(infoNt);   // the note carries a web link → green "link out" arrow instead of ⓘ
+    // The recorder's OWN photo of this bird (iNaturalist / GBIF / Artsobservasjoner and the
+    // other Nordic portals): a camera button straight to the picture, no detour via the source.
+    // All of this observation's pictures (most sources ship several); the button carries
+    // the list so a hover can lay them out as a mosaic without another lookup.
+    var plist = (d.photos && d.photos.length) ? d.photos : (d.photo ? [d.photoBig || d.photo] : []);
+    var photoIcon = d.photo
+      ? '<span class="obs-photo" role="button" tabindex="0" aria-label="' + escapeHtml(t("obs.photo")) + '" title="' + escapeHtml(plist.length > 1 ? t("obs.photoN", { n: plist.length }) : t("obs.photo")) +
+        '" data-photo="' + escapeHtml(d.photoBig || d.photo) + '" data-thumb="' + escapeHtml(d.photo) + '" data-by="' + escapeHtml(d.photoBy || "") +
+        '" data-photos="' + escapeHtml(plist.join(" ")) + '" data-name="' + escapeHtml(dispName) + '" data-url="' + escapeHtml(d.url || "") + '">' + ico("camera") +
+        (plist.length > 1 ? '<span class="obs-photo-n">' + plist.length + "</span>" : "") + "</span>"
+      : "";
     var infoIcon = (infoAl || infoNt || infoFl)
       ? ' <span class="obs-info' + (hasLink ? " obs-info-link" : "") + '" role="button" tabindex="0" aria-label="' + escapeHtml(t("obs.infoLabel")) + '" title="' + escapeHtml(t("obs.infoLabel")) +
         '" data-act="' + escapeHtml(d.act || "") + '" data-note="' + escapeHtml(String(d.note || "")) + '" data-flags="' + escapeHtml(infoFl) + '" data-src="' + escapeHtml(srcLabel(d)) + '">' + ico(hasLink ? "linkout" : "info") + "</span>"
@@ -1849,6 +1987,7 @@
         ? '<span class="sp-loc-click" role="button" data-loc="' + escapeHtml(String(d.place).trim()) + '" title="' + escapeHtml(d.place) + '">' + escapeHtml(d.place) + "</span>"
         : rgeoSpanHtml(d.lat, d.lon, "sp-loc-click", "", ' role="button"', String(d.place || "").trim(), d.posFuzzM)) + "</td>" : "") +   // lat/lon-only or generic place → map-derived name
       (opts.src ? '<td class="sp-d-src">' + srcClickHtml(srcLabel(d)) + infoIcon + "</td>" : "") +
+      (opts.photo !== false ? '<td class="sp-d-pho">' + photoIcon + "</td>" : "") +   // every record's pictures in ONE column
       (opts.info ? '<td class="sp-d-info">' + (timeSpan ? timeSpan + " " : "") + infoIcon + "</td>" : "") +   // ⓘ in its own column (obs list — dist/src live in the group subheading; rarity obs time beside it)
       (opts.obs ? '<td class="sp-d-obs">' + obsCell + "</td>" : "") +
       (opts.dist !== false ? '<td class="num sp-d-dist">' + km + "</td>" : "") + "</tr>";   // distance rightmost
@@ -1860,8 +1999,8 @@
     var hdr = "<thead><tr>" + spObsHeadCell("count", t("th.count"), true) +
       spObsHeadCell("prob", t("th.probAbbr"), true) + spObsHeadCell("date", t("th.date")) +
       spObsHeadCell("loc", t("th.location")) +
-      spObsHeadCell("src", t("th.source")) + spObsHeadCell("obs", t("th.obs")) +
-      spObsHeadCell("dist", t("th.dist"), true) + "</tr></thead>";   // distance rightmost
+      spObsHeadCell("src", t("th.source")) + '<th class="sp-obs-ph" aria-hidden="true"></th>' + spObsHeadCell("obs", t("th.obs")) +
+      spObsHeadCell("dist", t("th.dist"), true) + "</tr></thead>";   // photo column between source and observer; distance rightmost
     var body = rows.slice().sort(spObsCmp).map(function (d) { return spRecRowHtml(d, { name: false, date: true, loc: true, src: true, obs: true }); }).join("");
     // Column widths are pinned on the cells in CSS (.sp-detail-tbl is table-layout:fixed),
     // so EVERY expanded species' sub-table has identical columns and they line up
@@ -1872,14 +2011,15 @@
   // "Per observation": ONE columns table with the records grouped by date × observer ×
   // location (a spanning group-separator row per triple); columns sort WITHIN each group.
   function buildSpObsHtml(rows) {
-    var name2On = !!secondLang, ncols = 6 + (name2On ? 1 : 0);   // count name [name2] prob season peak ⓘ — dist/src moved to the group subheading
+    var name2On = !!secondLang, ncols = 7 + (name2On ? 1 : 0);   // count name [name2] prob season peak 📷 ⓘ — dist/src moved to the group subheading
     var hdr = "<thead><tr>" + spObsHeadCell("count", t("th.count"), true) +
       spObsHeadCell("name", t("th.species")) +
       (name2On ? spObsHeadCell("name2", window.GeoI18N.langByCode(secondLang).name) : "") +
       spObsHeadCell("prob", t("th.probAbbr"), true) +
       spObsHeadCell("season", t("th.season")) +
       spObsHeadCell("ytop", t("th.ytop"), true) +
-      '<th class="sp-obs-ih" aria-hidden="true"></th></tr></thead>';   // the per-row ⓘ column
+      '<th class="sp-obs-ph" aria-hidden="true"></th>' +
+      '<th class="sp-obs-ih" aria-hidden="true"></th></tr></thead>';   // the per-row 📷 and ⓘ columns
     var byDate = {}, dates = [];
     rows.forEach(function (d) { var k = d.date || ""; if (!byDate[k]) { byDate[k] = []; dates.push(k); } byDate[k].push(d); });
     dates.sort(function (a, b) { return b.localeCompare(a); });
@@ -1971,9 +2111,13 @@
   // The preview only makes sense in the full-page LIST modes (species list /
   // per-observation page, Close-by list) — in map mode the real map is right
   // there, so the popup would just be noise over it.
+  // "A full page is covering the map" — the place-name preview only makes sense there
+  // (in map mode the real map is already on screen).
   function inListView() {
     var sp = document.getElementById("species-panel");
-    if (sp && sp.classList.contains("as-page") && sp.style.display !== "none") return true;
+    if (sp && sp.classList.contains("as-page") && panelOnScreen(sp)) return true;
+    var rp = document.getElementById("rarity-page");
+    if (rp && rp.style.display !== "none") return true;   // the rarity-alerts page hides the map too
     if (document.body.getAttribute("data-nearby")) return true;
     return false;
   }
@@ -2024,6 +2168,74 @@
     el.addEventListener("mouseleave", hideLocHoverMap);
   }
   function llFromAttrs(el2) { return { lat: parseFloat(el2.getAttribute("data-lat")), lon: parseFloat(el2.getAttribute("data-lon")) }; }
+  // The observation's own photo, full size, with its credit and a link to the source
+  // record. Opened from the camera button on a record row (and the ☰ popover).
+  function showObsPhoto(btn, pickUrl) {
+    var url = pickUrl || btn.getAttribute("data-photo") || btn.getAttribute("data-thumb"); if (!url) return;
+    var m = createModal({ boxClass: "obs-photo-box", escClose: true });
+    var by = btn.getAttribute("data-by") || "", src = btn.getAttribute("data-url") || "";
+    m.box.innerHTML = '<button type="button" class="conf-close obs-photo-x" aria-label="' + escapeHtml(t("btn.close")) + '" title="' + escapeHtml(t("btn.close")) + '">×</button>' +
+      '<div class="ui-modal-msg">' + escapeHtml(btn.getAttribute("data-name") || "") + "</div>" +
+      '<div class="obs-photo-wrap"><img alt="" src="' + escapeHtml(url) + '" /></div>' +
+      '<div class="obs-photo-cred">' + (by ? escapeHtml(by) : "") +
+        (src ? (by ? " · " : "") + '<a href="' + escapeHtml(src) + '" target="_blank" rel="noopener">' + escapeHtml(t("det.openSource")) + "</a>" : "") + "</div>";
+    m.box.querySelector(".obs-photo-x").addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); m.close(); });
+    var img = m.box.querySelector("img");
+    img.addEventListener("error", function () {   // the big version may not exist → fall back to the thumbnail
+      var th = pickUrl ? "" : btn.getAttribute("data-thumb");
+      if (th && img.src !== th) img.src = th; else { img.remove(); m.box.querySelector(".obs-photo-wrap").textContent = t("spg.noImage"); }
+    });
+  }
+  // ---- The observation's pictures as a mosaic -------------------------------
+  // Most sources ship SEVERAL pictures per record. Hovering the 📷 (tapping it on a
+  // phone) lays them all out as a small grid — loaded only when it opens, so a list
+  // of hundreds of records downloads nothing until you ask for a picture. A tile
+  // opens that one full-size.
+  var obsMosaicPop = null, obsMosaicTimer = null, obsMosaicWasOpen = false;
+  function obsPhotoList(btn) {
+    var raw = String(btn.getAttribute("data-photos") || "").trim();
+    var list = raw ? raw.split(/\s+/) : [];
+    if (!list.length) { var one = btn.getAttribute("data-photo") || btn.getAttribute("data-thumb"); if (one) list = [one]; }
+    return list;
+  }
+  function closeObsMosaic() {
+    clearTimeout(obsMosaicTimer);
+    if (obsMosaicPop && _anchMenuEl === obsMosaicPop) closeAnchoredMenu();
+    obsMosaicPop = null;
+  }
+  function scheduleObsMosaicClose() {
+    clearTimeout(obsMosaicTimer);
+    obsMosaicTimer = setTimeout(closeObsMosaic, 250);   // a gap to cross from the icon into the mosaic
+  }
+  function obsMosaicOpenFor(btn) { return !!(obsMosaicPop && obsMosaicPop._btn === btn && _anchMenuEl === obsMosaicPop); }
+  function showObsMosaic(btn) {
+    var list = obsPhotoList(btn); if (!list.length) return;
+    clearTimeout(obsMosaicTimer);
+    if (obsMosaicOpenFor(btn)) return;   // already up for this record
+    var el = openAnchoredMenu("detrow-menu obs-mosaic");
+    el._btn = btn;
+    // One picture → show it whole. Otherwise square tiles in the shape that leaves no
+    // hole in the last row: 2 or 3 side by side, then two rows, up to 4 across.
+    var cols = list.length <= 3 ? list.length : Math.min(4, Math.ceil(list.length / 2));
+    el.style.setProperty("--mos-cols", cols);
+    var by = btn.getAttribute("data-by") || "", src = btn.getAttribute("data-url") || "";
+    el.innerHTML = '<button type="button" class="conf-close obs-mosaic-x" aria-label="' + escapeHtml(t("btn.close")) + '" title="' + escapeHtml(t("btn.close")) + '">×</button>' +
+      '<div class="obs-mosaic-hdr">' + escapeHtml(btn.getAttribute("data-name") || "") +
+        (list.length > 1 ? ' <span class="obs-mosaic-n">(' + list.length + ")</span>" : "") + "</div>" +
+      '<div class="obs-mosaic-grid' + (list.length === 1 ? " one" : "") + '">' +
+        list.map(function (u, i) { return '<span class="obs-mos-tile" role="button" tabindex="0" data-i="' + i + '" title="' + escapeHtml(t("obs.photo")) + '"><img alt="" src="' + escapeHtml(u) + '"></span>'; }).join("") + "</div>" +
+      '<div class="obs-photo-cred">' + (by ? escapeHtml(by) : "") +
+        (src ? (by ? " · " : "") + '<a href="' + escapeHtml(src) + '" target="_blank" rel="noopener">' + escapeHtml(t("det.openSource")) + "</a>" : "") + "</div>";
+    el.querySelector(".obs-mosaic-x").addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); closeObsMosaic(); });
+    Array.prototype.forEach.call(el.querySelectorAll(".obs-mos-tile"), function (tile) {
+      tile.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); closeObsMosaic(); showObsPhoto(btn, list[+this.getAttribute("data-i")]); });
+      tile.querySelector("img").addEventListener("error", function () { tile.classList.add("bad"); });   // a dead URL leaves no gap
+    });
+    el.addEventListener("mouseenter", function () { clearTimeout(obsMosaicTimer); });
+    el.addEventListener("mouseleave", scheduleObsMosaicClose);
+    obsMosaicPop = el;
+    centerPhotoPopup(el);
+  }
   function wireSpDetail(container) {
     // Sortable column headers — sort applies WITHIN each date×observer×location group.
     Array.prototype.forEach.call(container.querySelectorAll(".sp-obs-h"), function (th) {
@@ -2052,9 +2264,6 @@
         } else showDateFilterMenu(this.getAttribute("data-date"), e.clientX, e.clientY);
       });
     });
-    Array.prototype.forEach.call(container.querySelectorAll(".sp-obs-filter"), function (s) {
-      s.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); observerClickMenu(this.getAttribute("data-obs"), this); });
-    });
     // "+N" → reveal the truncated rest of a long observer list inline (as the usual list).
     Array.prototype.forEach.call(container.querySelectorAll(".sp-obs-more"), function (m) {
       m.addEventListener("click", function (e) {
@@ -2065,22 +2274,25 @@
         this.parentNode && this.parentNode.removeChild(this);   // drop the "…" once expanded
       });
     });
+    var canHoverPh = !window.matchMedia || window.matchMedia("(hover: hover)").matches;
+    Array.prototype.forEach.call(container.querySelectorAll(".obs-photo"), function (b) {
+      b.addEventListener("click", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        if (canHoverPh) { showObsPhoto(this); return; }            // mouse: the mosaic is already open from the hover
+        // Touch: tap opens the mosaic, tapping the same 📷 again closes it. Whether it WAS
+        // open is taken at touch-start — the anchored menu's own outside-click handler has
+        // already closed it by the time this click runs.
+        if (obsMosaicWasOpen) { obsMosaicWasOpen = false; closeObsMosaic(); return; }
+        showObsMosaic(this);
+      });
+      b.addEventListener("touchstart", function () { obsMosaicWasOpen = obsMosaicOpenFor(this); }, { passive: true });
+      if (canHoverPh) {
+        b.addEventListener("mouseenter", function () { showObsMosaic(this); });
+        b.addEventListener("mouseleave", scheduleObsMosaicClose);
+      }
+    });
     Array.prototype.forEach.call(container.querySelectorAll(".dl-src-click"), function (s) {
       s.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); showSrcFilterMenu(this.getAttribute("data-src"), e.clientX, e.clientY); });
-    });
-    Array.prototype.forEach.call(container.querySelectorAll(".sp-loc-click"), function (s) {
-      s.addEventListener("click", function (e) {
-        e.preventDefault(); e.stopPropagation();
-        hideLocHoverMap();
-        var c = locClickCoords(this);
-        showLocPointMenu(c.lat, c.lon, this.textContent, e.clientX, e.clientY, null, { locName: this.getAttribute("data-loc") || "" });
-      });
-      // Hovering a place name previews it on a small map without leaving the list.
-      s.addEventListener("mouseenter", function (e) {
-        var c = locClickCoords(this);
-        scheduleLocHoverMap(c.lat, c.lon, e.clientX, e.clientY);
-      });
-      s.addEventListener("mouseleave", hideLocHoverMap);
     });
     var isPerObs = container.id === "sp-records";
     Array.prototype.forEach.call(container.querySelectorAll(".sp-d-row"), function (r) {
@@ -2120,7 +2332,7 @@
     var extras = all.filter(function (tr) { return tr.classList.contains("sp-extra"); });
     var rows = all.filter(function (tr) { return !tr.classList.contains("sp-extra"); });
     var col = speciesListSort.col;   // "" = sort OFF → natural ranking (model probability, desc)
-    rows.sort(function (a, b) {
+    var cmpFn = function (a, b) {
       var ka, kb;
       if (!col) return (+b.getAttribute("data-prob") || 0) - (+a.getAttribute("data-prob") || 0);
       if (col === "sci") {
@@ -2179,6 +2391,14 @@
       }
       var cmp = ka < kb ? -1 : ka > kb ? 1 : 0;
       return speciesListSort.dir === "asc" ? cmp : -cmp;
+    };
+    rows.sort(cmpFn);
+    // Extras used to be left in insertion order — invisible while they were a handful of
+    // oddities under a model list, but for plants and fungi EVERY row is an extra, so the
+    // list (and the Images view built from it) had no order at all. They now take the same
+    // sort; with sorting off they rank by Total, the model probability they cannot have.
+    extras.sort(col ? cmpFn : function (a, b) {
+      return (parseInt(b.getAttribute("data-total"), 10) || 0) - (parseInt(a.getAttribute("data-total"), 10) || 0);
     });
     var frag = document.createDocumentFragment();
     rows.forEach(function (tr) { frag.appendChild(tr); });
@@ -2203,7 +2423,10 @@
     // Always reorder IN PLACE (sortSpeciesList now handles the "off" state as the
     // natural probability ranking) — never re-render via refreshCurrentView, which
     // would drop the user back to the map. The view only changes via the header toggle.
-    sortSpeciesList();
+    // The Images cards are BUILT from the rows, so they have to be rebuilt in the new
+    // order; renderSpBody sorts first, then lays the cards out.
+    if (spLayout === "gallery") renderSpBody();
+    else sortSpeciesList();
   }
   // Apply the count-driven filters to the per-point species list: the n(d) age
   // threshold and the status column's ◉ "rare here" mode. Both hide rows via the
@@ -2223,6 +2446,21 @@
     var anyBuild = withBuild && (spFilters.star || spFilters.year || spFilters.life);
     var hasSel = Object.keys(detSelected).length > 0;   // a species selection / applied species list narrows the table too
     var now = Date.now();
+    // Empty spot → the model's own ranking stands in for the missing observations. Show what
+    // it puts at MODEL_FLOOR or better and, where even that is empty (far offshore, deep
+    // desert), its best MODEL_TOP_N anyway — the answer must never be a blank page. An
+    // explicit probability floor set by the user still wins.
+    var MODEL_FLOOR = 0.01, MODEL_MIN_ROWS = 10, MODEL_TOP_N = 25, autoCut = 0;
+    if (spMissingAuto) {
+      var ps = [];
+      Array.prototype.forEach.call(tbody.children, function (tr) {
+        if (tr.classList.contains("sp-detail-row") || tr.classList.contains("sp-extra")) return;
+        var p = +tr.getAttribute("data-prob") || 0; if (p > 0) ps.push(p);
+      });
+      ps.sort(function (a, b) { return b - a; });
+      var above = 0; while (above < ps.length && ps[above] >= MODEL_FLOOR) above++;
+      autoCut = (above >= MODEL_MIN_ROWS) ? MODEL_FLOOR : (ps.length ? ps[Math.min(ps.length, MODEL_TOP_N) - 1] : 0);
+    }
     Array.prototype.forEach.call(tbody.querySelectorAll("tr"), function (tr) {
       if (tr.classList.contains("sp-detail-row")) return;   // handled by refreshSpExpansions below
       var extra = tr.classList.contains("sp-extra");
@@ -2285,13 +2523,32 @@
       // Predicted species down to the list's own probability floor; with the floor at 0 %
       // the rare threshold guards instead — else the whole model would pour into the list.
       var floor = (+document.getElementById("prob-min").value || 0) / 100;
-      var missingOk = spShowMissing && !!agg && !entry && !extra &&
-        (+tr.getAttribute("data-prob") || 0) >= (floor > 0 ? floor : rarePct() / 100);
-      tr.style.display = ((missingOk || (recencyOk && countOk && !obsFilteredOut)) && rareOk && buildOk && selOk && excOk) ? "" : "none";
+      var missingCut = spMissingAuto ? Math.max(floor, autoCut) : (floor > 0 ? floor : rarePct() / 100);
+      var missingOk = spMissingOn() && !!agg && !entry && !extra &&
+        (+tr.getAttribute("data-prob") || 0) >= missingCut;
+      // What the list offers BEFORE the species selection narrows it — the pool the
+      // lists/groups picker works from when nothing is plotted (see listPool).
+      // Butterflies-only: a species stays when one of its observations is a butterfly.
+      // Predicted rows have no observations, so they go — which is right: the model's
+      // insects are the singing ones (grasshoppers, cicadas), never butterflies.
+      // An extra row has no .sp-link, so `key` above is null — derive the same
+      // "x:<scientific name>" key the rest of the app uses, or every extra (which is
+      // where the butterflies actually are) would be judged keyless and dropped.
+      var bflyKey = key;
+      if (!bflyKey) {
+        var exB = tr.querySelector(".det-count-extra[data-sci]");
+        if (exB) bflyKey = "x:" + String(exB.getAttribute("data-sci") || "").toLowerCase();
+      }
+      var bflyOk = detPassesBflySp(bflyKey);
+      var pooled = (missingOk || (recencyOk && countOk && !obsFilteredOut)) && rareOk && buildOk && bflyOk;
+      tr.classList.toggle("sp-pool", pooled);
+      tr.style.display = (pooled && selOk && excOk) ? "" : "none";
     });
     refreshSpExpansions();   // keep expanded detail sub-rows under their (visible) species
+    repaintDotsOutsideTable(rareAll);   // Images cards / observation rows / the ☰ popover
     updateRecencyNote();
     filterSpRows();          // re-apply the name search on top of the other filters
+    invalidateFilterMemos();  // row visibility just changed → stats AND the date snapshot must be redone
   }
   // In-app name search for the species-list table. Uses a CSS class (display:none
   // !important) so it composes with applyAgeFilter's inline show/hide instead of
@@ -2334,7 +2591,11 @@
     var active = !!rg || days !== 0 || months.length > 0;
     var hidden = 0;
     if (active && agg) Object.keys(agg).forEach(function (k) { (agg[k].rows || []).forEach(function (r) { if (!detDatePasses(r.date)) hidden++; }); });
-    if (!active || !hidden) { el.style.display = "none"; return; }
+    if (!active || !hidden) {
+      // Nothing to say about the date window — but an empty spot explains itself here.
+      if (spMissingAuto) { el.textContent = t("sp.modelOnly"); el.style.display = ""; return; }
+      el.style.display = "none"; return;
+    }
     var win = rg ? ((rg.from ? fmtDate(rg.from) : "…") + " – " + (rg.to ? fmtDate(rg.to) : "…"))
       : (days ? t("sp.lastDays", { n: days }) : t("sp.monthsOnly", { n: months.length }));
     el.textContent = t("sp.recencyNote", { window: win, n: hidden });
@@ -2494,10 +2755,12 @@
   // (Migration for another species from the Migration page) pushes nothing.
   var viewBackStack = [], viewRestoring = false;
   function currentViewRestorer() {
+    var rp = document.getElementById("rarity-page");
+    if (rp && rp.style.display !== "none") return { kind: "rarity", go: reshowRarityPage };
     var fp = document.getElementById("field-page");
     if (fp && fp.style.display !== "none") return { kind: "field", go: reshowFieldPage };
     var sp = document.getElementById("species-panel");
-    if (sp && sp.classList.contains("as-page") && sp.style.display !== "none") return { kind: "list", go: function () { exitToRecentMode(); showListView(); } };
+    if (sp && sp.classList.contains("as-page") && panelOnScreen(sp)) return { kind: "list", go: function () { exitToRecentMode(); showListView(); } };
     var bc = document.getElementById("barchart-panel");
     if (bc && bc.classList.contains("as-page") && bc.style.display !== "none") return { kind: "migration", go: reshowAnalysisPage };
     if (currentMode === "range") {
@@ -2514,6 +2777,43 @@
     try { r.go(); } catch (e) {} finally { viewRestoring = false; }
     return true;
   }
+  // What became of the last rarity mail, in words — so "no mail arrived" can be traced
+  // to the step that stopped it (address unconfirmed · nothing new to send · send failed).
+  function rarityEmailStateText() {
+    var c = rarityCfg();
+    if (!c.email) return "";
+    var when = c.emailAt ? new Date(c.emailAt).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+    if (c.emailState === "activate") return t("rarity.emailActivate");
+    if (c.emailState === "fail") return t("rarity.emailFail") + (when ? " (" + when + ")" : "");
+    if (c.emailState === "ok") {
+      if (c.emailKind !== "alert") return t("rarity.emailTestOk", { t: when });
+      return c.emailCount > 0 ? t("rarity.emailLastN", { n: c.emailCount, t: when }) : t("rarity.emailLast", { t: when });
+    }
+    return t("rarity.emailNone");   // address set, nothing sent yet — the commonest case by far
+  }
+  function updateRarityEmailNote() {
+    var el = document.getElementById("rarity-email-note");
+    if (el) el.textContent = rarityEmailStateText();
+  }
+  // ---- The rarity-alerts page ----------------------------------------------
+  // Opened from the header bell. Same framework as the other full pages: one page
+  // at a time, registered in the "page" nav slot, and the view it was opened from
+  // is pushed so ‹ (and browser Back) return there.
+  function rarityPageEl() { return document.getElementById("rarity-page"); }
+  function rarityPageOpen() {
+    var el = rarityPageEl(); if (!el) return;
+    if (el.style.display === "flex") { navOpen("page", closeAnyFullPage); return; }   // already open — this is a re-render
+    pushViewBack(currentViewRestorer(), "rarity");
+    closeAnyFullPage();                 // whichever page was showing steps aside
+    el.style.display = "flex"; el.scrollTop = 0;
+    navOpen("page", closeAnyFullPage);
+  }
+  function rarityPageClose() {
+    var el = rarityPageEl(); if (!el || el.style.display === "none") return;
+    if (!navClose("page")) { el.style.display = "none"; try { window.AppRarity.pageClosed(); } catch (e) {} }
+    popViewBack();                      // back to the view the bell was pressed from
+  }
+  function reshowRarityPage() { try { window.AppRarity.showPanel(); } catch (e) {} }
   function reshowAnalysisPage() {
     if (!analysisData) { exitToRecentMode(); return; }
     var modeEl = document.getElementById("mode-select");
@@ -2547,6 +2847,8 @@
     if (sp && sp.classList.contains("as-page")) { sp.classList.remove("as-page"); sp.style.display = "none"; }
     var bc = document.getElementById("barchart-panel");
     if (bc && bc.classList.contains("as-page")) { bc.classList.remove("as-page"); bc.style.display = "none"; }
+    var rp = document.getElementById("rarity-page");
+    if (rp && rp.style.display !== "none") { rp.style.display = "none"; try { window.AppRarity.pageClosed(); } catch (e) {} }
     if (typeof updateViewToggle === "function") updateViewToggle();   // list page closed → switch reflects the map view
     saveSession({ page: "" });
     // Returning to the map: re-assert the current mode's controls so the
@@ -3191,6 +3493,14 @@
   function radiusLabel(km) { var r = (km == null) ? recentRadiusKm() : km; return r < 1 ? Math.round(r * 1000) + " m" : r + " km"; }
   // Quasi-exponential slider stops for the fetch radius (km), 100 m → 150 km.
   var RADIUS_STEPS = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8, 10, 15, 25, 30, 50, 75, 100, 150];
+  // Slider stops for the fetch window (days back): a day to a full season.
+  var DAYS_STEPS = [1, 2, 3, 7, 14, 21, 28, 42, 91];
+  function daysStepIndex(d) {
+    var best = 0, bd = Infinity;
+    for (var i = 0; i < DAYS_STEPS.length; i++) { var x = Math.abs(DAYS_STEPS[i] - d); if (x < bd) { bd = x; best = i; } }
+    return best;
+  }
+  function daysLabel(d) { return d + " " + t("det.days"); }   // "14 days" — reuses the existing noun
   function radiusStepIndex(km) {
     var best = 0, bd = Infinity;
     for (var i = 0; i < RADIUS_STEPS.length; i++) { var d = Math.abs(RADIUS_STEPS[i] - km); if (d < bd) { bd = d; best = i; } }
@@ -3285,7 +3595,7 @@
         if (newReloadCtrlEl) newReloadCtrlEl.classList.remove("loading");
         try { updateDetLegend(); } catch (e) {}
         updateViewToggle();
-        setStatus(t("loc.fetchedAll", { n: total }));   // → the status bar below the header (NOT the top debug banner)
+        setFetchedAllStatus(total);   // → the status bar below the header (NOT the top debug banner)
         return;
       }
       var l = locs[i++];
@@ -4169,6 +4479,55 @@
     });
     return list;
   }
+  // ---- Rarity sweep: a quiet fetch of the ordinary sources ------------------
+  // The 🔔 poll uses this to look for locally-rare birds in the SAME sources a
+  // normal fetch queries, around a bell-ticked location. It deliberately shares
+  // none of the fetch UI or bookkeeping: no loading line (obsNewBatch/obsTrack),
+  // no status text, no sightings cache, no plotting and no fetched-area tagging —
+  // so a sweep running in the background is invisible to, and never steals state
+  // from, a fetch the user started. Its abort controllers live in raritySweepCtrls
+  // (not activeFetchCtrls, which is what marks a USER fetch), and each source's
+  // truncation note is drained so it can never surface in the user's next fetch
+  // summary. Resolves with normalized records; a failing source contributes none.
+  function rarityFetchSources(lat, lon, rkm, days) {
+    var fmtD = function (d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); };
+    var d2 = fmtD(new Date());
+    return AppGeo.countryCode(lat, lon).catch(function () { return ""; }).then(function (cc) {
+      var c = { lat: lat, lon: lon, d2: d2, rkm: rkm, cc: cc, tok: ebirdKey(), days: days,
+        dateBack: function (n) { var d = new Date(); d.setDate(d.getDate() - n); return fmtD(d); } };
+      // One source: own controller (registered for a map-clear), own timeout — capped
+      // shorter than a user fetch's since nobody is waiting for it.
+      function job(id, timeout, run) {
+        var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null, tmr = null;
+        if (ctrl) { raritySweepCtrls.add(ctrl); tmr = setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, Math.max(10, Math.min(+timeout || 60, 60)) * 1000); }
+        function done(rows) {
+          if (tmr) clearTimeout(tmr);
+          if (ctrl) raritySweepCtrls.delete(ctrl);
+          if (AppFetch.takeTrunc) { try { AppFetch.takeTrunc(id); } catch (e) {} }
+          return rows || [];
+        }
+        return Promise.resolve().then(function () { return run(ctrl ? Object.assign({}, c, { signal: ctrl.signal }) : c); })
+          .then(done, function () { return done([]); });
+      }
+      var jobs = [];
+      if (!isSourceOff("gbif") && !urlSkipSrc.gbif) jobs.push(job("gbif", gbifTimeout(), function (cs) {
+        return AppFetch.fetchGbifAll(cs.lat, cs.lon, cs.dateBack(Math.min(GBIF_MAX_DAYS || 92, days)) + "," + cs.d2, cs.rkm, cs.cc, cs.signal).then(AppNormalize.normGbif);
+      }));
+      directSources().forEach(function (s) {
+        if (isSourceOff(s.id) || urlSkipSrc[s.id]) return;
+        if ((s.id === "ebird" || s.id === "birdweather" || s.id === "nbn") && !groupIsBirds()) return;   // birds-only feeds
+        if (s.id === "ebird" && !c.tok) return;                                                          // keyless eBird would only fail
+        if (s.country && !AppGeo.countryMatch(lat, lon, s.country, rkm, cc)) return;                     // out of this source's country
+        jobs.push(job(s.id, s.timeout, function (cs) { return runDirectSource(s, cs); }));
+      });
+      if (!jobs.length) return [];
+      return Promise.all(jobs).then(function (lists) {
+        var rows = [];
+        lists.forEach(function (r) { if (r && r.length) rows = rows.concat(r); });
+        return rows;
+      });
+    }, function () { return []; });
+  }
   // Cached fetch of every species' recent detections at a point (last 3 months;
   // eBird is still capped at its 30-day API limit). The resolved object carries
   // `failed` — the source names that errored.
@@ -4207,17 +4566,30 @@
   function sightConfigSig() {
     try {
       var srcs = obsSources().filter(function (s) { return s.enabled(); }).map(function (s) { return s.name; }).sort().join(",");
-      return srcs + "|bw" + window.GeoState.get("bwMinDet", 2) + "," + window.GeoState.get("bwMinConf", 0) + "|ds" + ((gbifDatasets || []).length);
+      return srcs + "|bw" + window.GeoState.get("bwMinDet", 2) + "," + window.GeoState.get("bwMinConf", 0) + "|ds" + ((gbifDatasets || []).length) +
+        "|g" + fetchGroupList().join("+");   // a narrower tick set holds less: don't serve it as a wider one
     } catch (e) { return ""; }
   }
+  // A cached copy may answer only a request with the IDENTICAL config signature.
+  // v1830 relaxed the GROUP part of this (a download that asked for more species types
+  // can hold everything a narrower request wants, so narrowing the Settings ticks need
+  // not re-download) and measured the win: 14 network requests became 0. It is REVERTED
+  // in v1832 because a "fetching returns nothing" report arrived right after it and
+  // could not be reproduced — restoring the known-good behaviour beats holding on to an
+  // optimisation while the user is stuck. Re-introduce it with a test that seeds a real
+  // persisted cache, not a synthetic one.
+  function sigServes(cachedSig, nowSig) { return cachedSig === nowSig; }
   function loadPersistedSightings() {
     if (!window.AppIDB) return Promise.resolve();
     return AppIDB.get("sightingsCache").then(function (m) { if (m && typeof m === "object") persistedSightings = m; }).catch(function () {});
   }
-  function persistSightings(ck, out) {
+  function persistSightings(ck, out, sig) {
     if (!window.AppIDB) return;
     try {
-      persistedSightings[ck] = { ts: Date.now(), sig: sightConfigSig(), ver: SIGHT_CACHE_VER, out: out };
+      // `sig` is the signature captured when the fetch STARTED (sources, keys, and which
+      // species types it asked for). Filing it under a freshly-read one could label a
+      // narrow result as a wide one — see the poster launch's birds-only fetch.
+      persistedSightings[ck] = { ts: Date.now(), sig: sig || sightConfigSig(), ver: SIGHT_CACHE_VER, out: out };
       var keys = Object.keys(persistedSightings);
       if (keys.length > 6) {   // keep the 6 most-recently fetched locations
         keys.sort(function (a, b) { return (persistedSightings[b].ts || 0) - (persistedSightings[a].ts || 0); });
@@ -4253,9 +4625,21 @@
   // loops, so clearing the map (red ×) can cancel every pending detection fetch.
   var activeFetchCtrls = new Set();
   var fetchLoopGen = 0;
+  // The rarity sweep's own controllers (see rarityFetchSources). Kept OUT of
+  // activeFetchCtrls so a background sweep never reads as a user fetch — but a
+  // map-clear aborts it like everything else.
+  var raritySweepCtrls = new Set();
+  function abortRaritySweep() {
+    raritySweepCtrls.forEach(function (c) { try { c.abort(); } catch (e) {} });
+    raritySweepCtrls.clear();
+  }
+  // Is a fetch the USER asked for running right now? The rarity sweep waits for a
+  // quiet moment and steps aside the instant one of these starts.
+  function userFetchActive() { return !!storedFetchBusy || activeFetchCtrls.size > 0 || mapFetchPending > 0; }
   function cancelPendingFetches() {
     fetchLoopGen++;                                                    // stop the queue/loop recursions
     try { if (histAbort) histAbort.abort(); } catch (e) {}            // historic month workers check sig.aborted
+    abortRaritySweep();
     activeFetchCtrls.forEach(function (c) { try { c.abort(); } catch (e) {} });
     activeFetchCtrls.clear();
     storedFetchBusy = false;
@@ -4268,17 +4652,26 @@
     // Day window: an explicit override (Fetch-on-open) wins; else the general
     // "Download — last N days" setting; else 0 = each source's own default.
     var days = (daysOverride > 0) ? daysOverride : downloadDays();
-    var fetchGroup = speciesGroup;   // group at fetch-start — aggregate/plot use THIS, not a value the user may switch mid-fetch
+    var fetchGroup = fetchScopeGroup();   // the Settings ticks (or birds alone, right after a poster launch)
+    // The config signature decides what the cache may serve and how this result is filed.
+    // Capture it BEFORE the one-shot below is cleared, or a birds-only result would be
+    // stored as though it held every ticked type.
+    var cfgSig = sightConfigSig();
+    // The one-shot must stay armed for the WHOLE fetch: each source builds its taxon
+    // filter (gbifTaxonParam / inatIconicTaxa) while the requests go out, not here. It is
+    // disarmed when this fetch settles — or immediately when the answer comes from cache.
+    var disarm = function () { launchBirdsOnce = false; };
     var ck = sightCK(lat, lon, rkm, fetchGroup, days);   // group- + days-keyed: a different window is a different cache entry
     var fetchOrigin = { lat: lat, lon: lon, rkm: rkm };  // rides on every (partial) result → area ownership follows the FETCH, not the current view
-    if (seededSightings[ck]) return seededSightings[ck];   // shared-list import (works with NO keys/sources — never refetched)
-    if (allSightingsCache[ck]) return allSightingsCache[ck];
+    if (seededSightings[ck]) { disarm(); return seededSightings[ck]; }   // shared-list import (works with NO keys/sources — never refetched)
+    if (allSightingsCache[ck]) { disarm(); return allSightingsCache[ck]; }
     // Reuse a previously-downloaded result for this exact location (same radius,
     // group + source config) that is still fresh — no network, no refetch on reopen.
     var pf = persistedSightings[ck], ttl = sightTtlMs();
-    if (pf && pf.out && pf.ver === SIGHT_CACHE_VER && pf.sig === sightConfigSig() && (ttl === 0 || (Date.now() - (pf.ts || 0)) < ttl)) {
+    if (pf && pf.out && pf.ver === SIGHT_CACHE_VER && sigServes(pf.sig, cfgSig) && (ttl === 0 || (Date.now() - (pf.ts || 0)) < ttl)) {
       var cachedPr = Promise.resolve(pf.out);
       allSightingsCache[ck] = cachedPr;
+      disarm();
       return cachedPr;
     }
     // Subset reuse: for a specific group, if a still-fresh "All" fetch for the SAME
@@ -4286,10 +4679,20 @@
     // aggregate — no network. (Skipped for "all" itself and when no All cache exists.)
     if (fetchGroup !== "all") {
       var pa = persistedSightings[sightCK(lat, lon, rkm, "all", days)];
-      if (pa && pa.out && pa.ver === SIGHT_CACHE_VER && pa.sig === sightConfigSig() && (ttl === 0 || (Date.now() - (pa.ts || 0)) < ttl)) {
-        var derivedPr = Promise.resolve(filterAggByGroup(pa.out, fetchGroup));
-        allSightingsCache[ck] = derivedPr;
-        return derivedPr;
+      if (pa && pa.out && pa.ver === SIGHT_CACHE_VER && sigServes(pa.sig, cfgSig) && (ttl === 0 || (Date.now() - (pa.ts || 0)) < ttl)) {
+        var derived = filterAggByGroup(pa.out, fetchGroup);
+        // An "All" fetch shares each source's paging budget across every taxon, so at a
+        // dense spot it can truncate before it has any of a smaller group — and deriving
+        // that group then yields NOTHING. Serving that empty answer would leave an empty
+        // map that asking again cannot fix (it is memoised under this ck for the session),
+        // while a fetch for the group alone spends the whole budget on it and does find
+        // records. So: empty is not an answer — fall through and fetch it properly.
+        if (derived.dedupTotal > 0) {
+          var derivedPr = Promise.resolve(derived);
+          allSightingsCache[ck] = derivedPr;
+          disarm();
+          return derivedPr;
+        }
       }
     }
     var fmtD = function (d) { return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); };
@@ -4365,8 +4768,9 @@
       var noData = !out || !(out.dedupTotal > 0);
       var anyFail = out && ((out.failed && out.failed.length) || (out.timedOut && out.timedOut.length));
       if (noData && anyFail && allSightingsCache[ck] === pr) delete allSightingsCache[ck];
-      else if (out && out.dedupTotal > 0) persistSightings(ck, out);   // keep the download so a reopen doesn't refetch
+      else if (out && out.dedupTotal > 0) persistSightings(ck, out, cfgSig);   // keep the download so a reopen doesn't refetch
     }, function () { if (allSightingsCache[ck] === pr) delete allSightingsCache[ck]; });
+    pr.then(disarm, disarm);   // fetch settled → the next one follows the Settings ticks
     return pr;
   }
   // Historic-observations counterpart of fetchAllSightingsAt: GBIF only, over a
@@ -4408,7 +4812,7 @@
     });
     Object.keys(outM.extras || {}).forEach(function (k) {
       var ex = outM.extras[k];
-      if (ex.rows && ex.rows.length && inGrp(ex.cls)) entries.push({ key: "x:" + k, name: ex.name || ex.sci, rows: ex.rows, cls: ex.cls || "" });
+      if (ex.rows && ex.rows.length && inGrp(ex.cls)) entries.push({ key: "x:" + k, name: extraDisplayName(ex.sci || k, ex.name, ex.cls), rows: ex.rows, cls: ex.cls || "" });
     });
     if (!entries.length) return;
     if (isFinite(+currentSpView.lat) && isFinite(+currentSpView.lon)) currentFetchAreaId = rememberFetchedArea(+currentSpView.lat, +currentSpView.lon, recentRadiusKm(), currentSpView.name || currentSpView.locName);
@@ -4419,7 +4823,7 @@
   }
   function plotHistoricRecs(recsM, grp) {
     if (!recsM || !recsM.length || typeof plotDetections !== "function") return;
-    plotHistoricAgg(AppAggregate.aggregateRecords(recsM, grp), grp);
+    plotHistoricAgg(AppAggregate.aggregateRecords(recsM, grp), speciesGroup);   // aggregate the superset, show the active group
   }
   // Does a cached historic result cover a requested range + month-of-year subset?
   // (Broader→narrower only: the cached range must span the request, and either the
@@ -4475,7 +4879,7 @@
   function fetchHistoricSightingsAt(lat, lon, range, onProg, onPartial) {
     var rkm = recentRadiusKm();
     var months = histMonthsParam();   // "" = all months, else "&month=5&month=6"
-    var fetchGroup = speciesGroup;   // group at fetch-start (see fetchAllSightingsAt)
+    var fetchGroup = fetchScopeGroup();   // the superset, like the recent fetch (see fetchAllSightingsAt)
     var ck = lat.toFixed(2) + "," + lon.toFixed(2) + ":" + rkm + ":" + range + months + ":" + fetchGroup;   // group-keyed (class filter differs per group)
     if (histSightingsCache[ck]) return histSightingsCache[ck];
     var sig = histAbort ? histAbort.signal : null;
@@ -4491,7 +4895,7 @@
       var filtered = filterHistAgg(covering.out, from, to, reqMonths);
       var prC = Promise.resolve(filtered);
       histSightingsCache[ck] = prC;
-      try { plotHistoricAgg(filtered, fetchGroup); saveDetections(); } catch (e) {}
+      try { plotHistoricAgg(filtered, speciesGroup); saveDetections(); } catch (e) {}
       try { setStatus(t("hist.reused", { n: filtered.dedupTotal })); } catch (e) {}
       return prC;
     }
@@ -4765,6 +5169,17 @@
   function applySightings(tbody, token, result, isFinal) {
     if (!tbody || tbody.dataset.sightingsToken !== token) return;
     if (isFinal) showSourceCounts(result.bySrc, result.dedupTotal, result.timedOut, result.failed, result.truncInfo);
+    // Nothing found at this spot: rather than an empty page, show what the model expects
+    // here, commonest first (the filtering pass below already honours spMissingAuto).
+    var missingFlip = false;
+    if (isFinal && !spShowMissing) {
+      var nothingHere = !(result && result.dedupTotal > 0);
+      if (nothingHere !== spMissingAuto) {
+        spMissingAuto = nothingHere;
+        missingFlip = true;
+        if (nothingHere) { speciesListSort = { col: "prob", dir: "desc" }; try { updateSortIndicators(); } catch (e) {} }
+      }
+    }
     // Union across ALL plotted point-fetches, so the list mirrors the accumulated
     // map dots — not just this one fetch's data.
     // Rarity records within the list's own neighbourhood (the same radius the
@@ -4788,6 +5203,9 @@
         row.classList.toggle("sp-has-det", !!(entry && entry.count));   // caret shows only when there's something to expand
         row.classList.toggle("sp-rar", !!(entry && entry.rows && entry.rows.some(function (r) { return r.rarity; })));   // rarity records here → red "!" before the name
       }
+      if (entry && entry.rows) entry.rows.forEach(function (r) { noteRedList(key, r.rl); });   // red-list category rides on the records
+      var nameTd = row && row.children[1], link = nameTd && nameTd.querySelector(".sp-link");
+      if (link && spRedList[key] && !nameTd.querySelector(".rl-tag")) link.insertAdjacentHTML("afterend", rlTagHtml(spRedList[key]));
       if (!entry || !entry.count) { if (isFinal) td.textContent = ""; return; }   // partial: leave the hourglass for not-yet-arrived data
       // Pure total (applyAgeFilter recomputes it as filtered SPECIMENS right after).
       td.innerHTML = '<button type="button" class="det-count-btn" data-key="' + escapeHtml(key) + '">' + entry.count + "</button>";
@@ -4818,7 +5236,15 @@
     prependExtraSightings(tbody, extras);
     // Re-apply the active age/rare filters and sort as data arrives.
     applyAgeFilter();
-    if (speciesListSort.col) sortSpeciesList();
+    // Sort when a column is chosen — and once the fetch settles, because the extras are
+    // appended after the last sort and would otherwise keep their arrival order. Invisible
+    // under a model list (a few oddities at the bottom), but it IS the order for plants and
+    // fungi, where every row is an extra. Final only: re-sorting 2500 rows on every partial
+    // is the kind of per-partial work that made v1807 crawl.
+    if (speciesListSort.col || isFinal) sortSpeciesList();
+    // The prediction fallback just went on or off → relabel [?]/[!] and rebuild the body
+    // (the Images layout draws its cards from the rows the filter pass just settled).
+    if (missingFlip) { try { renderSpControls(); } catch (e) {} }
     // Map-first Species-List fetch: drop the dots onto the map as each source's
     // data lands. We only plot while the map is the visible view — if the user
     // has tapped the list icon we leave the (already-plotted) dots be; toggling
@@ -4829,6 +5255,19 @@
       plotNoFit = !isFinal;
       try { plotSightingsResult(result); } catch (e) {}
       plotNoFit = false;
+    }
+    // The Images and By-observation layouts are BUILT FROM these rows, so they have to be
+    // rebuilt once the observations land — the table updates its own cells in place, they
+    // do not. Without this the Images view kept the "loading" placeholder it rendered
+    // before the data arrived: invisible for birds, whose list is rebuilt by the fetch
+    // path anyway, but permanent for plants and fungi, whose rows are ALL extras.
+    // …but NOT on every partial: this runs once per source that answers, and rebuilding a
+    // 276-card gallery (each card starting its own photo load) five times during a fetch is
+    // what made fetching feel slow. Rebuild when the fetch settles, or the moment the first
+    // data replaces the "loading" placeholder — never in between.
+    if (spLayout !== "table" && typeof speciesPanelPopulated === "function" && speciesPanelPopulated()) {
+      var rec0 = document.getElementById("sp-records");
+      if (isFinal || (rec0 && rec0.querySelector(".spg-wait"))) { try { renderSpBody(); } catch (e) {} }
     }
   }
   function augmentRowsWithSightings(lat, lon, histRange, onProg) {
@@ -4903,7 +5342,7 @@
     var oLat = _dor ? _dor.lat : NaN, oLon = _dor ? _dor.lon : NaN;
     var haveOrigin = !!_dor;
     keys.forEach(function (k) {
-      var e = extras[k], name = e.name || e.sci;
+      var e = extras[k], name = extraDisplayName(e.sci || k, e.name, e.cls);
       // Total SPECIMENS (deduped) + distinct observations, matching the model rows.
       var eSpec = dedupedSpecimenTotal(e.rows);
       var ePairs = distinctObsDatePairs(e.rows);
@@ -4913,6 +5352,12 @@
       tr.className = "sp-extra" + (e.rows.some(function (r) { return r.rarity; }) ? " sp-rar" : "");
       tr.setAttribute("data-age-days", days != null ? days : "");
       tr.setAttribute("data-count", eSpec);   // total specimens — for the Total-column count filter
+      // The same sort keys the model rows carry, so the list can be ordered by Total /
+      // observations / name for a group the model does not cover (plants, fungi), where
+      // EVERY row is one of these.
+      tr.setAttribute("data-total", eSpec);
+      tr.setAttribute("data-pairs", ePairs || 0);
+      tr.setAttribute("data-name", name);
       if (e.latestTs) tr.setAttribute("data-last", e.latestTs);
       if (exKm != null) tr.setAttribute("data-dist", exKm);
       var clsBadge = e.cls ? '<span class="sp-extra-cls" title="' + escapeHtml(e.cls) + '">' + classGlyph(e.cls) + "</span> " : "";
@@ -4959,6 +5404,9 @@
     // Saved trips now live in IndexedDB (mirrored in detSetStore), not the blob —
     // re-attach them so the Drive payload shape is unchanged.
     try { if (typeof detSetStore !== "undefined") state.mapDetectionSets = detSetStore.filter(function (s) { return s && s.name; }); } catch (e) {}
+    // Named point lists moved to IndexedDB too — re-attach them so the Drive payload
+    // shape (and every existing backup) is unchanged.
+    try { if (mpState.mpIdbReady && mpState.mpIdbReady()) state.mapPointSets = mpState.mpCollections().filter(function (c) { return c && c.name; }); } catch (e) {}
     return {
       app: "migration_calendar",
       version: 1,
@@ -4967,6 +5415,61 @@
       ebirdKey: localStorage.getItem(EBIRD_KEY_LS) || "",
       artdbKey: localStorage.getItem(ART_KEY_LS) || ""
     };
+  }
+  // ---- "your lists have grown since the last backup" -------------------------
+  // Point lists are the data users mind losing most, and nothing in the browser
+  // survives an uninstall — so when they have grown since the last sync and an hour
+  // has passed, the gear shows a small orange ! and the Sync button turns orange.
+  var BACKUP_DUE_MS = 3600000;
+  // Points SAVED INTO A LIST — the data this nudge is about. Loose working pins are
+  // not counted (the panel already shows its own "unsaved" banner for those), and
+  // fetched observations are not points at all.
+  function storedPointCount() {
+    var n = 0;
+    try { (mpState.mpCollections() || []).forEach(function (c) { n += ((c && c.points) || []).length; }); } catch (e) {}
+    return n;
+  }
+  // Called by the sync transport when a push (or a restore) has put this device and
+  // Drive in step: remember when, and how much was in it.
+  function markBackedUp() {
+    window.GeoState.save({ gdriveLastSync: Date.now(), gdriveSyncPts: storedPointCount() });
+    try { updateBackupNudge(); } catch (e) {}
+  }
+  function backupState() {
+    var at = +window.GeoState.get("gdriveLastSync", 0) || 0;
+    var was = +window.GeoState.get("gdriveSyncPts", 0) || 0;
+    var now = storedPointCount();
+    // No stamp means UNKNOWN, not "never backed up": before v1779 the sync time was
+    // never persisted, so every device that had synced for years looked unsynced and
+    // lit the warning at once. With no stamp we start watching from now — the baseline
+    // is today's count — and only speak up once the lists GROW past it.
+    var from = at;
+    if (!at) {
+      from = +window.GeoState.get("gdriveWatchFrom", 0) || 0;
+      if (!from) { from = Date.now(); window.GeoState.save({ gdriveWatchFrom: from, gdriveSyncPts: now }); was = now; }
+    }
+    var due = now > 0 && now > was && Date.now() - from > BACKUP_DUE_MS;
+    return { at: at, pts: now, was: was, due: due, from: from };
+  }
+  function backupLineText(st) {
+    if (!st.at) return t("sync.neverBackedUp");
+    var d = new Date(st.at);
+    return t("sync.lastBackup", { t: d.toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) });
+  }
+  function updateBackupNudge() {
+    var st = backupState();
+    var gear = document.getElementById("settings-toggle");
+    if (gear) {
+      gear.classList.toggle("backup-due", st.due);
+      if (st.due) gear.title = t("sync.backupDue"); else gear.title = t("ctrl.settingsHold");
+    }
+    var sb = document.getElementById("gd-sync");
+    if (sb) { sb.classList.toggle("backup-due", st.due); sb.title = st.due ? t("sync.backupDue") : ""; }
+    var line = document.getElementById("mp-backup-line");
+    if (line) {
+      line.textContent = backupLineText(st) + (st.due ? " · " + t("sync.backupDue") : "");
+      line.classList.toggle("backup-due", st.due);
+    }
   }
   function exportAppData() {
     downloadCsv("BirdsWhere_backup_" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify(buildPayload(), null, 2), "application/json;charset=utf-8;");
@@ -5084,15 +5587,45 @@
   // detection cap, then progressively smaller caps on a quota error, only ever
   // trimming mapDetections (oldest first). Lists, year/life lists, checklists,
   // points and settings are written untouched. Returns the rows actually kept.
+  // Keys that are pure CACHES: dropping one costs a re-fetch and nothing else.
+  // Same set the Settings → Storage "clear cached data" buttons offer, minus the
+  // ones that live in IndexedDB or the Cache API.
+  var REBUILDABLE_KEYS = ["spImages", "extraVernac", "ebirdHotspots", "errorLog", "gbifLearnedScopes"];
+  function dropRebuildable(o) {
+    var n = 0;
+    REBUILDABLE_KEYS.forEach(function (k) { if (o[k] != null) { delete o[k]; n++; } });
+    return n;
+  }
+  // The biggest keys in a state object — named in the error when a write cannot be
+  // made to fit, so "storage full" says WHAT is full.
+  function biggestStateKeys(o, n) {
+    var sizes = Object.keys(o || {}).map(function (k) {
+      var b = 0; try { b = JSON.stringify(o[k]).length; } catch (e) {}
+      return { k: k, b: b };
+    }).sort(function (a, b) { return b.b - a.b; }).slice(0, n || 3);
+    return sizes.map(function (x) { return x.k + " " + fmtBytes(x.b); }).join(", ");
+  }
   function writeStateCapped(obj) {
-    var caps = [DET_CAP, 8000, 4000, 1500, 0];
-    for (var i = 0; i < caps.length; i++) {
+    // Each rung frees more than the last: the oldest plotted detections first, then
+    // the rebuildable caches, then the rarity list. Lists, year/life lists,
+    // checklists, points and settings are NEVER trimmed — that is the whole point of
+    // this ladder. (A sync merges BOTH devices' data, so the write it has to make fit
+    // is bigger than either side alone; before the cache rungs existed, a full store
+    // meant a sync that could never succeed, reported as a Drive problem.)
+    var steps = [
+      { cap: DET_CAP }, { cap: 8000 }, { cap: 4000 }, { cap: 1500 }, { cap: 0 },
+      { cap: 0, caches: 1 }, { cap: 0, caches: 1, rar: 200 }, { cap: 0, caches: 1, rar: 50 }, { cap: 0, caches: 1, rar: 0 }
+    ];
+    for (var i = 0; i < steps.length; i++) {
+      var st = steps[i];
       var o = {}; for (var k in obj) if (Object.prototype.hasOwnProperty.call(obj, k)) o[k] = obj[k];
-      o.mapDetections = capDetections(obj.mapDetections, caps[i]);
+      o.mapDetections = capDetections(obj.mapDetections, st.cap);
+      if (st.caches) dropRebuildable(o);
+      if (st.rar != null && o.rarityList && o.rarityList.length > st.rar) o.rarityList = o.rarityList.slice(0, st.rar);
       try { localStorage.setItem(window.GeoState.storageKey, JSON.stringify(o)); window.GeoState.invalidate(); return detRowCount(o.mapDetections); }
-      catch (e) { /* quota — drop more (older) detections and retry */ }
+      catch (e) { /* quota — free more and retry */ }
     }
-    throw new Error("storage full even with no detections");
+    throw new Error("storage full; biggest: " + biggestStateKeys(obj, 3));
   }
   // Quota safety net for EVERY GeoState.save: if a write is too big, drop the
   // oldest plotted detections (never the lists/starred/points/settings) and retry
@@ -5104,6 +5637,12 @@
       if (attempt >= caps.length) return null;
       var o = {}; for (var k in state) if (Object.prototype.hasOwnProperty.call(state, k)) o[k] = state[k];
       o.mapDetections = capDetections(o.mapDetections, caps[attempt]);
+      // The rarity list is the other store that grows on its own (500 groups × 15
+      // records, with notes and photo URLs). It was never in this ladder, so a fat
+      // alert list made EVERY write fail — stars, lists, settings — not just its own.
+      var rarCaps = [500, 300, 200, 100, 50, 25];
+      if (o.rarityList && o.rarityList.length > rarCaps[attempt]) o.rarityList = o.rarityList.slice(0, rarCaps[attempt]);
+      if (attempt >= 3) dropRebuildable(o);   // last resorts: the caches cost only a re-fetch
       return o;
     });
   }
@@ -5130,6 +5669,9 @@
     var local = {}; try { local = JSON.parse(localStorage.getItem(window.GeoState.storageKey) || "{}"); } catch (e) {}
     // Saved trips live in IndexedDB now, not the blob — merge against the live mirror.
     try { if (typeof detSetStore !== "undefined") local.mapDetectionSets = detSetStore.filter(function (s) { return s && s.name; }); } catch (e) {}
+    // Named point lists too: without this the merge would see NO local lists (the blob
+    // no longer carries them) and "merge" would mean "replace with the other device's".
+    try { if (mpState.mpIdbReady && mpState.mpIdbReady()) local.mapPointSets = mpState.mpCollections().filter(function (c) { return c && c.name; }); } catch (e) {}
     var incoming = data.state || {};
     var mergedCl = mergeChecklists(local.fieldChecklists, incoming.fieldChecklists);
     // Map points: merge rather than overwrite. Loose pins from both sides are
@@ -5196,9 +5738,44 @@
         return (d && d.url) ? { key: d.key, name: d.name, url: linkUrl(d.url), country: d.country } : d;
       });
     }
+    // Rarity alerts: merged FIELD-WISE, never as one blob. The preferences — the email
+    // address, the interval, the threshold, which sources, the sound — travel like any
+    // other setting, while the bookkeeping stays this device's own: copying a seen-set
+    // or a seeded-locations map across devices would either re-announce everything or
+    // silence a device that has never polled.
+    (function () {
+      var lr = (local && local.rarityAlerts) || null, ir = (incoming && incoming.rarityAlerts) || null;
+      if (!lr && !ir) return;
+      lr = lr || {}; ir = ir || {};
+      var PREFS = ["enabled", "intervalMin", "probPct", "showDays", "showMap", "allSources",
+        "countryWide", "sound", "sysNotif", "email"];
+      var MINE = ["seen", "seeded", "lastPoll", "lastEmail", "emailState", "emailAt", "emailKind", "emailCount"];
+      var win = opts.incomingWins ? ir : lr, other = opts.incomingWins ? lr : ir;
+      var out = {}; Object.keys(lr).forEach(function (k) { out[k] = lr[k]; });
+      PREFS.forEach(function (k) {
+        var v = (win[k] !== undefined) ? win[k] : other[k];
+        if (v !== undefined) out[k] = v;
+      });
+      // The address ALSO fills in when this device simply has none — the same rule the
+      // eBird key follows, so a second device picks it up without forcing a download.
+      if (!String(out.email || "").trim() && String(ir.email || "").trim()) out.email = ir.email;
+      MINE.forEach(function (k) { if (lr[k] !== undefined) out[k] = lr[k]; else delete out[k]; });
+      // A different address than this device was using starts with a clean mail state:
+      // "not confirmed yet" for someone else's address would be a lie.
+      if (String(out.email || "").trim() !== String(lr.email || "").trim()) {
+        out.emailState = ""; out.emailAt = 0; out.emailKind = ""; out.emailCount = 0;
+      }
+      newState.rarityAlerts = out;
+    })();
     // The merged collections override either side's copy.
     newState.fieldChecklists = mergedCl;
-    newState.mapPointSets = mergedSets;
+    // Merged lists go to IndexedDB (and out of the blob) when that is the store — the
+    // union of two devices' lists is exactly the write that used to break the sync.
+    if (mpState.mpIdbReady && mpState.mpIdbReady()) {
+      mpState.setMpCollections(mergedSets);
+      try { window.AppPoints.persistMpSets(mergedSets); } catch (e) {}
+      delete newState.mapPointSets;
+    } else newState.mapPointSets = mergedSets;
     newState.mapDetections = mergedDet;
     newState.interesting = Object.keys(interestUnion);
     newState.lifeList = Object.keys(lifeUnion);
@@ -5345,6 +5922,7 @@
   // copies through the exact same code path as the file Export/Import.
   window.AppData = {
     buildPayload: buildPayload,
+    markBackedUp: markBackedUp,
     applyRemote: applyRemote,
     ebirdKey: ebirdKey,
     setEbirdKey: setEbirdKey,
@@ -5710,6 +6288,8 @@
     var qs;
     try { qs = new URLSearchParams(window.location.search); } catch (e) { return; }
     if (qs.get("here") !== "1") return;
+    launchBirdsOnce = true;                 // same bird errand as /f/ (see fetchGroupsOn)
+    showGroupWithoutSaving("aves");
     stripShortcutParams();   // one-shot: a reload must not locate + fetch again
     if (!navigator.geolocation || !map) { setStatus(t("status.locateError")); return; }
     var modeSel = document.getElementById("mode-select");
@@ -5879,6 +6459,11 @@
     }
     updateSortIndicators();
     urlForceView = (p.show || "").toLowerCase() === "list" ? "list" : null;   // else map-first (also 'map')
+    // Birds only for this launch — and SHOW birds, so a visitor whose last session was on
+    // plants doesn't land on an empty map. Not saved: their own choice is untouched, and
+    // the next fetch honours the Settings ticks again.
+    launchBirdsOnce = true;
+    showGroupWithoutSaving("aves");
     launchNotePending = true;   // the first settled fetch may add the "few sightings — add keys" note
     stripShortcutParams();   // everything above is consumed — a reload must not run the shortcut again
 
@@ -5928,14 +6513,15 @@
       countryMatch: AppGeo.countryMatch,
       inatLocale: inatLocale,
       gbifTaxonParam: gbifTaxonParam,
-      gbifGroup: function () { return speciesGroup; },   // active species group → per-group dataset gating
+      gbifGroup: fetchScopeGroup,   // the FETCH scope (always the superset) → per-group dataset gating
       inatIconicTaxa: inatIconicTaxa,
     });
     // Hydrate saved trips from IndexedDB (and migrate any still in the localStorage
     // blob) before anything reads them. Never block startup on a storage hiccup.
     try { await initDetSetStore(); } catch (e) {}
+    try { if (window.AppPoints && window.AppPoints.initMpSetStore) await window.AppPoints.initMpSetStore(); } catch (e) {}   // named point lists → IndexedDB (same pattern as trips)
     try { await loadPersistedSightings(); } catch (e) {}   // so a reopen reuses the last downloads instead of refetching
-    try { hydrateHotspotStore(); hydrateVernacCache(); } catch (e) {}   // fire-and-forget: the general cache's IDB stores (hotspots, iNat names)
+    try { hydrateHotspotStore(); hydrateVernacCache(); hydrateNameHarvest(); } catch (e) {}   // fire-and-forget: the general cache's IDB stores (hotspots, iNat names)
     ensurePersistentStorage();   // keep offline-map tiles + saved data from being evicted
     setTimeout(maybeAskRedownloadOffline, 3000);   // offer to re-fetch any browser-evicted offline areas
 
@@ -6014,11 +6600,6 @@
           '<div class="ctrl-group" id="settings-wrap">' +
             '<button type="button" id="settings-toggle" class="settings-icon-btn" aria-haspopup="true" aria-label="Settings" data-i18n-title="ctrl.settingsHold" title="Settings"></button>' +
             '<div id="settings-panel" class="dd-panel settings-panel" style="display:none">' +
-              // Feedback form, first thing in Settings (the delegated ".feedback-open" click handler opens it).
-              '<div class="settings-toprow">' +
-                '<button type="button" class="btn ico-btn feedback-open settings-feedback">' + ico("mail") + '<span class="ico-label" data-i18n="feedback.send">Feedback</span></button>' +
-              '</div>' +
-              '<p class="settings-intro" data-i18n="settings.appIntro">BirdsWhere shows where species live, migrate, and are being seen right now — the BirdNET habitat model runs entirely in your browser, overlaid with live observations from eBird, GBIF, iNaturalist and national databases.</p>' +
               // "About ↗" (the short web summary, in the UI language) beside "How it works" (the in-app panel).
               '<div class="settings-aboutrow">' +
                 '<a class="settings-about about-page-link" href="about/" target="_blank" rel="noopener" data-i18n="settings.aboutPage">About ↗</a>' +
@@ -6049,37 +6630,34 @@
                 '<p class="cu-hint" id="group-nomodel-hint" style="display:none" data-i18n="group.noModelHint">No habitat model for this group — observation search only (no range, richness or migration).</p>' +
                 '<p class="cu-hint" data-i18n="ctrl.groupHint">Limit the whole app — lists, Range, Richness and observation search — to one group: birds, mammals, amphibians, insects, plants or fungi.</p>' +
               '</div>' +
+              // Which TYPES a fetch asks for (the group picker above only decides what is
+              // shown). Every source shares one paging budget across the types requested,
+              // so fewer ticks = more records of each before a source's limit is reached.
+              '<div class="ctrl-group">' +
+                '<label data-i18n="ctrl.fetchGroups">Species types to fetch</label>' +
+                '<div class="fetch-groups" id="fetch-groups"></div>' +
+                '<p class="cu-hint" data-i18n="ctrl.fetchGroupsHint">Every source has one page budget per fetch, shared across the types you ask for — so fetching fewer types returns more of each in a busy place. The type you are viewing is always fetched.</p>' +
+              '</div>' +
               '<div class="ctrl-group">' +
                 '<div class="ctrl-label-row"><label for="recent-radius" data-i18n="ctrl.recentradius">Sightings radius</label><span id="recent-radius-val" class="radius-val"></span></div>' +
                 '<div class="radius-row"><input type="range" id="recent-radius" min="0" max="18" step="1" /></div>' +
                 '<p class="cu-hint" data-i18n="ctrl.recentradiusHint">How far around a clicked point or stored location each source is searched for recent observations.</p>' +
               '</div>' +
-              '<div class="ctrl-group" id="barchart-threshold-wrap" style="display:none">' +
-                '<div class="ctrl-label-row"><label data-i18n="ctrl.bcthreshold">Probability range</label><span id="prob-range-vals" class="radius-val"><span id="prob-min-val">0%</span> – <span id="prob-max-val">100%</span></span></div>' +
-                '<div id="prob-range">' +
-                  '<div class="pr-track"></div>' +
-                  '<input type="range" id="prob-min" min="0" max="100" step="1" value="0" />' +
-                  '<input type="range" id="prob-max" min="0" max="100" step="1" value="100" />' +
-                '</div>' +
-                '<p class="cu-hint" data-i18n="ctrl.bcthresholdHint">Lower and upper model-probability bounds — species (and plotted observations) outside this range are hidden from the list and the map.</p>' +
+              // The probability range is no longer a Settings control — it lives in the
+              // list's own Filters pane (the funnel → Probability), where the other
+              // filters are. These inputs stay as the app's internal register: the
+              // pane, the analysis tabs, the checklist builder and the share links all
+              // read and write them. Never shown.
+              '<div class="ctrl-group" id="barchart-threshold-wrap" style="display:none" aria-hidden="true">' +
+                '<input type="range" id="prob-min" min="0" max="100" step="1" value="0" tabindex="-1" />' +
+                '<input type="range" id="prob-max" min="0" max="100" step="1" value="100" tabindex="-1" />' +
+                '<span id="prob-min-val">0%</span><span id="prob-max-val">100%</span>' +
               '</div>' +
               // The week is always the current week (no user override). The <select> stays
               // as the app's internal week register — Range/Migration playback, the
               // "week it was seen" jumps and share links still set it programmatically.
               '<div class="ctrl-group" id="week-select-wrap" style="display:none">' +
                 '<select id="week-select" aria-hidden="true" tabindex="-1"></select>' +
-              '</div>' +
-              '<div class="ctrl-group" id="compare-wrap" style="display:none">' +
-                '<label for="compare-select" data-i18n="ctrl.compare">Compare to</label>' +
-                '<select id="compare-select">' +
-                  '<option value="" data-i18n="compare.none">\u2014 none \u2014</option>' +
-                  '<option value="prev" data-i18n="compare.prev">Previous week</option>' +
-                  '<option value="next" data-i18n="compare.next">Next week</option>' +
-                  '<option value="mean" data-i18n="compare.mean">Annual mean</option>' +
-                  '<option value="annualmax" data-i18n="compare.max">Annual max</option>' +
-                  '<option value="annualtop" selected data-i18n="compare.annualtop">Annual Top</option>' +
-                '</select>' +
-                '<p class="cu-hint" data-i18n="ctrl.compareHint">Adds a column to the species list comparing the current week with another week or the annual mean/peak, so you can see what’s arriving or at its best now.</p>' +
               '</div>' +
               '<div class="ctrl-group" id="maptype-wrap">' +
                 '<label for="maptype-select" data-i18n="ctrl.basemap">Map type</label>' +
@@ -6101,14 +6679,6 @@
                   '<input type="text" id="maptiler-key-input" autocomplete="off" spellcheck="false" data-i18n-ph="ph.maptilerKey" placeholder="MapTiler API key (for MapTiler Outdoor)" />' +
                   '<p class="cu-hint" data-i18n="ctrl.maptilerKeyHint">MapTiler Outdoor (trails + terrain) needs a free personal MapTiler API key from maptiler.com — paste it here to use it. Until then a plain Streets map is shown.</p>' +
                 '</div>' +
-              '</div>' +
-              '<div class="ctrl-group" id="hotspot-wrap">' +
-                '<label data-i18n="ctrl.hotspot">Density heatmap</label>' +
-                '<div class="hs-row">' +
-                  '<button type="button" class="hs-cycle" id="hotspot-cycle" data-hs="off" data-i18n="ctrl.hsOff">Off</button>' +
-                  '<label class="ctrl-check hs-dots"><input type="checkbox" id="showdots-toggle" checked> <span data-i18n="ctrl.showDots">Show dots</span></label>' +
-                '</div>' +
-                '<p class="cu-hint" data-i18n="ctrl.hotspotHint">Shades the map by how much activity each area has — tap to cycle Off → species per area → distinct observers → total counts. A smooth, zoom-steady heat cloud; use “Show dots” to see the heatmap alone, the dots alone, or both.</p>' +
               '</div>' +
               '<div class="settings-section" data-i18n="settings.secFetch">Fetching &amp; detections</div>' +
               '<div class="ctrl-group">' +
@@ -6160,8 +6730,10 @@
               '</div>' +
               '<div class="settings-section" data-i18n="settings.secRarity">Rarity alerts</div>' +
               '<div class="ctrl-group">' +
-                '<p class="cu-hint" data-i18n="rarity.hint">While the app is open, checks eBird\'s notable-sightings feed around every stored location marked with 🔔 (press-and-hold the 🔍 search button to manage them). New rarities appear as pulsing ★ on the map and under the header bell. The app cannot alert while the browser is closed.</p>' +
-                '<p class="cu-hint" id="rarity-key-hint" style="display:none" data-i18n="rarity.needKey">Needs a free eBird API key — enter it under Settings → Data sources → eBird.</p>' +
+                '<p class="cu-hint" data-i18n="rarity.hint">While the app is open, the places you mark with 🔔 (press and hold the 🔍 search button to manage them) are checked for birds the model finds unlikely there — eBird\'s notable sightings AND, unless you switch it off below, your ordinary observation sources. Rarities among the observations you fetch yourself join the same list, so no eBird key is required. The app cannot alert while the browser is closed.</p>' +
+                '<p class="cu-hint" id="rarity-key-hint" style="display:none" data-i18n="rarity.needKey">Nothing can check right now — either switch on “Check all sources” below, or add a free eBird API key under Settings → Data sources → eBird.</p>' +
+                '<label class="ctrl-check"><input type="checkbox" id="rarity-onoff-toggle" checked> <span data-i18n="rarity.enable">Alerts on (checks while the app is open)</span></label>' +
+                '<label class="ctrl-check"><input type="checkbox" id="rarity-showmap-toggle" checked> <span data-i18n="rarity.showMap">Show rarities on the map</span></label>' +
                 '<label for="rarity-interval" data-i18n="rarity.interval">Check every (minutes)</label>' +
                 '<select id="rarity-interval"><option value="10">10</option><option value="30">30</option><option value="60">60</option><option value="0" data-i18n="rarity.manual">Manual (long-press the bell)</option></select>' +
               '</div>' +
@@ -6173,6 +6745,19 @@
               '<div class="ctrl-group">' +
                 '<label class="ctrl-check"><input type="checkbox" id="rarity-notif-toggle"> <span data-i18n="rarity.sysNotif">System notifications</span></label>' +
                 '<p class="cu-hint" data-i18n="rarity.sysNotifHint">Also raise a system notification for each new rarity alert — needs the browser’s notification permission.</p>' +
+              '</div>' +
+              '<div class="ctrl-group">' +
+                '<label class="ctrl-check"><input type="checkbox" id="rarity-allsrc-toggle" checked> <span data-i18n="rarity.allSrc">Check all sources, not just eBird</span></label>' +
+                '<p class="cu-hint" data-i18n="rarity.allSrcHint">Also search your ordinary observation sources (GBIF, iNaturalist, the national databases…) around every 🔔 point, and alert on anything the model finds unlikely there. Catches rarities eBird never flagged, and works without an eBird key. These background checks step aside for any fetch you start.</p>' +
+              '</div>' +
+              '<div class="ctrl-group">' +
+                '<label for="rarity-email" data-i18n="rarity.email">Email me new alerts</label>' +
+                '<div class="ctrl-inline rarity-email-row">' +
+                  '<input id="rarity-email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" />' +
+                  '<button type="button" id="rarity-email-test" class="btn btn-light" data-i18n="rarity.emailTest">Send test</button>' +
+                '</div>' +
+                '<p class="cu-hint" id="rarity-email-note"></p>' +
+                '<p class="cu-hint" data-i18n="rarity.emailHint">New alerts are also sent to this address, at most one message per 5 minutes. The first message asks you to confirm the address — click the link in it once and later alerts arrive. The mail is relayed by formsubmit.co, so the address and the alert text pass through that service, and (like every alert) it only goes out while the app is open.</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label class="ctrl-check"><input type="checkbox" id="rarity-country-toggle"> <span data-i18n="rarity.countryWide">Whole-country alerts</span></label>' +
@@ -6227,8 +6812,13 @@
               '<div class="ctrl-group">' +
                 '<label data-i18n="ctrl.storage">Storage</label>' +
                 '<p class="cu-hint" id="storage-usage"></p>' +
+                '<p class="cu-hint" data-i18n="ctrl.storageEstimate">Browsers pad every cached map tile for privacy, so their estimate can read far higher than the sizes listed below — those are measured.</p>' +
                 '<p class="cu-hint storage-warn" id="storage-warn" style="display:none"></p>' +
                 '<button type="button" id="errlog-open" class="btn btn-light" data-i18n="errlog.title">Error log</button>' +
+                // Names picked up from iNaturalist while browsing (see the harvest above):
+                // exportable so a device's own browsing can grow the app's shipped packs.
+                '<button type="button" id="names-export" class="btn btn-light" data-i18n="names.export">Export species names</button>' +
+                '<p class="cu-hint" id="names-export-note"></p>' +
               '</div>' +
               '<div class="ctrl-group">' +
                 '<label data-i18n="clear.label">Clear cached data</label>' +
@@ -6273,7 +6863,26 @@
                 '<label class="ctrl-check"><input type="checkbox" id="experimental-toggle"> <span data-i18n="ctrl.experimental">Experimental features</span></label>' +
                 '<p class="cu-hint" data-i18n="ctrl.experimentalHint">Off (default). On: unlocks less-polished extras — currently the NBN Atlas link in the species menu; more may appear here over time.</p>' +
               '</div>' +
-              '<div class="app-qr"><img src="qr-app.svg" alt="" width="140" height="140" /><span class="app-qr-cap" data-i18n="settings.qrShare">Scan to open / share this app</span></div>' +
+              // Experimental-gated, so it lives under that toggle: the species list's
+              // comparison column, defaulting to Annual max.
+              '<div class="ctrl-group" id="compare-wrap" style="display:none">' +
+                '<label for="compare-select" data-i18n="ctrl.compare">Compare to</label>' +
+                '<select id="compare-select">' +
+                  '<option value="" data-i18n="compare.none">\u2014 none \u2014</option>' +
+                  '<option value="prev" data-i18n="compare.prev">Previous week</option>' +
+                  '<option value="next" data-i18n="compare.next">Next week</option>' +
+                  '<option value="mean" data-i18n="compare.mean">Annual mean</option>' +
+                  '<option value="annualmax" selected data-i18n="compare.max">Annual max</option>' +
+                  '<option value="annualtop" data-i18n="compare.annualtop">Annual Top</option>' +
+                '</select>' +
+                '<p class="cu-hint" data-i18n="ctrl.compareHint">Adds a column to the species list comparing the current week with another week or the annual mean/peak, so you can see what’s arriving or at its best now.</p>' +
+              '</div>' +
+              // Feedback form, just above the QR code (the delegated ".feedback-open" click handler opens it).
+              '<div class="settings-toprow">' +
+                '<button type="button" class="btn ico-btn feedback-open settings-feedback">' + ico("mail") + '<span class="ico-label" data-i18n="feedback.send">Feedback</span></button>' +
+              '</div>' +
+              '<div class="app-qr"><a class="app-qr-url" href="https://thebirding.site/" target="_blank" rel="noopener">thebirding.site</a>' +
+                '<img src="qr-app.svg" alt="" width="140" height="140" /><span class="app-qr-cap" data-i18n="settings.qrShare">Scan to open / share this app</span></div>' +
               '<div class="settings-section" data-i18n="settings.secWhatsNew">What’s new</div>' +
               '<div id="whatsnew-list" class="whatsnew-list"></div>' +
             '</div>' +
@@ -6323,6 +6932,10 @@
             '<select id="sp-layout" class="detlist-sort-sel" aria-label="Layout"></select>' +
             '<button id="sp-filter-btn" class="sp-filter-btn ico-btn" type="button" aria-label="Filters" title="Filters">' + ico("funnel") + '</button>' +
             '<button id="sp-missing-btn" class="sp-filter-btn ico-btn sp-missing-btn" type="button" data-i18n-title="sp.missingBtn" title="Also list the species the model predicts here that have no observations yet">?</button>' +
+            // One button, two states: probability descending (commonest first) or ascending
+            // (rarest first). The column headers still offer every other sort; this is the
+            // one people reach for, and the Images layout has no headers to click.
+            '<button id="sp-probsort-btn" class="sp-filter-btn ico-btn sp-probsort-btn" type="button" data-i18n-title="sp.probSort" title="Sort by probability"><span class="ps-gly">⇅</span></button>' +
             '<div id="sp-filters-bar"></div>' +
           '</div>' +
           '<div id="sp-filters-wrap"></div>' +
@@ -6396,6 +7009,10 @@
             '<div id="place-list"></div>' +
           '</div>' +
         '</div>' +
+        // Rarity alerts: a full page in the same framework as the checklist/species
+        // pages (under the header bar, ‹ returns to the previous view). rarity.js
+        // renders into it; it stays empty until the bell is opened.
+        '<div id="rarity-page" class="rarity-panel" style="display:none"></div>' +
         '<div id="entry-page" style="display:none">' +
           '<div class="field-page-bar">' +
             '<button id="entry-back" class="fp-back" title="Back">‹</button>' +
@@ -6462,8 +7079,8 @@
           '<p class="perf-desc" data-i18n="popup.desc">See where birds live, migrate, and are being seen right now — live observations from eBird, GBIF, iNaturalist and national databases, plus range and timing estimates worked out on your device. Everything runs in your browser.</p>' +
           '<p class="perf-privacy" data-i18n="popup.privacy">Private by design: there is no account and no server of ours. Your searches, saved lists and settings stay on this device — nothing is sent anywhere except the direct requests to the observation sources you query.</p>' +
           '<p class="perf-keys" data-i18n="popup.keysTip"></p>' +
-          '<p class="perf-feedback"><span data-i18n="popup.feedback"></span> <button type="button" class="feedback-open ico-btn">' + ico("mail") + '<span class="ico-label" data-i18n="feedback.send">Message</span></button></p>' +
-          '<div class="install-row"><button type="button" id="install-info" class="btn btn-light ico-btn" hidden>' + ico("install") + '<span class="ico-label" data-i18n="install.app">Offline mode</span></button><div class="install-steps cu-hint" hidden></div></div>' +
+          // Offline mode reads as a line of text with its icon in front, not a button.
+          '<div class="install-row" id="install-row">' + ico("install") + '<span class="install-steps cu-hint"></span></div>' +
           '<div class="perf-version" id="perf-version" style="display:none"></div>' +
           '<div class="perf-btns"><a class="perf-about about-page-link" href="about/" target="_blank" rel="noopener" data-i18n="settings.aboutPage">About ↗</a>' +
           '<button id="perf-modal-cancel" class="btn btn-light" data-i18n="btn.cancel" hidden>Cancel</button>' +
@@ -6585,7 +7202,7 @@
     try {
       await Promise.all([initWorker(), loadLabels(), loadTaxonomy()]);
       // Species names for the restored language(s) — needs taxCodesOrder from loadTaxonomy.
-      await Promise.all([ensureLangNames(langTaxCol), ensureLangNames(secondTaxCol)]);
+      await Promise.all([ensureLangNames(langTaxCol), ensureLangNames(secondTaxCol), ensureExtraNames(lang)]);
       // Mark not-yet-downloaded name packs (italics) in the language selects.
       probeLangPacks().then(function () { populateLangSelect(); populateSecondLangSelect(); });
       buildLabelClass();
@@ -6829,7 +7446,9 @@
       // Keyless first tap on the rarity bell → the one-time eBird-key nudge
       // (alongside the bell popup's own key hint).
       var bellEl = document.getElementById("rarity-bell");
-      if (bellEl) bellEl.addEventListener("click", function () { maybeEbirdNudge(); });
+      // Only nag about the eBird key when eBird is the ONLY thing that could deliver
+      // alerts — with the all-sources sweep on, the bell works without a key.
+      if (bellEl) bellEl.addEventListener("click", function () { if (rarityCfg().allSources === false) maybeEbirdNudge(); });
       if (!hasHere && !hasLocParam && !sharedOpen) restoreSession();   // return to the view we left (reload-safe)
       countPageVisit();    // one anonymous tick on the page-visit counter per app open (live site only)
       countPosterScan();   // ?from=poster (the /f/ QR link) → one anonymous tick on the scan counter
@@ -6944,6 +7563,9 @@
       worker.postMessage({ type: "init", modelUrl: new URL(MODEL_URL, SCRIPT_BASE).href });
     });
 
+    // The plotted-detection probabilities may have been attempted before the model existed
+    // (nothing retries that on its own) — ask once now that it does.
+    try { maybeComputeDetProbs(); } catch (e2) {}
     worker.onmessage = function (e) {
       var msg = e.data;
       if (msg.type !== "infer") return;
@@ -7231,6 +7853,7 @@
     populateLangSelect();         // re-localize the "(System)" option
     populateSecondLangSelect();   // re-localize the "(none)" option
     refreshChecklists();    // re-localize the "Checklist (N)" button text
+    try { refreshInstallUI(); } catch (e) {}   // the offline-mode how-to is plain text, not data-i18n
     if (document.getElementById("field-page").style.display === "flex") renderFieldList();  // re-localize activity labels if open
     if (window.__refreshFilterCycle) window.__refreshFilterCycle();   // cycle-button text isn't covered by data-i18n
     if (typeof refreshDetections === "function") refreshDetections();   // re-localize plotted "Show in map" species names + legend
@@ -7240,6 +7863,7 @@
     // Species names for the new language come from an on-demand pack; until it
     // arrives everything above showed [English] fallbacks — relabel again on merge.
     ensureLangNames(langTaxCol).then(function (loaded) { if (loaded) refreshSpeciesNames(); });
+    ensureExtraNames(lang).then(function (d) { if (d && Object.keys(d).length) refreshSpeciesNames(); });
   }
 
   function populateLangSelect() {
@@ -7985,7 +8609,8 @@
     if (clearGroupEl && clearGroupEl.parentNode) clearGroupEl.parentNode.appendChild(clearGroupEl);
     loadDetections();      // restore any "Show in map" detection points
     restoreFetchedAreas(); // ...and their fetched-area outlines (per-area red × needs them)
-    loadMapPoints();       // user-added pins + saved named lists (from localStorage)
+    loadMapPoints();       // user-added pins + saved named lists (IndexedDB, hydrated above)
+    try { updateBackupNudge(); } catch (e) {}   // gear/Sync go orange when the lists have outgrown the last backup
     loadRoute(); updateRouteChip(); renderRoutePoints();   // restore the route basket, its pill + on-map stops
     ensureMpLayer();
     renderMapPoints();
@@ -7995,8 +8620,11 @@
     map.on("movestart zoomstart click", clearSpotFan);   // same for the spot-marker fan
     map.on("movestart zoomstart", function () { clearTimeout(mapClickDelayTimer); });   // a pan/zoom cancels a pending tap→popup
     document.addEventListener("keydown", function (e) { if (e.key === "Escape") { clearSpider(); clearSpotFan(); } });
-    map.on("popupopen", function () {
+    map.on("popupopen", function (e) {
       closeModals();   // a map popup opened — close any open modal overlay
+      var pop = e && e.popup;
+      fitPopupInView(pop);                                            // zoomed out: no autoPan to wait for
+      setTimeout(function () { fitPopupInView(pop, true); }, 350);    // and again once autoPan has settled
     });
 
     // The map view is transient (only needed to restore on reload) but a save()
@@ -8075,7 +8703,7 @@
     // subdomains must not be undefined — Leaflet reads .length even when the
     // URL has no {s} placeholder (e.g. the Esri satellite layer).
     baseLayer = L.tileLayer(baseUrlFor(render), { attribution: cfg.attribution, maxZoom: MAX_ZOOM, maxNativeZoom: cfg.maxNativeZoom || MAX_ZOOM, subdomains: cfg.subdomains || "abc", noWrap: true });
-    baseLayer._origMaxNative = cfg.maxNativeZoom || MAX_ZOOM;   // restore target when online / leaving an area
+    baseLayer._origMaxNative = cfg.maxNativeZoom || MAX_ZOOM;
     // Tile fetches failing (even when navigator reports "online" — captive portal /
     // dead connection) → treat like offline so the zoom cap upscales cached tiles
     // instead of leaving blank deep tiles; a successful load clears the flag.
@@ -8118,6 +8746,10 @@
   // toggle). The Checklist button is a standard feature again — always shown; the
   // experimental menu links are gated at render time.
   function applyExperimentalUi() {
+    // "Compare to" is experimental-gated now, so the toggle shows/hides it at once;
+    // refreshModeUi applies the mode half of the same rule.
+    var cw = document.getElementById("compare-wrap");
+    if (cw) { if (!experimentalOn()) cw.style.display = "none"; else try { updateModeVisibility(); } catch (e) { cw.style.display = ""; } }
     var b = document.getElementById("sp-checklist-btn");
     if (b) b.style.display = "";   // always visible (was experimental-gated in v868)
     if (typeof syncExperimentalOverlays === "function") syncExperimentalOverlays();   // Birding spots + GBIF are experimental-only
@@ -8236,6 +8868,10 @@
     getMap: function () { return map; },
     getBaseLayer: function () { return baseLayer; },
     getArcOverlays: function () { return arcOverlays; },
+    // The basemap actually DRAWN (a key-less Voyager/MapTiler choice renders as Streets).
+    // Offline areas must be recorded and matched against this, not the stored choice —
+    // else the cached tiles belong to one map and the live layer requests another.
+    getRenderedBasemap: function () { return renderedBasemap || window.GeoState.get("basemap", "voyager"); },
   });
 
 
@@ -8533,10 +9169,31 @@
   function hasManualSelOverride() { return !sameKeySet(detSelected, detSelBase.sel) || !sameKeySet(detExcluded, detSelBase.exc); }
   function revertSelToBase() { detSelected = Object.assign({}, detSelBase.sel); detExcluded = Object.assign({}, detSelBase.exc); }
   var deletedSpecies = Object.create(null);   // key → name of species deleted from the map (grey tombstone in the legend + list)
-  // A list's tri-state from the current selection/exclusion: "include" (all its plotted
+  // The species the list-side filters (saved lists, premade groups, the selection)
+  // can act on: the plotted detections when there are any, else — on an empty spot,
+  // where the model's own ranking stands in for the missing observations — the
+  // species the table currently offers. Rows carry .sp-pool = "listed before the
+  // species selection narrows it", so picking one group doesn't hide the others.
+  function listPool() {
+    if (Object.keys(detPlot).length) return detPlot;
+    var pool = Object.create(null), tb = document.getElementById("sp-tbody");
+    if (!tb) return pool;
+    var rows = tb.querySelectorAll("tr.sp-pool");
+    if (!rows.length) rows = tb.querySelectorAll("tr:not(.sp-detail-row)");   // before the first filter pass
+    Array.prototype.forEach.call(rows, function (tr) {
+      if (tr.style.display === "none" && !tr.classList.contains("sp-pool")) return;
+      var a = tr.querySelector(".sp-link[data-key]"), k = a && a.getAttribute("data-key");
+      if (k) pool[k] = true;
+    });
+    return pool;
+  }
+  // Display name for a species key that may be listed without any observation.
+  function spKeyName(k) { return (detPlot[k] && detName(detPlot[k])) || (labelsByKey[k] && speciesName(labelsByKey[k])) || k; }
+  // A list's tri-state from the current selection/exclusion: "include" (all its listed
   // species selected), "exclude" (all excluded), else "empty".
-  function listTriState(keys) {
-    var p = (keys || []).filter(function (k) { return detPlot[k]; });
+  function listTriState(keys, pool) {
+    pool = pool || listPool();
+    var p = (keys || []).filter(function (k) { return pool[k]; });
     if (!p.length) return "empty";
     if (p.every(function (k) { return detExcluded[k]; })) return "exclude";
     if (p.every(function (k) { return detSelected[k]; })) return "include";
@@ -8545,8 +9202,9 @@
   // Cycle a list through empty → include (green ✓) → exclude (red ✕) → empty, applying it
   // to the selection/exclusion sets and refreshing the map, legend and species table.
   function cycleListTri(keys) {
-    var p = (keys || []).filter(function (k) { return detPlot[k]; });
-    var next = { empty: "include", include: "exclude", exclude: "empty" }[listTriState(keys)];
+    var pool = listPool();
+    var p = (keys || []).filter(function (k) { return pool[k]; });
+    var next = { empty: "include", include: "exclude", exclude: "empty" }[listTriState(keys, pool)];
     p.forEach(function (k) { delete detSelected[k]; delete detExcluded[k]; });   // clear this list's contribution first
     if (next === "include") p.forEach(function (k) { detSelected[k] = true; });
     else if (next === "exclude") p.forEach(function (k) { detExcluded[k] = true; });
@@ -8673,11 +9331,29 @@
   var detLocNames = [];                 // selected non-empty place names
   var detLocAllowNone = false;          // is "(no location)" selected
   function detLocKey(r) { return placeAccurate(r) ? String(r.place || "").trim() : ""; }
-  function setDetLocFilter(set) {
+  var detLocRestored = false;           // loaded from storage (not chosen this session) → healable
+  function setDetLocFilter(set, restored) {
     // null = all locations; empty Set = "None" (a base to then tick a few); a Set
     // holding only "" is the "(no location)" bucket.
     detLocFilter = set || null; detLocNames = []; detLocAllowNone = false;
+    detLocRestored = !!restored && !!detLocFilter;
     if (detLocFilter) detLocFilter.forEach(function (n) { if (n) detLocNames.push(n); else detLocAllowNone = true; });
+  }
+  // The source and observer filters are both healed when a REMEMBERED selection matches
+  // nothing that is plotted — "brought up a list, nothing shows". The location filter was
+  // the one that never was, and it is the easiest of the three to strand: a place name is
+  // matched EXACTLY, and which bucket a record falls in depends on whether its source gave
+  // a real locality. So a remembered selection can end up matching no plotted row at all,
+  // and then every observation is hidden however many were fetched. Heal it back to "all".
+  // An explicit "None" (empty Set) is left alone — that is a deliberate show-nothing base.
+  function reconcileLocFilter() {
+    if (!detLocFilter || !detLocFilter.size) return false;   // null = all, empty = intentional None
+    if (!detLocRestored) return false;                       // chosen in this session → the user's call
+    if (!Object.keys(detPlot).length) return false;          // nothing plotted → a fetch may be incoming
+    var lc = detAllLocations(), present = detLocAllowNone && lc.hasNone;
+    for (var i = 0; !present && i < detLocNames.length; i++) if (lc.names.indexOf(detLocNames[i]) >= 0) present = true;
+    if (present) { detLocRestored = false; return false; }   // it fits the plotted data → confirmed
+    setDetLocFilter(null); saveLegendState(); return true;
   }
   function detLocPasses(r) {
     if (!detLocFilter) return true;
@@ -8726,6 +9402,80 @@
   // observer filter (incl. dedup-hidden) + location filter + data-source filter + "New" filter.
   // Centralised so the sub-filters can't silently drift apart between the list-total, obs-count,
   // map and restrict-to-view call sites.
+  // ---- Butterflies ----------------------------------------------------------
+  // The seven families of Papilionoidea — the day-flying butterflies, as against the
+  // moths that make up most of the order. A fixed list, so no extra data ships: GBIF,
+  // Artsobservasjoner, Artportalen and BirdTrack all give a record's family, and
+  // iNaturalist records are marked in normalize.js from the taxon's own ancestry
+  // (Papilionoidea = 47224), which is exact.
+  var BUTTERFLY_FAMILIES = { papilionidae: 1, pieridae: 1, nymphalidae: 1, lycaenidae: 1, riodinidae: 1, hesperiidae: 1, hedylidae: 1 };
+  var detBflyFilter = false;
+  // Whether a species is a butterfly is a fact about the SPECIES, so the primary test is
+  // its name: every genus in the seven families (1 968 of them, 22 KB, from the
+  // iNaturalist taxonomy) is bundled. That works for observations already on the map —
+  // including ones stored before this feature existed, which carry no family — and for
+  // sources that never send a family at all. Family / iNaturalist ancestry stay as the
+  // fallback for a species whose genus the list does not know.
+  var bflyGenera = null, bflyGeneraReq = null;
+  function ensureButterflyGenera() {
+    if (bflyGenera) return Promise.resolve(bflyGenera);
+    if (bflyGeneraReq) return bflyGeneraReq;
+    bflyGeneraReq = fetch("butterfly-genera.json").then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (a) {
+        bflyGenera = Object.create(null);
+        (a || []).forEach(function (g) { bflyGenera[g] = 1; });
+        return bflyGenera;
+      }).catch(function () { bflyGenera = Object.create(null); return bflyGenera; });
+    return bflyGeneraReq;
+  }
+  function sciIsButterfly(sci) {
+    if (!bflyGenera) return null;                              // list not loaded yet → undecided
+    var g = String(sci || "").trim().split(/\s+/)[0].toLowerCase();
+    return g ? !!bflyGenera[g] : false;
+  }
+  function rowIsButterfly(r) {
+    if (!r) return false;
+    if (r.bfly) return true;                                   // iNaturalist: by ancestry
+    return !!BUTTERFLY_FAMILIES[String(r.family || "").toLowerCase()];
+  }
+  // A SPECIES passes when any of its observations is a butterfly. Predicted species
+  // (the [?] rows) have no observations, and the model's insects are singing insects —
+  // grasshoppers and cicadas — so with the filter on they drop out, which is the point.
+  // Narrows the INSECTS to butterflies and leaves every other class alone — a bird is
+  // not a butterfly, but nobody asking for butterflies wants their birds to vanish.
+  function detPassesBflySp(k) {
+    if (!detBflyFilter || !k) return true;
+    var lbl = labelsByKey[k];
+    var cls = lbl ? ((taxByCode[lbl.key] || {}).class_name || "") : ((dEntry(k) || {}).cls || "");
+    if (String(cls).toLowerCase() !== "insecta") return true;  // not an insect → unaffected
+    var sci = lbl ? lbl.sci : (String(k).indexOf("x:") === 0 ? String(k).slice(2) : "");
+    var byName = sciIsButterfly(sci);
+    if (byName !== null) return byName;                        // the bundled genus list decides
+    var e = dEntry(k);                                         // …until it has loaded
+    return !!(e && e.rows && e.rows.some(rowIsButterfly));
+  }
+  function setDetBflyFilter(on) {
+    detBflyFilter = !!on;
+    saveLegendState();
+    if (detBflyFilter) {
+      ensureButterflyGenera().then(function () {
+        rebuildDetLayers(); updateDetLegend(); applyAgeFilter();
+        // applyAgeFilter only touches the per-point TABLE. Without a clicked point the
+        // open list is the "By observation" page, which is rebuilt, not re-filtered — so
+        // ticking the filter left it showing everything until the view was toggled.
+        try { refreshOpenList(); } catch (e) {}
+        try { renderSpFilterBtn(); } catch (e) {}   // the funnel marks that it is on
+        if (allFiltersPane) renderAllFiltersPane();
+      });
+    } else {
+      try { refreshOpenList(); } catch (e) {}      // …and the same when switching it off
+      try { renderSpFilterBtn(); } catch (e) {}
+      if (allFiltersPane) renderAllFiltersPane();
+    }
+    rebuildDetLayers(); updateDetLegend();       // map dots + legend
+    applyAgeFilter();                            // the list's own show/hide pass
+    if (allFiltersPane) renderAllFiltersPane();  // keep the pane's own summary line current
+  }
   function detRowPasses(r) { return detDatePasses(r.date) && detObsPasses(r) && detLocPasses(r) && detPassesSrc(r) && detPassesNew(r); }
   // A species is an "alert" when its detPlot entry carries injected rarity rows
   // (syncAlertDetections flags the entry `alert`).
@@ -8856,6 +9606,47 @@
     try { if (navigator.vibrate) navigator.vibrate(15); } catch (e) {}
     if (el && el.classList) { el.classList.add("hold-fired"); setTimeout(function () { try { el.classList.remove("hold-fired"); } catch (e) {} }, 220); }
   }
+  // Tap vs press-and-hold on a header button. Touch makes this harder than it looks,
+  // in two ways the locate crosshair already had to solve (see crossHold above):
+  //   1. After our timer fires, the browser emits EMULATED mouse events — mousedown,
+  //      mouseup, click. The mousedown restarted the gesture and cleared `lpFired`, so
+  //      the emulated click then read as an ordinary TAP. With the hold opening Settings
+  //      and the tap closing it, the panel opened and shut in the same gesture.
+  //   2. On Android a long-press ALSO fires a native `contextmenu`, so `onHold` ran
+  //      twice — invisible when it opens something, fatal when it toggles.
+  // `holdAt` guards a short window after the RELEASE (the emulated burst follows
+  // touchend, so a long hold must not let the window lapse), touchend preventDefaults
+  // where the browser honours it, and `firedAt` makes one hold call `onHold` once.
+  function wireHoldButton(btn, onHold) {
+    if (!btn) return;
+    var lpT = null, lpFired = false, lpX = 0, lpY = 0, holdAt = 0, firedAt = 0;
+    var HOLD_GUARD_MS = 800;
+    function fire() {
+      if (Date.now() - firedAt < 1000) return;
+      firedAt = holdAt = Date.now();
+      lpFired = true;
+      holdFeedback(btn);
+      onHold();
+    }
+    function start(x, y) {
+      if (Date.now() - holdAt < HOLD_GUARD_MS) return;   // emulated press right after a hold → ignore
+      lpFired = false; clearTimeout(lpT); lpX = x; lpY = y;
+      lpT = setTimeout(fire, holdDelay());
+    }
+    // Capture phase: swallow the hold's own click AND its emulated twin before the
+    // button's ordinary tap handler (or anything else) sees them.
+    btn.addEventListener("click", function (e) {
+      if (!lpFired && Date.now() - holdAt >= HOLD_GUARD_MS) return;
+      lpFired = false; e.stopImmediatePropagation(); e.preventDefault();
+    }, true);
+    btn.addEventListener("touchstart", function (e) { var tt = e.touches && e.touches[0]; start(tt ? tt.clientX : 0, tt ? tt.clientY : 0); }, { passive: true });
+    btn.addEventListener("touchmove", function (e) { var tt = e.touches && e.touches[0]; if (tt && (Math.abs(tt.clientX - lpX) > 12 || Math.abs(tt.clientY - lpY) > 12)) clearTimeout(lpT); }, { passive: true });
+    btn.addEventListener("touchend", function (e) { clearTimeout(lpT); if (lpFired) { holdAt = Date.now(); if (e.cancelable) e.preventDefault(); } });
+    btn.addEventListener("mousedown", function (e) { if (e.button === 0) start(e.clientX, e.clientY); });
+    btn.addEventListener("mouseup", function () { clearTimeout(lpT); if (lpFired) holdAt = Date.now(); });
+    btn.addEventListener("mouseleave", function () { clearTimeout(lpT); });
+    btn.addEventListener("contextmenu", function (e) { e.preventDefault(); e.stopPropagation(); fire(); });
+  }
   function detSelectionActive() { return Object.keys(detSelected).some(function (k) { return detPlot[k] && detPassesStatus(k) && detPassesGroup(k); }); }
   function detExclusionActive() { return Object.keys(detExcluded).some(function (k) { return detPlot[k]; }); }
   // `selActive` lets a render loop compute detSelectionActive() ONCE and pass it
@@ -8908,13 +9699,20 @@
   function detIsVisible(key, selActive) {
     if (selActive === undefined) selActive = detSelectionActive();
     if (detExcluded[key]) return false;   // list red-excluded → never show
-    return detPassesStatus(key) && detPassesGroup(key) && detPassesCount(key) && detPassesProb(key) && detPassesRows(key) && detPassesRegion(key) && (!selActive || !!detSelected[key]);
+    return detPassesStatus(key) && detPassesGroup(key) && detPassesBflySp(key) && detPassesCount(key) && detPassesProb(key) && detPassesRows(key) && detPassesRegion(key) && (!selActive || !!detSelected[key]);
   }
   // Dots are always shown in their species colour (no grey overview mode) — so
   // "all"/"1 day"/etc. all render coloured. Visibility (above) does the filtering.
   function detSlim(rows) {
     return (rows || []).filter(function (r) { return r.lat != null && r.lon != null; })
-      .map(function (r) { return { lat: +r.lat, lon: +r.lon, url: r.url || "", date: r.date || "", src: r.src || "", origin: r.origin || "", place: r.place || "", placeCoarse: r.placeCoarse ? 1 : undefined, posFuzzM: (+r.posFuzzM > 0) ? +r.posFuzzM : undefined, count: (r.count != null ? r.count : ""), act: r.act || "", note: String(r.note || "").slice(0, 1000), flags: r.flags || "", observer: r.observer || "" }; });   // note cap 1000 (was 160 — cut real observer notes; the ⓘ popup scrolls); undefined placeCoarse/posFuzzM serialize away
+      .map(function (r) { return { lat: +r.lat, lon: +r.lon, url: r.url || "", date: r.date || "", src: r.src || "", origin: r.origin || "", place: r.place || "", placeCoarse: r.placeCoarse ? 1 : undefined, posFuzzM: (+r.posFuzzM > 0) ? +r.posFuzzM : undefined, count: (r.count != null ? r.count : ""), act: r.act || "", note: String(r.note || "").slice(0, 1000), flags: r.flags || "", observer: r.observer || "",
+        // The observer's own photo + the species' red-list code, when the source gives them.
+        // Stored only when present (undefined serializes away); photoBig only when it differs.
+        photo: r.photo || undefined, photoBig: (r.photoBig && r.photoBig !== r.photo) ? r.photoBig : undefined, photoBy: r.photoBy ? String(r.photoBy).slice(0, 120) : undefined, photos: (r.photos && r.photos.length > 1) ? r.photos.slice(0, 12) : undefined, rl: r.rl || undefined,
+        // Family / the iNaturalist butterfly marker: the filters read STORED rows, so the
+        // two fields that tell a butterfly from a moth have to survive the trim.
+        family: r.family || undefined, bfly: r.bfly || undefined };   // note cap 1000 (was 160 — cut real observer notes; the ⓘ popup scrolls); undefined placeCoarse/posFuzzM serialize away
+      });
   }
   // Localized display name for a plotted species (re-derived from the key so it
   // follows the UI language); falls back to the name stored at plot time.
@@ -8950,6 +9748,215 @@
       extraVernacMem = mem;
     }).catch(function () {});
   }
+  // ---- Bundled names for the groups outside the model ----------------------
+  // The positional packs (i18n/names/) only cover the model's own species list, so
+  // plants, fungi and most insects have no row there at all. These per-language
+  // dictionaries are keyed by SCIENTIFIC NAME instead and cover the northern-European
+  // species first — built from the same iNaturalist taxonomy the live harvest asks
+  // (tools/build-extra-names.py), so a name is identical whether it was shipped or
+  // fetched. Loaded on demand: one language, once, ~180–1080 KB.
+  var extraNameDict = Object.create(null), extraNameReq = Object.create(null);
+  function ensureExtraNames(code) {
+    if (!code || code === "en") return Promise.resolve(null);
+    if (extraNameDict[code]) return Promise.resolve(extraNameDict[code]);
+    if (extraNameReq[code]) return extraNameReq[code];
+    extraNameReq[code] = fetch("i18n/names-extra/" + code + ".json")
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { extraNameDict[code] = j || {}; return extraNameDict[code]; })
+      .catch(function () { extraNameDict[code] = {}; return extraNameDict[code]; });
+    return extraNameReq[code];
+  }
+  // What to call a NON-MODEL species (plants, fungi, most insects — everything that
+  // reaches the app as an "extra"). The record's own name is whatever the source
+  // happened to send: GBIF answers in English, iNaturalist in the fetch locale, the
+  // national portals in their own language. So a name we hold for the CURRENT language
+  // wins over it — that is the whole point of shipping and harvesting them — and the
+  // record's name is the fallback, with the scientific name behind that.
+  // Groups whose common names are patchy everywhere: when the app has no name in the
+  // user's OWN language, a scientific name is more use than an English one they may not
+  // know — and it is what field guides and the portals print anyway. Birds, mammals and
+  // amphibians keep the old behaviour (their name packs are good, and an English bird
+  // name is widely recognised).
+  var SCI_FALLBACK_GROUPS = { insecta: 1, plantae: 1, fungi: 1 };
+  function sciCase(sci) {
+    var b = sciBinomial(sci).trim(); if (!b) return "";
+    return b.charAt(0).toUpperCase() + b.slice(1).toLowerCase();   // "fragaria viridis" → "Fragaria viridis"
+  }
+  function sciFallbackFor(cls) { return lang !== "en" && !!SCI_FALLBACK_GROUPS[String(cls || "").toLowerCase()]; }
+  function extraDisplayName(sci, recName, cls) {
+    var h = harvestedName(sci);                       // bundled pack, then the device's harvest
+    if (h) return speciesCase(lang, h);
+    if (lang !== "en") queueNameHarvest(sci);         // don't hold one yet → ask once
+    var v = extraVernacName(sci);                     // the older single-language cache
+    if (v) return speciesCase(lang, v);
+    // Nothing in this language: the record's own name is whatever its source sent (GBIF
+    // answers in English), so for these groups show the scientific name instead.
+    if (sciFallbackFor(cls)) return sciCase(sci);
+    return speciesCase(lang, recName || sci);
+  }
+  function bundledExtraName(sci) {
+    var d = extraNameDict[lang];
+    if (!d) { ensureExtraNames(lang); return ""; }        // first miss kicks the load off
+    return d[sciBinomial(sci).toLowerCase()] || "";
+  }
+
+  // ---- Name harvest (iNaturalist) ------------------------------------------
+  // ONE lookup per species rather than one per language: taxa?all_names=true returns
+  // every vernacular name iNaturalist holds, so a single request serves the language
+  // on screen, every other language this device may switch to, and the JSON export
+  // that grows the shipped packs (Settings → Storage → Export names).
+  //
+  // Keyed by scientific name, so it covers both halves of the gap: model species whose
+  // pack row is still the English fallback (insects, amphibians, most mammals) AND the
+  // non-model extras — plants and fungi reach the app only as extras, so this is the
+  // only place their names can come from.
+  //
+  // iNaturalist's taxonomy is CC BY 4.0 (GBIF dataset 738041eb-…) — About credits it.
+  var nhMem = null, nhPending = Object.create(null), nhTimer = null, nhDirty = false, nhAsked = 0;
+  var NH_RATE_MS = 1100;     // iNaturalist asks for <= 60 requests/minute
+  var NH_SESSION_MAX = 600;  // and <= ~10k/day: a polite ceiling per app session
+  function nameHarvest() { if (!nhMem) nhMem = {}; return nhMem; }
+  function nhKey(sci) { return sciBinomial(sci).toLowerCase(); }
+  function hydrateNameHarvest() {
+    if (!(window.AppIDB && AppIDB.available())) return Promise.resolve();
+    return AppIDB.get("nameHarvest").then(function (m) {
+      var mem = (m && typeof m === "object") ? m : {};
+      if (nhMem) Object.keys(nhMem).forEach(function (k) { mem[k] = nhMem[k]; });   // keep pre-hydration lookups
+      nhMem = mem;
+    }).catch(function () {});
+  }
+  function saveNameHarvest() {
+    if (!nhDirty) return;
+    nhDirty = false;
+    if (window.AppIDB && AppIDB.available()) AppIDB.put("nameHarvest", nameHarvest()).catch(function () {});
+  }
+  // The name for the CURRENT language out of a harvested record ("" when we hold none).
+  function harvestedName(sci) {
+    var b = bundledExtraName(sci);                        // shipped with the app — no network, works offline
+    if (b) return b;
+    var r = nameHarvest()[nhKey(sci)];
+    if (!r || !r.n) return "";
+    return r.n[inatLocaleFor(lang)] || r.n[lang] || "";
+  }
+  function queueNameHarvest(sci) {
+    if (lang === "en") return;                       // English is the base, nothing to fill
+    var k = nhKey(sci);
+    if (!k || k.indexOf(" ") < 0) return;            // genus-only / unusable
+    if (nameHarvest()[k] || nhPending[k]) return;    // held, or already asked for
+    if (nhAsked >= NH_SESSION_MAX) return;
+    nhPending[k] = sciBinomial(sci);
+    scheduleNameHarvest();
+  }
+  function scheduleNameHarvest() {
+    if (nhTimer) return;
+    nhTimer = setTimeout(function () {
+      nhTimer = null;
+      var k = Object.keys(nhPending)[0];
+      if (!k) { saveNameHarvest(); return; }
+      var sci = nhPending[k]; delete nhPending[k];
+      nhAsked++;
+      fetch("https://api.inaturalist.org/v1/taxa?per_page=5&all_names=true&q=" + encodeURIComponent(sci))
+        .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function (j) {
+          var rs = (j && j.results) || [];
+          // Exact scientific-name match only: iNat's search is fuzzy, and a near miss
+          // would file another species' names under ours.
+          var hit = rs.filter(function (t) { return t && t.name && t.name.toLowerCase() === k; })[0];
+          var rec = { ts: Date.now(), n: {} };
+          if (hit) {
+            rec.id = hit.id;
+            (hit.names || []).forEach(function (n) {
+              if (!n || !n.locale || n.locale === "sci") return;
+              if (!rec.n[n.locale]) rec.n[n.locale] = n.name;   // first = iNaturalist's preferred
+            });
+          }
+          nameHarvest()[k] = rec; nhDirty = true;               // a miss is remembered too: don't ask twice
+          if (hit && rec.n[inatLocaleFor(lang)]) nhRefresh();
+        })
+        .catch(function () { /* offline / API down: not remembered, asked again later */ })
+        .then(function () { if (Object.keys(nhPending).length) scheduleNameHarvest(); else saveNameHarvest(); });
+    }, NH_RATE_MS);
+  }
+  // Names arrive one at a time; repaint at most every couple of seconds — and IN PLACE.
+  // refreshSpeciesNames() ends in renderSpControls(), which rebuilds the whole layout
+  // body: in the Images view that throws every card away and builds it again, so each
+  // arriving name made the list flash and every photo reload. Worse, it was a loop —
+  // the species without pictures are the obscure ones that also lack names, so their
+  // lookups kept arriving, kept rebuilding, and kept re-requesting the same photos.
+  var nhRefreshTimer = null;
+  function nhRefresh() {
+    if (nhRefreshTimer) return;
+    nhRefreshTimer = setTimeout(function () {
+      nhRefreshTimer = null;
+      saveNameHarvest();
+      try { updateDetLegend(); } catch (e) {}
+      try { refreshNamesInPlace(); } catch (e) {}
+    }, 2000);
+  }
+  // Rewrite the names already on screen — table rows and gallery cards — without
+  // rebuilding anything. A name is text; nothing else about the list has changed.
+  function refreshNamesInPlace() {
+    var tbody = document.getElementById("sp-tbody");
+    function setText(el, nm) {
+      if (!el || !nm) return false;
+      for (var n = el.lastChild; n; n = n.previousSibling) if (n.nodeType === 3 && n.nodeValue.trim()) { if (n.nodeValue === nm) return false; n.nodeValue = nm; return true; }
+      if (el.textContent === nm) return false;
+      el.textContent = nm; return true;
+    }
+    function rowName(tr) {
+      var link = tr.querySelector(".sp-link[data-key]");
+      if (link) {
+        var lbl = labelsByKey[link.getAttribute("data-key")];
+        return lbl ? { el: link, nm: speciesName(lbl) } : null;
+      }
+      var ex = tr.querySelector(".sp-extra-name");
+      if (!ex) return null;
+      var sciTd = tr.querySelector("td.sci"), badge = tr.querySelector(".sp-extra-cls");
+      var sci = sciTd ? sciTd.textContent.trim() : "";
+      return sci ? { el: ex, nm: extraDisplayName(sci, ex.textContent, badge ? badge.getAttribute("title") : "") } : null;
+    }
+    if (tbody) Array.prototype.forEach.call(tbody.children, function (tr) {
+      var r = rowName(tr); if (!r || !r.nm) return;
+      if (setText(r.el, r.nm)) {
+        if (r.el.hasAttribute("data-name")) r.el.setAttribute("data-name", r.nm);
+        tr.setAttribute("data-name", r.nm.toLowerCase());
+      }
+    });
+    // The cards hold a CLONE of the row's name element, so they need the same pass.
+    var rec = document.getElementById("sp-records");
+    if (rec) Array.prototype.forEach.call(rec.querySelectorAll(".spg-card"), function (c) {
+      var key = c.getAttribute("data-key") || "", sci = c.getAttribute("data-sci") || "";
+      var lbl = labelsByKey[key];
+      var badge = c.querySelector(".sp-extra-cls");
+      var nm = lbl ? speciesName(lbl)
+        : (sci ? extraDisplayName(sci, "", badge ? badge.getAttribute("title") : "") : "");
+      setText(c.querySelector(".sp-link, .sp-extra-name"), nm);
+    });
+  }
+  // Settings → Storage → "Export names": everything harvested so far, in the shape
+  // tools/inat-names.mjs --merge reads, so a device's browsing grows the shipped packs.
+  function nameHarvestJson() {
+    var all = nameHarvest(), out = {}, n = 0;
+    Object.keys(all).forEach(function (k) {
+      var r = all[k];
+      if (!r || !r.n || !Object.keys(r.n).length) return;   // skip the "iNat knows nothing" memos
+      out[k] = { id: r.id || 0, n: r.n }; n++;
+    });
+    return { app: "BirdsWhere", generated: new Date().toISOString(), source: "iNaturalist taxa API — taxonomy CC BY 4.0",
+             count: n, names: out };
+  }
+  function updateNamesExportNote() {
+    var b = document.getElementById("names-export"), p = document.getElementById("names-export-note");
+    if (!b || !p) return;
+    var n = nameHarvestCount();
+    b.disabled = !n;
+    p.textContent = t("names.exportNote", { n: n });
+  }
+  function nameHarvestCount() {
+    var all = nameHarvest(), n = 0;
+    Object.keys(all).forEach(function (k) { if (all[k] && all[k].n && Object.keys(all[k].n).length) n++; });
+    return n;
+  }
   function extraVernacName(sci) {
     var key = (lang || "en") + "|" + sci.toLowerCase();
     var cache = vernacCache();
@@ -8979,13 +9986,27 @@
         if (changed) {
           saveVernacCache();   // unlimited — no cap; lives in the general cache (IDB)
           try { updateDetLegend(); } catch (e) {}
-          try { if (typeof refreshCurrentView === "function") refreshCurrentView(); } catch (e) {}
+          // In place, for the same reason as nhRefresh: refreshCurrentView() re-runs the
+          // whole list render (and its fetch) to change some text.
+          try { refreshNamesInPlace(); } catch (e) {}
         }
         if (Object.keys(vernacPending).length) scheduleVernacFetch();
       });
     }, 400);
   }
+  // Resolving an extra's name walks the scientific-name index and up to three fallback
+  // matchers, and the legend/lists ask for the SAME species' name many times in one
+  // render — 112 ms of a filter change between this and extraDisplayName. A name cannot
+  // change inside one synchronous pass, so memoise it for the tick (a language change or
+  // a harvested name lands in a later tick and re-renders anyway).
+  var _detNameMemo = null;
   function detName(e) {
+    if (!e || !e.key) return detNameUncached(e);
+    if (!_detNameMemo) { _detNameMemo = Object.create(null); setTimeout(function () { _detNameMemo = null; }, 0); }
+    var hit = _detNameMemo[e.key];
+    return hit !== undefined ? hit : (_detNameMemo[e.key] = detNameUncached(e));
+  }
+  function detNameUncached(e) {
     var lbl = labelsByKey[e.key];
     if (lbl) return speciesName(lbl);
     // Extra stored under "x:<sci>" — re-resolve to a model species by scientific
@@ -8995,12 +10016,7 @@
       var sci = e.key.slice(2);
       var l2 = AppAggregate.ensureSciIndex()[sci.toLowerCase()] || AppAggregate.labelBySciEpithet(sci, e.cls) || AppAggregate.labelBySciGenus(sci, e.cls);
       if (l2) return speciesName(l2);
-      // Non-model species with no usable common name → the lazy iNat lookup.
-      var nm0 = e.name || "";
-      if (!nm0 || nm0.toLowerCase() === sci.toLowerCase()) {
-        var v = extraVernacName(sci);
-        if (v) return speciesCase(lang, v);
-      }
+      return extraDisplayName(sci, e.name, e.cls);
     }
     return speciesCase(lang, e.name || (e.key && e.key.indexOf("x:") === 0 ? e.key.slice(2) : e.key));
   }
@@ -9041,8 +10057,16 @@
   function recentEnough(dateStr, maxDays) {
     if (!maxDays) return true;            // 0/"All" = no filter
     if (!dateStr) return false;           // unknown date → exclude when filtering
-    var t = Date.parse(dateStr); if (isNaN(t)) return false;
-    return (Date.now() - t) / 86400000 <= maxDays;
+    return String(dateStr).slice(0, 10) >= isoDaysAgo(maxDays);
+  }
+  // "YYYY-MM-DD", maxDays before today (local) — the cutoff the recency window compares
+  // against. One string per pass instead of a Date.parse per ROW: parsing was the single
+  // most expensive thing in a filter change (229 ms of ~2.0 s, measured 2026-09-19 on 255
+  // species). It also makes the window exactly "dated within the last N days" rather than
+  // something that drifts with the time of day.
+  function isoDaysAgo(days) {
+    var d = new Date(Date.now() - days * 86400000);
+    return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2);
   }
   // Absolute from–to date range (YYYY-MM-DD), an alternative to the rolling "last
   // N days" window. Null when neither end is set. When a range is active it takes
@@ -9071,22 +10095,36 @@
   var detDayHover = null;                // { f, t, k } — hovered bar's date range (bars can bucket several days)
   var detDaySuspend = false;
   function detDaySelActive() { for (var k in detDaySel) return true; return false; }
+  // detDatePasses runs ONCE PER PLOTTED ROW — hundreds of thousands of times in a single
+  // filter change. Its three settings (recency days, date range, months) all live in
+  // GeoState, and reading them inside that loop cost more than the comparison itself.
+  // Snapshot them for the render tick, the same one-tick memo _detRemovedMemo uses;
+  // anything that changes a filter clears it through invalidateFilterMemos().
+  var _dateCfgMemo = null;
+  function dateCfg() {
+    if (_dateCfgMemo) return _dateCfgMemo;
+    var days = detRecencyDays();
+    _dateCfgMemo = { days: days, cut: days > 0 ? isoDaysAgo(days) : "",
+                     range: detDateRange(), months: detMonths(), daySel: detDaySelActive() };
+    setTimeout(function () { _dateCfgMemo = null; }, 0);
+    return _dateCfgMemo;
+  }
+  function invalidateFilterMemos() { _detRemovedMemo = null; _dateCfgMemo = null; _plotSigMemo = null; }
   function detDatePasses(dateStr) {
+    var c = dateCfg(), d0 = String(dateStr || "").slice(0, 10);
     if (!detDaySuspend) {
-      var d0 = String(dateStr || "").slice(0, 10);
       if (detDayHover) return d0 >= detDayHover.f && d0 <= detDayHover.t;   // hover preview: that bar's day range only
-      if (detDaySelActive() && !detDaySel[d0]) return false;                // clicked bars: keep only those days
+      if (c.daySel && !detDaySel[d0]) return false;                         // clicked bars: keep only those days
     }
-    if (!detMonthPasses(dateStr)) return false;
-    var rg = detDateRange();
-    if (rg) {
-      var d = String(dateStr || "").slice(0, 10);
-      if (!d) return false;
-      if (rg.from && d < rg.from) return false;
-      if (rg.to && d > rg.to) return false;
+    if (c.months.length && (d0.length < 7 || c.months.indexOf(+d0.slice(5, 7)) < 0)) return false;
+    if (c.range) {
+      if (!d0) return false;
+      if (c.range.from && d0 < c.range.from) return false;
+      if (c.range.to && d0 > c.range.to) return false;
       return true;
     }
-    return recentEnough(dateStr, detRecencyDays());
+    if (!c.days) return true;
+    return !!d0 && d0 >= c.cut;
   }
   // Cap on how many detection dots are DRAWN at once (markers are the draw-speed
   // bottleneck). Data is never dropped — the rest still show in the Detections
@@ -9126,28 +10164,46 @@
     try { for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); n += (k.length + (localStorage.getItem(k) || "").length) * 2; } } catch (e) {}
     return n;
   }
+  // What each "clear cached data" row last measured, keyed by its data-clear name;
+  // the sum is the app's own view of what it stores.
+  var cacheBytesSeen = {};
+  function measuredCacheBytes() {
+    var n = 0; for (var k in cacheBytesSeen) n += +cacheBytesSeen[k] || 0;
+    return n;
+  }
+  // Browsers pad every OPAQUE (cross-origin, no-CORS) cached response — map tiles,
+  // mostly — by megabytes each, so navigator.storage's `usage` can read tens of GB for
+  // a few hundred MB of real data, and the "nearly full" warning would fire on padding
+  // alone. Treat the report as padded only when it exceeds what we measured by more
+  // than a GIGABYTE: our measurement covers every big cache, so a gap that size is
+  // padding, while an ordinary full device (a few MB over) still warns properly.
+  var USAGE_PAD_GAP = 1073741824;
+  function effectiveUsage(reported) {
+    var real = localStorageBytes() + measuredCacheBytes();
+    return (real > 0 && reported - real > USAGE_PAD_GAP) ? real : reported;
+  }
   function renderStorageUsage() {
     var el = document.getElementById("storage-usage"); if (!el) return;
-    var app = fmtBytes(localStorageBytes());
-    el.textContent = t("ctrl.storageLine", { app: app, used: "…", quota: "…" });
+    var app = fmtBytes(localStorageBytes()), cache = fmtBytes(measuredCacheBytes());
+    el.textContent = t("ctrl.storageLine", { app: app, cache: cache, used: "…", quota: "…" });
     var warn = document.getElementById("storage-warn");
     if (navigator.storage && navigator.storage.estimate) {
       navigator.storage.estimate().then(function (est) {
         var e2 = document.getElementById("storage-usage"); if (!e2) return;
-        e2.textContent = t("ctrl.storageLine", { app: app, used: fmtBytes(est.usage || 0), quota: fmtBytes(est.quota || 0) });
+        e2.textContent = t("ctrl.storageLine", { app: app, cache: cache, used: fmtBytes(est.usage || 0), quota: fmtBytes(est.quota || 0) });
         // Caching is unlimited, so warn when the device's storage quota is getting full —
         // the "Clear cached data" buttons below are how the user frees space.
         if (warn) {
-          var q = +est.quota || 0, u = +est.usage || 0, pct = q > 0 ? u / q : 0;
+          var q = +est.quota || 0, u = effectiveUsage(+est.usage || 0), pct = q > 0 ? u / q : 0;
           if (pct >= 0.80) {
             warn.style.display = "";
             warn.textContent = t("storage.warnFull", { pct: Math.round(pct * 100) });
             warn.classList.toggle("storage-warn-crit", pct >= 0.92);
           } else warn.style.display = "none";
         }
-      }).catch(function () { el.textContent = t("ctrl.storageLine", { app: app, used: "—", quota: "—" }); if (warn) warn.style.display = "none"; });
+      }).catch(function () { el.textContent = t("ctrl.storageLine", { app: app, cache: cache, used: "—", quota: "—" }); if (warn) warn.style.display = "none"; });
     } else {
-      el.textContent = t("ctrl.storageLine", { app: app, used: "—", quota: "—" });   // no StorageManager
+      el.textContent = t("ctrl.storageLine", { app: app, cache: cache, used: "—", quota: "—" });   // no StorageManager
       if (warn) warn.style.display = "none";
     }
   }
@@ -9158,7 +10214,7 @@
   function checkStoragePressure() {
     if (!(navigator.storage && navigator.storage.estimate)) return;
     navigator.storage.estimate().then(function (est) {
-      var q = +est.quota || 0, u = +est.usage || 0; if (!q) return;
+      var q = +est.quota || 0, u = effectiveUsage(+est.usage || 0); if (!q) return;
       var pct = u / q;
       if (pct >= 0.90 && Date.now() - _storageWarnedAt > 60000) {
         _storageWarnedAt = Date.now();
@@ -9278,7 +10334,9 @@
           if (Math.abs(r.lat - near.lat) > dLat || Math.abs(r.lon - near.lon) > dLon) return;   // bbox reject (cheap)
           if (map.distance(center, L.latLng(r.lat, r.lon)) > near.meters) return;
         }
-        out.push({ key: k, name: nm, color: e.color, lat: r.lat, lon: r.lon, date: r.date || "", src: r.src || "", origin: r.origin || "", url: r.url || "", place: r.place || "", placeCoarse: !!r.placeCoarse, posFuzzM: +r.posFuzzM || 0, count: (r.count != null ? r.count : ""), act: r.act || "", note: r.note || "", flags: r.flags || "", observer: r.observer || "", listName: r._listName || "", mpId: r._mpId || "", rarity: !!r.rarity, alert: !!r._alert, prob: (r._prob != null ? r._prob : -1) });
+        out.push({ key: k, name: nm, color: e.color, lat: r.lat, lon: r.lon, date: r.date || "", src: r.src || "", origin: r.origin || "", url: r.url || "", place: r.place || "", placeCoarse: !!r.placeCoarse, posFuzzM: +r.posFuzzM || 0, count: (r.count != null ? r.count : ""), act: r.act || "", note: r.note || "", flags: r.flags || "", observer: r.observer || "", listName: r._listName || "", mpId: r._mpId || "", rarity: !!r.rarity, alert: !!r._alert,
+          photo: r.photo || "", photoBig: r.photoBig || "", photoBy: r.photoBy || "", photos: r.photos || null, rl: r.rl || "",
+          prob: (r._prob != null ? r._prob : -1) });
       });
     });
     // Rarity-alert records are now first-class detPlot rows (flagged `rarity`, injected by
@@ -9774,6 +10832,27 @@
     el.style.top = Math.max(6, Math.min(top, window.innerHeight - el.offsetHeight - 8)) + "px";
     enableMenuKeys(el, closeAnchoredMenu);
   }
+  // A popup whose height only settles once its PICTURES have loaded cannot be anchored to
+  // the row that opened it: anchor a row near the bottom of the screen and the clamp in
+  // positionAnchoredMenu measures a height the popup no longer has a moment later, so it
+  // ends up hanging below the fold. Centre those instead — the pictures are the subject,
+  // there is nothing they need to stay attached to — and re-centre as each one lands.
+  function centerAnchoredMenu(el) {
+    el.style.left = Math.max(6, Math.round((window.innerWidth - el.offsetWidth) / 2)) + "px";
+    el.style.top = Math.max(6, Math.round((window.innerHeight - el.offsetHeight) / 2)) + "px";
+    enableMenuKeys(el, closeAnchoredMenu);
+  }
+  function centerPhotoPopup(el) {
+    el.style.maxHeight = "min(88vh, 900px)";
+    el.style.overflow = "auto";
+    centerAnchoredMenu(el);
+    Array.prototype.forEach.call(el.querySelectorAll("img"), function (im) {
+      if (im.complete) return;
+      var re = function () { if (el.isConnected) centerAnchoredMenu(el); };
+      im.addEventListener("load", re, { once: true });
+      im.addEventListener("error", re, { once: true });
+    });
+  }
   function closeDetRowMenu() { closeAnchoredMenu(); }   // alias kept for its many call sites
   // The ⓘ popup on an observation-list row: a small, nicely-formatted card with the
   // record's activity (via actLabel) and note, anchored under the clicked icon.
@@ -9853,7 +10932,96 @@
   // Clicking a SCIENTIFIC name opens a family browser: every model species in the
   // same family, ranked by the model's probability at the current point, each a
   // button into the normal species-info menu.
+  function familyView() { return window.GeoState.get("familyView", "table") === "images" ? "images" : "table"; }
+  function setFamilyView(v) { window.GeoState.save({ familyView: v === "images" ? "images" : "table" }); }
+  // The family, as picture cards — the same shape as "Confusion species (images)", which
+  // is what a family list is for: seeing what the neighbours look like. Ranked by the
+  // model's probability at the point when there is one, else alphabetically.
+  async function openFamilyImages(key, x, y) {
+    var lbl = key && labelsByKey[key]; if (!lbl) return;
+    var fam = famOf(key);
+    var el = openAnchoredMenu("detrow-menu family-menu conf-menu conf-img-menu");
+    el.style.width = "min(97vw,900px)";
+    var hdr = document.createElement("div");
+    hdr.className = "detrow-menu-hdr detrow-menu-name";
+    hdr.textContent = fam || t("family.unknown");
+    el.appendChild(hdr);
+    var closeBtn = document.createElement("button");
+    closeBtn.type = "button"; closeBtn.className = "conf-close"; closeBtn.textContent = "×";
+    closeBtn.setAttribute("aria-label", t("btn.close"));
+    closeBtn.addEventListener("click", function (e) { e.stopPropagation(); closeAnchoredMenu(); });
+    el.appendChild(closeBtn);
+    confSwitchBtn(el, t("confusion.toText"), function () { setFamilyView("table"); openFamilyMenu(key, x, y); });
+    if (!fam) { centerPhotoPopup(el); return; }
+    var members = labels.filter(function (l) { return famOf(l.key) === fam; });
+    var pt = (currentSpView && isFinite(+currentSpView.lat) && isFinite(+currentSpView.lon)) ? currentSpView : null;
+    // The whole 48-week curve, not just this week's: it carries Here, Season and Yr peak
+    // at once (and is the same per-point cache the species table's Season column fills,
+    // so opening the family from a list that already has it costs no inference).
+    var week = +document.getElementById("week-select").value, cell = null;
+    if (pt) {
+      var wait = document.createElement("div"); wait.className = "detrow-menu-hdr"; wait.textContent = "…";
+      el.appendChild(wait); centerPhotoPopup(el);
+      try { cell = await predictAllWeeks(+pt.lat, +pt.lon); } catch (e) {}
+      if (_anchMenuEl !== el) return;                        // closed while computing
+      if (wait.parentNode) wait.parentNode.removeChild(wait);
+    }
+    var arr = members.map(function (m) {
+      return { m: m, p: cell ? ((cell[week] && cell[week][m.index]) || 0) : -1,
+               s: cell ? classifySeason(cell, m.index, week) : null };
+    });
+    if (cell) arr.sort(function (a, b) { return b.p - a.p; });
+    else arr.sort(function (a, b) { return speciesName(a.m).localeCompare(speciesName(b.m)); });
+    var L = { here: t("confusion.colHere"), season: t("th.season"), ytop: t("th.ytop") };
+    var pct = function (p) { var v = p * 100; return v >= 0.5 ? Math.round(v) + "%" : (p > 0 ? "<1%" : "0%"); };
+    // Same metric row as the confusion cards, data-hintkey and all: bar behind, label
+    // left, value right. `html` is built here, never user text.
+    function row(cls, label, html, wide, color, tipKey) {
+      return '<div class="cfi-row ' + cls + '" data-hintkey="' + tipKey + '"><i class="cfi-bar" style="width:' +
+        Math.max(0, Math.min(100, wide)).toFixed(0) + '%' + (color ? ";background:" + color : "") + '"></i>' +
+        '<span class="cfi-k">' + escapeHtml(label) + '</span><span class="cfi-v">' + html + "</span></div>";
+    }
+    var strip = document.createElement("div"); strip.className = "cfi-strip";
+    strip.innerHTML = arr.map(function (w) {
+      var m = w.m, nm = speciesName(m), here = w.p, s = w.s;
+      var isBase = m.key === key;
+      var stats = "";
+      if (here >= 0 && s) {
+        var meta = SEASON_META[s.phase];
+        stats = '<div class="cfi-stats">' +
+          row("cfi-here", L.here, escapeHtml(pct(here)), Math.max(4, here * 100), probHueColor(here), "th.probHint") +
+          // Season: the phase glyph + this week as a share of the species' own yearly peak.
+          row("cfi-season", L.season, '<span class="cfi-sg" style="color:' + meta.c + '">' + meta.g + "</span>" +
+              Math.round(s.ratio * 100) + "%", s.ratio * 100, meta.c, "th.seasonHint") +
+          // Yr peak: how good the species' BEST week gets here — the ceiling the Season
+          // percentage is measured against, so the two only mean something together.
+          row("cfi-ytop", L.ytop, Math.round(s.peak * 100) + "%", s.peak * 100, probHueColor(s.peak), "th.ytopHint") +
+        "</div>";
+      }
+      return '<div class="cfi-card' + (isBase ? ' cfi-base" title="' + escapeHtml(t("confusion.base")) + '"' : '"') +
+        ' data-key="' + escapeHtml(m.key) + '" data-sci="' + escapeHtml(m.sci) + '">' +
+        '<div class="spg-img"><span class="spg-none" style="display:none">' + escapeHtml(t("spg.noImage")) + "</span></div>" +
+        '<div class="cfi-name">' + escapeHtml(nm) + "</div>" +
+        '<div class="cfi-sci">' + escapeHtml(m.sci) + "</div>" +
+        stats +
+        '<div class="spg-credit"></div>' +
+      "</div>";
+    }).join("");
+    el.appendChild(strip);
+    centerPhotoPopup(el);
+    wirePhotoCards(el, strip);
+    wireYearProbTips(el);                                    // hold Here / Season / Yr peak → the year curve
+    strip.addEventListener("click", function (e) {
+      if (e.target.closest("a")) return;                     // the photo credit link
+      if (Date.now() - spgHoldAt < 800) return;              // a hold just showed the year curve — not a tap on the card
+      var c = e.target.closest(".cfi-card"); if (!c) return;
+      var mk = c.getAttribute("data-key"), ml = labelsByKey[mk]; if (!ml) return;
+      closeAnchoredMenu();
+      showDetRowMenu({ key: mk, name: speciesName(ml), sci: ml.sci }, x, y);
+    });
+  }
   async function openFamilyMenu(key, x, y) {
+    if (familyView() === "images" && navigator.onLine !== false) { openFamilyImages(key, x, y); return; }
     var lbl = key && labelsByKey[key]; if (!lbl) return;
     var fam = famOf(key);
     var el = openAnchoredMenu("detrow-menu family-menu");
@@ -9863,6 +11031,7 @@
     hdr.className = "detrow-menu-hdr detrow-menu-name";
     hdr.textContent = fam || t("family.unknown");
     el.appendChild(hdr);
+    confSwitchBtn(el, t("splay.gallery"), function () { setFamilyView("images"); openFamilyImages(key, x, y); });
     positionAnchoredMenu(el, x, y);
     if (!fam) return;
     var members = labels.filter(function (l) { return famOf(l.key) === fam; });
@@ -9897,10 +11066,15 @@
         probCell = probBarNa();
       }
       tr.innerHTML = '<td class="conf-name" data-name="' + escapeHtml(nm) + '" data-sci="' + escapeHtml(m.sci) + '">' + escapeHtml(nm) + '</td>' + probCell;
-      tr.addEventListener("click", function () { showDetRowMenu({ key: m.key, name: nm, sci: m.sci }, x, y); });
+      tr.setAttribute("data-key", m.key);                    // so a held probability knows whose curve to draw
+      tr.addEventListener("click", function () {
+        if (Date.now() - spgHoldAt < 800) return;            // a hold just showed the year curve
+        showDetRowMenu({ key: m.key, name: nm, sci: m.sci }, x, y);
+      });
       tbl.appendChild(tr);
     });
     el.appendChild(tbl);
+    wireYearProbTips(el);
     positionAnchoredMenu(el, x, y);
   }
   // Confusion-species (look-alike) partners: a per-bird list of the most similar
@@ -10190,6 +11364,49 @@
   function confusionView() { return window.GeoState.get("confusionView", "images") === "table" ? "table" : "images"; }
   // The view switch in the popup's top-right (next to ×): table ↔ photo cards, one-off (the
   // Settings default is untouched); reopens the other view at the same anchor.
+  // Photo cards in a popup (the family view, the confusion view). Asking for one picture
+  // per card is how you get rate-limited: four failures in a row trip spPhotoFailed()
+  // and every remaining card is then told the service is down, so a big family came out
+  // half empty and STAYED that way, nothing cached for next time.
+  // So: one BATCHED pass for the whole strip (spImagesPrefetch — fifty species per
+  // request, so Anatidae's 164 cards cost eight round trips instead of 328), then the
+  // per-card chain, three in flight, for whatever the batch could not place — a species
+  // with no article picture, whose file is non-free, or a name Wikipedia does not know.
+  function wirePhotoCards(popup, strip) {
+    var PARALLEL = 3, queue = [], running = 0;
+    function fill(card) {
+      if (!card || card._cfiDone) return;
+      card._cfiDone = true;
+      queue.push(card); pump();
+    }
+    function pump() {
+      while (running < PARALLEL && queue.length) {
+        var c = queue.shift();
+        running++;
+        loadSpPhoto(c.querySelector(".spg-img"), c.querySelector(".spg-none"), c.querySelector(".spg-credit"), c.getAttribute("data-sci"))
+          .then(function (ok) {
+            running--;
+            // null = the lookup could not be reached (offline, rate limit): nothing was
+            // remembered, so let it be asked for again rather than leaving a blank card.
+            if (ok === null && popup.isConnected) { c._cfiDone = false; setTimeout(function () { fill(c); }, 4000); }
+            pump();
+          }, function () { running--; pump(); });
+      }
+    }
+    // EVERY card ends up fetched and cached — scrolled to or not. The species you never
+    // scrolled past are exactly the ones worth having on the next visit.
+    var cards = Array.prototype.slice.call(strip.querySelectorAll(".cfi-card"));
+    var want = [], seen = {}, store = spImgStore();
+    cards.forEach(function (c) {
+      var sci = c.getAttribute("data-sci");
+      if (sci && !seen[sci] && !store[sci]) { seen[sci] = 1; want.push(sci); }
+    });
+    cards.forEach(function (c) { if (store[c.getAttribute("data-sci")]) fill(c); });   // already on the device: paint now
+    if (!want.length) return;
+    strip.classList.add("cfi-loading");                        // a quiet placeholder while the batch is out
+    function rest() { strip.classList.remove("cfi-loading"); cards.forEach(fill); }
+    spImagesPrefetch(want).then(rest, rest);
+  }
   function confSwitchBtn(el, label, open) {
     var b = document.createElement("button");
     b.type = "button"; b.className = "conf-switch"; b.textContent = label;
@@ -10234,9 +11451,9 @@
     function card(m, w, isBase) {
       var nm = speciesName(m), here = out ? (isBase ? (out[m.index] || 0) : w.p) : -1;
       var sv = (out && !isBase) ? confScore(w) * 100 : -1;
-      return '<div class="cfi-card' + (isBase ? " cfi-base" : "") + '" data-key="' + escapeHtml(m.key) + '" data-sci="' + escapeHtml(m.sci) + '">' +
+      return '<div class="cfi-card' + (isBase ? ' cfi-base" title="' + escapeHtml(t("confusion.base")) + '"' : '"') + ' data-key="' + escapeHtml(m.key) + '" data-sci="' + escapeHtml(m.sci) + '">' +
         '<div class="spg-img"><span class="spg-none" style="display:none">' + escapeHtml(t("spg.noImage")) + "</span></div>" +
-        '<div class="cfi-name">' + (isBase ? '<span class="cfi-tag">' + escapeHtml(t("confusion.base")) + "</span>" : "") + escapeHtml(nm) + "</div>" +
+        '<div class="cfi-name">' + escapeHtml(nm) + "</div>" +   // the species itself is marked by its thicker frame (.cfi-base), not a label
         '<div class="cfi-sci">' + escapeHtml(m.sci) + "</div>" +
         '<div class="cfi-stats">' +
           row("cfi-match", L.match, isBase ? "—" : String(Math.round(w.w * 100)), isBase ? 0 : w.w * 100, "", "confusion.tipMatch") +
@@ -10253,12 +11470,12 @@
     var legend = document.createElement("div"); legend.className = "conf-legend";
     legend.textContent = t("confusion.legend", { match: L.match, misid: L.misid, here: L.here, score: L.score });
     el.appendChild(legend);
-    positionAnchoredMenu(el, x, y);
-    Array.prototype.forEach.call(strip.querySelectorAll(".cfi-card"), function (c) {
-      loadSpPhoto(c.querySelector(".spg-img"), c.querySelector(".spg-none"), c.querySelector(".spg-credit"), c.getAttribute("data-sci"));
-    });
+    centerPhotoPopup(el);
+    wirePhotoCards(el, strip);
+    wireYearProbTips(el);                                    // hold any metric row → the year curve
     strip.addEventListener("click", function (e) {
       if (e.target.closest("a")) return;   // the photo credit link
+      if (Date.now() - spgHoldAt < 800) return;              // a hold just showed the year curve — not a tap on the card
       var c = e.target.closest(".cfi-card"); if (!c || c.classList.contains("cfi-base")) return;
       var pk = c.getAttribute("data-key"), w = null;
       for (var i = 0; i < arr.length; i++) if (arr[i].m.key === pk) { w = arr[i]; break; }
@@ -10538,6 +11755,7 @@
         n = (n || "").trim(); if (!n) return;
         var a = getSpeciesLists(); a.push({ name: n, keys: [d.key] }); saveSpeciesLists(a);
         if (typeof speciesPanelPopulated === "function" && speciesPanelPopulated()) renderSpControls();
+      else if (onListView()) renderPlottedObsPage();   // the By-observation page: re-filter its rows (and its funnel)
       });
     }));
     positionAnchoredMenu(el, rect.left, rect.top);   // keep on-screen after the height change
@@ -10627,6 +11845,7 @@
     }, 30);
   }
   function detFiltersRefresh() {
+    invalidateFilterMemos();   // a filter just changed — never re-use the previous pass's snapshot
     withFunnelBusy(function () {
       syncAlertPlot();   // refresh the synthetic alert species before every surface re-renders
       saveLegendState(); rebuildDetLayers(); updateDetLegend();
@@ -10913,9 +12132,15 @@
           ? ' <span class="dl-obs">· ' + escapeHtml(g.obs) + "</span>"
           : ' <span class="dl-obs dl-obs-add" role="button" data-obs="' + escapeHtml(g.obs) + '" title="' + escapeHtml(t("obs.addToList")) + '">· ' + escapeHtml(g.obs) + "</span>");
         var gLL = (items[0] && isFinite(+items[0].lat) && isFinite(+items[0].lon)) ? items[0] : null;
-        var locSpan = g.loc ? ' <span class="dl-loc"' + (gLL ? ' data-lat="' + (+gLL.lat) + '" data-lon="' + (+gLL.lon) + '"' : "") + ">· " + escapeHtml(g.loc) + "</span>"
+        // The place beside the observer carries the same menu as any other place name
+        // (find on map · save as a point · add to the route · filter to it) whenever the
+        // record has coordinates; a place with no coordinates stays plain text.
+        var locSpan = g.loc
+          ? (gLL
+            ? ' <span class="dl-loc sp-loc-click" role="button" data-lat="' + (+gLL.lat) + '" data-lon="' + (+gLL.lon) + '" data-loc="' + escapeHtml(String(g.loc).trim()) + '" title="' + escapeHtml(g.loc) + '">· ' + escapeHtml(g.loc) + "</span>"
+            : ' <span class="dl-loc" title="' + escapeHtml(g.loc) + '">· ' + escapeHtml(g.loc) + "</span>")
           : (gLL
-            ? " " + rgeoSpanHtml(items[0].lat, items[0].lon, "dl-loc", "· ", "", g.fb,
+            ? " " + rgeoSpanHtml(items[0].lat, items[0].lon, "dl-loc sp-loc-click", "· ", ' role="button"', g.fb,
               items.reduce(function (mx, it) { return Math.max(mx, +it.posFuzzM || 0); }, 0))   // lat/lon-only or generic place → map-derived name
             : (g.fb ? ' <span class="dl-loc">· ' + escapeHtml(g.fb) + "</span>" : ""));
         var full = (fmtDate(dt) || t("detlist.noDate")) + (g.obs ? " · " + g.obs : "") + (g.loc ? " · " + g.loc : "");
@@ -10929,9 +12154,6 @@
   function wireRecordList(body, reRender) {
     Array.prototype.forEach.call(body.querySelectorAll(".dl-sp-head"), function (b) {
       b.addEventListener("click", function () { var k = this.getAttribute("data-key"); if (detListOpenSp[k]) delete detListOpenSp[k]; else detListOpenSp[k] = true; reRender(); });
-    });
-    Array.prototype.forEach.call(body.querySelectorAll(".dl-obs-add"), function (s) {
-      s.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); observerClickMenu(this.getAttribute("data-obs"), this); });
     });
     Array.prototype.forEach.call(body.querySelectorAll(".dl-date-click"), function (s) {
       s.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); showDateFilterMenu(this.getAttribute("data-date"), e.clientX, e.clientY); });
@@ -11015,6 +12237,25 @@
       }
       titleEl.textContent = titleTxt;
       titleEl.title = titleTxt; fitDetTitle();
+      // The title IS this spot's place name, so give it the same powers every other
+      // place name has: find on map, save as a point, add to the route, filter to it.
+      // Only when it is a real place (not the generic fallback) and the window belongs
+      // to one spot.
+      var namedPlace = (explicit || firstPlace) || "";
+      var canAct = !!(namedPlace && detListNear && isFinite(+detListNear.lat) && isFinite(+detListNear.lon));
+      // The shared place-name class is what makes it act: the delegated handler above
+      // gives it the menu and the hover preview, like every other place name.
+      titleEl.classList.toggle("detlist-title-loc", canAct);
+      titleEl.classList.toggle("sp-loc-click", canAct);
+      if (canAct) {
+        titleEl.setAttribute("data-lat", +detListNear.lat);
+        titleEl.setAttribute("data-lon", +detListNear.lon);
+        titleEl.setAttribute("data-loc", namedPlace);
+        titleEl.setAttribute("role", "button");
+      } else {
+        titleEl.removeAttribute("data-lat"); titleEl.removeAttribute("data-lon");
+        titleEl.removeAttribute("data-loc"); titleEl.removeAttribute("role");
+      }
     }
     var emptyMsg = t("detlist.empty");
     // Mirror a legend species-selection so the list matches the dots on screen.
@@ -11258,6 +12499,9 @@
         // fresh fetch upgrades older rows (e.g. count/activity not stored before).
         if ((ex.count == null || ex.count === "") && r.count != null && r.count !== "") ex.count = r.count;
         if (!ex.act && r.act) ex.act = r.act;
+        if (!ex.photo && r.photo) { ex.photo = r.photo; ex.photoBig = r.photoBig; ex.photoBy = r.photoBy; }   // rows stored before photos were carried
+        if (!ex.photos && r.photos) ex.photos = r.photos;                                                       // … and before the EXTRA pictures were
+        if (!ex.rl && r.rl) ex.rl = r.rl;
         if (r.rarity) ex.rarity = true;   // same observation is ALSO a rarity alert → keep the "!" on the merged row
         if (r._areas && r._areas.length) {   // fetched by another area too → union the owners
           if (!ex._areas) ex._areas = [];
@@ -11313,10 +12557,6 @@
   // only zooming does. Rows honour the exact same filters the ordinary dots do.
   var DOT_CLUSTER_PX = 16;   // ≈ one dot footprint (radius 5–9 px) → "they touch"
   var detClusterLayer = null, dotClusterTimer = null, dotClusterHiddenN = 0;
-  // Observation dots on/off (independent "Show dots" checkbox) and the density-
-  // heatmap metric (Off/Species/Observers/Counts) — both live here so the dot
-  // rebuild below and the hotspot painter further down share one source of truth.
-  var dotsShown = true, hotMode = "off";
   var DOT_CLUSTER = true;   // crowded dots always merge into count markers (the Settings toggle is gone)
   function dotClusterOn() { return DOT_CLUSTER; }
   function clearDotClusterLayers() {
@@ -11457,8 +12697,8 @@
     clearSpider();
     ensureDedup();
     reconcileObsFilter();   // drop a stale observer filter that no longer matches any plotted observer
+    reconcileLocFilter();   // …and a stale location filter, which would hide every fetched record
     reconcileLocFilter();   // …and likewise a stale location filter
-    if (typeof scheduleHotspot === "function") scheduleHotspot();   // refresh the hotspot heatmap when the plotted set changes
 
     if (detFocusKey && !detPlot[detFocusKey]) detFocusKey = null;   // focused species gone → don't mute everything
     recolorDetections();
@@ -11486,7 +12726,6 @@
     keys.forEach(function (k) {
       var e = detPlot[k];
       if (e.group) { map.removeLayer(e.group); e.group = null; }
-      if (!dotsShown) return;                                 // "Show dots" off — heatmap only
       // Legend hover OVERRIDES the selection: while a species is focused, draw ONLY
       // it (regardless of what's selected); otherwise apply the normal selection.
       // The detections-list search (debounced) narrows the drawn dots to matching
@@ -11502,8 +12741,7 @@
       e.group = renderDetGroup(detName(e), rows, e.color, isInteresting(e.key), detIsRare(k), allowed, e.key);
       e.group.addTo(map);
     });
-    if (!dotsShown) { if (detClusterLayer) { try { map.removeLayer(detClusterLayer); } catch (e) {} detClusterLayer = null; } }
-    else if (dotDC && dotDC.clusters.length) renderDotClusters(dotDC.clusters);
+    if (dotDC && dotDC.clusters.length) renderDotClusters(dotDC.clusters);
   }
   // While a legend hover isolates a species/observer, the spot overlays (eBird
   // hotspots, Best sites and birding spots all render in spotsPane) hide too —
@@ -11588,11 +12826,27 @@
     // A clicked-point species list, OR — with no point (e.g. after Fetch on open) —
     // whenever there are detections on the map (toggle opens their "By observation" list).
     if (currentSpView && isFinite(+currentSpView.lat) && isFinite(+currentSpView.lon)) return true;
-    return hasPlottedDetections() || Object.keys(alertPlot).length > 0;   // alerts alone are enough to open the "By observation" list
+    if (hasPlottedDetections() || Object.keys(alertPlot).length > 0) return true;   // alerts alone are enough to open the "By observation" list
+    // Nothing fetched at all: the list still has something to say — the model's own species
+    // for the middle of the map (see showListView).
+    return groupHasModel() && !!(labels && labels.length);
+  }
+  // Is the list PAGE actually on screen? An unset inline display is NOT "visible": the
+  // stylesheet's own `#species-panel { display: none }` still applies. A restored session
+  // lands in exactly that state — renderSpeciesList sets .as-page (currentMode is "list")
+  // while the inline display has never been written — and reading the string alone then
+  // reported the list as open while the map was on screen. The toggle showed the MAP icon
+  // and, being told it was on the list, went to the map instead of opening it; on a list
+  // restored without a fetch that re-plotted an empty result and said "No located
+  // detections to plot". Worse, renderSpeciesList only hides the panel `if (!onListView())`,
+  // so the wrong answer kept itself alive. getClientRects() is empty whenever the element
+  // is display:none, from any source.
+  function panelOnScreen(el) {
+    return !!(el && el.style.display !== "none" && el.getClientRects().length > 0);
   }
   function onListView() {
     var sp = document.getElementById("species-panel");
-    return !!(sp && sp.style.display !== "none" && sp.classList.contains("as-page"));
+    return !!(sp && sp.classList.contains("as-page") && panelOnScreen(sp));
   }
   var VT_LIST_SVG = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="8" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="8" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>';
   var VT_MAP_SVG = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4z"/><path d="M9 4v13M15 6.5v13"/></svg>';
@@ -11609,11 +12863,26 @@
   // A standalone "By observation" list of ALL plotted detections — shown by the header
   // toggle when there's no per-point species list (e.g. after Fetch on open). Uses the
   // same renderer as the species panel's "By observation" layout.
+  // The list page you get when several locations are fetched: no single point, so no
+  // prediction table — but the observations themselves still filter, sort and switch
+  // layout like anywhere else. The controls used to be hidden wholesale here ("no
+  // per-point controls without a point"), which left the page with no funnel, no list-type
+  // picker and no way to reach the filter panes at all.
+  function renderObsPageControls() {
+    var ctrls = document.getElementById("sp-controls"); if (!ctrls) return;
+    ctrls.style.display = "";
+    renderSpLayoutSelect();
+    // The two that genuinely need a per-point prediction table: adding the species the
+    // model expects here, and sorting by that probability.
+    var mb = document.getElementById("sp-missing-btn"); if (mb) mb.style.display = "none";
+    var psb = document.getElementById("sp-probsort-btn"); if (psb) psb.style.display = "none";
+    renderSpFilterBar();    // the filter panes (the funnel opens them)
+    renderSpFilterBtn();    // the funnel itself, with its kept/removed bar
+    updateRecencyNote();
+  }
   function renderPlottedObsPage() {
     var rec = document.getElementById("sp-records"); if (!rec) return;
     var tbl = document.getElementById("species-list-table"); if (tbl) tbl.style.display = "none";
-    var ctrls = document.getElementById("sp-controls"); if (ctrls) ctrls.style.display = "none";   // no per-point controls without a point
-    var fw = document.getElementById("sp-filters-wrap"); if (fw) fw.innerHTML = "";
     // Header: list EVERY fetched square, one line each, ordered by geography (not by
     // fetch time). No generic "species here" title.
     var spTitle = document.getElementById("sp-title");
@@ -11630,6 +12899,7 @@
     rec.style.display = "";
     rec.innerHTML = rows.length ? buildSpObsHtml(rows) : '<div class="dl-empty">' + escapeHtml(t("detlist.empty")) + "</div>";
     wireSpDetail(rec); fillObsSeasonCells(rec, rows);
+    renderObsPageControls();   // after the body: the funnel reads its stats off the current set
   }
   // Re-render whichever list page is currently open, so live changes (e.g. a new rarity
   // alert) show without the user reopening it. Per-point list → re-apply its cached
@@ -11647,6 +12917,14 @@
       try { renderPlottedObsPage(); } catch (e) {}
     }
   }
+  // Which point an un-fetched list should describe: the placed pin, else the point the last
+  // list was about, else the middle of the map.
+  function listRefPoint() {
+    try { if (marker && marker.getLatLng) { var ll = marker.getLatLng(); if (ll && isFinite(ll.lat)) return { lat: ll.lat, lon: ll.lng }; } } catch (e) {}
+    if (currentSpView && isFinite(+currentSpView.lat) && isFinite(+currentSpView.lon)) return { lat: +currentSpView.lat, lon: +currentSpView.lon };
+    try { if (map && map.getCenter) { var c = map.getCenter(); if (c && isFinite(c.lat)) return { lat: c.lat, lon: c.lng }; } } catch (e2) {}
+    return null;
+  }
   function showListView() {
     if (!viewToggleAvail()) return;
     var sp = document.getElementById("species-panel"); if (!sp) return;
@@ -11654,10 +12932,28 @@
     // the funnels blink while it runs (see withFunnelBusy).
     withFunnelBusy(function () {
       var bc = document.getElementById("barchart-panel"); if (bc) bc.style.display = "none";
-      if (!speciesPanelPopulated()) renderPlottedObsPage();   // no clicked point → list the plotted detections
+      // A model-only list belongs to ONE point: if the pin (or, with no pin, the map) has moved
+      // since it was built, it describes the wrong place and must be rebuilt for the new one.
+      var refNow = hasPlottedDetections() ? null : listRefPoint();
+      var movedAway = !!(spMissingAuto && refNow && currentSpView &&
+        (Math.abs(refNow.lat - +currentSpView.lat) > 1e-4 || Math.abs(refNow.lon - +currentSpView.lon) > 1e-4));
+      var showedObsPage = false;
+      if (!speciesPanelPopulated() || movedAway || mapFromMultiFetch) {
+        var refPt = mapFromMultiFetch ? null : refNow;
+        // Dots on the map → their "By observation" list. Nothing fetched at all → the model's
+        // own species for the pin / map centre, commonest first (renderSpeciesList's noFetch
+        // path ends in applySightings with an empty result, which is what turns that on).
+        if (refPt) {
+          try {
+            urlForceView = "list";   // the list was asked for — skip renderSpeciesList's map-first default
+            renderSpeciesList(refPt.lat, refPt.lon, null, { noFetch: true });
+          } catch (e) { urlForceView = null; renderPlottedObsPage(); }
+        }
+        else { renderPlottedObsPage(); showedObsPage = true; }
+      }
       sp.classList.add("as-page"); sp.style.display = "block"; sp.scrollTop = 0;
       navOpen("page", closeAnyFullPage);
-      if (speciesPanelPopulated()) {
+      if (!showedObsPage && speciesPanelPopulated()) {
         // Re-apply the cached sightings so rarity alerts that arrived AFTER the fetch
         // (whole-window set) show on open, then restrict to the current map view.
         var tb = document.getElementById("sp-tbody");
@@ -11696,7 +12992,7 @@
       if (sl) key = sl.getAttribute("data-key");
       else { var ex = tr.querySelector(".det-count-extra[data-sci]"); if (ex) key = "x:" + String(ex.getAttribute("data-sci") || "").toLowerCase(); }
       // [?] predictions have no detections to be "in view" — keep them (applyAgeFilter let them through).
-      var missing = spShowMissing && !!sl && !tr.classList.contains("sp-has-det") && !tr.classList.contains("sp-extra");
+      var missing = spMissingOn() && !!sl && !tr.classList.contains("sp-has-det") && !tr.classList.contains("sp-extra");
       var show = missing || !!(key && inView[key]);
       tr.style.display = show ? "" : "none";
       if (show) shown++;
@@ -11712,7 +13008,11 @@
     // purged dots must not sneak back in via the List⇄Map switch. A fresh point
     // fetch re-stamps _plotGen, so plotting works again after the next fetch;
     // "Show in map" on a detections modal also remains an explicit way back.
-    if (currentSpView && (currentSpView.mode === "point" || currentSpView.mode === "historic") &&
+    // …and never when the dots came from a multi-location "Fetch observations": re-plotting
+    // one old point's result over them would replace what you just fetched, and when that
+    // stale result is empty (a list restored without a fetch) plotAllSightings reports
+    // "No located detections to plot" over a map that is full of them.
+    if (!mapFromMultiFetch && currentSpView && (currentSpView.mode === "point" || currentSpView.mode === "historic") &&
         (currentSpView._plotGen === undefined || currentSpView._plotGen === detPlotGen)) plotAllSightings();
     updateViewToggle();
     try { maybeShowRarityTicker(); } catch (e) {}   // a fetch that settled behind the list can run its intro now
@@ -11761,9 +13061,13 @@
   // plotAllSightings can render the current snapshot or a freshly-fetched one.
   function plotSightingsResult(result) {
       obsStatusActive = false;
-      // Filter by the group the data was FETCHED under (result.group), not the live
-      // one — so switching group mid-fetch can't filter e.g. bird data against mammals.
-      var grp = result.group || speciesGroup;
+      // PLOT THE WHOLE SUPERSET. The species group is a DISPLAY filter — detPassesGroup
+      // decides what the map, legend and lists show, and a group switch re-runs
+      // rebuildDetLayers() — so holding every kingdom's records here is what makes the
+      // switch instant instead of leaving an empty map until you fetch again.
+      // (Before v1809 a fetch held one group's data, so this had to filter by
+      // result.group: switching mid-fetch would have matched bird data against mammals.)
+      var grp = "all";
       function modelKeyInGroup(key) { return grp === "all" || ((taxByCode[key] || {}).class_name || "").toLowerCase() === grp; }
       function extraInGroup(cls) { return grp === "all" || (cls && String(cls).toLowerCase() === grp); }
       // Transfer the FILTERED species list to the map: keep a species only when
@@ -11783,7 +13087,7 @@
       });
       Object.keys(result.extras).forEach(function (k) {
         var ex = result.extras[k];
-        if (ex.rows && ex.rows.length && extraInGroup(ex.cls) && passesAge(ex.latestTs)) entries.push({ key: "x:" + k, name: ex.name || ex.sci, rows: ex.rows, count: ex.count, cls: ex.cls || "" });
+        if (ex.rows && ex.rows.length && extraInGroup(ex.cls) && passesAge(ex.latestTs)) entries.push({ key: "x:" + k, name: extraDisplayName(ex.sci || k, ex.name, ex.cls), rows: ex.rows, count: ex.count, cls: ex.cls || "" });
       });
       var hasFail = !!(result.failed && result.failed.length);
       // plotNoFit marks a progressive (partial) plot mid-fetch — an early source may
@@ -11793,7 +13097,18 @@
           if (hasFail) {   // nothing plotted because sources failed → red, clickable
             setStatusHtml('<span class="status-err" role="button" tabindex="0" title="' + escapeHtml(t("fetch.clickErr")) + '">' + escapeHtml(t("fetch.failed", { sources: failedNames(result.failed) })) + "</span>");
             wireStatusFetchErrs(result.failed, result.timedOut, result.timedOutInfo, result.truncInfo);
-          } else setStatus(t("det.none"));
+          } else {
+            setStatus(t("det.none"));
+            // "Nothing here" is a RESULT, not a non-event: the square was searched, so keep it
+            // like any other — outlined on the map, listed in the header (0 obs), re-fetchable by
+            // the ✓ update and removable by its red ×. A FAILED fetch is not registered: it never
+            // actually looked.
+            var org0 = result.origin || currentSpView;
+            if (org0 && isFinite(+org0.lat) && isFinite(+org0.lon)) {
+              rememberFetchedArea(+org0.lat, +org0.lon, result.origin && result.origin.rkm, org0.name || org0.locName);
+              try { refreshSpCoords(); } catch (e) {}   // the header lists the new (empty) square
+            }
+          }
         }
         return;
       }
@@ -11801,6 +13116,10 @@
       // dashed green), which is what the red ×'s per-area delete acts on.
       var org = result.origin || currentSpView;
       if (org && isFinite(+org.lat) && isFinite(+org.lon)) currentFetchAreaId = rememberFetchedArea(+org.lat, +org.lon, result.origin && result.origin.rkm, org.name || org.locName);
+      // Per-observation probabilities drive the ◉ rare marker, the legend order AND the
+      // local-rarity harvest. They used to be computed only when the map legend rendered, so
+      // a fetch read from the species-list page never harvested anything.
+      setTimeout(function () { try { maybeComputeDetProbs(); } catch (e3) {} }, 0);
       entries.sort(function (a, b) { return b.count - a.count; });
       // Which species are NEW to the map with this fetch — the rarest-finds intro
       // shows only those, never ones an earlier fetch already put there.
@@ -11842,7 +13161,10 @@
       if (result.dedupTotal != null) srcNote += " · " + escapeHtml(t("sp.deduped", { n: result.dedupTotal }));   // unique kept after de-dup
       // Hard failures append red, clickable text; tapping any red source opens the reasons.
       var failHtml = hasFail ? ' · <span class="status-err" role="button" tabindex="0" title="' + escapeHtml(t("fetch.clickErr")) + '">' + escapeHtml(t("fetch.failed", { sources: failedNames(result.failed) })) + "</span>" : "";
-      setStatusHtml(escapeHtml(t("sp.plotted", { n: entries.length })) + srcNote + failHtml);
+      // A fetch can land a full set and the ACTIVE FILTERS then hide all of it, which on
+      // screen is indistinguishable from "the fetch returned nothing". Say which it is.
+      var hidNote = entries.length ? fetchedAllNote() : "";
+      setStatusHtml(escapeHtml(t("sp.plotted", { n: entries.length })) + srcNote + failHtml + hidNote);
       wireStatusFetchErrs(result.failed, result.timedOut, result.timedOutInfo, result.truncInfo);
       // Fetch settled (not a partial, not a background auto-open load) → run the
       // rarest-recently ticker once the probabilities are in.
@@ -11910,7 +13232,7 @@
   // recency days / date range.) Drives the black × (clear all) in both the legend
   // and the detections-list filter bar.
   function detHasFilter() {
-    return detSelectionActive() || detExclusionActive() || detDaySelActive() || detStarFilter || detRareFilter || detYearFilter || detLifeFilter || detAlertFilter || (detLegendRows !== "all") || detNewFilter || !!detObsFilter || !!detLocFilter || !!detSrcFilter || (detRecencyDays() !== 0) || !!detDateRange() || detMonths().length > 0 || countFilterActive() || probFilterActive() || (detRegionMode !== "off");
+    return detBflyFilter || detSelectionActive() || detExclusionActive() || detDaySelActive() || detStarFilter || detRareFilter || detYearFilter || detLifeFilter || detAlertFilter || (detLegendRows !== "all") || detNewFilter || !!detObsFilter || !!detLocFilter || !!detSrcFilter || (detRecencyDays() !== 0) || !!detDateRange() || detMonths().length > 0 || countFilterActive() || probFilterActive() || (detRegionMode !== "off");
   }
   // Reset every legend filter at once (the black ×): the species selection, the
   // ★/◉/🟡 mode filter, the observer filter, and the recency (days) window → All.
@@ -11918,6 +13240,7 @@
   function clearAllFilters() {
     detSelected = {}; detExcluded = {}; snapshotSelBase();   // selection AND its base reset → the legend's black × has nothing to revert
     detStarFilter = 0; detRareFilter = 0; detYearFilter = 0; detLifeFilter = 0; detAlertFilter = 0; detNewFilter = false; detTodayFilter = false;
+    detBflyFilter = false;                                                    // butterflies-only → off
     detObsPanelOpen = false; detDaysPanelOpen = false; detModePanelOpen = false;
     setDetObsFilter(null);                                                   // observer → all
     setDetLocFilter(null);                                                   // location → all
@@ -12099,8 +13422,21 @@
   }
   // Persist the legend's UI state — collapsed, the starred-only filter, and the
   // row selection — so the map legend comes back the way the user left it.
+  // 45 call sites, and every filter change hits one: serialising this object and writing
+  // it to localStorage SYNCHRONOUSLY cost 109 ms of a 1.4 s filter change (state.js write
+  // + setItem, measured 2026-09-19) — on the main thread, between the click and the
+  // redraw. Coalesce it: the visible work happens now, the write lands 300 ms later, and
+  // a flush on pagehide/hide means nothing is lost if the app is closed or backgrounded.
+  var _legendSaveT = null;
   function saveLegendState() {
-    window.GeoState.save({ mapLegend: { mini: detLegendMini, starFilter: detStarFilter, rareFilter: detRareFilter, yearFilter: detYearFilter, lifeFilter: detLifeFilter, alertFilter: detAlertFilter, selected: Object.keys(detSelected), excluded: Object.keys(detExcluded), selBase: { sel: Object.keys(detSelBase.sel), exc: Object.keys(detSelBase.exc) }, obsFilter: detObsFilter ? Array.from(detObsFilter) : null, locFilter: detLocFilter ? Array.from(detLocFilter) : null, srcFilter: detSrcFilter ? Array.from(detSrcFilter) : null, deleted: deletedSpecies, countMin: spCountMin, countMax: spCountMax, countMetric: spCountMetric, ageDays: speciesAgeFilterDays, newFilter: detNewFilter, newSince: detNewSince, todayFilter: detTodayFilter, daySel: Object.keys(detDaySel), rows: detLegendRows, sort: detLegendSort, regionMode: detRegionMode, regionPick: detRegionPick } });
+    if (_legendSaveT) return;                      // one write per burst, not one per toggle
+    _legendSaveT = setTimeout(function () { _legendSaveT = null; saveLegendStateNow(); }, 300);
+  }
+  function flushLegendState() { if (_legendSaveT) { clearTimeout(_legendSaveT); _legendSaveT = null; saveLegendStateNow(); } }
+  window.addEventListener("pagehide", flushLegendState);
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") flushLegendState(); });
+  function saveLegendStateNow() {
+    window.GeoState.save({ mapLegend: { mini: detLegendMini, bflyFilter: detBflyFilter, starFilter: detStarFilter, rareFilter: detRareFilter, yearFilter: detYearFilter, lifeFilter: detLifeFilter, alertFilter: detAlertFilter, selected: Object.keys(detSelected), excluded: Object.keys(detExcluded), selBase: { sel: Object.keys(detSelBase.sel), exc: Object.keys(detSelBase.exc) }, obsFilter: detObsFilter ? Array.from(detObsFilter) : null, locFilter: detLocFilter ? Array.from(detLocFilter) : null, srcFilter: detSrcFilter ? Array.from(detSrcFilter) : null, deleted: deletedSpecies, countMin: spCountMin, countMax: spCountMax, countMetric: spCountMetric, ageDays: speciesAgeFilterDays, newFilter: detNewFilter, newSince: detNewSince, todayFilter: detTodayFilter, daySel: Object.keys(detDaySel), rows: detLegendRows, sort: detLegendSort, regionMode: detRegionMode, regionPick: detRegionPick } });
   }
   function loadDetections() {
     // Self-heal a store left over-quota by an older build: cap the stored
@@ -12122,6 +13458,8 @@
     // Restore the saved legend state, then render the layers honouring it.
     var ls = window.GeoState.get("mapLegend", {}) || {};
     detLegendMini = !!ls.mini;
+    detBflyFilter = !!ls.bflyFilter;   // butterflies-only
+    if (detBflyFilter) ensureButterflyGenera().then(function () { try { rebuildDetLayers(); updateDetLegend(); applyAgeFilter(); } catch (e) {} });
     detLegendRows = DET_ROWS_STATES.indexOf(ls.rows) >= 0 ? ls.rows : "all";   // legend "Total" row-set (default: All)
     detLegendSort = DET_SORT_STATES.indexOf(ls.sort) >= 0 ? ls.sort : "rarity";   // legend sort order (default: Rarity)
     detRegionMode = (ls.regionMode === "far" || ls.regionMode === "from") ? ls.regionMode : "off";   // region filter
@@ -12136,7 +13474,7 @@
     detLifeFilter = stSaved(ls.lifeFilter, -1);
     detAlertFilter = stSaved(ls.alertFilter, 0);
     setDetObsFilter(Array.isArray(ls.obsFilter) ? new Set(ls.obsFilter) : null, true);   // restored → may be healed if stale
-    setDetLocFilter(Array.isArray(ls.locFilter) ? new Set(ls.locFilter) : null);
+    setDetLocFilter(Array.isArray(ls.locFilter) ? new Set(ls.locFilter) : null, true);   // restored → may be healed if stale
     detSrcFilter = (Array.isArray(ls.srcFilter) && ls.srcFilter.length) ? new Set(ls.srcFilter) : null;
     // Heal a stale source filter (none of its sources plotted) so it can't blank the map.
     if (detSrcFilter && Object.keys(detPlot).length) {
@@ -12425,9 +13763,10 @@
     if (def.f && def.f.indexOf(tx.family) >= 0) return true;
     return false;
   }
-  // Plotted species matching a premade group (its dynamic key set).
-  function premadeKeys(def) {
-    return Object.keys(detPlot).filter(function (k) { return speciesInPremade(k, def); });
+  // Listed species matching a premade group (its dynamic key set) — the plotted
+  // detections, or the model's own list on an empty spot (see listPool).
+  function premadeKeys(def, pool) {
+    return Object.keys(pool || listPool()).filter(function (k) { return speciesInPremade(k, def); });
   }
   function premadeById(id) { for (var i = 0; i < PREMADE_LISTS.length; i++) if (PREMADE_LISTS[i].id === id) return PREMADE_LISTS[i]; return null; }
   // Apply premade group `id` as the selection filter (toggle: tapping the active one clears).
@@ -12894,18 +14233,62 @@
   function detVisibleCount(k) { return countPassing(k, true); }
   // Total deduped specimens for a species, ignoring the active filters and the view —
   // the fixed "/ t" denominator of the legend's summed N/T.
-  function detTotalCount(k) { var e = detPlot[k]; return (e && e.rows) ? specimenTotal(e.rows) : 0; }
+  // Filter-INDEPENDENT by definition, yet detFilteredStats() recomputed it for every
+  // species on every filter change — and each call re-runs the whole dedup grouping over
+  // that species' rows. Cache per species, keyed by the plot signature + the dedup
+  // setting (the only two things that can change the answer).
+  var _detTotMemo = Object.create(null), _detTotSig = "", _detTotChecked = false;
+  function detTotalCount(k) {
+    // Validate the cache ONCE per tick: building the signature (detPlotSig + the dedup
+    // setting) on every call made the wrapper itself the most expensive thing in a
+    // filter change — it is asked for once per legend row, and there can be thousands.
+    if (!_detTotChecked) {
+      var sig = detPlotSig() + "|" + (dedupDetections() ? 1 : 0);
+      if (_detTotSig !== sig) { _detTotMemo = Object.create(null); _detTotSig = sig; }
+      _detTotChecked = true;
+      setTimeout(function () { _detTotChecked = false; }, 0);
+    }
+    var v = _detTotMemo[k];
+    if (v !== undefined) return v;
+    var e = detPlot[k];
+    return (_detTotMemo[k] = (e && e.rows) ? specimenTotal(e.rows) : 0);
+  }
   // Deduped observations the ACTIVE FILTERS remove vs keep (species-level + row-level,
   // view-independent) — drives the kept/removed bar under the orange funnel buttons.
   // Memoised for a render burst (the three funnels re-render together on every change).
   // Memoised only within ONE render tick: the three funnels re-render together, but a
   // time-based cache served PRE-CHANGE stats when a filter click re-rendered within
   // the window — the bar then showed the old fractions until some later render.
+  // Do the ACTIVE FILTERS hide every observation that is plotted? A full fetch whose
+  // result is entirely filtered away looks exactly like a fetch that found nothing —
+  // which is how "fetching returns nothing (there are observations)" gets reported.
+  function allPlottedFiltered() {
+    try {
+      if (!detHasFilter()) return false;
+      var fs = detFilteredStats();
+      return !!(fs && fs.total > 0 && fs.removed >= fs.total);
+    } catch (e) { return false; }
+  }
+  function fetchedAllNote() { return allPlottedFiltered() ? ' · <span class="status-err">' + escapeHtml(t("sp.allFiltered")) + "</span>" : ""; }
+  function setFetchedAllStatus(n) {
+    var note = fetchedAllNote();
+    if (note) setStatusHtml(escapeHtml(t("loc.fetchedAll", { n: n })) + note);
+    else setStatus(t("loc.fetchedAll", { n: n }));
+  }
   var _detRemovedMemo = null;
   function detFilteredStats() {
     if (_detRemovedMemo) return _detRemovedMemo;
-    var removed = 0, total = 0;
-    Object.keys(detPlot).forEach(function (k) {
+    var removed = 0, total = 0, plotted = Object.keys(detPlot);
+    // Model-only list (nothing plotted): the filters narrow LISTED SPECIES, not
+    // observations, so count those instead — otherwise the funnel has nothing to
+    // report and stays grey however much the list is narrowed.
+    if (!plotted.length) {
+      var tb = document.getElementById("sp-tbody");
+      if (tb) Array.prototype.forEach.call(tb.querySelectorAll("tr.sp-pool"), function (tr) {
+        total++;
+        if (tr.style.display === "none" || tr.classList.contains("sp-hide-search")) removed++;
+      });
+    } else plotted.forEach(function (k) {
       var tot = detTotalCount(k); total += tot;
       removed += detIsVisible(k) ? Math.max(0, tot - countPassing(k, false)) : tot;
     });
@@ -13060,10 +14443,17 @@
       setTimeout(function () { tr.classList.remove("sp-flash"); }, 1600);
     }, 60);
   }
+  // Sorts every plotted key and joins them into a string; called from several cache
+  // checks, so it showed up as 52 ms of a 2.0 s filter change. detPlot cannot change
+  // inside one synchronous pass — memoise it for the tick, like the other filter memos.
+  var _plotSigMemo = null;
   function detPlotSig() {
+    if (_plotSigMemo !== null) return _plotSigMemo;
     var ks = Object.keys(detPlot).sort(), n = 0;
     for (var i = 0; i < ks.length; i++) n += (detPlot[ks[i]].rows ? detPlot[ks[i]].rows.length : 0);
-    return ks.join("|") + "#" + n;
+    _plotSigMemo = ks.join("|") + "#" + n;
+    setTimeout(function () { _plotSigMemo = null; }, 0);
+    return _plotSigMemo;
   }
   // Duplicate key WITHIN a species: same date + count. The OBSERVER is deliberately
   // NOT matched — the same person's name is written differently across databases
@@ -13876,7 +15266,15 @@
       escapeHtml(label) + ' <span class="aff-sort-gly">' + glyph + "</span></button>";
   }
   function affSortHtml() {
-    var cols = [["name", t("th.species")], ["total", t("th.total")], ["last", t("th.last")], ["prob", t("th.prob")], ["dist", t("th.dist")], ["season", t("th.season")]];
+    // Total / Last / Dist come from observations: on the model's own list (nothing
+    // plotted) those cells are empty, so offering to sort by them would be a button
+    // that cannot move anything.
+    var obs = Object.keys(detPlot).length > 0;
+    var cols = [["name", t("th.species")]];
+    if (obs) cols.push(["total", t("th.total")], ["last", t("th.last")]);
+    cols.push(["prob", t("th.prob")]);
+    if (obs) cols.push(["dist", t("th.dist")]);
+    cols.push(["season", t("th.season")]);
     if (showSci) cols.push(["sci", t("th.sci")]);
     return '<div class="aff-sort-row">' + cols.map(function (c) { return affSortBtnHtml(c[0], c[1]); }).join("") + "</div>";
   }
@@ -13901,9 +15299,10 @@
 
     // Species selection (currently-isolated species names). The Hidden toggle is its own
     // row at the very bottom of the pane (below).
-    var selKeys = Object.keys(detSelected).filter(function (k) { return detPlot[k]; });
-    var exKeys = Object.keys(detExcluded).filter(function (k) { return detPlot[k]; });
-    var selNames = selKeys.length ? '<div class="aff-sel-names">' + selKeys.map(function (k) { return escapeHtml(detName(detPlot[k])); }).join(", ") + "</div>" : "";
+    var affPool = listPool();
+    var selKeys = Object.keys(detSelected).filter(function (k) { return affPool[k]; });
+    var exKeys = Object.keys(detExcluded).filter(function (k) { return affPool[k]; });
+    var selNames = selKeys.length ? '<div class="aff-sel-names">' + selKeys.map(function (k) { return escapeHtml(spKeyName(k)); }).join(", ") + "</div>" : "";
     var selActive = selKeys.length > 0 || exKeys.length > 0;
     var selSum = selKeys.length ? t("filters.nSelected", { n: selKeys.length }) : t("det.allSpecies");
     var secSel = affSection("sel", t("th.species"), selActive, selSum, selNames);
@@ -13924,6 +15323,11 @@
     var newBody = '<label class="det-obs-row"><input type="checkbox" class="aff-new-cb"' + (detNewFilter ? " checked" : "") + "> " + escapeHtml(t("filters.newHint")) + "</label>" + todayCk;
     var newSum = detNewFilter ? (detTodayFilter ? t("filters.newToday") : t("filters.newOn")) : t("filters.any");
     var secNew = affSection("new", t("filters.new"), detNewFilter, newSum, newBody);
+
+    // Butterflies — the one sub-group of insects people actually look for by name.
+    var bflyBody = '<label class="det-obs-row"><input type="checkbox" class="aff-bfly-cb"' + (detBflyFilter ? " checked" : "") + "> " +
+      escapeHtml(t("filters.bflyHint")) + "</label>";
+    var secBfly = affSection("bfly", t("filters.bfly"), detBflyFilter, detBflyFilter ? t("filters.bflyOn") : t("filters.any"), bflyBody);
 
     // Count range [min] ≤ (Total|Observations) ≤ [max]
     var metricLbl = spCountMetric === "pairs" ? t("sort.obs") : t("th.total");
@@ -13963,11 +15367,12 @@
     var srcSum = !detSrcFilter ? t("src.all") : (Array.from(detSrcFilter).filter(function (s) { return present.indexOf(s) >= 0; }).length + "/" + present.length);
     var secSrc = affSection("src", t("th.source"), !!detSrcFilter, srcSum, affSrcHtml());
 
-    // Sort (multi-column table layout only — the record layout keeps its own ordering)
+    // Sort (the table and the Images cards, which are those same rows as pictures and
+    // follow their order — the record layout keeps its own ordering).
     // The DEFAULT ordering (probability low → high) reads as "not filtered" —
     // only a user-chosen override marks the section active.
     var sortNonDefault = !!speciesListSort.col && !(speciesListSort.col === "prob" && speciesListSort.dir === "asc");
-    var secSort = (spLayout === "table")
+    var secSort = (spLayout === "table" || spLayout === "gallery")
       ? affSection("sort", t("sort.title"), sortNonDefault, affSortSummary(), affSortHtml())
       : "";
     // Probability range
@@ -13982,7 +15387,7 @@
     var secRegion = affSection("region", t("region.title"), detRegionMode !== "off", regSum, affRegionHtml());
 
     // Order: "Show last" (date) at the top; Probability sits right under Status; the standalone Hidden checkbox at the very bottom.
-    return head + '<div class="aff-body">' + secDate + secSort + secSel + secLists + secMode + secProb + secNew + secCnt + secName + secLoc + secObs + secSrc + secRegion + "</div>";
+    return head + '<div class="aff-body">' + secDate + secSort + secSel + secLists + secMode + secProb + secNew + secBfly + secCnt + secName + secLoc + secObs + secSrc + secRegion + "</div>";
   }
   function affRegionHtml() {
     var opts = DET_REGIONS.map(function (n, i) { return '<option value="' + i + '"' + (i === detRegionPick ? " selected" : "") + ">" + escapeHtml(regionName(i)) + "</option>"; }).join("");
@@ -14025,6 +15430,7 @@
     var cl = box.querySelector(".aff-close"); if (cl) cl.addEventListener("click", function (e) { e.stopPropagation(); if (allFiltersPane) allFiltersPane.close(); });
     var nb = box.querySelector(".aff-new-cb"); if (nb) nb.addEventListener("change", function (e) { e.stopPropagation(); setDetNewFilter(this.checked); });
     var tb = box.querySelector(".aff-today-cb"); if (tb) tb.addEventListener("change", function (e) { e.stopPropagation(); setDetTodayFilter(this.checked); });
+    var bb = box.querySelector(".aff-bfly-cb"); if (bb) bb.addEventListener("change", function (e) { e.stopPropagation(); setDetBflyFilter(this.checked); });
     var ca = box.querySelector(".aff-clear-all"); if (ca) ca.addEventListener("click", function (e) { e.stopPropagation(); clearAllFilters(); });
     box.querySelectorAll(".aff-sec-clear").forEach(function (b) {
       b.addEventListener("click", function (e) {
@@ -14034,6 +15440,7 @@
           case "lists": detSelected = {}; detExcluded = {}; snapshotSelBase(); saveLegendState(); detFiltersRefresh(); break;
           case "mode": detStarFilter = detRareFilter = detYearFilter = detLifeFilter = detAlertFilter = 0; detFiltersRefresh(); break;
           case "new": setDetNewFilter(false); break;
+          case "bfly": setDetBflyFilter(false); break;
           case "count": spCountMin = spCountMax = null; detFiltersRefresh(); break;
           case "sort": speciesListSort.col = ""; speciesListSort.dir = ""; updateSortIndicators(); sortSpeciesList(); renderAllFiltersPane(); break;
           case "prob":
@@ -14324,8 +15731,14 @@
           (r.src ? "<div class='dset-src'>" + (r.url
             ? '<a href="' + escapeHtml(safeHref(r.url)) + '" target="_blank" rel="noopener">' + escapeHtml(srcLabel(r)) + " ↗</a>"
             : escapeHtml(srcLabel(r))) + "</div>" : "");
-        // A larger, near-invisible hit circle so a 5 px trip dot is easy to TAP.
-        var hit = L.circleMarker([r.lat, r.lon], { radius: 12, stroke: false, fillColor: "#000", fillOpacity: 0.01, renderer: detRenderer() });
+        // A larger, INVISIBLE hit circle so a 5 px trip dot is easy to TAP. It used to be
+        // painted black at 1 % opacity, because an SVG path with no paint is not hit-tested
+        // under the default `pointer-events: visiblePainted` — but 1 % STACKS: where a trip
+        // packs many records into a few pixels (zoomed out, or a day spent in one spot),
+        // fifty overlapping circles leave 0.99^50 of the light and the area turns visibly
+        // dark, in a gradient following the density. `pointer-events: all` (see .det-hit in
+        // app.css) keeps the whole circle tappable while painting nothing at all.
+        var hit = L.circleMarker([r.lat, r.lon], { radius: 12, stroke: false, fillOpacity: 0, className: "det-hit", renderer: detRenderer() });
         hit.bindTooltip(escapeHtml(nm), { direction: "top", className: "det-hover-tip" });
         hit.bindPopup(pop, { className: "area-tip", closeButton: true });
         g.addLayer(hit);
@@ -14722,6 +16135,42 @@
     enableMenuKeys(wrap, function () { map.closePopup(); });   // PC: ↑/↓ + Enter through the actions
   }
 
+  // A Leaflet popup opens ABOVE its point and relies on autoPan to make room. Zoomed all
+  // the way out — or at the top of the projection (northern Greenland, Svalbard) — there is
+  // no map left to pan into, so the popup runs off an edge and only part of it shows. Fit it
+  // by hand instead: cap the height to what the map can hold (Leaflet then scrolls the
+  // content), and nudge whatever still sticks out back inside on either axis. The tail is
+  // dropped once it has moved, since it no longer points at the marker.
+  function fitPopupInView(pop, again) {
+    if (!pop || !pop.getElement) return;
+    if (pop._fitted && !again) return;
+    var mapEl = map && map.getContainer(); if (!mapEl) return;
+    var el = pop.getElement(); if (!el) return;
+    pop._fitted = true;
+    var PAD = 6, mr = mapEl.getBoundingClientRect(), pr = el.getBoundingClientRect();
+    if (!pr.height) return;
+    // Taller than the map itself → scroll inside instead of overflowing. Leaflet's maxHeight
+    // caps the CONTENT, so take off what the frame (padding, tail, close button) adds first.
+    var avail = Math.round(mr.height - 2 * PAD);
+    if (pr.height > avail) {
+      var ce = el.querySelector(".leaflet-popup-content");
+      var frame = ce ? Math.max(0, Math.round(pr.height - ce.getBoundingClientRect().height)) : 40;
+      pop.options.maxHeight = Math.max(90, avail - frame);
+      pop.update();
+      pr = el.getBoundingClientRect();
+    }
+    var off = pop.options.offset || [0, 0];
+    var ox = (off.x != null ? off.x : off[0]) || 0, oy = (off.y != null ? off.y : off[1]) || 0;
+    var dx = 0, dy = 0;
+    if (pr.left < mr.left + PAD) dx = (mr.left + PAD) - pr.left;
+    else if (pr.right > mr.right - PAD) dx = (mr.right - PAD) - pr.right;
+    if (pr.top < mr.top + PAD) dy = (mr.top + PAD) - pr.top;
+    else if (pr.bottom > mr.bottom - PAD) dy = (mr.bottom - PAD) - pr.bottom;
+    if (!dx && !dy) return;
+    pop.options.offset = L.point(ox + Math.round(dx), oy + Math.round(dy));
+    el.classList.add("popup-shifted");
+    pop.update();
+  }
   // ---- Points dropdown panel ----
   function refreshMpPanel() {
     var panel = document.getElementById("mp-panel"); if (!panel) return;
@@ -14811,6 +16260,7 @@
         '<button type="button" id="mp-import-share" class="btn btn-light" title="' + escapeHtml(tLabel("share.importFile")) + '" data-i18n="points.loadFile">' + escapeHtml(t("points.loadFile")) + "</button>" +
         '<input type="file" id="share-file-input" accept=".share,.mcshare,.txt,text/plain" style="display:none" />' +
       "</div>" +
+      '<div id="mp-backup-line" class="mp-backup-line"></div>' +
       collSection +
       (mpHasUnsaved() ? '<div class="mp-unsaved">' + escapeHtml(t("points.unsaved", { n: mpState.mapPoints().length })) +
         ' <button type="button" id="mp-saveas" class="mp-saveas-btn">' + escapeHtml(t("points.saveAsList")) + "</button></div>" : "") +
@@ -14953,6 +16403,7 @@
     });
     var shareDet = panel.querySelector("#mp-share-det");
     if (shareDet) shareDet.addEventListener("click", function (e) { e.stopPropagation(); shareCurrentDetections(); });
+    try { updateBackupNudge(); } catch (e) {}   // the "last backed up" line lives in this panel
   }
 
   // ---- Sticky fan-out for overlapping detection markers ---------------------
@@ -15648,7 +17099,6 @@
       dotClusterTimer = setTimeout(function () { try { rebuildDetLayers(); } catch (e) {} }, 150);
     }
     map.on("zoomend moveend", dotViewKick);
-    map.on("moveend zoomend", scheduleHotspot);   // repaint the hotspot heatmap for the new view
     map.on("moveend", function () { if (legendStackCtrl) scheduleClcQuery(); });   // re-limit the CORINE legend to the new view
     map.on("moveend", function () {   // "far migrant HERE" depends on the viewing region — re-filter when it changes
       if (detRegionMode !== "far") return;
@@ -15731,17 +17181,8 @@
       map.on("overlayadd", function (ev) { if (ev && ev.layer === hotspotsLayer) maybeEbirdNudge(); });
       map.on("overlayremove", updateOverlayBtnState);
       updateOverlayBtnState();   // reload while suspended → keep the orange cue
-      var lpT = null, lpFired = false, lpX = 0, lpY = 0;
-      // Swallow the hold's trailing click so it doesn't also expand the layers list.
-      btn.addEventListener("click", function (e) { if (lpFired) { lpFired = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
-      function start(x, y) { lpFired = false; clearTimeout(lpT); lpX = x; lpY = y; lpT = setTimeout(function () { lpFired = true; holdFeedback(btn); toggleAllOverlays(); }, holdDelay()); }
-      btn.addEventListener("touchstart", function (e) { var tt = e.touches && e.touches[0]; start(tt ? tt.clientX : 0, tt ? tt.clientY : 0); }, { passive: true });
-      btn.addEventListener("touchmove", function (e) { var tt = e.touches && e.touches[0]; if (tt && (Math.abs(tt.clientX - lpX) > 12 || Math.abs(tt.clientY - lpY) > 12)) clearTimeout(lpT); }, { passive: true });
-      btn.addEventListener("touchend", function () { clearTimeout(lpT); });
-      btn.addEventListener("mousedown", function (e) { if (e.button === 0) start(e.clientX, e.clientY); });
-      btn.addEventListener("mouseup", function () { clearTimeout(lpT); });
-      btn.addEventListener("mouseleave", function () { clearTimeout(lpT); });
-      btn.addEventListener("contextmenu", function (e) { e.preventDefault(); e.stopPropagation(); toggleAllOverlays(); });
+      // Hold = suspend/restore every ticked overlay; the tap still expands the list.
+      wireHoldButton(btn, toggleAllOverlays);
     })();
     setupAreaHover();
   }
@@ -15816,11 +17257,9 @@
     // The 2nd-name preference, by contrast, affects names app-wide (species lists AND
     // the detections list / species menus), so it stays available in every mode.
     var listish = currentMode === "list" || currentMode === "range";
-    document.getElementById("compare-wrap").style.display = listish ? "" : "none";
-    // The probability min–max slider (in Settings) applies to the Species List,
-    // the checklist (derived from it), the analysis tabs and the field checklist.
-    var probVisible = (currentMode === "range" || currentMode === "list" || currentMode === "barchart");
-    document.getElementById("barchart-threshold-wrap").style.display = probVisible ? "" : "none";
+    document.getElementById("compare-wrap").style.display = (listish && experimentalOn()) ? "" : "none";
+    // (The probability range used to be a Settings slider shown in these modes; it is
+    // the Filters pane's business now, and its inputs stay hidden as the register.)
     // Historic observations: a GBIF date-range search instead of the model — show
     // its From/To range and hide the model-week selector.
     var isHist = currentMode === "historic";
@@ -15989,11 +17428,10 @@
     if (m) m.style.display = "none";
   }
 
-  // ---- PWA install (exposed only from the info screen + Settings) -----------
-  // No floating pill or splash button (those proved flaky). We silently stash
-  // the browser's install prompt; a tap on either button runs it, or shows
-  // platform-specific manual steps when there's no prompt API (iOS, Firefox …).
-  var deferredInstall = null;
+  // ---- PWA install (a line of guidance on the info screen) ------------------
+  // No button and no stashed prompt: the welcome screen simply states the route to an
+  // installed copy for this platform, and the browser is left to offer its own install
+  // control (the address-bar icon / menu item) in its own way.
   function installIsStandalone() {
     try { return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true; } catch (e) { return false; }
   }
@@ -16004,28 +17442,22 @@
   function installIsIOSSafari() {
     return installIsIOS() && /safari/i.test(navigator.userAgent || "") && !/crios|fxios|edgios/i.test(navigator.userAgent || "");
   }
-  // Show/hide the two install buttons by install state (hidden once installed).
+  // The platform's own "add to home screen" route, in this UI language.
+  function installStepsText() {
+    return installIsIOS() ? (installIsIOSSafari() ? t("install.ios") : t("install.iosOther")) : t("install.manual");
+  }
+  // Write the how-to out (it follows the UI language via refreshLangUI) and drop the
+  // whole line once the app IS installed, when there is nothing left to explain.
   function refreshInstallUI() {
     var installed = installIsStandalone();
-    var info = document.getElementById("install-info");
-    if (info) info.hidden = installed;
+    var row = document.getElementById("install-row");
+    if (row) row.hidden = installed;
+    var steps = document.querySelector(".install-steps");
+    if (steps) steps.textContent = installed ? "" : installStepsText();
   }
   function initInstall() {
-    window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); deferredInstall = e; refreshInstallUI(); });
-    window.addEventListener("appinstalled", function () { deferredInstall = null; refreshInstallUI(); });
+    window.addEventListener("appinstalled", refreshInstallUI);
     refreshInstallUI();
-  }
-  // Tapped an install button: native prompt if the browser offered one, else
-  // the right manual steps for this platform, shown in the adjacent hint line.
-  function doInstall(btn) {
-    var steps = btn && btn.parentNode && btn.parentNode.querySelector(".install-steps");
-    if (deferredInstall) {
-      deferredInstall.prompt();
-      deferredInstall.userChoice.then(function () { deferredInstall = null; refreshInstallUI(); });
-      return;
-    }
-    var msg = installIsIOS() ? (installIsIOSSafari() ? t("install.ios") : t("install.iosOther")) : t("install.manual");
-    if (steps) { steps.textContent = msg; steps.hidden = false; }
   }
 
   // ---- Feedback (EmailJS) ---------------------------------------------------
@@ -16225,7 +17657,7 @@
         var stog = document.getElementById("settings-toggle");
         if (stog) {
           stog.classList.toggle("has-update", !!SW.pending);
-          stog.title = SW.pending ? t("settings.updateReady", { v: SW.version || "" }) : "Settings";
+          stog.title = SW.pending ? t("settings.updateReady", { v: SW.version || "" }) : t("ctrl.settingsHold");
         }
         if (!upBtn) return;
         var notesEl = document.getElementById("settings-update-notes");
@@ -16323,10 +17755,15 @@
     function updateClearCacheCounts() {
       var grid = document.querySelector(".clear-cache-grid"); if (!grid) return;
       function setCnt(what, n, bytes, approx) {
+        // Every row's measurement also feeds the summary line above — the only honest
+        // total available, since the browser's own estimate counts cross-origin map
+        // tiles with a large privacy padding and reads wildly high.
+        cacheBytesSeen[what] = +bytes || 0;
+        try { renderStorageUsage(); } catch (e) {}
         var b = grid.querySelector('.clear-cache-btn[data-clear="' + what + '"]'); if (!b) return;
         var c = b.querySelector(".clear-cnt"); if (!c) return;
         var sz = fmtCacheBytes(bytes);
-        c.textContent = (n != null && n > 0) ? String(n) + (sz ? " · " + (approx ? "~" : "") + sz : "") : "";
+        c.textContent = (n != null && n > 0) ? String(n) + (sz ? " · " + (approx ? "~" : "") + sz : "") : "0";
       }
       var hs = loadHotspotStore();
       setCnt("hotspots", Object.keys(hs).length, jsonBytes(hs));
@@ -16518,25 +17955,6 @@
       rtCb.checked = rarityTickerOn();
       rtCb.addEventListener("change", function () { window.GeoState.save({ rarityTicker: !!this.checked }); });
     }
-    var hsCycle = document.getElementById("hotspot-cycle");
-    if (hsCycle) {
-      var HS_MODES = ["off", "species", "observers", "counts"];
-      var HS_KEYS = { off: "ctrl.hsOff", species: "ctrl.hsSpecies", observers: "ctrl.hsObservers", counts: "ctrl.hsCounts" };
-      var hsPaint = function () { hsCycle.setAttribute("data-hs", hotMode); hsCycle.setAttribute("data-i18n", HS_KEYS[hotMode]); hsCycle.textContent = t(HS_KEYS[hotMode]); };
-      setHotMode((window.GeoState.get && window.GeoState.get("hotspotMode")) || "off"); hsPaint();
-      hsCycle.addEventListener("click", function () {
-        var next = HS_MODES[(HS_MODES.indexOf(hotMode) + 1) % HS_MODES.length];
-        window.GeoState.save({ hotspotMode: next });
-        setHotMode(next); hsPaint();
-      });
-    }
-    var sdCb = document.getElementById("showdots-toggle");
-    if (sdCb) {
-      var savedDots = window.GeoState.get && window.GeoState.get("showDots");
-      sdCb.checked = (savedDots === undefined || savedDots === null) ? true : !!savedDots;
-      dotsShown = sdCb.checked;
-      sdCb.addEventListener("change", function () { window.GeoState.save({ showDots: !!this.checked }); setShowDots(this.checked); });
-    }
     // Rarity alerts: interval + sound (with a test chirp — the click doubles as
     // the audio-unlock gesture) + system notifications (permission asked only on
     // this explicit toggle; denial reverts the checkbox).
@@ -16548,6 +17966,23 @@
         raritySave({ intervalMin: v === 0 ? 0 : Math.max(10, v || 10) });   // 0 = manual (long-press only); 10 min is the fastest auto interval
         scheduleRarityPoll();
       });
+    }
+    // Master on/off and the map dots — the two the alerts page used to carry (the
+    // stored-locations panel keeps its own copy of the master toggle).
+    var rOn = document.getElementById("rarity-onoff-toggle");
+    if (rOn) {
+      rOn.checked = rarityCfg().enabled !== false;
+      rOn.addEventListener("change", function () {
+        raritySave({ enabled: !!this.checked });
+        if (this.checked) rarityAlertsChanged();   // resume with an immediate check
+        else scheduleRarityPoll();                 // cancels the timer; the bell dims
+        rarityPlotList();                          // off → drop the injected alerts from the lists/map
+      });
+    }
+    var rMap = document.getElementById("rarity-showmap-toggle");
+    if (rMap) {
+      rMap.checked = rarityCfg().showMap !== false;
+      rMap.addEventListener("change", function () { raritySave({ showMap: !!this.checked }); rarityPlotList(); });
     }
     var rSnd = document.getElementById("rarity-sound-toggle");
     if (rSnd) {
@@ -16565,6 +18000,40 @@
         scheduleRarityPoll();    // a raised threshold re-surfaces dropped alerts on the next poll
       });
     }
+    var rAll = document.getElementById("rarity-allsrc-toggle");
+    if (rAll) {
+      rAll.checked = rarityCfg().allSources !== false;
+      rAll.addEventListener("change", function () { raritySave({ allSources: !!this.checked }); rarityAlertsChanged(); });   // re-checks the bell (alerts work without an eBird key now) and polls
+    }
+    // Email delivery: the address lives in the rarity settings; "Send test" both saves it
+    // and asks the relay to deliver one message, which is also what triggers the one-off
+    // confirmation mail the first time.
+    var rEm = document.getElementById("rarity-email"), rEmT = document.getElementById("rarity-email-test"), rEmN = document.getElementById("rarity-email-note");
+    if (rEm) {
+      rEm.value = rarityCfg().email || "";
+      updateRarityEmailNote();
+      rEm.addEventListener("change", function () {
+        var v = this.value.trim();
+        if (v && !window.AppRarity.rarityEmailValid(v)) { if (rEmN) rEmN.textContent = t("rarity.emailBad"); return; }
+        var changed = v !== (rarityCfg().email || "");
+        raritySave(changed ? { email: v, emailState: "", emailAt: 0 } : { email: v });   // a new address starts with a clean slate
+        if (rEmN) rEmN.textContent = v ? (changed ? t("rarity.emailOn") : "") : "";
+        if (!changed) updateRarityEmailNote();
+      });
+    }
+    if (rEmT) rEmT.addEventListener("click", function () {
+      var v = rEm ? rEm.value.trim() : "";
+      if (!window.AppRarity.rarityEmailValid(v)) { if (rEmN) rEmN.textContent = t("rarity.emailBad"); return; }
+      raritySave({ email: v });
+      var btn = this; btn.disabled = true;
+      if (rEmN) rEmN.textContent = t("rarity.emailSending");
+      window.AppRarity.rarityEmailTestSend(v)   // the latest real alerts when there are any
+        .then(function (r) {
+          window.AppRarity.rarityEmailState(r.ok ? "ok" : (r.activate ? "activate" : "fail"), "test");
+          if (rEmN) rEmN.textContent = r.activate ? t("rarity.emailActivate") : (r.ok ? t("rarity.emailSent") : t("rarity.emailFail"));
+        }, function () { window.AppRarity.rarityEmailState("fail", "test"); if (rEmN) rEmN.textContent = t("rarity.emailFail"); })
+        .then(function () { btn.disabled = false; });
+    });
     var rCw = document.getElementById("rarity-country-toggle");
     if (rCw) {
       rCw.checked = !!rarityCfg().countryWide;
@@ -16609,6 +18078,35 @@
         if (slp && slp.style.display === "block" && storedLocAnchor) showStoredLocations(storedLocAnchor);
       });
     }
+    // The fetch-type ticks: the same six groups the picker offers, minus "all".
+    (function () {
+      var box = document.getElementById("fetch-groups"); if (!box) return;
+      function render() {
+        var on = fetchGroupsOn(), saved = window.GeoState.get("fetchGroups", null);
+        box.innerHTML = FETCH_GROUP_IDS.map(function (g) {
+          // A type forced on because it is the one being viewed is shown ticked and
+          // disabled, so the rule explains itself rather than looking like a bug.
+          var forced = speciesGroup === g;
+          return '<label class="ctrl-check fg-item"><input type="checkbox" data-fg="' + g + '"' +
+            ((saved && typeof saved === "object" ? saved[g] !== false : true) || forced ? " checked" : "") +
+            (forced ? " disabled" : "") + "> " + settingsIconHtml(g) +
+            "<span>" + escapeHtml(t("group." + g)) + "</span></label>";
+        }).join("");
+      }
+      render();
+      box.addEventListener("change", function (e) {
+        var cb = e.target && e.target.closest ? e.target.closest("input[data-fg]") : null;
+        if (!cb) return;
+        var cur = window.GeoState.get("fetchGroups", null) || {};
+        FETCH_GROUP_IDS.forEach(function (g) { if (!(g in cur)) cur[g] = true; });
+        cur[cb.getAttribute("data-fg")] = !!cb.checked;
+        window.GeoState.save({ fetchGroups: cur });
+        allSightingsCache = {};   // a different tick set is different data: don't reuse this session's answers
+                                  // (the persisted cache is keyed by sightConfigSig, which now carries the set)
+        render();
+      });
+      fetchGroupsRender = render;   // re-tick when the viewed group changes (see the group picker)
+    })();
     wireNumSetting("download-days", downloadDays, 0, 92, 30, function (v) { window.GeoState.save({ downloadDays: v }); refreshRecentModeLabel(); }, null);
     wireNumSetting("fetchonopen-days", fetchOnOpenDays, 1, 92, 30, function (v) { window.GeoState.save({ fetchOnOpenDays: v }); }, null);
 
@@ -16814,8 +18312,9 @@
         gdDisconnect.style.display = "none";
         gdSync.disabled = !!st.busy;
         var msg = "";
-        var failed = st.status === "reconnect" || st.status === "error";
+        var failed = st.status === "reconnect" || st.status === "error" || st.status === "storagefull";
         if (st.status === "syncing") msg = "⟳ " + t("gdrive.syncing");
+        else if (st.status === "storagefull") msg = "⚠ " + t("gdrive.storageFull");
         else if (st.status === "reconnect") msg = "⚠ " + t("gdrive.reconnect");
         else if (st.status === "error") msg = "⚠ " + t("gdrive.error");
         else if (st.lastSyncAt) msg = "✓ " + t("gdrive.synced") + " · " + fmtClock(st.lastSyncAt);
@@ -16826,7 +18325,7 @@
         gdStatus.classList.toggle("gd-syncing", st.status === "syncing");
         gdStatus.classList.toggle("gd-error", failed);
       };
-      window.GDriveSync.onStatus(renderGd);
+      window.GDriveSync.onStatus(function (st) { renderGd(st); try { updateBackupNudge(); } catch (e) {} });
 
       // The sync dialog: pick which categories + one global direction, then run.
       // Defaults (all categories, two-way) reproduce the old one-tap behaviour.
@@ -16834,7 +18333,10 @@
         if (document.getElementById("sync-opts-modal")) return;
         var saved = window.GeoState.get("syncOpts", null) || {};
         var dir = saved.direction || "two";
-        var cats = saved.cats || { settings: 1, lists: 1, trips: 1, checklists: 1, fetched: 1 };
+        // "Fetched points" (the raw observation dots) default OFF: they are re-fetchable
+        // and bulky, and a backup is for what the user MADE — lists, trips, checklists.
+        // Tick it to include them; saving a fetch as a trip backs it up either way.
+        var cats = saved.cats || { settings: 1, lists: 1, trips: 1, checklists: 1, fetched: 0 };
         var catRow = function (id, lbl) { return '<label class="so-cat"><input type="checkbox" class="so-cat-cb" data-cat="' + id + '"' + (cats[id] ? " checked" : "") + "> " + escapeHtml(t(lbl)) + "</label>"; };
         var dirRow = function (val, lbl) { return '<label class="so-dir"><input type="radio" name="so-dir" value="' + val + '"' + (dir === val ? " checked" : "") + "> " + escapeHtml(t(lbl)) + "</label>"; };
         var ov = document.createElement("div"); ov.id = "sync-opts-modal"; ov.className = "kml-modal";
@@ -16846,6 +18348,10 @@
           '<div class="so-sec">' + escapeHtml(t("sync.include")) + "</div>" +
           catRow("settings", "sync.catSettings") + catRow("lists", "sync.catLists") + catRow("trips", "sync.catTrips") + catRow("checklists", "sync.catChecklists") + catRow("fetched", "sync.catFetched") +
           '<p class="cu-hint">' + escapeHtml(t("sync.mergeNote")) + "</p>" +
+          // Each sync leaves a dated copy in Drive's app-data folder, which Drive's own
+          // interface cannot show — so the history is reachable only from here.
+          '<button type="button" class="btn btn-light so-backups">' + escapeHtml(t("sync.backups")) + "</button>" +
+          '<div class="so-baklist" style="display:none"></div>' +
           '<div class="so-actions"><button type="button" class="btn btn-light so-cancel">' + escapeHtml(t("btn.cancel")) + '</button><button type="button" class="btn so-go">' + escapeHtml(t("gdrive.syncNow")) + "</button></div>" +
           "</div>";
         document.body.appendChild(ov);
@@ -16861,6 +18367,40 @@
           close();
           gdStatus.textContent = "⟳ " + t("gdrive.syncing"); gdStatus.classList.add("gd-syncing");
           window.GDriveSync.syncNow({ direction: chosenDir, cats: chosenCats });
+        });
+        // "Earlier backups…": list the dated copies (one sign-in), then restore one.
+        // A restore lets the backup's settings win and UNIONS the collections, so
+        // nothing that exists only on this device is lost.
+        var bakBtn = ov.querySelector(".so-backups"), bakList = ov.querySelector(".so-baklist");
+        // Same short "17 Sep, 18:30" shape the alerts page uses for its last check.
+        var fmtBackupWhen = function (ms) {
+          var d = new Date(+ms || 0);
+          if (!isFinite(d.getTime())) return "";
+          return d.toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+        };
+        bakBtn.addEventListener("click", function () {
+          bakBtn.disabled = true;
+          bakList.style.display = "";
+          bakList.textContent = t("gdrive.syncing");
+          window.GDriveSync.listBackups().then(function (list) {
+            bakBtn.disabled = false;
+            if (!list.length) { bakList.textContent = t("sync.backupsNone"); return; }
+            bakList.innerHTML = list.map(function (b) {
+              return '<div class="so-bak"><span class="so-bak-when">' + escapeHtml(fmtBackupWhen(b.at)) + "</span>" +
+                '<span class="so-bak-size">' + escapeHtml(fmtBytes(b.size)) + "</span>" +
+                '<button type="button" class="btn btn-light so-bak-go" data-id="' + escapeHtml(b.id) + '" data-at="' + b.at + '">' + escapeHtml(t("sync.restore")) + "</button></div>";
+            }).join("");
+            Array.prototype.forEach.call(bakList.querySelectorAll(".so-bak-go"), function (btn) {
+              btn.addEventListener("click", function () {
+                var when = fmtBackupWhen(+this.getAttribute("data-at"));
+                if (!window.confirm(t("sync.restoreConfirm", { t: when }))) return;
+                var id = this.getAttribute("data-id");
+                close();
+                gdStatus.textContent = "⟳ " + t("gdrive.syncing"); gdStatus.classList.add("gd-syncing");
+                window.GDriveSync.restoreBackup(id).then(function (ok) { if (ok) setStatus(t("sync.restored", { t: when })); });
+              });
+            });
+          });
         });
       }
       gdConnect.addEventListener("click", function () { window.GDriveSync.connect().catch(function () {}); });
@@ -16901,9 +18441,6 @@
     document.getElementById("perf-modal").addEventListener("click", function (e) {
       if (e.target === this) hidePerfModal();   // click outside the box
     });
-    // Install button (info screen) → native prompt or manual steps.
-    var installInfoBtn = document.getElementById("install-info");
-    if (installInfoBtn) installInfoBtn.addEventListener("click", function () { doInstall(this); });
     document.getElementById("distmap-close").addEventListener("click", function () { navClose("distmap"); });
     document.getElementById("distmap-modal").addEventListener("click", function (e) {
       if (e.target === this) navClose("distmap");
@@ -16959,6 +18496,7 @@
       // Plants/Fungi have no model → hide the model-only modes (may switch the
       // active mode to the observation list, which re-renders on its own).
       refreshGroupModeOptions();
+      if (typeof fetchGroupsRender === "function") fetchGroupsRender();   // the viewed type is always fetched
       // Re-render whatever depends on the species set.
       if (currentMode === "richness") triggerRender();
       else if (currentMode === "barchart" && analysisData) renderActiveTab();
@@ -17369,25 +18907,33 @@
       setTimeout(refreshMpPanel, 0);
     });
     // Press-and-hold (touch OR mouse) or right-click the Points button → the map-point
-    // lists admin popup (edit / protect / delete). A capture-phase click guard stops
-    // the hold's trailing click from also toggling the dropdown behind the popup.
-    (function () {
-      var btn = document.getElementById("mp-toggle");
-      if (!btn) return;
-      var lpT = null, lpFired = false, lpX = 0, lpY = 0;
-      btn.addEventListener("click", function (e) { if (lpFired) { lpFired = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
-      function start(x, y) { lpFired = false; clearTimeout(lpT); lpX = x; lpY = y; lpT = setTimeout(function () { lpFired = true; holdFeedback(btn); openMpAdmin(); }, holdDelay()); }
-      btn.addEventListener("touchstart", function (e) { var tt = e.touches && e.touches[0]; start(tt ? tt.clientX : 0, tt ? tt.clientY : 0); }, { passive: true });
-      btn.addEventListener("touchmove", function (e) { var tt = e.touches && e.touches[0]; if (tt && (Math.abs(tt.clientX - lpX) > 12 || Math.abs(tt.clientY - lpY) > 12)) clearTimeout(lpT); }, { passive: true });
-      btn.addEventListener("touchend", function () { clearTimeout(lpT); });
-      btn.addEventListener("mousedown", function (e) { if (e.button === 0) start(e.clientX, e.clientY); });
-      btn.addEventListener("mouseup", function () { clearTimeout(lpT); });
-      btn.addEventListener("mouseleave", function () { clearTimeout(lpT); });
-      btn.addEventListener("contextmenu", function (e) { e.preventDefault(); openMpAdmin(); });
-    })();
-    wireDropdown("settings-toggle", "settings-panel");
-    // Refresh the storage readout each time Settings opens (figures change as you cache),
-    // and check for a new version immediately (non-blocking; a no-op offline).
+    // lists admin popup (edit / protect / delete); the tap keeps toggling the dropdown.
+    wireHoldButton(document.getElementById("mp-toggle"), openMpAdmin);
+    // The gear's two gestures are swapped (v1795): a TAP opens the quick panel — species
+    // group, fetch radius, fetch window, the three things that decide what a tap on the
+    // map brings back — and a PRESS-AND-HOLD (or right-click) opens full Settings, which
+    // is the rarer errand. `wireDropdown` is therefore not used here; the handlers below
+    // drive #settings-panel directly.
+    function toggleSettingsPanel() {
+      var p = document.getElementById("settings-panel");
+      var willOpen = p.style.display === "none";
+      closeDropdowns();
+      if (willOpen) { closeContextMenus(); closeMapPopups(); }
+      p.style.display = willOpen ? "block" : "none";
+      if (willOpen) {
+        p.scrollTop = 0;   // a long panel always opens at the top
+        // Refresh the storage readout on each open (figures change as you cache), and
+        // check for a new version immediately (non-blocking; a no-op offline).
+        renderStorageUsage(); updateClearCacheCounts(); updateRarityEmailNote(); updateNamesExportNote();
+        try { if (window.SWUpdate && window.SWUpdate.checkNow) window.SWUpdate.checkNow(); } catch (e) {}
+      }
+    }
+    document.getElementById("names-export").addEventListener("click", function () {
+      var j = nameHarvestJson();
+      if (!j.count) return;
+      downloadCsv("birdswhere-names-" + new Date().toISOString().slice(0, 10) + ".json",
+        JSON.stringify(j), "application/json;charset=utf-8;");
+    });
     document.getElementById("errlog-open").addEventListener("click", function () {
       closeDropdowns();
       var m = createModal({ escClose: true });
@@ -17407,14 +18953,19 @@
       }
       render();
     });
-    document.getElementById("settings-toggle").addEventListener("click", function () {
-      if (document.getElementById("settings-panel").style.display !== "none") {
-        renderStorageUsage(); updateClearCacheCounts();
-        try { if (window.SWUpdate && window.SWUpdate.checkNow) window.SWUpdate.checkNow(); } catch (e) {}
-      }
+    // A TAP on the gear: close Settings if it is open (scrolling it to the top first when
+    // it is scrolled down — the v1782 behaviour), else toggle the quick panel.
+    document.getElementById("settings-toggle").addEventListener("click", function (e) {
+      e.stopPropagation();   // else the document's outside-click closer undoes the open
+      var sp = document.getElementById("settings-panel");
+      if (sp.style.display !== "none") { sp.style.display = "none"; return; }
+      var qp = document.getElementById("group-quick-panel");
+      if (qp && qp.style.display === "block") { qp.style.display = "none"; return; }
+      openGroupQuickMenu();
     });
-    // Press-and-hold (or right-click) the Settings gear → a quick "Species group" picker,
-    // so you can switch groups without opening (and scrolling) the whole Settings panel.
+    // A tap on the Settings gear → the quick panel: species group, fetch radius and how
+    // far back to fetch — the three settings that decide what the next tap on the map
+    // brings back, without opening (and scrolling) the whole Settings panel.
     function openGroupQuickMenu() {
       var wrap = document.getElementById("settings-wrap"), sel = document.getElementById("group-select");
       if (!wrap || !sel) return;
@@ -17428,8 +18979,41 @@
         var lbl = o.textContent.replace(/^[^\p{L}\p{N}]+/u, "");
         html += '<button type="button" class="gq-item' + (o.value === cur ? " gq-cur" : "") + '" data-val="' + escapeHtml(o.value) + '">' + settingsIconHtml(o.value) + '<span>' + escapeHtml(lbl) + "</span></button>";
       });
+      // The fetch radius belongs with the group: both decide WHAT a tap on the map
+      // fetches, and both are otherwise a trip into Settings. The slider drives the
+      // Settings one (#recent-radius) rather than saving on its own, so its label, its
+      // save and the sightings-cache reset all keep working from one place.
+      var rrEl = document.getElementById("recent-radius");
+      if (rrEl) {
+        html += '<div class="gq-head gq-head-2">' + escapeHtml(t("ctrl.recentradius")) +
+          ' <span class="gq-radius-val">' + escapeHtml(radiusLabel(RADIUS_STEPS[+rrEl.value])) + "</span></div>" +
+          '<div class="gq-radius"><input type="range" class="gq-radius-in" min="' + rrEl.min + '" max="' + rrEl.max +
+          '" step="' + rrEl.step + '" value="' + rrEl.value + '" aria-label="' + escapeHtml(t("ctrl.recentradius")) + '" /></div>';
+      }
+      // How far back a fetch reaches — the third thing that decides what a tap on the
+      // map brings home. Fixed stops rather than a free number: these are the windows
+      // worth asking for, and they read straight off the slider.
+      var ddEl = document.getElementById("download-days");
+      if (ddEl) {
+        var dNow = downloadDays() || 30;
+        // Short label here ("Download 14 days"): Settings' full "Download — last N days"
+        // would set the whole panel's width on its own.
+        html += '<div class="gq-head gq-head-2">' + escapeHtml(t("ctrl.downloadShort")) +
+          ' <span class="gq-days-val">' + escapeHtml(daysLabel(dNow)) + "</span></div>" +
+          '<div class="gq-radius"><input type="range" class="gq-days-in" min="0" max="' + (DAYS_STEPS.length - 1) +
+          '" step="1" value="' + daysStepIndex(dNow) + '" aria-label="' + escapeHtml(t("ctrl.downloadDays")) + '" /></div>';
+      }
+      // A plain-tap route into full Settings, always. The press-and-hold is a gesture
+      // some devices emulate badly and some users never find, and everything in Settings
+      // — the "Reload to update" button included — would then be unreachable. (v1795-97
+      // was exactly that trap on Android: the hold opened Settings and the emulated
+      // click shut it again, with no other door.)
+      html += '<div class="gq-foot"><button type="button" class="gq-item gq-settings">' + ico("menu") +
+        "<span>" + escapeHtml(t("ctrl.settings")) + "…</span></button></div>";
       panel.innerHTML = html;
       panel.style.display = "block";
+      var setBtn = panel.querySelector(".gq-settings");
+      if (setBtn) setBtn.addEventListener("click", function () { toggleSettingsPanel(); });
       Array.prototype.forEach.call(panel.querySelectorAll(".gq-item"), function (b) {
         b.addEventListener("click", function () {
           var v = this.getAttribute("data-val");
@@ -17437,22 +19021,55 @@
           panel.style.display = "none";
         });
       });
+      var rIn = panel.querySelector(".gq-radius-in"), rOut = panel.querySelector(".gq-radius-val");
+      if (rIn && rrEl) {
+        // Drag: mirror into the Settings slider and let ITS handlers do the work.
+        rIn.addEventListener("input", function (e) {
+          e.stopPropagation();
+          if (rOut) rOut.textContent = radiusLabel(RADIUS_STEPS[+this.value]);
+          rrEl.value = this.value;
+          rrEl.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+        rIn.addEventListener("change", function (e) {
+          e.stopPropagation();
+          rrEl.value = this.value;
+          rrEl.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+        // A drag inside the panel must not be taken for a click outside it.
+        rIn.addEventListener("click", function (e) { e.stopPropagation(); });
+        rIn.addEventListener("mousedown", function (e) { e.stopPropagation(); });
+        rIn.addEventListener("touchstart", function (e) { e.stopPropagation(); }, { passive: true });
+      }
+      var dIn = panel.querySelector(".gq-days-in"), dOut = panel.querySelector(".gq-days-val");
+      if (dIn && ddEl) {
+        dIn.addEventListener("input", function (e) {
+          e.stopPropagation();
+          if (dOut) dOut.textContent = daysLabel(DAYS_STEPS[+this.value]);
+        });
+        dIn.addEventListener("change", function (e) {
+          e.stopPropagation();
+          ddEl.value = String(DAYS_STEPS[+this.value]);
+          ddEl.dispatchEvent(new Event("change", { bubbles: true }));   // its own handler saves + relabels
+        });
+        dIn.addEventListener("click", function (e) { e.stopPropagation(); });
+        dIn.addEventListener("mousedown", function (e) { e.stopPropagation(); });
+        dIn.addEventListener("touchstart", function (e) { e.stopPropagation(); }, { passive: true });
+      }
     }
-    (function () {
-      var btn = document.getElementById("settings-toggle");
-      if (!btn) return;
-      var lpT = null, lpFired = false, lpX = 0, lpY = 0;
-      // A capture-phase guard swallows the hold's trailing click so it doesn't also open Settings.
-      btn.addEventListener("click", function (e) { if (lpFired) { lpFired = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
-      function start(x, y) { lpFired = false; clearTimeout(lpT); lpX = x; lpY = y; lpT = setTimeout(function () { lpFired = true; holdFeedback(btn); openGroupQuickMenu(); }, holdDelay()); }
-      btn.addEventListener("touchstart", function (e) { var tt = e.touches && e.touches[0]; start(tt ? tt.clientX : 0, tt ? tt.clientY : 0); }, { passive: true });
-      btn.addEventListener("touchmove", function (e) { var tt = e.touches && e.touches[0]; if (tt && (Math.abs(tt.clientX - lpX) > 12 || Math.abs(tt.clientY - lpY) > 12)) clearTimeout(lpT); }, { passive: true });
-      btn.addEventListener("touchend", function () { clearTimeout(lpT); });
-      btn.addEventListener("mousedown", function (e) { if (e.button === 0) start(e.clientX, e.clientY); });
-      btn.addEventListener("mouseup", function () { clearTimeout(lpT); });
-      btn.addEventListener("mouseleave", function () { clearTimeout(lpT); });
-      btn.addEventListener("contextmenu", function (e) { e.preventDefault(); openGroupQuickMenu(); });
-    })();
+    // Hold = the full Settings panel. Registered BEFORE the scroll-to-top guard below,
+    // so a hold never reaches it (both are capture-phase, so they run in this order).
+    wireHoldButton(document.getElementById("settings-toggle"), toggleSettingsPanel);
+
+    // The gear while Settings is open and scrolled DOWN: return to the top rather than
+    // close. Tapping it again (already at the top) closes, as before. Capture phase, and
+    // registered after the press-and-hold guard above so a hold still opens Settings
+    // instead of scrolling.
+    document.getElementById("settings-toggle").addEventListener("click", function (e) {
+      var sp = document.getElementById("settings-panel");
+      if (!sp || sp.style.display === "none" || !sp.scrollTop) return;
+      e.stopImmediatePropagation(); e.preventDefault();
+      try { sp.scrollTo({ top: 0, behavior: "smooth" }); } catch (err) { sp.scrollTop = 0; }
+    }, true);
 
     // About (model & methodology) opens from the Settings dropdown as a modal.
     document.getElementById("about-open").addEventListener("click", function () {
@@ -17493,7 +19110,19 @@
     });
     document.getElementById("sp-pdf-btn").addEventListener("click", exportSpeciesPdf);
     var spLayoutSel = document.getElementById("sp-layout");
-    if (spLayoutSel) spLayoutSel.addEventListener("change", function () { spLayout = this.value; window.GeoState.save({ spLayout: spLayout }); renderSpControls(); });
+    if (spLayoutSel) spLayoutSel.addEventListener("change", function () {
+      spLayout = this.value;
+      // Rebuilding a list of thousands of rows takes a moment: blink the funnel the way
+      // every other heavy list pass does, so the switch is visibly happening. withFunnelBusy
+      // also defers the work by a frame, which is what lets that blink paint at all.
+      withFunnelBusy(function () {
+        applySpLayoutChange();
+        // AFTER the render: GeoState.save re-serialises the whole settings object (species
+        // photos included), so saving the new layout first put a full localStorage write
+        // in front of the thing the user is waiting for.
+        window.GeoState.save({ spLayout: spLayout });
+      });
+    });
     // Funnel → the single "all filters" pane (both list layouts). Sorting still happens
     // by clicking a column name; the pane keeps a full copy of the sort + every filter.
     var spFilterBtn = document.getElementById("sp-filter-btn");
@@ -17504,7 +19133,9 @@
     var spSortBeforeMissing = null;
     if (spMissingBtn) spMissingBtn.addEventListener("click", function (e) {
       e.stopPropagation();
-      spShowMissing = !spShowMissing; window.GeoState.save({ spShowMissing: spShowMissing });
+      spShowMissing = spMissingOn() ? false : true;   // [!] while the empty-spot fallback is on means "hide them"
+      spMissingAuto = false;                           // from here the user's own setting decides
+      window.GeoState.save({ spShowMissing: spShowMissing });
       if (spShowMissing) {
         spSortBeforeMissing = { col: speciesListSort.col, dir: speciesListSort.dir };
         speciesListSort = { col: "prob", dir: "desc" };
@@ -17514,6 +19145,17 @@
       }
       updateSortIndicators();
       renderSpControls();   // relabels the button ("?" ↔ "!") and rebuilds the body (table rows / Images cards)
+    });
+    var psBtn = document.getElementById("sp-probsort-btn");
+    if (psBtn) psBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      // Not sorted by probability yet → commonest first (the list's own default order);
+      // otherwise flip. Two states only, which is what a single arrow button should mean.
+      if (speciesListSort.col !== "prob") speciesListSort = { col: "prob", dir: "desc" };
+      else speciesListSort.dir = speciesListSort.dir === "desc" ? "asc" : "desc";
+      updateSortIndicators();
+      sortSpeciesList();
+      renderSpControls();   // re-glyphs the button and rebuilds the body (table rows / Images cards)
     });
     var vtBtn = document.getElementById("viewtoggle-btn");
     if (vtBtn) vtBtn.addEventListener("click", function () { if (onListView()) goToMapView(); else showListView(); });
@@ -17638,6 +19280,45 @@
         if (sci && sci !== el.getAttribute("data-name")) el.title = sci;   // sci tooltip (skip when the name already IS the sci)
       });
     }
+    // ---- The three kinds of NAME, wired once for the whole app --------------
+    // A species name, an observer name and a place name each open their own menu, and
+    // they appear in a dozen surfaces (species records, the observation window, the
+    // alerts page, panels…). Rather than every surface wiring its own handlers — which
+    // is how surfaces kept ending up with dead names — the classes below are handled
+    // here by delegation: emit `.sp-link`, `.sp-obs-filter`/`.dl-obs-add` or
+    // `.sp-loc-click` with the right data-* and the menu works, anywhere, for free.
+    // (A surface that needs something extra still adds its own listener and stops
+    // propagation; this handler then never sees the click.)
+    document.addEventListener("click", function (e) {
+      if (!e.target.closest) return;
+      var loc = e.target.closest(".sp-loc-click");
+      if (loc) {
+        e.preventDefault(); e.stopPropagation();
+        hideLocHoverMap();
+        var c = locClickCoords(loc);
+        if (isFinite(c.lat) && isFinite(c.lon)) {
+          showLocPointMenu(c.lat, c.lon, (loc.textContent || "").replace(/^\s*·\s*/, "").trim(), e.clientX, e.clientY, null,
+            { locName: loc.getAttribute("data-loc") || "" });
+        }
+        return;
+      }
+      var obs = e.target.closest(".sp-obs-filter, .dl-obs-add");
+      if (obs) { e.preventDefault(); e.stopPropagation(); observerClickMenu(obs.getAttribute("data-obs"), obs); return; }
+    }, false);
+    // Hovering a place name previews it on a small map — delegated for the same reason.
+    document.addEventListener("mouseover", function (e) {
+      if (!e.target.closest) return;
+      var loc = e.target.closest(".sp-loc-click"); if (!loc) return;
+      var c = locClickCoords(loc);
+      if (isFinite(c.lat) && isFinite(c.lon)) scheduleLocHoverMap(c.lat, c.lon, e.clientX, e.clientY);
+    });
+    document.addEventListener("mouseout", function (e) {
+      if (!e.target.closest) return;
+      var loc = e.target.closest(".sp-loc-click"); if (!loc) return;
+      var to = e.relatedTarget;
+      if (to && to.closest && to.closest(".sp-loc-click") === loc) return;   // still inside the same name
+      hideLocHoverMap();
+    });
     document.addEventListener("click", function (e) {
       var link = e.target.closest ? e.target.closest(".sp-link") : null;
       if (link) {
@@ -18160,187 +19841,13 @@
   }
 
   function clearOverlay() {
+    // Invalidate any range/richness render still running: its inference resolves
+    // LATER and would then set cachedRender and repaint the magma canvas — over
+    // whatever mode the user has since moved to. (That is how a dark, magenta-veined
+    // rectangle ended up sitting on the Recent map: leaving Range mid-inference.)
+    renderGeneration++;
     cachedRender = null;
     if (overlayCanvas) { overlayCanvas.width = 0; overlayCanvas.height = 0; }
-  }
-
-  // ---------- Hotspot heatmap ----------
-  // An alternative view of the fetched observations: a smooth heat cloud whose
-  // intensity blends three "how good a birding spot is here" signals per area —
-  // distinct species, distinct observers and total individuals counted — h3-binned.
-  // Toggled from the top of Settings. Reads the plotted detections (detPlot).
-  var hotCanvas = null, _hotRAF = 0;   // hotMode lives up with the dot state
-  function hotHeatmapOn() { return hotMode !== "off"; }
-  function ensureHotCanvas() {
-    if (hotCanvas) return;
-    if (!map.getPane("hotspotPane")) {
-      map.createPane("hotspotPane");
-      var hp = map.getPane("hotspotPane"); hp.style.zIndex = 342; hp.style.pointerEvents = "none";
-    }
-    hotCanvas = document.createElement("canvas");
-    hotCanvas.className = "hotspot-heatmap";
-    hotCanvas.style.position = "absolute"; hotCanvas.style.pointerEvents = "none";
-    map.getPane("hotspotPane").appendChild(hotCanvas);
-  }
-  // warm "birding hotspot" ramp: quiet blue -> teal -> green -> amber -> red
-  function hotRamp(t) {
-    var s = [[0, [26, 52, 120]], [0.30, [32, 150, 160]], [0.55, [110, 190, 90]],
-             [0.78, [240, 196, 64]], [1, [226, 58, 48]]];
-    for (var i = 1; i < s.length; i++) if (t <= s[i][0]) {
-      var a = s[i - 1], b = s[i], f = (t - a[0]) / ((b[0] - a[0]) || 1);
-      return [Math.round(a[1][0] + (b[1][0] - a[1][0]) * f),
-              Math.round(a[1][1] + (b[1][1] - a[1][1]) * f),
-              Math.round(a[1][2] + (b[1][2] - a[1][2]) * f)];
-    }
-    return s[s.length - 1][1];
-  }
-  // Bin plotted observations into h3 cells: distinct species, distinct observers,
-  // summed individual count. Respects ALL the active detection filters (species
-  // selection/status/group/count/prob/hidden + the date window + observer/source/
-  // New/dedup row filters) via the same detIsVisible + detRowPasses predicates the
-  // map dots use, so the density cloud always matches the dots on screen.
-  function hotspotBins(res) {
-    var cells = Object.create(null), keys = Object.keys(detPlot);
-    var selActive = detSelectionActive();
-    for (var k = 0; k < keys.length; k++) {
-      var sk = keys[k];
-      if (!detIsVisible(sk, selActive)) continue;          // species filtered out (legend/status/group/count/prob/selection)
-      var rows = (detPlot[sk] && detPlot[sk].rows) || [];
-      for (var i = 0; i < rows.length; i++) {
-        var r = rows[i];
-        if (!r || !isFinite(+r.lat) || !isFinite(+r.lon)) continue;
-        if (!detRowPasses(r)) continue;                    // date window + observer + source + New + dedup
-        var cell = window.h3.latLngToCell(Math.max(-89.9, Math.min(89.9, +r.lat)), wrapLon(+r.lon), res);
-        var c = cells[cell] || (cells[cell] = { sp: Object.create(null), ob: Object.create(null), tot: 0, nSp: 0, nOb: 0, sLa: 0, sLo: 0, n: 0 });
-        c.sLa += (+r.lat); c.sLo += (+r.lon); c.n++;   // running centroid so the blob sits ON the actual dots, not the H3 cell's geometric centre
-        if (!c.sp[sk]) { c.sp[sk] = 1; c.nSp++; }
-        var cnt = +r.count; c.tot += (isFinite(cnt) && cnt > 0) ? cnt : 1;   // no count -> presence counts as 1
-        var obs = detObsSplit(r.observer);
-        if (obs.length) { for (var o = 0; o < obs.length; o++) if (!c.ob[obs[o]]) { c.ob[obs[o]] = 1; c.nOb++; } }
-        else if (!c.ob[""]) { c.ob[""] = 1; c.nOb++; }
-      }
-    }
-    return cells;
-  }
-  // Resolution from the DATA extent (NOT the view), so the binning — and therefore
-  // the whole density pattern — is fixed in geography and doesn't reshuffle/rotate
-  // when you zoom. (h3 child cells sit ~19° rotated from their parents, so a
-  // view-following resolution re-orients the grid at every zoom level — the bug.)
-  function hotspotRes() {
-    var minLa = 90, maxLa = -90, minLo = 180, maxLo = -180, any = false, keys = Object.keys(detPlot);
-    var selActive = detSelectionActive();
-    for (var k = 0; k < keys.length; k++) {
-      if (!detIsVisible(keys[k], selActive)) continue;   // extent follows the FILTERED data, matching hotspotBins
-      var rows = (detPlot[keys[k]] && detPlot[keys[k]].rows) || [];
-      for (var i = 0; i < rows.length; i++) {
-        if (!detRowPasses(rows[i])) continue;
-        var la = +rows[i].lat, lo = +rows[i].lon; if (!isFinite(la) || !isFinite(lo)) continue;
-        any = true;
-        if (la < minLa) minLa = la; if (la > maxLa) maxLa = la;
-        if (lo < minLo) minLo = lo; if (lo > maxLo) maxLo = lo;
-      }
-    }
-    if (!any) return 5;
-    var midLa = (minLa + maxLa) / 2;
-    var spanM = Math.max((maxLa - minLa) * 111320, (maxLo - minLo) * 111320 * Math.cos(midLa * Math.PI / 180), 2000);
-    var target = spanM / 45;                    // ~45 cells across the data's larger dimension
-    var best = 5, bestD = Infinity;
-    for (var res = 0; res <= 12; res++) {
-      var d = Math.abs(Math.log(window.h3.getHexagonEdgeLengthAvg(res, "m") / target));
-      if (d < bestD) { bestD = d; best = res; }
-    }
-    return best;
-  }
-  // Cache (res, bins, normalisation) so a pure zoom/pan reuses them: the pattern stays
-  // put and only the projection changes. Recompute only when the data or the observer/
-  // dup filter changes (cheap signature).
-  // A compact fingerprint of every COMMITTED detection filter that gates
-  // detIsVisible + detRowPasses, so the binned density recomputes whenever the
-  // user changes a filter — but NOT on a pure pan/zoom (none of these change) nor
-  // on a transient legend/histogram HOVER preview (detDayHover / detFocusSrc /
-  // detFocusObs are deliberately excluded, so the cloud doesn't flicker on brush-over).
-  function detFilterSig() {
-    function ks(o) { return o ? Object.keys(o).sort().join(",") : ""; }
-    var pm = document.getElementById("prob-min"), px = document.getElementById("prob-max"), dr = detDateRange();
-    return [
-      ks(detExcluded), ks(detSelected),
-      detStarFilter, detRareFilter, detYearFilter, detLifeFilter, detAlertFilter,
-      speciesGroup, spCountMin, spCountMax, spCountMetric,
-      (pm ? pm.value : ""), (px ? px.value : ""), detLegendRows,
-      (detDaySuspend ? 1 : 0), ks(detDaySel), (dr ? dr.from + "~" + dr.to : ""), detRecencyDays(), detMonths().join(""),
-      (detObsFilter ? ("obs" + detObsNames.slice().sort().join("|") + (detObsAllowNone ? "n" : "")) : "all"),
-      (detSrcFilter ? ("src" + Array.from(detSrcFilter).sort().join("|")) : "all"),
-      (detNewFilter ? ("new" + detNewSince + (detTodayFilter ? "t" : "")) : "")
-    ].join("¦");
-  }
-  var _hotCache = null;
-  function hotspotData() {
-    var keys = Object.keys(detPlot), nrows = 0;
-    for (var k = 0; k < keys.length; k++) nrows += ((detPlot[keys[k]] && detPlot[keys[k]].rows) || []).length;
-    var sig = keys.length + ":" + nrows + ":" +
-      (typeof detDupHidden !== "undefined" && detDupHidden ? detDupHidden.size : 0) + ":" + detFilterSig();
-    if (_hotCache && _hotCache.sig === sig) return _hotCache;
-    var res = hotspotRes(), bins = hotspotBins(res), ids = Object.keys(bins);
-    var mS = 1, mO = 1, mT = 1, e;
-    for (var i = 0; i < ids.length; i++) { e = bins[ids[i]]; if (e.nSp > mS) mS = e.nSp; if (e.nOb > mO) mO = e.nOb; if (e.tot > mT) mT = e.tot; }
-    _hotCache = { sig: sig, res: res, bins: bins, ids: ids, lS: Math.log1p(mS), lO: Math.log1p(mO), lT: Math.log1p(mT) };
-    return _hotCache;
-  }
-  function paintHotspot() {
-    if (!hotHeatmapOn() || !map || !window.h3) return;
-    ensureHotCanvas();
-    var size = map.getSize();
-    if (hotCanvas.width !== size.x || hotCanvas.height !== size.y) { hotCanvas.width = size.x; hotCanvas.height = size.y; }
-    L.DomUtil.setPosition(hotCanvas, map.containerPointToLayerPoint([0, 0]));
-    var ctx = hotCanvas.getContext("2d"); ctx.clearRect(0, 0, size.x, size.y);
-    if (!hasPlottedDetections()) return;
-    var i, data = hotspotData(), ids = data.ids, cells = data.bins;
-    if (!ids.length) return;
-    // Single selected metric — Species (distinct), Observers (distinct) or Counts
-    // (summed individuals) — normalised by its own max so the ramp spans the data.
-    var lmax = hotMode === "observers" ? data.lO : hotMode === "counts" ? data.lT : data.lS;
-    var mpp = TILE_SIZE_M * Math.cos(map.getCenter().lat * Math.PI / 180) / Math.pow(2, map.getZoom());
-    var radius = Math.max(12, window.h3.getHexagonEdgeLengthAvg(data.res, "m") / mpp * 1.7);
-    var acc = document.createElement("canvas"); acc.width = size.x; acc.height = size.y;
-    var ac = acc.getContext("2d"); ac.globalCompositeOperation = "lighter";
-    for (i = 0; i < ids.length; i++) {                 // pass 1: accumulate intensity blobs
-      var c = cells[ids[i]];
-      var val = hotMode === "observers" ? c.nOb : hotMode === "counts" ? c.tot : c.nSp;
-      var idx = Math.log1p(val) / lmax;
-      if (!(idx > 0.02)) continue;
-      var ll = c.n ? [c.sLa / c.n, c.sLo / c.n] : window.h3.cellToLatLng(ids[i]);   // centroid of the cell's dots → blob sits ON the dots, not the hex centre
-      var pt = map.latLngToContainerPoint([ll[0], ll[1]]);
-      if (pt.x < -radius || pt.y < -radius || pt.x > size.x + radius || pt.y > size.y + radius) continue;
-      var g = ac.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, radius);
-      g.addColorStop(0, "rgba(0,0,0," + Math.min(1, idx).toFixed(3) + ")");
-      g.addColorStop(1, "rgba(0,0,0,0)");
-      ac.fillStyle = g; ac.beginPath(); ac.arc(pt.x, pt.y, radius, 0, 7); ac.fill();
-    }
-    var src = ac.getImageData(0, 0, size.x, size.y).data;   // pass 2: colourise
-    var out = ctx.createImageData(size.x, size.y), od = out.data;
-    for (i = 0; i < src.length; i += 4) {
-      var a = src[i + 3] / 255; if (a <= 0.03) continue;
-      var t = Math.min(1, a), col = hotRamp(t);
-      od[i] = col[0]; od[i + 1] = col[1]; od[i + 2] = col[2]; od[i + 3] = Math.round(Math.min(1, t * 1.25) * 205);
-    }
-    ctx.putImageData(out, 0, 0);
-  }
-  function scheduleHotspot() {
-    if (!hotHeatmapOn()) return;
-    if (_hotRAF) return;
-    if (typeof requestAnimationFrame === "undefined") { paintHotspot(); return; }
-    _hotRAF = requestAnimationFrame(function () { _hotRAF = 0; paintHotspot(); });
-  }
-  // Density-heatmap metric: "off" | "species" | "observers" | "counts".
-  function setHotMode(mode) {
-    hotMode = (mode === "species" || mode === "observers" || mode === "counts") ? mode : "off";
-    if (hotHeatmapOn()) { ensureHotCanvas(); paintHotspot(); }
-    else if (hotCanvas) { hotCanvas.width = 0; hotCanvas.height = 0; }
-  }
-  // "Show dots" checkbox — independent of the heatmap metric.
-  function setShowDots(on) {
-    dotsShown = !!on;
-    rebuildDetLayers();
   }
 
   // Bilinear sample of the cached probability field at a lat/lon — the same
@@ -18398,6 +19905,7 @@
   function paintOverlay() {
     if (_paintRAF) { cancelAnimationFrame(_paintRAF); _paintRAF = 0; }
     if (!cachedRender || !map) return;
+    if (currentMode !== "range" && currentMode !== "richness") { clearOverlay(); return; }   // the heat canvas belongs to those two modes only
     if (!window.h3) { paintOverlaySmooth(); return; }
     try {
       if (cachedRender.h3richness) paintRichnessH3();
@@ -19243,7 +20751,7 @@
         escapeHtml(fooOn ? t("loc.loadOnOpenHint") : t("loc.loadOnOpenOff")) + "<br>" +
         escapeHtml("⤓ = " + t("loc.goFetch")) + "<br>" +
         escapeHtml("✓ = " + t("loc.include") + " (“" + t("loc.fetch") + "”)") + "<br>" +
-        ico("bell") + " = " + escapeHtml(t("loc.alertCol")) + (ebirdKey() ? "" : " — " + escapeHtml(t("rarity.needKey"))) + "</div>" +
+        ico("bell") + " = " + escapeHtml(t("loc.alertCol")) + ((ebirdKey() || rarityCfg().allSources !== false) ? "" : " — " + escapeHtml(t("rarity.needKey"))) + "</div>" +
       // Master alerts on/off — the same toggle as in the bell popup.
       '<label class="ctrl-check slp-alerts-onoff"><input type="checkbox" id="slp-alerts-onoff"' + (rarityCfg().enabled ? " checked" : "") + '> <span>' +
         escapeHtml(t("rarity.enable")) + "</span></label>" +
@@ -19270,7 +20778,7 @@
     hereWire("slp-here-gofetch", "goFetch");
     hereWire("slp-here-on", "on", function () { renderStoredLocFrames(); });
     hereWire("slp-here-alert", "alert", function (el) {
-      if (el.checked && !ebirdKey()) setStatus(t("rarity.needKey"));
+      if (el.checked && !ebirdKey() && rarityCfg().allSources === false) setStatus(t("rarity.needKey"));
       rarityAlertsChanged();
     });
     hereWire("slp-here-radius", "radius", function () { renderStoredLocFrames(); });
@@ -19322,7 +20830,7 @@
     panel.querySelectorAll(".slp-alert[data-i]").forEach(function (cb) {
       cb.addEventListener("change", function () {
         updateStoredLocation(+this.getAttribute("data-i"), { alert: this.checked });
-        if (this.checked && !ebirdKey()) setStatus(t("rarity.needKey"));   // tick persists; alerts start once a key exists
+        if (this.checked && !ebirdKey() && rarityCfg().allSources === false) setStatus(t("rarity.needKey"));   // tick persists; alerts start once a key exists
         rarityAlertsChanged();
       });
     });
@@ -19400,6 +20908,7 @@
     if (storedFetchBusy) { if (autoOpen && fooEngageCleanup) fooEngageCleanup(); return; }
     var locs = locsOverride || getStoredLocations().filter(function (l) { return l.on !== false; });
     if (!locs.length) { if (!silent) setStatus(t("loc.noneSelected")); if (autoOpen && fooEngageCleanup) fooEngageCleanup(); return; }
+    mapFromMultiFetch = true;   // these dots are not one point's — the list view must say so
     locs.forEach(function (l) { rememberFetchedArea(l.lat, l.lon, l.radius || recentRadiusKm(), l.name); });   // remember each fetched area's outline + its stored-place name (persists until detections cleared)
     storedFetchBusy = true;
     autoOpenPlotting = !!autoOpen;   // suppress per-location view changes while auto-open loads
@@ -19428,12 +20937,18 @@
             if (!fitAllDetectionPoints()) fitToAreas();
             detLegendMini = false; saveLegendState(); updateDetLegend();
           }
-          setStatus(t("loc.fetchedAll", { n: locs.length }));
+          setFetchedAllStatus(locs.length);
           updateViewToggle();   // detections are on the map now → offer the list toggle
           return;
         }
         fitToAreas();   // manual "Fetch observations": always fit to the fetched areas
-        setStatus(t("loc.fetchedAll", { n: locs.length }));
+        // The list page is often still open OVER the map — a restored session, or the user
+        // was reading a list when they opened the 🔍 saved-locations panel. It shows the
+        // PREVIOUS point's species and nothing here refreshed it, so the fetch looked like
+        // it did nothing and the header toggle, correctly seeing a list open, offered "go
+        // to map" instead of the list. Re-render it for what was just fetched.
+        if (onListView()) { try { showListView(); } catch (e) {} }
+        setFetchedAllStatus(locs.length);
         updateViewToggle();
         return;
       }
@@ -19474,7 +20989,7 @@
       clearLocalRarities = window.AppRarity.clearLocalRarities,
       initRarityAlerts = window.AppRarity.initRarityAlerts;
   window.AppRarity.init({
-    createModal: createModal, detIsRare: detIsRare, detName: detName,
+    detIsRare: detIsRare, detName: detName,
     ebirdKey: ebirdKey, escapeHtml: escapeHtml, fmtDate: fmtDate, getHereFix: getHereFix,
     getStoredLocations: getStoredLocations, hereAsLoc: hereAsLoc, hereCfg: hereCfg,
     hideDetHover: hideDetHover, holdDelay: holdDelay, ico: ico,
@@ -19483,7 +20998,9 @@
     setTabAlert: setTabAlert, showDetHover: showDetHover,
     spDetailTableHtml: spDetailTableHtml, spListDot: spListDot,
     speciesColor: speciesColor, t: t, wireLocHover: wireLocHover,
-    wireSpDetail: wireSpDetail, rarityMapVisible: rarityMapVisible, rarityScoreProbs: rarityScoreProbs, onRarityListChanged: onRarityListChanged,
+    wireSpDetail: wireSpDetail, rarityScoreProbs: rarityScoreProbs, onRarityListChanged: onRarityListChanged,
+    rarityFetchSources: rarityFetchSources, abortRaritySweep: abortRaritySweep, userFetchActive: userFetchActive, speciesName: speciesName,
+    rarityPageEl: rarityPageEl, openRarityPage: rarityPageOpen, closeRarityPage: rarityPageClose, appErrLog: appErrLog,
     getMap: function () { return map; },
     getLang: function () { return lang; },
     getShowSci: function () { return showSci; },
@@ -19619,6 +21136,18 @@
           moreBtn
         );
         var _pp = mk.getPopup(); if (_pp && _pp.isOpen()) _pp.update();
+      }
+      // MapAnt (Norway): the LiDAR-derived orienteering map of the whole country —
+      // contours, boulders, marshes and vegetation density at up to ~0.5 m/px, which
+      // reads terrain far better than any of our basemaps. It is published in UTM 33N
+      // (EPSG:32633), not Web Mercator, so it cannot join the basemap list; this opens
+      // mapant.no centred on the clicked point instead (their hash is #zoom/lat/lon).
+      // Norway-only by coverage, and Experimental-gated like the radar link.
+      if (cc === "NO" && experimentalOn()) {
+        moreSub.appendChild(makePopupBtn(t("link.mapant") + " ↗", "btn-light", function () {
+          mk.closePopup();
+          openExternal("https://mapant.no/#8/" + lat.toFixed(5) + "/" + lon.toFixed(5));
+        }));
       }
       natServicesFor(cc).forEach(function (s) {
         moreSub.appendChild(makePopupBtn(s.label + " ↗", "btn-light", function () { mk.closePopup(); openExternal(s.url); }));
@@ -19814,6 +21343,10 @@
   function renderSpCoordsAreas(el, lat, lon, summary) {
     if (!el) return;
     lastSpCoords = { el: el, lat: lat, lon: lon, summary: summary };
+    // A model-only list describes ONE point — the pin, or the middle of the map. Naming the
+    // squares fetched earlier somewhere else would answer a question nobody asked (a pin in
+    // Iceland under a header reading "Åfjord"), so that list gets its own point's place.
+    if (spMissingAuto && isFinite(lat) && isFinite(lon)) { setCoordsWithPlace(el, lat, lon, summary); return; }
     var raw = (fetchedAreas || []).map(function (a) {
       var c = a.bounds && a.bounds.getCenter ? a.bounds.getCenter() : null;
       return { id: a.id, name: a.name || "", clat: c ? c.lat : NaN, clon: c ? c.lng : NaN };
@@ -20182,6 +21715,11 @@
   // Which species-panel context is showing — drives whether the Checklist
   // button creates a point-anchored checklist or a country-wide one.
   var currentSpView = null;
+  // Set when a "Fetch observations" over several saved locations last filled the map, and
+  // cleared the moment a single point's list is (re)built. While it is on, the species
+  // table on screen belongs to some earlier point and has nothing to do with the dots —
+  // so the list view must show the "By observation" page instead of re-showing that table.
+  var mapFromMultiFetch = false;
   // Bumped on every renderSpeciesList call AND on a mode change. A render that
   // suspends at its inference await while the user switches mode (or clicks a new
   // point) sees its captured gen fall behind and bails BEFORE firing its
@@ -20627,7 +22165,7 @@
         plotNoFit = prevNoFit; storedFetchBusy = false;
         try { updateDetLegend(); } catch (e) {}
         updateViewToggle();
-        setStatus(t("loc.fetchedAll", { n: total }));
+        setFetchedAllStatus(total);
         return;
       }
       var l = locs[i++];
@@ -20722,8 +22260,13 @@
   // file page.
   var spImgCache = null;   // sci → { t: thumb url, a: artist, l: licence, f: file title } | { none: 1 }
   function spImgStore() { if (!spImgCache) spImgCache = window.GeoState.get("spImages", {}) || {}; return spImgCache; }
-  function spImgRemember(sci, rec) {
-    var c = spImgStore(); c[sci] = rec;
+  function spImgRemember(sci, rec) { var o = {}; o[sci] = rec; spImgRememberMany(o); }
+  // One save for a whole batch: the family popup remembers 160 species at once, and
+  // saving per species re-serialised the entire (capped) store that many times.
+  function spImgRememberMany(recs) {
+    var c = spImgStore(), n = 0;
+    for (var k in recs) { c[k] = recs[k]; n++; }
+    if (!n) return;
     var keys = Object.keys(c); if (keys.length > 800) keys.slice(0, keys.length - 800).forEach(function (k) { delete c[k]; });   // bounded
     window.GeoState.save({ spImages: c });
   }
@@ -20732,38 +22275,235 @@
     try { return m ? decodeURIComponent(m[1]) : ""; } catch (e) { return m ? m[1] : ""; }
   }
   // A display-size thumbnail URL from the summary's thumbnail: drop the tracking query,
-  // serve from upload.wikimedia.org (the canonical, cacheable host) at 500 px wide — one of
-  // Wikimedia's standard widths (20/40/60/120/250/330/500/960…); other widths are refused.
+  // serve from upload.wikimedia.org (the canonical, cacheable host) at 960 px wide.
+  // Wikimedia serves a FIXED ladder of widths here (20/40/60/120/250/330/500/960…) and
+  // answers anything else with HTTP 400 — v1802 asked for 800 and every photo broke, which
+  // is why the width is a named constant now and the loader falls back to 500 on error.
+  // 960 rather than 500: a gallery card is ~300 CSS px, i.e. ~900 device px on a 3× phone.
+  var SP_IMG_W = 960, SP_IMG_W_FALLBACK = 500;
+  function spImgAtWidth(u, w) { return String(u || "").replace(/\/\d+px-/, "/" + w + "px-"); }
   function spImgThumb(thumb) {
-    return thumb.split("?")[0].replace(/^https:\/\/thumb\.wikimedia\.org\//, "https://upload.wikimedia.org/").replace(/\/\d+px-/, "/500px-");
+    return spImgAtWidth(thumb.split("?")[0].replace(/^https:\/\/thumb\.wikimedia\.org\//, "https://upload.wikimedia.org/"), SP_IMG_W);
+  }
+  // Licences we may show. Commons is free-only, but the summary's image can be a file
+  // local to en.wikipedia, where non-free "fair use" and NC/ND files exist — and those
+  // we must not redistribute. Anything we cannot positively identify as free is dropped.
+  function spImgLicenceOk(name) {
+    var l = String(name || "").toLowerCase();
+    if (!l) return false;                                   // no licence metadata → don't show it
+    // Reject FIRST, so "Attribution-NonCommercial" cannot pass on the word "attribution".
+    if (/non-?free|fair use|no derivat|\bnd\b|non-?commercial|\bnc\b/.test(l)) return false;
+    // Commons' free templates, as they actually appear in LicenseShortName. "Attribution"
+    // (the bare {{Attribution}} template) was missing until v1815 and cost every species
+    // whose picture uses it — Harmonia axyridis among them — its photo entirely.
+    return /cc0|public domain|pdm|cc by|cc-by|attribution|fal|free art|gfdl|copyrighted free use|no restrictions|open government|ogl/.test(l);
+  }
+  // Bumped when the record's SHAPE or the rules that filled it change, so devices
+  // re-fetch instead of serving entries made under the old ones (v2: 800 px thumbs,
+  // untruncated author, licence URL, free-licence gate).
+  var SP_IMG_VER = 4;   // v4: Wikidata/iNaturalist fallbacks + the widened free-licence list
+  // ---- Photo fallbacks for species Wikipedia has no picture of ---------------
+  // Measured 2026-09-18 on species actually observed in northern Europe: the English
+  // Wikipedia has a lead image for 6/14 insects, 11/14 plants, 10/14 fungi. Of the 15
+  // gaps, Wikidata's image (P18) fills 7 — Commons files, free by construction and
+  // carrying the same Artist/Licence metadata as any other — and iNaturalist has a photo
+  // for all 15, but only 3 under a licence we may redistribute (CC0 / CC BY / CC BY-SA);
+  // the rest are NonCommercial. So: Wikidata first, then iNaturalist's free ones.
+  function spImgFromCommonsFile(file, sci) {
+    if (!file) return Promise.resolve(null);
+    var q = "https://commons.wikimedia.org/w/api.php?action=query&prop=imageinfo&format=json&origin=*" +
+      "&iiprop=url%7Cextmetadata&iiurlwidth=" + SP_IMG_W +
+      "&iiextmetadatafilter=Artist%7CLicenseShortName%7CLicenseUrl&titles=" + encodeURIComponent("File:" + file);
+    return fetch(q).then(function (r) { return r.ok ? r.json() : null; }).then(function (m) {
+      var pages = m && m.query && m.query.pages, pg = pages && pages[Object.keys(pages)[0]];
+      var ii = pg && pg.imageinfo && pg.imageinfo[0];
+      if (!ii || !(ii.thumburl || ii.url)) return null;
+      var em = ii.extmetadata || {};
+      // The API answers on thumb.wikimedia.org; the canonical, service-worker-cached host
+      // is upload.wikimedia.org — the same rewrite spImgThumb does for the article path.
+      var url = String(ii.thumburl || ii.url).replace(/^https:\/\/thumb\.wikimedia\.org\//, "https://upload.wikimedia.org/");
+      var rec = { v: SP_IMG_VER, t: url, f: file, h: "commons.wikimedia.org",
+        a: String((em.Artist && em.Artist.value) || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 240),
+        l: String((em.LicenseShortName && em.LicenseShortName.value) || "").trim(),
+        lu: String((em.LicenseUrl && em.LicenseUrl.value) || "").trim() };
+      return spImgLicenceOk(rec.l) ? rec : null;   // the same gate as the Wikipedia path
+    }).catch(function () { return null; });
+  }
+  // Wikidata knows a taxon's picture even where the English Wikipedia has no article.
+  function spImgFromWikidata(sci) {
+    var api = "https://www.wikidata.org/w/api.php?format=json&origin=*";
+    return fetch(api + "&action=wbsearchentities&language=en&type=item&limit=5&search=" + encodeURIComponent(sci))
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        var hit = ((j && j.search) || []).filter(function (x) { return String(x.label || "").toLowerCase() === sci.toLowerCase(); })[0];
+        if (!hit) return null;
+        return fetch(api + "&action=wbgetclaims&property=P18&entity=" + encodeURIComponent(hit.id))
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (c) {
+            var cl = c && c.claims && c.claims.P18 && c.claims.P18[0];
+            var file = cl && cl.mainsnak && cl.mainsnak.datavalue && cl.mainsnak.datavalue.value;
+            return spImgFromCommonsFile(file, sci);
+          });
+      }).catch(function () { return null; });
+  }
+  // iNaturalist's own photo of the taxon — only the licences we may redistribute.
+  var INAT_LIC = { cc0: { n: "CC0", u: "https://creativecommons.org/publicdomain/zero/1.0/" },
+                   "cc-by": { n: "CC BY", u: "https://creativecommons.org/licenses/by/4.0/" },
+                   "cc-by-sa": { n: "CC BY-SA", u: "https://creativecommons.org/licenses/by-sa/4.0/" } };
+  function spImgFromInat(sci) {
+    return fetch("https://api.inaturalist.org/v1/taxa?rank=species&per_page=5&q=" + encodeURIComponent(sci))
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        var hit = ((j && j.results) || []).filter(function (x) { return String(x.name || "").toLowerCase() === sci.toLowerCase(); })[0];
+        var dp = hit && hit.default_photo;
+        var lic = dp && INAT_LIC[dp.license_code];
+        if (!dp || !lic || !dp.medium_url) return null;   // NonCommercial / all rights reserved → not ours to show
+        return { v: SP_IMG_VER, t: String(dp.medium_url).replace(/\/medium\.(jpe?g|png)/i, "/large.$1"),
+          a: String(dp.attribution || "").replace(/\s+/g, " ").trim().slice(0, 240), l: lic.n, lu: lic.u,
+          pg: "https://www.inaturalist.org/taxa/" + hit.id, f: "", h: "" };
+      }).catch(function () { return null; });
+  }
+  function spImageFallbacks(sci) {
+    return spImgFromWikidata(sci).then(function (rec) { return rec || spImgFromInat(sci); });
+  }
+  // ---- Whole-list lookup ----------------------------------------------------
+  // A family popup opens every member at once — Anatidae is 164 cards. Asking per card
+  // is two Wikimedia requests each: measured 2026-09-19 that took 150 s to fill and
+  // tripped the app's own "photos are not answering" guard on the way (48 cards wearing
+  // the offline mark at t+60 s), so most of a big family looked broken for minutes.
+  // The MediaWiki API answers 50 titles per request, so the same family costs four
+  // round trips to en.wikipedia (which article, which picture) and four to Commons
+  // (who took it, under what licence) — and lands in a couple of seconds.
+  var SP_BATCH = 50;
+  function mwQuery(host, params) {
+    return fetch("https://" + host + "/w/api.php?action=query&format=json&formatversion=2&origin=*&" + params)
+      .then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+  }
+  function spImgTitle(sci) { return String(sci || "").trim().replace(/\s+/g, "_"); }
+  // file name -> { a, l, lu, h } for up to SP_BATCH files, Commons first and then the
+  // ones that turned out to be local to en.wikipedia.
+  function spImgMetaBatch(files) {
+    var out = {};
+    function ask(host, list) {
+      if (!list.length) return Promise.resolve([]);
+      return mwQuery(host, "prop=imageinfo&iiprop=extmetadata&iiextmetadatafilter=Artist%7CLicenseShortName%7CLicenseUrl&titles=" +
+        encodeURIComponent(list.map(function (f) { return "File:" + f; }).join("|"))).then(function (j) {
+        var miss = [];
+        ((j && j.query && j.query.pages) || []).forEach(function (pg) {
+          var name = String(pg.title || "").replace(/^File:/, "").replace(/ /g, "_");   // the API answers with spaces, pageimage uses underscores
+          var ii = pg.imageinfo && pg.imageinfo[0] && pg.imageinfo[0].extmetadata;
+          if (pg.missing || !ii) { if (name) miss.push(name); return; }
+          out[name] = {
+            a: String((ii.Artist && ii.Artist.value) || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 240),
+            l: String((ii.LicenseShortName && ii.LicenseShortName.value) || "").trim(),
+            lu: String((ii.LicenseUrl && ii.LicenseUrl.value) || "").trim(), h: host };
+        });
+        return miss;
+      });
+    }
+    return ask("commons.wikimedia.org", files).then(function (miss) { return ask("en.wikipedia.org", miss); }).then(function () { return out; });
+  }
+  function spImgBatchOnce(scis) {
+    return mwQuery("en.wikipedia.org", "redirects=1&prop=pageimages%7Cpageprops&ppprop=disambiguation&piprop=thumbnail%7Cname&pithumbsize=" + SP_IMG_W +
+      "&titles=" + encodeURIComponent(scis.map(spImgTitle).join("|"))).then(function (j) {
+      var q = j && j.query; if (!q) return null;                 // transient: leave these to the per-card chain
+      // What we asked for -> the article MediaWiki actually answered about.
+      var to = {};
+      (q.normalized || []).forEach(function (n) { to[n.from] = n.to; });
+      (q.redirects || []).forEach(function (n) { to[n.from] = n.to; });
+      var byTitle = {};
+      (q.pages || []).forEach(function (pg) { byTitle[pg.title] = pg; });
+      var recs = {}, files = [];
+      scis.forEach(function (sci) {
+        var t = spImgTitle(sci);
+        for (var i = 0; i < 3 && to[t]; i++) t = to[t];          // normalise, then follow the redirect
+        var pg = byTitle[t] || byTitle[t.replace(/_/g, " ")];
+        var th = pg && pg.thumbnail && pg.thumbnail.source;
+        // No article picture, or the name leads to a disambiguation page (whose "image" is
+        // an icon, not the species) — both cases go to spImageFallbacks, as the single-species
+        // path has always done.
+        if (!th || !pg.pageimage || (pg.pageprops && pg.pageprops.disambiguation !== undefined)) return;
+        recs[sci] = { v: SP_IMG_VER, t: spImgThumb(th), f: pg.pageimage, a: "", l: "" };
+        files.push(pg.pageimage);
+      });
+      if (!files.length) return recs;
+      return spImgMetaBatch(files).then(function (meta) {
+        Object.keys(recs).forEach(function (sci) {
+          var m = meta[recs[sci].f];
+          if (m) { recs[sci].a = m.a; recs[sci].l = m.l; recs[sci].lu = m.lu; recs[sci].h = m.h; }
+        });
+        return recs;
+      });
+    });
+  }
+  // Fill the photo cache for a list of species. Batches run one after another (eight
+  // requests for a big family, not 328) and only positively-free pictures are kept —
+  // everything else is simply not remembered, so the per-card chain still gets its turn.
+  function spImagesPrefetch(scis) {
+    if (!scis.length || photoNetDown()) return Promise.resolve();
+    var chain = Promise.resolve();
+    for (var i = 0; i < scis.length; i += SP_BATCH) {
+      (function (part) {
+        chain = chain.then(function () {
+          return spImgBatchOnce(part).then(function (recs) {
+            if (!recs) return;
+            var keep = {}, n = 0;
+            Object.keys(recs).forEach(function (sci) { if (spImgLicenceOk(recs[sci].l)) { keep[sci] = recs[sci]; n++; } });
+            if (n) spImgRememberMany(keep);
+          }, function () {});
+        });
+      })(scis.slice(i, i + SP_BATCH));
+    }
+    return chain;
   }
   function spImageFor(sci) {
-    var c = spImgStore(); if (c[sci]) return Promise.resolve(c[sci]);
-    if (navigator.onLine === false) return Promise.resolve({ none: 1, tmp: 1 });   // offline: don't even ask (the SW would answer 503) — retried later
+    var c = spImgStore();
+    if (c[sci] && c[sci].v === SP_IMG_VER) return Promise.resolve(c[sci]);
+    if (c[sci] && c[sci].none && c[sci].tmp) return Promise.resolve(c[sci]);   // transient miss: unchanged by the rules above
+    if (photoNetDown()) return Promise.resolve({ none: 1, tmp: 1 });   // offline / service down: don't even ask (the SW would answer 503) — retried later
     var title = encodeURIComponent(sci.trim().replace(/\s+/g, "_"));
     return fetch("https://en.wikipedia.org/api/rest_v1/page/summary/" + title, { headers: { Accept: "application/json" } })
       // Only a definite 404 means "no article" (remembered below); any other failure —
       // offline 503 from the service worker, 429, 5xx — is transient and must not be remembered.
       .then(function (r) { if (r.ok) return r.json(); if (r.status === 404) return null; throw new Error("summary " + r.status); })
+      .then(function (j) { return j || { __noArticle: 1 }; })   // no article ≠ no picture: the fallbacks still run
       .then(function (j) {
         var thumb = j && j.thumbnail && j.thumbnail.source, orig = j && j.originalimage && j.originalimage.source;
-        if (!thumb || (j && j.type === "disambiguation")) { spImgRemember(sci, { none: 1 }); return { none: 1 }; }
+        if (!thumb || (j && j.type === "disambiguation")) {
+          return spImageFallbacks(sci).then(function (fb) {
+            spImgRemember(sci, fb || { v: SP_IMG_VER, none: 1 });
+            return fb || { none: 1 };
+          });
+        }
         var file = spImgFileFromUrl(orig || thumb);
-        var rec = { t: spImgThumb(thumb), f: file, a: "", l: "" };
+        var rec = { v: SP_IMG_VER, t: spImgThumb(thumb), f: file, a: "", l: "" };
         // Author + licence from the file's metadata (Commons first, else the file may be local to en.wikipedia).
-        var q = "w/api.php?action=query&prop=imageinfo&iiprop=extmetadata&iiextmetadatafilter=Artist%7CLicenseShortName&format=json&origin=*&titles=File:" + encodeURIComponent(file);
+        var q = "w/api.php?action=query&prop=imageinfo&iiprop=extmetadata&iiextmetadatafilter=Artist%7CLicenseShortName%7CLicenseUrl&format=json&origin=*&titles=File:" + encodeURIComponent(file);
         function meta(host) {
           return fetch("https://" + host + "/" + q).then(function (r) { return r.ok ? r.json() : null; }).then(function (m) {
             var pages = m && m.query && m.query.pages, pg = pages && pages[Object.keys(pages)[0]];
             var ii = pg && pg.imageinfo && pg.imageinfo[0] && pg.imageinfo[0].extmetadata;
             if (!ii) return false;
-            rec.a = String((ii.Artist && ii.Artist.value) || "").replace(/<[^>]+>/g, "").trim().slice(0, 80);
+            // The WHOLE author string (audited: real ones run to 251 chars) — a truncated
+            // credit is not the attribution CC BY/BY-SA asks for. 240 is a sanity cap.
+            rec.a = String((ii.Artist && ii.Artist.value) || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 240);
             rec.l = String((ii.LicenseShortName && ii.LicenseShortName.value) || "").trim();
+            rec.lu = String((ii.LicenseUrl && ii.LicenseUrl.value) || "").trim();   // link the deed, not just the file page
             rec.h = host; return true;
           }).catch(function () { return false; });
         }
         return meta("commons.wikimedia.org").then(function (ok) { return ok ? true : meta("en.wikipedia.org"); })
-          .then(function () { spImgRemember(sci, rec); return rec; });
+          .then(function () {
+            // No positively-free licence → treat the species as having no photo (remembered,
+            // so we don't ask again) rather than showing something we may not redistribute.
+            if (!spImgLicenceOk(rec.l)) {
+              return spImageFallbacks(sci).then(function (fb) {
+                spImgRemember(sci, fb || { v: SP_IMG_VER, none: 1 });
+                return fb || { none: 1 };
+              });
+            }
+            spImgRemember(sci, rec); return rec;
+          });
       })
       .catch(function () { return { none: 1, tmp: 1 }; });   // network trouble: not remembered, retried next time
   }
@@ -20772,20 +22512,50 @@
     // Before the observations have landed the table holds the model's whole prediction list
     // (default sort: rarest first) — as cards that would be a wall of exotic species whose
     // photos start downloading. Wait for the fetch instead; [?] (predictions wanted) still shows.
-    if (!tbody._sightingsAgg && !spShowMissing) return '<div class="dl-empty spg-wait"><div class="spinner"></div>' + escapeHtml(t("status.loadingDet")) + "</div>";
-    var rows = Array.prototype.filter.call(tbody.children, function (tr) { return tr.style.display !== "none" && !tr.classList.contains("sp-detail-row"); });
+    // …but rows that came FROM observations (a fetched species, or an extra — which is
+    // every plant, fungus and most insects, none of which the model predicts) are not
+    // that wall: they are the result. Waiting on `_sightingsAgg`, which only a per-point
+    // fetch attaches, left those layouts on a permanent spinner — plants and fungi never
+    // appeared in the Images view at all.
+    var anyObserved = tbody.querySelector("tr.sp-has-det, tr.sp-extra");
+    if (!tbody._sightingsAgg && !spMissingOn() && !anyObserved) return '<div class="dl-empty spg-wait"><div class="spinner"></div>' + escapeHtml(t("status.loadingDet")) + "</div>";
+    // The name search hides table rows with a CLASS (it composes with the inline
+    // show/hide) — the cards are built from the rows, so they must honour it too.
+    var rows = Array.prototype.filter.call(tbody.children, function (tr) {
+      return tr.style.display !== "none" && !tr.classList.contains("sp-hide-search") && !tr.classList.contains("sp-detail-row");
+    });
     if (!rows.length) return '<div class="dl-empty">' + escapeHtml(t("detlist.empty")) + "</div>";
     var lbl = { total: t("th.total"), last: t("th.last"), dist: t("th.dist"), prob: t("th.prob") };
     return '<div class="sp-gallery">' + rows.map(function (tr) {
-      var link = tr.querySelector(".sp-link"), sciTd = tr.querySelector("td.sci");
+      // .sp-link is the MODEL species' name (clickable → species menu). An extra row —
+      // every plant, fungus and most insects — carries its name in .sp-extra-name instead,
+      // and without this the card showed a scientific name and nothing else.
+      var link = tr.querySelector(".sp-link") || tr.querySelector(".sp-extra-name");
+      var clsBadge = tr.querySelector(".sp-extra-cls");
+      var sciTd = tr.querySelector("td.sci");
       var sci = sciTd ? sciTd.textContent.trim() : (link ? link.getAttribute("data-sci") || "" : "");
       var sciEl = sciTd ? sciTd.querySelector(".sci-link") : null;   // the table's clickable sci (→ Family menu), reused as-is
-      var dot = tr.querySelector(".sp-cdot, .det-sw");
+      // The .sp-dot HOLDER, not the bare swatch inside it: the swatch is an inline span whose
+      // width/height only apply as a flex item of that holder — cloned alone it collapsed to a
+      // thin line beside the name. The holder carries the status too (★ / rare centre dot /
+      // year-life ring), so the card shows the same dot as every other list.
+      var dot = tr.querySelector(".sp-dot, .sp-cdot, .det-sw");
       var nd = tr.querySelector(".det-nd"), last = tr.querySelector(".sp-last"), dist = tr.querySelector(".sp-dist"), prob = tr.querySelector(".prob-num");
       var probTd = tr.querySelector("td.prob-cell");   // number + coloured bar, cloned as-is
+      // A model row carries its key on .sp-link; an extra (plant, fungus, most insects)
+      // has none, so derive the same "x:<scientific name>" key the table uses — that is
+      // what spDetailRowsFor / openSpeciesListRow expect, and without it these cards had
+      // no records button at all.
       var key = link ? link.getAttribute("data-key") || "" : "";
+      if (!key) {
+        var exBtn = tr.querySelector(".det-count-extra[data-sci]");
+        var exSci = exBtn ? exBtn.getAttribute("data-sci") : sci;
+        if (exSci) key = "x:" + String(exSci).toLowerCase();
+      }
       var lastChip = last ? last.querySelector("[data-date]") : null, lastDate = lastChip ? lastChip.getAttribute("data-date") || "" : "";
-      var subBtn = (key && tr.classList.contains("sp-has-det"))   // only rows with records have a sub-list to open
+      // Rows with records have a sub-list to open — a model species that was actually
+      // observed (.sp-has-det) OR an extra, which exists only BECAUSE it was observed.
+      var subBtn = (key && (tr.classList.contains("sp-has-det") || tr.classList.contains("sp-extra")))
         ? '<button type="button" class="spg-sub" data-key="' + escapeHtml(key) + '" title="' + escapeHtml(t("spg.records")) + '" aria-label="' + escapeHtml(t("spg.records")) + '">\u2630</button>' : "";
       var showSci = sci && !(link && link.textContent.trim() === sci);   // no "(sci)" when the name already IS the sci
       var photoLink = !!key && isBirdKey(key);   // Macaulay Library is birds-only (as in the species menu)
@@ -20804,7 +22574,7 @@
         '<div class="spg-img' + (photoLink ? ' spg-img-link" role="button" title="' + escapeHtml(t("spg.photosTip")) : '"') + '">' +
           (predicted ? '<span class="spg-tag">' + escapeHtml(t("spg.predicted")) + "</span>" : "") +
           '<span class="spg-none" style="display:none">' + escapeHtml(t("spg.noImage")) + "</span></div>" +
-        '<div class="spg-name"><span class="spg-nm">' + (dot ? dot.outerHTML : "") + (link ? link.outerHTML : "") +
+        '<div class="spg-name"><span class="spg-nm">' + (dot ? dot.outerHTML : "") + (clsBadge ? clsBadge.outerHTML : "") + (link ? link.outerHTML : "") +
           (showSci ? ' <span class="spg-sci">(' + (sciEl ? sciEl.outerHTML : escapeHtml(sci)) + ")</span>" : "") + "</span>" + subBtn + "</div>" +
         // Compact, label-free meta line: "#total(n)  last-seen  distance" (the bars row below
         // carries the probabilities; a card without the bars keeps a labelled Probability).
@@ -20820,15 +22590,49 @@
   // remembered, so a later call retries).
   // Offline (or the photo can't be reached and isn't in the on-device cache): a small
   // "no internet" mark instead of the "No image" text, and the card stays retryable.
+  // Photo lookups all fail the same way when the connection (or Wikimedia) is down: the
+  // service worker answers 503 and every card would mark itself and queue a doomed
+  // request. After a few failures in a row, stop asking, say it ONCE above the cards, and
+  // try again when the connection returns (or after a cooldown).
+  var spPhotoFailStreak = 0, spPhotoDown = false, spPhotoRetryTimer = null;
+  var SPG_FAIL_TRIP = 4, SPG_RETRY_MS = 30000;
+  function photoNetDown() { return navigator.onLine === false || spPhotoDown; }
+  function spPhotoNoteEl(show) {
+    var rec = document.getElementById("sp-records"); if (!rec) return;
+    var el = rec.querySelector(".spg-photonote");
+    if (!show) { if (el) el.remove(); return; }
+    if (el) return;
+    el = document.createElement("div"); el.className = "spg-photonote";
+    el.innerHTML = OFFLINE_ICO + "<span>" + escapeHtml(t("spg.photosDown")) + "</span>";
+    var gal = rec.querySelector(".sp-gallery");
+    if (gal) rec.insertBefore(el, gal); else rec.appendChild(el);
+  }
+  function spPhotoFailed() {
+    if (++spPhotoFailStreak < SPG_FAIL_TRIP || spPhotoDown) return;
+    spPhotoDown = true; spPhotoNoteEl(true);
+    clearTimeout(spPhotoRetryTimer);
+    spPhotoRetryTimer = setTimeout(function () { spPhotoDown = false; spPhotoFailStreak = 0; spPhotoNoteEl(false); }, SPG_RETRY_MS);
+  }
+  function spPhotoOk() {
+    spPhotoFailStreak = 0;
+    // A success means the service answers again — but keep the note while marked cards remain.
+    if (spPhotoDown) { spPhotoDown = false; clearTimeout(spPhotoRetryTimer); }
+  }
   var OFFLINE_ICO = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M2 8.5a16 16 0 0 1 20 0"/><path d="M5 12a11 11 0 0 1 14 0"/><path d="M8.5 15.5a6 6 0 0 1 7 0"/><circle cx="12" cy="19" r="1" fill="currentColor"/><line x1="3" y1="3" x2="21" y2="21"/></svg>';
   function markOffline(box, none) {
+    if (none) none.style.display = "none";   // one indicator per card, never "No image" AND the mark
+    spPhotoNoteEl(true);                     // say once, above the cards, why the marks are there
     if (!box || box.querySelector(".spg-offline")) return;
     var o = document.createElement("span"); o.className = "spg-offline"; o.title = t("spg.offline"); o.setAttribute("aria-label", t("spg.offline"));
     o.innerHTML = OFFLINE_ICO; box.appendChild(o);
-    if (none) none.style.display = "none";
+  }
+  function markNoImage(box, none) {
+    var o = box && box.querySelector(".spg-offline"); if (o) o.remove();
+    if (none) none.style.display = "";
   }
   // Back online: retry every photo that was marked offline (gallery cards + confusion cards).
   window.addEventListener("online", function () {
+    spPhotoDown = false; spPhotoFailStreak = 0; clearTimeout(spPhotoRetryTimer); spPhotoNoteEl(false);   // back online: retry every marked card
     Array.prototype.forEach.call(document.querySelectorAll(".spg-offline"), function (o) {
       var box = o.parentNode, card = box && box.closest(".spg-card, .cfi-card"); o.remove();
       if (!card) return;
@@ -20838,22 +22642,31 @@
     });
   });
   function loadSpPhoto(box, none, cr, sci) {
-    if (!sci) { if (none) none.style.display = ""; return Promise.resolve(false); }
+    if (!sci) { markNoImage(box, none); return Promise.resolve(false); }
+    if (photoNetDown() && !spImgStore()[sci]) { markOffline(box, none); return Promise.resolve(null); }   // no connection: don't queue a doomed lookup
     return spImageFor(sci).then(function (r) {
-      if (r && r.tmp) { markOffline(box, none); return null; }   // lookup unreachable: not remembered, retried later
-      if (!r || r.none) { if (none) none.style.display = ""; return false; }
+      if (r && r.tmp) { spPhotoFailed(); markOffline(box, none); return null; }   // lookup unreachable: not remembered, retried later
+      if (!r || r.none) { spPhotoOk(); markNoImage(box, none); return false; }
+      spPhotoOk();
       var img = document.createElement("img"); img.alt = sci; img.decoding = "async";
       img.crossOrigin = "anonymous";   // CORS load → the SW's species-images cache stores a real (sized) response, not an opaque one
       img.src = r.t;
       img.addEventListener("error", function () {
+        // A width this file has no thumbnail for → try the narrower standard width once
+        // before giving up, so one odd file (or a future ladder change) can't blank the card.
+        var alt = spImgAtWidth(r.t, SP_IMG_W_FALLBACK);
+        if (!img._retried && alt !== img.src) { img._retried = 1; img.src = alt; return; }
         img.remove();
-        if (navigator.onLine === false) markOffline(box, none);   // known photo, just not cached on the device
-        else if (none) none.style.display = "";
+        if (photoNetDown()) markOffline(box, none);   // known photo, just not cached on the device
+        else markNoImage(box, none);
       });
       box.insertBefore(img, box.firstChild);
       if (cr) {
-        var page = "https://" + (r.h || "commons.wikimedia.org") + "/wiki/File:" + encodeURIComponent((r.f || "").replace(/ /g, "_"));
-        cr.innerHTML = '<a href="' + escapeHtml(page) + '" target="_blank" rel="noopener">' + escapeHtml((r.a ? "© " + r.a : "Wikimedia Commons") + (r.l ? " · " + r.l : "")) + "</a>";
+        var page = r.pg || ("https://" + (r.h || "commons.wikimedia.org") + "/wiki/File:" + encodeURIComponent((r.f || "").replace(/ /g, "_")));
+        cr.innerHTML = '<a href="' + escapeHtml(page) + '" target="_blank" rel="noopener">' + escapeHtml(r.a ? "© " + r.a : "Wikimedia Commons") + "</a>" +
+          (r.l ? " · " + (r.lu
+            ? '<a href="' + escapeHtml(r.lu) + '" target="_blank" rel="noopener">' + escapeHtml(r.l) + "</a>"   // the licence deed itself
+            : escapeHtml(r.l)) : "");
       }
       return true;
     });
@@ -20904,7 +22717,7 @@
       }, true);
     }, 0);
   }
-  var YEAR_TIP_CELLS = ".prob-cell, .sp-season, .sp-ytop, .cmp-bar-cell, .delta-up, .delta-down, .delta-flat, .spg-prob";
+  var YEAR_TIP_CELLS = ".prob-cell, .sp-season, .sp-ytop, .cmp-bar-cell, .delta-up, .delta-down, .delta-flat, .spg-prob, .cfi-here, .cfi-season, .cfi-ytop";
   // The species + last-seen date a hovered cell belongs to: the cell's own data-key
   // (Season / Yr-peak cells), else its row's or card's (observation rows, gallery cards
   // carry data-key), else the table row's species link.
@@ -20919,6 +22732,41 @@
   function wireYearProbTips(panel) {
     if (!panel || panel._yearTipWired) return;
     panel._yearTipWired = true;
+    // Press-and-hold ANY probability-derived cell → the same year curve the mouse gets on
+    // hover. Bound on every device: the hover path below never runs on a phone, which is
+    // exactly where these numbers are hardest to read, and a mouse hold did nothing at all.
+    // `spgHoldAt` is stamped so the click that follows the release is swallowed by the
+    // card/row handlers instead of also opening a menu.
+    var lpT = null, lpX = 0, lpY = 0;
+    function holdStart(cell, x, y) {
+      lpX = x; lpY = y; clearTimeout(lpT);
+      lpT = setTimeout(function () {
+        lpT = null;
+        var tg = yearTipTarget(cell); if (!tg) return;
+        spgHoldAt = Date.now();
+        holdFeedback(cell);
+        showSpgProbTip(cell, tg.key, tg.date);
+        armSpgTipDismiss();   // the next touch anywhere puts it away
+      }, holdDelay());
+    }
+    function holdMove(x, y) { if (lpT && (Math.abs(x - lpX) > 12 || Math.abs(y - lpY) > 12)) { clearTimeout(lpT); lpT = null; } }
+    function holdEnd() { clearTimeout(lpT); lpT = null; }
+    panel.addEventListener("mousedown", function (e) {
+      if (e.button !== 0) return;
+      var c = e.target.closest && e.target.closest(YEAR_TIP_CELLS); if (!c) return;
+      holdStart(c, e.clientX, e.clientY);
+    });
+    panel.addEventListener("mousemove", function (e) { holdMove(e.clientX, e.clientY); });
+    panel.addEventListener("mouseup", holdEnd);
+    panel.addEventListener("mouseleave", holdEnd);
+    panel.addEventListener("touchstart", function (e) {
+      var c = e.target.closest && e.target.closest(YEAR_TIP_CELLS); if (!c) return;
+      var tt = e.touches && e.touches[0];
+      holdStart(c, tt ? tt.clientX : 0, tt ? tt.clientY : 0);
+    }, { passive: true });
+    panel.addEventListener("touchmove", function (e) { var tt = e.touches && e.touches[0]; if (tt) holdMove(tt.clientX, tt.clientY); }, { passive: true });
+    panel.addEventListener("touchend", holdEnd, { passive: true });
+    panel.addEventListener("touchcancel", holdEnd, { passive: true });
     if (window.matchMedia && !window.matchMedia("(hover: hover)").matches) return;   // touch: no hover
     panel.addEventListener("mouseover", function (e) {
       var c = e.target.closest && e.target.closest(YEAR_TIP_CELLS); if (!c) return;
@@ -20980,7 +22828,12 @@
     el.style.width = "max-content"; el.style.maxWidth = "96vw"; el.style.minWidth = "min(96vw,360px)";
     el.style.maxHeight = "min(60vh,420px)"; el.style.overflow = "auto";
     var lbl = labelsByKey[key];
-    el.innerHTML = '<div class="detrow-menu-hdr detrow-menu-name">' + escapeHtml(lbl ? speciesName(lbl) : key) + ' <span class="spg-recpop-n">(' + recs.length + ")</span></div>" + spDetailTableHtml(key, recs);
+    // An extra's key is "x:<scientific name>" — printing it raw put "x:fragaria viridis"
+    // where the species name belongs. detName resolves both kinds through the same
+    // bundled/harvested names everything else uses.
+    var popName = lbl ? speciesName(lbl)
+      : (key && key.indexOf("x:") === 0 ? detName(dEntry(key) || { key: key }) : key);
+    el.innerHTML = '<div class="detrow-menu-hdr detrow-menu-name">' + escapeHtml(popName) + ' <span class="spg-recpop-n">(' + recs.length + ")</span></div>" + spDetailTableHtml(key, recs);
     wireSpDetail(el);
     el.addEventListener("mouseenter", function () { clearTimeout(spgPopTimer); });
     el.addEventListener("mouseleave", function () { scheduleSpgPopClose(); });
@@ -21034,28 +22887,42 @@
           var to = e.relatedTarget; if (to && to.closest && (to.closest(".spg-sub") === b || to.closest(".spg-recpop"))) return;
           clearTimeout(hoverT); scheduleSpgPopClose();
         });
-      } else {
-        // Touch: press-and-hold ☰ → the table view; press-and-hold a Prob / Season / Yr-peak
-        // bar → the species' year curve (the popup the mouse gets on hover). Both give the
-        // click sensation the moment they fire, and swallow the click that follows.
+      }
+      {
+        // Press-and-hold ☰ → the table view. (The Prob / Season / Yr-peak bars are held
+        // through wireYearProbTips, which covers every such cell in the app — this used to
+        // carry its own copy for the gallery alone, and two handlers on one cell meant two
+        // haptic buzzes.) Gives the click sensation the moment it fires and swallows the
+        // click that follows.
         var lpT = null, lpX = 0, lpY = 0;
+        // What a completed hold does — shared by the touch and mouse paths.
+        function spgHoldFire(b) {
+          spgHoldAt = Date.now();
+          holdFeedback(b); closeAnchoredMenu(); openSpGalleryRecords(b.getAttribute("data-key"));
+        }
+        rec.addEventListener("mousedown", function (e) {
+          if (e.button !== 0) return;
+          var b = e.target.closest && e.target.closest(".spg-sub");
+          spgPopWasOpen = !!(b && spgRecPop && _anchMenuEl === spgRecPop && spgRecPop.getAttribute("data-key") === b.getAttribute("data-key"));
+          if (!b) return;
+          lpX = e.clientX; lpY = e.clientY;
+          clearTimeout(lpT);
+          lpT = setTimeout(function () { spgHoldFire(b); }, holdDelay());
+        });
+        rec.addEventListener("mousemove", function (e) {
+          if (lpT && (Math.abs(e.clientX - lpX) > 12 || Math.abs(e.clientY - lpY) > 12)) { clearTimeout(lpT); lpT = null; }
+        });
+        rec.addEventListener("mouseup", function () { clearTimeout(lpT); lpT = null; });
+        rec.addEventListener("mouseleave", function () { clearTimeout(lpT); lpT = null; });
         rec.addEventListener("touchstart", function (e) {
           var b = e.target.closest && e.target.closest(".spg-sub");
-          var bar = b ? null : (e.target.closest && e.target.closest(".spg-bar"));
           // Note NOW whether this ☰'s popover is open — the click that follows arrives after the
           // outside-click handler has closed it, so the tap-to-close state must be read here.
           spgPopWasOpen = !!(b && spgRecPop && _anchMenuEl === spgRecPop && spgRecPop.getAttribute("data-key") === b.getAttribute("data-key"));
-          if (!b && !bar) return;
+          if (!b) return;
           var tt = e.touches && e.touches[0]; lpX = tt ? tt.clientX : 0; lpY = tt ? tt.clientY : 0;
           clearTimeout(lpT);
-          lpT = setTimeout(function () {
-            spgHoldAt = Date.now();
-            if (b) { holdFeedback(b); closeAnchoredMenu(); openSpGalleryRecords(b.getAttribute("data-key")); return; }
-            var card = bar.closest(".spg-card"); if (!card) return;
-            holdFeedback(bar);
-            showSpgProbTip(bar, card.getAttribute("data-key"), card.getAttribute("data-date") || "");
-            armSpgTipDismiss();   // the next touch anywhere puts it away
-          }, holdDelay());
+          lpT = setTimeout(function () { spgHoldFire(b); }, holdDelay());
         }, { passive: true });
         rec.addEventListener("touchmove", function (e) {
           var tt = e.touches && e.touches[0];
@@ -21083,37 +22950,61 @@
       Array.prototype.forEach.call(cards, function (c, i) { if (i >= SPG_PRELOAD) spGalleryObs.observe(c); });
     } else Array.prototype.forEach.call(cards, fill);
   }
+  // The funnel's own state: orange + kept/removed bar. Run AFTER the rows have been
+  // re-filtered — on a model-only list the stats are counted from the listed rows, so
+  // reading them first would show the previous render's answer.
+  function renderSpFilterBtn() {
+    var fb = document.getElementById("sp-filter-btn");
+    if (!fb) return;
+    fb.title = t("filters.open"); fb.setAttribute("aria-label", t("filters.open"));
+    var fbSet = detHasFilter() || speciesFilterActive();
+    var fbSt = fbSet ? detFilteredStats() : null;
+    // Orange only when the filters actually REMOVE something (not for a set-but-harmless
+    // filter or a sort override) — except the probability range, which marks the funnel
+    // whenever it isn't the full 0–100.
+    // Orange when the filters actually REMOVE something — plus two that mark it whenever
+    // they are set at all: the probability range, and butterflies-only, which removes
+    // nothing while you are looking at birds but is still very much on.
+    fb.classList.toggle("on", !!(fbSt && fbSt.removed > 0) || probFilterActive() || detBflyFilter);
+    // Kept/removed bar: the fraction the active filters keep (green) vs remove (red).
+    var fbB = fb.querySelector(".fx-bar");
+    if (fbB) fbB.parentNode.removeChild(fbB);
+    if (fbSet) fb.insertAdjacentHTML("beforeend", fxBarHtml(fbSt));
+    updateFilterBusy();
+  }
+  // A list-type change has to cope with BOTH pages. On the "By observation" page there is
+  // no prediction table, so Species list / Images have nothing to render — build the list
+  // for the reference point (the pin, else the last list's point, else the map centre)
+  // out of what is already plotted, no fetch. That is the same path a list opened without
+  // a fetch uses, so the rows come from the detections on the map.
+  function applySpLayoutChange() {
+    if (!speciesPanelPopulated() && (spLayout === "table" || spLayout === "gallery")) {
+      var p = listRefPoint();
+      if (p) {
+        try { urlForceView = "list"; renderSpeciesList(p.lat, p.lon, null, { noFetch: true }); return; }
+        catch (e) { urlForceView = null; }
+      }
+    }
+    if (speciesPanelPopulated()) renderSpControls();
+    else renderPlottedObsPage();
+  }
   function renderSpControls() {
     var ctrls = document.getElementById("sp-controls");
     if (!speciesPanelPopulated()) { if (ctrls) ctrls.style.display = "none"; return; }
     if (ctrls) ctrls.style.display = "";
     renderSpLayoutSelect();
-    var fb = document.getElementById("sp-filter-btn");
-    if (fb) {
-      fb.title = t("filters.open"); fb.setAttribute("aria-label", t("filters.open"));
-      var fbSet = detHasFilter() || speciesFilterActive();
-      var fbSt = fbSet ? detFilteredStats() : null;
-      // Orange only when the filters actually REMOVE observations (not for a
-      // set-but-harmless filter or a sort override) — except the probability
-      // range, which marks the funnel whenever it isn't the full 0–100.
-      fb.classList.toggle("on", !!(fbSt && fbSt.removed > 0) || probFilterActive());
-      // Kept/removed bar: the fraction of observations the active filters keep (green) vs remove (red).
-      var fbB = fb.querySelector(".fx-bar");
-      if (fbB) fbB.parentNode.removeChild(fbB);
-      if (fbSet) fb.insertAdjacentHTML("beforeend", fxBarHtml(fbSt));
-      updateFilterBusy();
-    }
     // The observation filter bar (day/date · mode · observer) applies to the detailed
     // record layouts; the prediction table keeps its own flag columns + age cycle.
     // [?] (table + Images layouts; the observation list has no predictions): also show the
     // species the model predicts here. While on it reads [!] — tap to go back to observed only.
     var mb = document.getElementById("sp-missing-btn");
     if (mb) {
-      mb.classList.toggle("on", spShowMissing);
-      mb.textContent = spShowMissing ? "!" : "?";
-      mb.title = t(spShowMissing ? "sp.missingOff" : "sp.missingBtn"); mb.setAttribute("aria-label", mb.title);
+      mb.classList.toggle("on", spMissingOn());
+      mb.textContent = spMissingOn() ? "!" : "?";
+      mb.title = t(spMissingOn() ? "sp.missingOff" : "sp.missingBtn"); mb.setAttribute("aria-label", mb.title);
       mb.style.display = (spLayout === "table" || spLayout === "gallery") ? "" : "none";
     }
+    renderProbSortBtn();
     if (spLayout === "table" || spLayout === "gallery") {
       // Column-header panels (Species / Total / Last / Prob) open inline in
       // #sp-filters-wrap, between the header and the first rows. No toggle button.
@@ -21125,6 +23016,7 @@
       renderSpFilterBar();
     }
     renderSpBody();
+    renderSpFilterBtn();   // after the rows: the model-only stats are read off them
     updateRecencyNote();
   }
   // ---- Species-list column-header filter+sort panels ------------------------
@@ -21202,7 +23094,8 @@
       return '<button type="button" class="sp-spf-chip' + (spFilters[m[0]] ? " on" : "") + '" data-flag="' + m[0] + '" title="' + escapeHtml(spfTip[m[0]]) + '">' + m[1] + "</button>";
     }).join("") + "</div>";
     // Species currently isolated by the selection filter — each removable.
-    var sel = Object.keys(detSelected).filter(function (k) { return detPlot[k]; });
+    var selPool = listPool();
+    var sel = Object.keys(detSelected).filter(function (k) { return selPool[k]; });
     if (sel.length) {
       html += '<div class="sp-spf-list">' + sel.map(function (k) {
         var nm = (labelsByKey[k] && speciesName(labelsByKey[k])) || (detPlot[k] && detPlot[k].name) || k;
@@ -21222,14 +23115,15 @@
   function spListsPickerHtml(sel, force) {
     sel = sel || [];
     var spLists = getSpeciesLists();
-    var pm = iocReady ? PREMADE_LISTS.map(function (def) { return { def: def, keys: premadeKeys(def) }; }).filter(function (x) { return x.keys.length; }) : (ensureIocLoaded(), []);
+    var pool = listPool();
+    var pm = iocReady ? PREMADE_LISTS.map(function (def) { return { def: def, keys: premadeKeys(def, pool) }; }).filter(function (x) { return x.keys.length; }) : (ensureIocLoaded(), []);
     pm.sort(function (a, b) { return b.keys.length - a.keys.length; });   // biggest groups first
     if (!force && !(spLists.length || pm.length || sel.length)) return "";
     var html = '<div class="sp-splist-head">' + escapeHtml(t("sp.speciesLists")) +
       ' <button type="button" class="sp-lists-manage" title="' + escapeHtml(t("sp.manageLists")) + '" aria-label="' + escapeHtml(t("sp.manageLists")) + '">✎</button></div>';
     // Each list has a 3-state box: empty → include (green ✓) → exclude (red ✕) → empty.
     function triRow(cls, dataAttr, keys, label, n) {
-      var st = listTriState(keys), glyph = st === "include" ? "✓" : st === "exclude" ? "✕" : "";
+      var st = listTriState(keys, pool), glyph = st === "include" ? "✓" : st === "exclude" ? "✕" : "";
       return '<div class="sp-list-row"><button type="button" class="sp-tri sp-tri-' + st + " " + cls + '" ' + dataAttr + ' title="' + escapeHtml(t("sp.triCycle")) + '" aria-label="' + escapeHtml(t("sp.triCycle")) + '">' + glyph + "</button>" +
         ' <span class="sp-list-nm">' + escapeHtml(label) + '</span> <span class="sp-list-n">(' + n + ")</span></div>";
     }
@@ -21461,6 +23355,7 @@
     // Keep the list's ★/◉/🟠/🟡 flag filters in step with the global detection filters
     // (so a fresh fetch's list narrows the same way the map does).
     spFilters.star = detStarFilter === 1; spFilters.rare = detRareFilter === 1; spFilters.year = detYearFilter === -1; spFilters.life = detLifeFilter === -1;
+    mapFromMultiFetch = false;   // this list IS about a point again
     currentSpView = hist
       ? { mode: "historic", lat: lat, lon: lon, from: hist.from, to: hist.to, range: hist.range, months: hist.months || [] }
       : { mode: "point", lat: lat, lon: lon };
@@ -21486,10 +23381,15 @@
     var week = +document.getElementById("week-select").value;
     var pmin = +document.getElementById("prob-min").value / 100;
     var pmax = +document.getElementById("prob-max").value / 100;
-    setStatus(t("status.predicting", { lat: lat.toFixed(2), lon: lon.toFixed(2), week: week }));
+    // Plants and fungi are not in the model, so not one of its 12 012 species can pass the
+    // group filter: running the inference for them would cost a model load and a prediction
+    // to produce an empty list — and, since the observation fetch below sits in the same
+    // try block, any trouble there took the OBSERVATIONS with it. Skip it; fetch regardless.
+    var noModel = !groupHasModel();
+    if (!noModel) setStatus(t("status.predicting", { lat: lat.toFixed(2), lon: lon.toFixed(2), week: week }));
     try {
-      var out = await predictWeek(lat, lon, week);   // cached full vector (grid cell of the point)
-      var cmp = await computeComparison(lat, lon, week);
+      var out = noModel ? null : await predictWeek(lat, lon, week);   // cached full vector (grid cell of the point)
+      var cmp = noModel ? { probs: null, kind: "" } : await computeComparison(lat, lon, week);
       // Superseded while awaiting inference (mode switch / newer point) — bail out
       // BEFORE rendering or firing the sightings fetch. This is the fix for a recent
       // fetch firing when the user switches Recent → Historic mid-render.
@@ -21498,6 +23398,7 @@
       var kind = cmp.kind;   // "delta" | "ratio" | "focus"
       function buildResults() {
         var r = [];
+        if (noModel) return r;   // nothing the model predicts belongs to this group
         for (var i = 0; i < labels.length; i++) {
           if (out[i] >= pmin && out[i] <= pmax && inGroup(i) && passSpeciesFilter(labels[i].key)) {
             var cval = 0;
@@ -21544,7 +23445,9 @@
       renderSpCoordsAreas(document.getElementById("sp-coords"), lat, lon,
         // "N species above p%": always counted from the summary floor (≥ 15 %, or the slider's
         // own floor when higher) — below that it would be most of the model.
-        t("sp.summary", { lat: lat.toFixed(4), lon: lon.toFixed(4), week: weekMonthLabel(week), n: summaryCount(results, pmin), p: summaryPct(pmin) }) +
+        (noModel
+          ? t("sp.summaryObs", { lat: lat.toFixed(4), lon: lon.toFixed(4), week: weekMonthLabel(week) })
+          : t("sp.summary", { lat: lat.toFixed(4), lon: lon.toFixed(4), week: weekMonthLabel(week), n: summaryCount(results, pmin), p: summaryPct(pmin) })) +
         " · " + t("sp.radius", { km: recentRadiusKm() }) +
         (hist ? " · " + t("hist.range") + " " + fmtDate(hist.from) + " – " + fmtDate(hist.to) +
           (hist.months && hist.months.length ? " · " + t("hist.months") + " " + hist.months.slice().sort(function (a, b) { return a - b; }).map(histMonthShort).join(", ") : "") : ""));
@@ -21581,25 +23484,33 @@
           // list page directly instead of the map-first default.
           sp.style.display = "block"; if (!keepScroll) sp.scrollTop = 0; navOpen("page", closeAnyFullPage);
           listFirst = !noFetch;
-        } else {
+        } else if (!onListView()) {
           // Species-List (recent): go straight to the map and drop dots in as the
           // fetch streams. The list stays rendered-but-hidden until the header
           // List⇄Map switch is tapped, so the user watches points land live.
+          // NEVER when the list page is already open: this block runs on every
+          // render, and a re-render that lands while the user is reading the list
+          // (predictions resolving, a late source, a layout rebuild) would yank the
+          // page away and drop them back on the map mid-scroll.
           sp.style.display = "none";
           if (!noFetch) spMapFetch = true;
         }
       } else if (currentMode === "historic") {
         // Historic is MAP-FIRST like Recent: stay on the map and watch the dots
         // land month by month as the fetch streams; the list stays rendered-but-
-        // hidden behind the header List⇄Map switch.
-        sp.style.display = "none";
+        // hidden behind the header List⇄Map switch. Same rule: never close a list
+        // page the user already has open.
+        if (!onListView()) sp.style.display = "none";
       } else {
         sp.style.display = "block";
       }
       document.getElementById("barchart-panel").style.display = "none";
       updateViewToggle();   // a fresh list → the header List⇄Map switch applies now
       renderSpControls();   // filter bar + layout dropdown + (records view if not the table)
-      setStatus(t("status.spResult", { n: summaryCount(results, pmin), p: summaryPct(pmin), lat: lat.toFixed(2), lon: lon.toFixed(2) }));
+      // Just WHERE the list is for. The species count ("N species above 15 %") used to be
+      // here too; it is a model statement that read "0 species" for plants and fungi, and
+      // it is still on the list header (sp.summary), which is where it is actually read.
+      setStatus(t("status.spResultObs", { lat: lat.toFixed(2), lon: lon.toFixed(2) }));
 
       // Build CSV for species list (includes 2nd-name + comparison columns when active,
       // plus a "seen_count" column filled from the latest fetch). Rebuilt at DOWNLOAD
@@ -21873,7 +23784,7 @@
 
     setCoordsWithPlace(document.getElementById("bc-coords"), lat, lon,
       t("sp.summary", { lat: lat.toFixed(4), lon: lon.toFixed(4), week: ctx.week, n: nVisible, p: summaryPct(ctx.thresholdFrac) }));
-    setStatus(t("status.spResult", { n: nVisible, p: summaryPct(ctx.thresholdFrac), lat: lat.toFixed(2), lon: lon.toFixed(2) }));
+    setStatus(t("status.spResult", { lat: lat.toFixed(2), lon: lon.toFixed(2) }));
 
     if (analysisTab === "timeline") renderTimelineTab(container, ctx);
     else if (analysisTab === "scatter") window.GeoAnalysis.renderScatter(container, ctx);
@@ -22289,6 +24200,12 @@
 
     // Probability range: restore the saved bounds (default 0–100 = no filter).
     (function () {
+      // One-off on upgrade: the Settings slider is gone, so a range narrowed with it
+      // would filter invisibly. Reset to the full 0–100 once; ranges chosen afterwards
+      // in the Filters pane persist as before.
+      if (!window.GeoState.get("probRangeReset", 0)) {
+        window.GeoState.save({ probMin: 0, probMax: 100, probRangeReset: 1 });
+      }
       var pl = Math.max(0, Math.min(100, +window.GeoState.get("probMin", 0) || 0));
       var ph = Math.max(0, Math.min(100, +window.GeoState.get("probMax", 100) || 0));
       if (ph < pl) ph = pl;

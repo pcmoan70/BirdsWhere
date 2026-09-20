@@ -224,7 +224,26 @@ window.AppAggregate = (function () {
         // (chromists / protozoa / bacteria / archaea) that a source might slip in.
         if (/^(chromist|protozo|bacteri|archae)/i.test(rKingdom)) return;
       }
-      var row = { lat: r.lat, lon: r.lon, date: r.date || "", src: r.src, origin: r.origin || "", url: r.url || "", place: r.place || "", count: (r.count != null ? r.count : ""), act: r.act || "", note: r.note || "", flags: r.flags || "", observer: r.observer || "" };
+      var row = { lat: r.lat, lon: r.lon, date: r.date || "", src: r.src, origin: r.origin || "", url: r.url || "", place: r.place || "", count: (r.count != null ? r.count : ""), act: r.act || "", note: r.note || "", flags: r.flags || "", observer: r.observer || "",
+        // How fuzzed are the coordinates? Set by every normalizer, kept by the canonical
+        // row (detSlim), and previously dropped here — no filter reads it, only the
+        // location display, so carrying it is safe.
+        posFuzzM: (+r.posFuzzM > 0) ? +r.posFuzzM : undefined,
+        // `placeCoarse` (is `place` a real locality or only a municipality?) was added
+        // here in v1830 and is REVERTED in v1832. It is read by placeAccurate(), which
+        // decides a record's bucket in the LOCATION FILTER — so switching it on silently
+        // moved already-plotted records from their named bucket into "(no location)".
+        // A user whose saved locFilter (persisted in mapLegend) ticks named places would
+        // then have every newly fetched record filtered out: a full map fetched, nothing
+        // shown. Making fetched rows agree with saved ones is still right, but it needs a
+        // migration for existing filter selections first — it is not a free addition.
+        // The recorder's own photo of the bird and the species' national red-list code,
+        // from the sources that report them (iNaturalist, GBIF, Artsobs, Artportalen, Laji).
+        photo: r.photo || "", photoBig: r.photoBig || "", photoBy: r.photoBy || "", photos: r.photos || null, rl: r.rl || "",
+        // Family (GBIF, Artsobservasjoner, Artportalen, BirdTrack) and iNaturalist's own
+        // butterfly marker — the two ways the app can tell a butterfly from a moth. Kept
+        // here because the filters read the STORED rows, not the raw records.
+        family: r.family || "", bfly: r.bfly || undefined };
       // Match a model species by code (eBird) first, then exact scientific name,
       // then the species epithet (catches old-genus synonyms like "Sylvia
       // curruca" for the model's "Curruca curruca").
