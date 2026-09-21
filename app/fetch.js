@@ -37,8 +37,17 @@ window.AppFetch = (function () {
   // in the fetch-issues dialog — so "a big area misses detections" is explained.
   var lastTrunc = Object.create(null);
   function noteTrunc(id, info) { if (info) lastTrunc[id] = info; else delete lastTrunc[id]; }
+  // Pages fetched, per source, for the loading line. Every adapter pages internally —
+  // GBIF up to 50, Artportalen/Laji 6, NBN 10 — and until now a slow source looked
+  // identical to a stuck one. `onPage` is injected by app.js and fires after each page
+  // lands, so the line can say which sources are still turning pages and how many.
+  var pageN = Object.create(null);
+  var onPage = function () {};
+  function notePage(id) { pageN[id] = (pageN[id] || 0) + 1; try { onPage(id, pageN[id]); } catch (e) {} }
+  function resetPages() { pageN = Object.create(null); }
   function takeTrunc(id) { var v = lastTrunc[id]; delete lastTrunc[id]; return v || null; }
   function init(deps) {
+    if (deps && deps.onPage) onPage = deps.onPage;
     deps = deps || {};
     if (deps.gbifDatasets) gbifDatasets = deps.gbifDatasets;
     if (deps.isGbifOff) isGbifOff = deps.isGbifOff;
@@ -151,6 +160,7 @@ window.AppFetch = (function () {
     try {
       var resp = await fetchRetry(url, null, extSignal);
       if (!resp || !resp.ok) return null;
+      notePage("gbif");
       try { return await resp.json(); } catch (e) { return null; }
     } finally { gbifRelease(); }
   }
@@ -346,6 +356,7 @@ window.AppFetch = (function () {
     for (var page = 1; page <= 50; page++) {
       if (signal && signal.aborted) break;   // fetch timeout → keep the pages we have
       var resp = await fetchRetry(base + "&page=" + page, null, signal);
+      if (resp && resp.ok) notePage("inat");
       if (!resp || !resp.ok) {
         if (page === 1 && !(signal && signal.aborted)) throw new Error("iNaturalist " + (resp ? "HTTP " + resp.status : "unreachable"));
         break;   // a later page failed (or aborted) → keep what we have
@@ -496,7 +507,7 @@ window.AppFetch = (function () {
     // probe below treats null as a hard failure so a down source is flagged.
     function q(from, to, ps) {
       var url = joinUrl(endpoint, "PageSize=" + ps + "&FromDate=" + from + "&ToDate=" + to + "&gmWktPolygon=" + encodeURIComponent(wkt));
-      return fetchRetry(url, null, signal).then(function (r) { return r && r.ok ? r.json().catch(function () { return null; }) : null; });
+      return fetchRetry(url, null, signal).then(function (r) { if (r && r.ok) notePage("artsobs"); return r && r.ok ? r.json().catch(function () { return null; }) : null; });
     }
     // Cheap probe (just the count) → how dense is this window?
     var probe = await q(d1, d2, 50);
@@ -525,32 +536,46 @@ window.AppFetch = (function () {
     return { Observations: all };
   }
   // Sweden — SLU Artdatabanken SOS API (free subscription key; Artportalen + more).
-  // The observer's own photo. SOS carries it as `occurrence.media` (a GBIF Multimedia
-  // collection: identifier = the image, references = its Artportalen page, rightsHolder =
-  // the photographer), and `occurrence.associatedMedia` is DEPRECATED — "no longer used"
-  // in SOS's own Docs/Observation.md. Neither is in the Minimum or Extended field set, so
-  // asking for "Extended" alone returned records that never had a picture on them however
-  // many the observer had uploaded. `output.fields` is UNIONED with the field set rather
-  // than replacing it (SOS's PopulateFields: it starts from the set's fields and adds
-  // yours), so naming the one extra field cannot cost us the rest.
-  var apNoMedia = false;   // set for the session if the API ever rejects the extra field
+  // The observer's own photo, and where SOS actually keeps it.
+  //
+  // v1838 asked for `occurrence.media` on the strength of Docs/Observation.md. That field
+  // exists, but reading SOS's Artportalen processor (ArtportalenObservationFactory) shows it
+  // is never filled for Artportalen: the pictures go to `ArtportalenInternal.Media`, and the
+  // line that used to set Occurrence.AssociatedMedia is commented out — which is exactly why
+  // the docs mark that one "DEPRECATED, no longer used". So the field we were asking for was
+  // always empty for Swedish records, however many pictures the observer had uploaded.
+  //
+  // `artportalenInternal.media` has no entry in ObservationFieldDescriptions.json, so it is in
+  // no field set and cannot arrive by asking for one — but the API validates `output.fields`
+  // against the Observation CLASS (InputValidator.ValidateFields: the description-list check is
+  // commented out, `typeof(Observation).HasProperty(f)` is what runs), so it can be projected
+  // by name. Both are requested: occurrence.media for the providers that do populate it,
+  // artportalenInternal.media for Artportalen itself.
+  //
+  // `output.fields` is UNIONED with the field set rather than replacing it (PopulateFields
+  // starts from the set's own fields and adds yours), so naming extras cannot cost us the rest.
+  var AP_MEDIA = ["occurrence.media", "artportalenInternal.media"];
+  var apMediaN = AP_MEDIA.length;   // drop the extras one at a time if the API objects
   async function fetchArtportalenAll(lat, lon, d1, d2, rkm, key, ep, signal) {
-    function bodyFor(withMedia) {
-      var out = withMedia ? { fieldSet: "Extended", fields: ["occurrence.media"] } : { fieldSet: "Extended" };
+    function bodyFor(n) {
+      var out = { fieldSet: "Extended" };
+      if (n > 0) out.fields = AP_MEDIA.slice(0, n);
       return JSON.stringify({ geographics: { geometries: [{ type: "point", coordinates: [lon, lat] }], maxDistanceFromPoint: Math.round(rkm * 1000) },
         date: { startDate: d1, endDate: d2, dateFilterType: "OverlappingStartDateAndEndDate" }, output: out });
     }
     var endpoint = ep || "https://api.artdatabanken.se/species-observation-system/v1/Observations/Search";
-    function postFor(withMedia) { return { method: "POST", headers: { "Content-Type": "application/json", "Ocp-Apim-Subscription-Key": key }, body: bodyFor(withMedia) }; }
-    var post = postFor(!apNoMedia);
+    function postFor(n) { return { method: "POST", headers: { "Content-Type": "application/json", "Ocp-Apim-Subscription-Key": key }, body: bodyFor(n) }; }
+    var post = postFor(apMediaN);
     var all = [];
     for (var p = 0; p < 6; p++) {
       if (signal && signal.aborted) break;   // fetch timeout → keep the pages we have
       var resp = await fetchRetry(joinUrl(endpoint, "skip=" + (p * 300) + "&take=300"), post, signal);
+      if (resp && resp.ok) notePage("artportalen");
       // A rejected field must never cost Sweden its observations (the same guard the Laji
-      // adapter already has): drop the photo field once for the session and ask again.
-      if (resp && resp.status === 400 && p === 0 && !apNoMedia && !(signal && signal.aborted)) {
-        apNoMedia = true; post = postFor(false);
+      // adapter has): drop the photo fields one at a time for the session, last first, and
+      // ask again — so one unhappy field cannot take the other down with it.
+      while (resp && resp.status === 400 && p === 0 && apMediaN > 0 && !(signal && signal.aborted)) {
+        apMediaN--; post = postFor(apMediaN);
         resp = await fetchRetry(joinUrl(endpoint, "skip=0&take=300"), post, signal);
       }
       if (!resp || !resp.ok) {
@@ -619,6 +644,7 @@ window.AppFetch = (function () {
     for (var p = 1; p <= 6; p++) {
       if (signal && signal.aborted) break;   // fetch timeout → keep the pages we have
       var resp = await fetchRetry(base + "&page=" + p, null, signal);
+      if (resp && resp.ok) notePage("laji");
       // A rejected selection (400) must not cost Finland its observations — but it must not
       // quietly cost them their photos either. Drop the red-list tag first, the photos only
       // if that was not what the warehouse objected to.
@@ -652,6 +678,7 @@ window.AppFetch = (function () {
     for (var p = 0; p < 10; p++) {   // ≤ 3000 records per fetch
       if (signal && signal.aborted) break;
       var resp = await fetchRetry(base + "&startIndex=" + (p * 300), null, signal);
+      if (resp && resp.ok) notePage("nbn");
       if (!resp || !resp.ok) {
         if (p === 0 && !(signal && signal.aborted)) throw new Error("NBN Atlas " + (resp ? "HTTP " + resp.status : "unreachable"));
         break;   // later page failed/aborted → keep what we have
@@ -686,6 +713,7 @@ window.AppFetch = (function () {
       if (signal && signal.aborted) break;
       var vars = { ne: ne, sw: sw, period: { from: d1, to: d2 }, first: 100, after: after };
       var resp = await fetchRetry(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: BW_QUERY, variables: vars }) }, signal);
+      if (resp && resp.ok) notePage("birdweather");
       if (!resp || !resp.ok) { if (p === 0 && !(signal && signal.aborted)) throw new Error("BirdWeather " + (resp ? "HTTP " + resp.status : "unreachable")); break; }
       var j = await resp.json().catch(function () { return null; });
       var conn = j && j.data && j.data.detections;
@@ -718,6 +746,7 @@ window.AppFetch = (function () {
   return {
     init: init,
     takeTrunc: takeTrunc,
+    resetPages: resetPages,
     fetchWithTimeout: fetchWithTimeout,
     gbifGeometry: gbifGeometry,
     gbifPage: gbifPage,

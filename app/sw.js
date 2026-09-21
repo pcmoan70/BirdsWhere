@@ -21,21 +21,20 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v1840";
+var VERSION = "v1851";
 // The changelog shown under the lit "Reload to update" button in Settings.
 // THIS RELEASE ONLY — replace it wholesale on every version bump, never append.
 // A returning user wants to know what the update they are about to install changes,
 // not a scroll of things they already have; the feature history lives in Settings →
 // What's new, and the full record in CHANGES.md.
 var NOTES = [
-  "• Beyond birds. Plants, fungi, insects, mammals and amphibians are now first-class: names in your language for 41 650 species bundled with the app, photographs, and no dependence on the bird model \u2014 groups it does not cover simply run on the observations. Settings decides which types are downloaded, so you need not pay for the ones you never look at.",
-  "• A butterflies-only filter, on the funnel, for the insect group.",
-  "• Family, as pictures. Tapping a scientific name opens the whole family as photo cards, each with Here, Season and Yr peak, so you can see at a glance which relatives are around now and which never get likely where you are.",
-  "• Press and hold any probability, Season or Yr-peak number \u2014 anywhere, on any device \u2014 for that species\u2019 year curve. A single arrow button sorts either list by probability.",
-  "• Faster. Filtering takes about half the work it did, and switching between Species list, Observation list and Images went from seconds of frozen screen to immediate, with the funnel blinking while it works.",
-  "• More observer photographs: Artportalen and Laji.fi records now bring their own pictures, as Artsobservasjoner and iNaturalist already did.",
-  "• Rarity alerts went over end to end \u2014 they watch every source rather than eBird alone, need no eBird key, can reach you by email, and no longer stop mid-check.",
-  "• The Settings gear: a tap opens a quick panel (species group, fetch radius, how far back to fetch), press and hold opens the full settings.",
+  "• Species outside the habitat model \u2014 the wolverine, most plants, fungi and insects \u2014 behave like every other row now: a coloured dot matching their dots on the map, a row that opens to its records, a name that opens the species menu (\u2605, year and life lists, pictures), a scientific name that opens the family, and a name in your second language. Only the model\u2019s own columns stay blank for them.",
+  "• Long lists fold away. The fetched places above the map, and the Locations, Observers and Source checklists in the filters, each sit behind a summary carrying their count \u2014 2 042 localities no longer buries every other filter, and four fetched places no longer push the map down the screen.",
+  "• Photographs: the mosaic behind the \ud83d\udcf7 stays until you close it, so you can work through a record\u2019s pictures one at a time, and each picture zooms \u2014 wheel or pinch, drag to pan, double-tap to reset. Artportalen records should bring their pictures too, from the field they are really stored in.",
+  "• You can see what a fetch is doing: the status line names every source it is waiting on and counts the pages each has returned, so a long wait looks different from a stuck one. The rarest-finds intro now runs once at the end of a multi-place fetch instead of restarting after every place.",
+  "• Birds reported under an old genus find their name again. When a species moves genus the Latin ending often moves with it \u2014 Puffinus griseus became Ardenna grisea \u2014 and those records used to arrive unnamed.",
+  "• Confusion species must be real candidates: a resemblance under 10 %, or a misidentification share under 5 %, counts for nothing, and anything left scoring zero is no longer listed.",
+  "• Switching between Species list, Observation list and Images is far faster, filtering takes about half the work it did, and the date on an Images card now opens the date filters like the table\u2019s does.",
 ].join("\n");
 // RC channel isolation: an RC deployment (SW served from a "…-rc/" path) shares the
 // browser ORIGIN with production, so its caches must be namespaced — and its activate

@@ -297,9 +297,13 @@ beside it when there are several. (**eBird has none**: its public API 2.0 return
 either an observation or a checklist, and the Macaulay Library's per-checklist search is
 undocumented and bot-gated — the species-level Macaulay link in the species menu is the nearest
 thing. Artportalen's pictures need `occurrence.media` asked for explicitly; the field is in
-neither the Minimum nor the Extended field set.) **Hover it** (tap on a phone, tap again to close) for a **mosaic**
-of every picture that record carries, credited and linked back to the original; a tile opens that
-picture full-size. The pictures load only when the mosaic opens, so a long list downloads nothing
+neither the Minimum nor the Extended field set.) **Hover it** for a preview **mosaic** of every
+picture that record carries, credited and linked back to the original; **clicking** the camera
+(tapping, on a phone) **pins** the mosaic — it then stays until you press its **×** (or tap the same
+camera again), so you can open the pictures one at a time and come back to the set. A tile opens
+that picture full-size, and **closing it returns you to the mosaic**. The full-size picture
+**zooms**: mouse wheel or pinch, drag to pan, double-click/double-tap to toggle 1× ↔ 2.5× and again
+to reset. The pictures load only when the mosaic opens, so a long list downloads nothing
 until you ask. **Red-list codes** — sources that
 publish a national red list (Artsobservasjoner, Artportalen, Laji.fi) tag the species name with its
 category (**DD · NT · VU · EN · CR · RE**), coloured by severity, in both the species table and the
@@ -350,6 +354,23 @@ model's species, and merged — around a configurable **sightings radius**. Mana
 **Settings → Data sources** (per-source *On* toggle, name, key, fetch-window days, fetch timeout in
 seconds — default 120, `0` = none — and endpoint);
 failed or timed-out sources are flagged in the status line.
+
+**While a fetch runs** the status line names every source it is waiting on and what each is doing:
+`GBIF[4/5](Artsobservasjoner (NO)) ▤19 · iNaturalist ▤13 · Artsobservasjoner ✓ (15573)`. **▤n** is
+the number of pages that source has returned so far — every source pages internally (GBIF up to
+50, Artportalen and Laji.fi 6, NBN 10), so a source steadily working through page 19 now reads
+differently from one that has hung. A source that has been asked but has sent nothing back yet
+shows **ticking dots** instead; a finished one switches to **✓ (records)**. When several saved
+locations are fetched at once, `Fetching <name> (1/2)…` sits **in front of** that line rather than
+replacing it.
+
+**Rarest-finds intro** (*Settings → Rarest-finds intro*, **off** by default) — when a fetch adds
+species to the map, the rarest of them scroll up the right-hand side of the map as tiles in their
+dot colours, rarest at the top, and stay until you act: tap a tile to jump to that species in the
+list, hover one to isolate its dots, any other tap/key/map-move dismisses it. It runs **once per
+fetch** — a fetch over several saved locations, or the ✓ Update across every fetched area, collects
+what each place added and introduces the whole set when the last one finishes, rather than
+restarting after every place.
 
 **Direct sources**
 
@@ -517,7 +538,11 @@ The control line opens three mutually-exclusive **filter subwindows**:
 - **Species** — **– All · ★ Starred · ◉ Rare · 🟠 Not on this year's list · 🟡 Not on your life list**.
 - **📍 Locations** (all-filters pane, just above Observers) — a checklist of the **named places**
   among the plotted observations; tick a subset to restrict the map dots, legend, histogram and
-  every list to those spots (All/None master toggle; the section × clears it). Records without an
+  every list to those spots (All/None master toggle; the section × clears it). The checklist is a
+  **dropdown labelled with the count** ("1 639 localities") — a wide fetch can name thousands of
+  places, which used to bury every other filter under it. **Observers** ("652 observers") and
+  **Source** ("12 sources") work the same way. Short lists (8 or fewer) open by themselves; once
+  you open or close one, that choice is kept. Records without an
   accurate place name (coordinate-only, or bare country/region names) group under **"(no
   location)"**. Ticking applies after a ~1 s pause, so several boxes rebuild the map once. You can
   also filter straight from a record: tap a **location name** in a species' expanded records or
@@ -768,6 +793,12 @@ habitat model puts above 0 % at your point/week and ranks them by local likeliho
   **Match**, **misID** (each partner's share of this bird's real human confusions, summing to ~100 %),
   **Here** (the model's probability at your location) and **Score** = `(0.25·Match + 0.75·misID) ×
   Here` — so the look-alikes people genuinely confuse *and* that occur where you are rank first.
+  Each input must be **significant** before it counts: a **Match below 10 %** or a **misID below
+  5 %** contributes nothing, so a species cannot earn a place in the ranking on a 3 % resemblance
+  or a single stray misidentification. A look-alike under both floors scores **0 and is not listed
+  at all** — alongside the existing rule that drops anything the model puts at 0 % for your point.
+  (Barn Owl in Sydney went from 15 look-alikes to 10: the Tawny Frogmouth and the Laughing
+  Kookaburra are gone, the owls all stayed.) If nothing survives, the popup says so.
   Clicking a row opens a **compare card** (focal bird vs look-alike): a **plumage-colour deviation chart**
   (one diverging strip per sex, ♂ above ♀ — collapsing to a single ♂♀ strip when the sexes match; each colour scored `200·(base − look-alike)/(base + look-alike)`
   so the bar rises when the base bird has relatively more of that colour and drops when the look-alike does —

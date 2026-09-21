@@ -1727,7 +1727,7 @@
   function findSpRow(tbody, key) {
     var links = tbody.querySelectorAll(".sp-link[data-key]");
     for (var i = 0; i < links.length; i++) if (links[i].getAttribute("data-key") === key) return links[i].closest("tr");
-    return null;
+    return tbody.querySelector('tr[data-key="' + String(key).replace(/"/g, '\\"') + '"]');   // extras carry the key on the row
   }
   function spDetailRowsFor(key) {
     // Build the expanded records from the SAME aggregation the Total column counts
@@ -1769,7 +1769,8 @@
     // Mark expanded species rows so the row shows it's open (the ▸ caret was removed;
     // the whole row is the expand target now — see the sp-tbody click handler).
     Array.prototype.forEach.call(tbody.querySelectorAll("tr"), function (tr) {
-      var sl = tr.querySelector(".sp-link[data-key]"); var k = sl && sl.getAttribute("data-key");
+      var sl = tr.querySelector(".sp-link[data-key]");
+      var k = (sl && sl.getAttribute("data-key")) || tr.getAttribute("data-key");
       if (k) tr.classList.toggle("sp-open", !!spExpanded[k]);
     });
     Object.keys(spExpanded).forEach(function (key) {
@@ -2170,9 +2171,89 @@
   function llFromAttrs(el2) { return { lat: parseFloat(el2.getAttribute("data-lat")), lon: parseFloat(el2.getAttribute("data-lon")) }; }
   // The observation's own photo, full size, with its credit and a link to the source
   // record. Opened from the camera button on a record row (and the ☰ popover).
+  // Pinch / wheel / double-tap zoom for one photograph. Pointer Events, so a single code
+  // path serves mouse, touch and pen; `touch-action: none` on the frame stops the browser
+  // claiming the gestures for page scroll and its own pinch-zoom.
+  function wirePhotoZoom(wrap, img) {
+    var sc = 1, tx = 0, ty = 0, MIN = 1, MAX = 6;
+    var pts = Object.create(null), nPts = 0, pinchD0 = 0, pinchS0 = 1, panX = 0, panY = 0;
+    var lastTap = 0, lastTapX = 0, lastTapY = 0;
+    function centre() { var r = wrap.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }
+    function apply() {
+      // Never let the picture be dragged off its own frame: the slack is however much the
+      // zoom adds beyond the frame, and it is zero at 1× (where the flex layout centres it).
+      var w = img.offsetWidth * sc, h = img.offsetHeight * sc;
+      var mx = Math.max(0, (w - wrap.clientWidth) / 2), my = Math.max(0, (h - wrap.clientHeight) / 2);
+      tx = Math.max(-mx, Math.min(mx, tx)); ty = Math.max(-my, Math.min(my, ty));
+      img.style.transform = "translate(" + tx.toFixed(1) + "px," + ty.toFixed(1) + "px) scale(" + sc.toFixed(3) + ")";
+      wrap.classList.toggle("zoomed", sc > 1.01);
+    }
+    // Keep the point under the fingers/cursor where it is: a point at screen offset u from
+    // the frame centre sits at u = t + s·p, so holding p fixed gives t' = u − k(u − t).
+    function zoomTo(next, cx, cy) {
+      next = Math.max(MIN, Math.min(MAX, next));
+      var k = next / sc, c = centre();
+      tx = (cx - c.x) - k * ((cx - c.x) - tx);
+      ty = (cy - c.y) - k * ((cy - c.y) - ty);
+      sc = next;
+      if (sc <= MIN + 0.002) { sc = MIN; tx = 0; ty = 0; }
+      apply();
+    }
+    function ptList() { var a = []; for (var k in pts) a.push(pts[k]); return a; }
+    wrap.addEventListener("wheel", function (e) {
+      e.preventDefault(); e.stopPropagation();
+      zoomTo(sc * (e.deltaY < 0 ? 1.18 : 1 / 1.18), e.clientX, e.clientY);
+    }, { passive: false });
+    wrap.addEventListener("pointerdown", function (e) {
+      e.stopPropagation();
+      pts[e.pointerId] = { x: e.clientX, y: e.clientY }; nPts++;
+      try { wrap.setPointerCapture(e.pointerId); } catch (err) {}
+      if (nPts === 2) {
+        var a = ptList();
+        pinchD0 = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1; pinchS0 = sc;
+        lastTap = 0;   // a pinch is not a tap: without this the first finger armed the
+                       // double-tap, and the next touch after the pinch threw the zoom away
+      } else if (nPts === 1) {
+        panX = e.clientX; panY = e.clientY;
+        var now = Date.now();
+        // A double tap is two quick taps in the SAME place — a second press somewhere else
+        // is the start of a drag, not a reset.
+        if (now - lastTap < 320 && Math.hypot(e.clientX - lastTapX, e.clientY - lastTapY) < 30) {
+          zoomTo(sc > 1.01 ? MIN : 2.5, e.clientX, e.clientY); lastTap = 0;
+        } else { lastTap = now; lastTapX = e.clientX; lastTapY = e.clientY; }
+      }
+    });
+    wrap.addEventListener("pointermove", function (e) {
+      if (!pts[e.pointerId]) return;
+      e.preventDefault(); e.stopPropagation();
+      pts[e.pointerId] = { x: e.clientX, y: e.clientY };
+      var a = ptList();
+      if (nPts >= 2) {
+        var d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 1;
+        zoomTo(pinchS0 * (d / pinchD0), (a[0].x + a[1].x) / 2, (a[0].y + a[1].y) / 2);
+      } else if (sc > 1.01) {
+        tx += e.clientX - panX; ty += e.clientY - panY; panX = e.clientX; panY = e.clientY; apply();
+      }
+    });
+    function up(e) {
+      if (!pts[e.pointerId]) return;
+      delete pts[e.pointerId]; nPts = Math.max(0, nPts - 1);
+      try { wrap.releasePointerCapture(e.pointerId); } catch (err) {}
+      var a = ptList(); if (a.length === 1) { panX = a[0].x; panY = a[0].y; }
+    }
+    wrap.addEventListener("pointerup", up);
+    wrap.addEventListener("pointercancel", up);
+    wrap.addEventListener("dblclick", function (e) { e.preventDefault(); e.stopPropagation(); zoomTo(sc > 1.01 ? MIN : 2.5, e.clientX, e.clientY); });
+    img.addEventListener("load", function () { sc = 1; tx = 0; ty = 0; apply(); });
+    img.addEventListener("dragstart", function (e) { e.preventDefault(); });
+  }
   function showObsPhoto(btn, pickUrl) {
     var url = pickUrl || btn.getAttribute("data-photo") || btn.getAttribute("data-thumb"); if (!url) return;
-    var m = createModal({ boxClass: "obs-photo-box", escClose: true });
+    // The mosaic stays open behind this viewer, so closing one picture puts the set back
+    // rather than ending the whole visit — the point of pinning it.
+    var reopen = obsMosaicPinned ? btn : null;
+    var m = createModal({ boxClass: "obs-photo-box", escClose: true,
+      onClose: function () { if (reopen) showObsMosaic(reopen, true); } });
     var by = btn.getAttribute("data-by") || "", src = btn.getAttribute("data-url") || "";
     m.box.innerHTML = '<button type="button" class="conf-close obs-photo-x" aria-label="' + escapeHtml(t("btn.close")) + '" title="' + escapeHtml(t("btn.close")) + '">×</button>' +
       '<div class="ui-modal-msg">' + escapeHtml(btn.getAttribute("data-name") || "") + "</div>" +
@@ -2181,6 +2262,7 @@
         (src ? (by ? " · " : "") + '<a href="' + escapeHtml(src) + '" target="_blank" rel="noopener">' + escapeHtml(t("det.openSource")) + "</a>" : "") + "</div>";
     m.box.querySelector(".obs-photo-x").addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); m.close(); });
     var img = m.box.querySelector("img");
+    wirePhotoZoom(m.box.querySelector(".obs-photo-wrap"), img);
     img.addEventListener("error", function () {   // the big version may not exist → fall back to the thumbnail
       var th = pickUrl ? "" : btn.getAttribute("data-thumb");
       if (th && img.src !== th) img.src = th; else { img.remove(); m.box.querySelector(".obs-photo-wrap").textContent = t("spg.noImage"); }
@@ -2198,19 +2280,26 @@
     if (!list.length) { var one = btn.getAttribute("data-photo") || btn.getAttribute("data-thumb"); if (one) list = [one]; }
     return list;
   }
+  var obsMosaicPinned = false;   // opened by a click → survives until the × / the same camera
   function closeObsMosaic() {
     clearTimeout(obsMosaicTimer);
+    obsMosaicPinned = false;
     if (obsMosaicPop && _anchMenuEl === obsMosaicPop) closeAnchoredMenu();
     obsMosaicPop = null;
   }
   function scheduleObsMosaicClose() {
+    if (obsMosaicPinned) return;   // clicked open → only the × (or the same camera) closes it
     clearTimeout(obsMosaicTimer);
     obsMosaicTimer = setTimeout(closeObsMosaic, 250);   // a gap to cross from the icon into the mosaic
   }
   function obsMosaicOpenFor(btn) { return !!(obsMosaicPop && obsMosaicPop._btn === btn && _anchMenuEl === obsMosaicPop); }
-  function showObsMosaic(btn) {
+  // `pin` = opened by a deliberate click rather than a hover preview: it then stays until
+  // the × (or a tap on the same camera), so pictures can be opened one at a time and come
+  // back to the set. A hover-opened mosaic still closes itself when the pointer leaves.
+  function showObsMosaic(btn, pin) {
     var list = obsPhotoList(btn); if (!list.length) return;
     clearTimeout(obsMosaicTimer);
+    if (pin) obsMosaicPinned = true;
     if (obsMosaicOpenFor(btn)) return;   // already up for this record
     var el = openAnchoredMenu("detrow-menu obs-mosaic");
     el._btn = btn;
@@ -2228,7 +2317,7 @@
         (src ? (by ? " · " : "") + '<a href="' + escapeHtml(src) + '" target="_blank" rel="noopener">' + escapeHtml(t("det.openSource")) + "</a>" : "") + "</div>";
     el.querySelector(".obs-mosaic-x").addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); closeObsMosaic(); });
     Array.prototype.forEach.call(el.querySelectorAll(".obs-mos-tile"), function (tile) {
-      tile.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); closeObsMosaic(); showObsPhoto(btn, list[+this.getAttribute("data-i")]); });
+      tile.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); showObsPhoto(btn, list[+this.getAttribute("data-i")]); });
       tile.querySelector("img").addEventListener("error", function () { tile.classList.add("bad"); });   // a dead URL leaves no gap
     });
     el.addEventListener("mouseenter", function () { clearTimeout(obsMosaicTimer); });
@@ -2278,12 +2367,12 @@
     Array.prototype.forEach.call(container.querySelectorAll(".obs-photo"), function (b) {
       b.addEventListener("click", function (e) {
         e.preventDefault(); e.stopPropagation();
-        if (canHoverPh) { showObsPhoto(this); return; }            // mouse: the mosaic is already open from the hover
+        if (canHoverPh) { showObsMosaic(this, true); return; }     // mouse: hover already previewed it — the click pins it
         // Touch: tap opens the mosaic, tapping the same 📷 again closes it. Whether it WAS
         // open is taken at touch-start — the anchored menu's own outside-click handler has
         // already closed it by the time this click runs.
         if (obsMosaicWasOpen) { obsMosaicWasOpen = false; closeObsMosaic(); return; }
-        showObsMosaic(this);
+        showObsMosaic(this, true);
       });
       b.addEventListener("touchstart", function () { obsMosaicWasOpen = obsMosaicOpenFor(this); }, { passive: true });
       if (canHoverPh) {
@@ -3591,7 +3680,7 @@
     (function next() {
       if (myLoopGen !== fetchLoopGen) return;   // map cleared → cancelPendingFetches() already reset state
       if (i >= total) {
-        plotNoFit = prevNoFit; storedFetchBusy = false;
+        plotNoFit = prevNoFit; storedFetchBusy = false; tickerFireMulti();
         if (newReloadCtrlEl) newReloadCtrlEl.classList.remove("loading");
         try { updateDetLegend(); } catch (e) {}
         updateViewToggle();
@@ -3639,7 +3728,7 @@
     (function next() {
       if (myLoopGen !== fetchLoopGen) return;
       if (i >= total) {
-        plotNoFit = prevNoFit; storedFetchBusy = false;
+        plotNoFit = prevNoFit; storedFetchBusy = false; tickerFireMulti();
         if (areaUpdateCtrlEl) areaUpdateCtrlEl.classList.remove("loading");
         try { updateDetLegend(); } catch (e) {}
         updateViewToggle();
@@ -4642,7 +4731,7 @@
     abortRaritySweep();
     activeFetchCtrls.forEach(function (c) { try { c.abort(); } catch (e) {} });
     activeFetchCtrls.clear();
-    storedFetchBusy = false;
+    storedFetchBusy = false; tickerDropMulti();   // cancelled mid-run → no intro for a half-done fetch
     plotNoFit = false;                                                // loops left it on; reset so future plots fit
     if (newReloadCtrlEl) newReloadCtrlEl.classList.remove("loading");
     mapFetchPending = 0; try { renderStatusDots(); updateFilterBusy(); } catch (e) {}     // clear the fetch hourglass
@@ -4990,11 +5079,23 @@
   // the line list a source twice with two different counts.
   var obsBatch = [];             // {name, done, count, bid} across any in-flight fetches
   var obsSub = Object.create(null);   // source name -> {done, total} sub-progress (GBIF datasets)
+  var obsPages = Object.create(null);  // source name -> pages fetched so far (AppFetch.onPage)
+  var obsPrefix = "";                  // e.g. "Fetching Oslo (1/2)…" — kept in front of the per-source line
   var obsBid = 0;                // current batch id
   var obsTick = 0;               // cycles the highlight through the pending sources
   var obsTimer = null;           // interval advancing the highlight while anything loads
   var obsStatusActive = false;   // a map-plot is mirroring the line into the status bar
-  function obsNewBatch() { obsBatch = obsBatch.filter(function (it) { return !it.done; }); obsSub = Object.create(null); obsBid++; }
+  function obsNewBatch() {
+    obsBatch = obsBatch.filter(function (it) { return !it.done; });
+    obsSub = Object.create(null); obsPages = Object.create(null); obsBid++;
+    try { AppFetch.resetPages(); } catch (e) {}
+  }
+  // id -> display name, straight off the source list, so a new source needs no map here.
+  function obsNameForId(id) {
+    var l = obsSources();
+    for (var i = 0; i < l.length; i++) if (l[i].id === id) return l[i].name;
+    return "";
+  }
   function obsCurrent() { var b = obsBid; return obsBatch.filter(function (it) { return it.bid === b; }); }
   function obsPendingCount() { var b = obsBid; var n = 0; obsBatch.forEach(function (it) { if (it.bid === b && !it.done) n++; }); return n; }
   function obsTrack(name, p) {
@@ -5006,9 +5107,20 @@
                                    function (e) { settle(null); throw e; });
   }
   function obsLine(html) {
+    if (obsPrefix) html = escapeHtml(obsPrefix) + '<span class="obs-sep"> · </span>' + html;
     var ld = document.getElementById("sp-loading");
     if (ld) { ld.innerHTML = html; ld.style.display = ""; }
     if (obsStatusActive) setStatusHtml(html);
+  }
+  // A multi-location fetch owns the status line ("Oslo (1/2)…"). It used to REPLACE the
+  // per-source progress, so the longest wait in the app — several locations, each querying
+  // every source — was the one place that showed neither which source it was waiting on nor
+  // how far it had got. Now it sits in front of that line instead.
+  var PAGES_GLY = "\u25a4";   // ▤ — pages
+  function obsSetPrefix(txt) {
+    obsPrefix = txt || "";
+    obsStatusActive = !!txt || obsStatusActive;
+    if (txt) obsProgress();
   }
   function obsProgress() {
     updateSpMapBtn();               // grey out "📍 Map" while any source query is still loading
@@ -5032,6 +5144,13 @@
         nm += "[" + sub.done + "/" + sub.total + "]";
         if (sub.names && sub.names.length) nm += "(" + sub.names.map(escapeHtml).join("|") + ")";   // datasets currently in-flight
       }
+      // Pages turned so far. Every adapter pages internally, and without this a source
+      // that is working steadily through page 7 looks exactly like one that has hung.
+      var pg = obsPages[it.name];
+      if (pg) nm += ' <span class="obs-pages" title="' + escapeHtml(t("fetch.pages", { n: pg })) + '">' + PAGES_GLY + pg + "</span>";
+      // A source with no answer yet gets the waiting dots, so "sent, nothing back" is
+      // visibly different from "answering".
+      if (!it.done && !pg && !sub) nm += '<span class="obs-wait" aria-hidden="true"></span>';
       return it.name === hiName ? '<span class="obs-knk">' + nm + "</span>" : '<span class="obs-pend">' + nm + "</span>";
     });
     obsLine(t("sp.plottingFrac", { n: parts.join('<span class="obs-sep"> · </span>') }));
@@ -5360,13 +5479,25 @@
       tr.setAttribute("data-name", name);
       if (e.latestTs) tr.setAttribute("data-last", e.latestTs);
       if (exKm != null) tr.setAttribute("data-dist", exKm);
+      var exKey = "x:" + k;   // the key detPlot/spExpanded use for a non-model species
+      tr.setAttribute("data-key", exKey);   // so findSpRow / the row-expand click / refreshSpExpansions can reach it
       var clsBadge = e.cls ? '<span class="sp-extra-cls" title="' + escapeHtml(e.cls) + '">' + classGlyph(e.cls) + "</span> " : "";
       tr.innerHTML =   // not a model species → no list/star status to show
         '<td class="num det-nd"><button type="button" class="det-count-btn det-count-extra" data-sci="' + escapeHtml(e.sci) + '" data-name="' + escapeHtml(name) + '">' + eSpec + '</button>' +
           (ePairs ? '<span class="det-pairs">(' + ePairs + ")</span>" : "") + '</td>' +
-        '<td>' + clsBadge + '<span class="sp-extra-name" title="' + escapeHtml(t("sp.extraHint")) + '">' + escapeHtml(name) + '</span></td>' +
-        '<td class="name2"></td>' +
-        '<td class="sci">' + escapeHtml(e.sci) + '</td>' +
+        // The species dot FIRST, exactly as a model row has it — an extra is plotted on the
+        // map in its own colour, so the list had no reason to show only the class glyph and
+        // leave the row without the swatch that ties it to its dots.
+        // Carries .sp-link with the same data attributes a model name does, so the ONE
+        // delegated handler opens the species menu here too — drmRenderMain already knows
+        // an "x:" key (isExtra) and offers everything that is not model-derived.
+        '<td>' + spListDot(exKey) + clsBadge +
+          '<span class="sp-link sp-extra-name" data-key="' + escapeHtml(exKey) + '" data-name="' + escapeHtml(name) +
+          '" data-sci="' + escapeHtml(e.sci) + '" title="' + escapeHtml(t("sp.extraHint")) + '">' + escapeHtml(name) + '</span></td>' +
+        '<td class="name2">' + escapeHtml(extraSecondName(e.sci)) + '</td>' +
+        // …and the scientific name opens the family, which these DO have: the aggregator
+        // records it under the same "x:<sci>" key (recordFamily) as it does for a model species.
+        '<td class="sci"><span class="sci-link" data-key="' + escapeHtml(exKey) + '" title="' + escapeHtml(t("sci.familyTip")) + '">' + escapeHtml(e.sci) + '</span></td>' +
         '<td class="num sp-last">' + (e.latestTs ? lastDateCellHtml(e.latestTs) : "") + '</td>' +
         '<td class="num sp-dist">' + (exKm != null ? escapeHtml(nearbyFmtDist(exKm)) : "") + '</td>' +
         '<td class="prob-cell prob-na">—</td>' +
@@ -6496,6 +6627,7 @@
     AppGeo.init({ onBordersLoaded: function () { allSightingsCache = {}; } });
     AppAggregate.init({
       getLabels: function () { return labels; },
+      familyOfKey: function (key) { return famOf(key); },   // disambiguates a shared epithet across genera
       getLabelsByKey: function () { return labelsByKey; },
       getTaxByCode: function () { return taxByCode; },
       getSpeciesGroup: function () { return speciesGroup; },
@@ -6506,6 +6638,12 @@
     // disabled set, country-gating, the Laji-vs-GBIF rule, the iNat locale); the
     // orchestration that calls the adapters stays here.
     AppFetch.init({
+    // Pages turned, per source, into the loading line (see obsRender).
+    onPage: function (id, n) {
+      var nm = obsNameForId(id); if (!nm) return;
+      obsPages[nm] = n;
+      try { obsRender(); } catch (e) {}
+    },
       gbifDatasets: gbifDatasets,
       isGbifOff: isGbifOff,
       GBIF_DS_COUNTRY: GBIF_DS_COUNTRY,
@@ -9794,6 +9932,15 @@
     if (sciFallbackFor(cls)) return sciCase(sci);
     return speciesCase(lang, recName || sci);
   }
+  // The SECOND-language column for a non-model species. The model's positional name packs
+  // have no row for these species at all, so the bundled names-extra dictionary for that
+  // language answers instead — the same source the primary name uses.
+  function extraSecondName(sci) {
+    if (!secondLang || !sci) return "";
+    var d = extraNameDict[secondLang];
+    if (!d) { ensureExtraNames(secondLang); return ""; }   // first miss starts the load; a later render fills it
+    return d[sciBinomial(sci).toLowerCase()] || "";
+  }
   function bundledExtraName(sci) {
     var d = extraNameDict[lang];
     if (!d) { ensureExtraNames(lang); return ""; }        // first miss kicks the load off
@@ -10033,7 +10180,12 @@
   }
   // Just the 2nd-language name of a species key ("" if no 2nd language / no label) —
   // used to sort the detections list by the second language.
-  function detName2(key) { var lbl = key && labelsByKey[key]; return (secondLang && lbl) ? (secondName(lbl) || "") : ""; }
+  function detName2(key) {
+    if (!secondLang || !key) return "";
+    var lbl = labelsByKey[key];
+    if (lbl) return secondName(lbl) || "";
+    return key.indexOf("x:") === 0 ? extraSecondName(key.slice(2)) : "";   // non-model species have a 2nd name too
+  }
   // Legend / list swatch: a coloured ★ for starred species, a coloured dot with a
   // black centre for locally-rare species, a star-with-centre-dot when both, else
   // a plain coloured dot.
@@ -10938,8 +11090,7 @@
   // is what a family list is for: seeing what the neighbours look like. Ranked by the
   // model's probability at the point when there is one, else alphabetically.
   async function openFamilyImages(key, x, y) {
-    var lbl = key && labelsByKey[key]; if (!lbl) return;
-    var fam = famOf(key);
+    var fam = famOf(key); if (!fam && !(key && labelsByKey[key])) return;
     var el = openAnchoredMenu("detrow-menu family-menu conf-menu conf-img-menu");
     el.style.width = "min(97vw,900px)";
     var hdr = document.createElement("div");
@@ -11022,8 +11173,9 @@
   }
   async function openFamilyMenu(key, x, y) {
     if (familyView() === "images" && navigator.onLine !== false) { openFamilyImages(key, x, y); return; }
-    var lbl = key && labelsByKey[key]; if (!lbl) return;
-    var fam = famOf(key);
+    // A non-model species has a family too — the aggregator records it under "x:<sci>" —
+    // so the family browser opens for those as well; only its own row cannot be marked.
+    var fam = famOf(key); if (!fam && !(key && labelsByKey[key])) return;
     var el = openAnchoredMenu("detrow-menu family-menu");
     el.style.maxHeight = "min(72vh,560px)"; el.style.overflowY = "auto";
     el.style.maxWidth = "min(94vw,380px)";                    // never overflow a phone
@@ -11339,7 +11491,19 @@
   // Score = (0.25·Match + 0.75·misID) × Here. Match is the fused morphology weight
   // (0-1); misID is the % share (0-100) → /100; Here is local probability (0-1).
   // Either input absent is taken as 0 (a species with no iNat data leans on Match).
-  function confScore(w) { return (0.25 * w.w + 0.75 * (w.mid / 100)) * w.p; }
+  //
+  // Each input must be SIGNIFICANT before it contributes: a 3 % Match or a 1 % misID is
+  // noise, and letting it through gave a species a non-zero Score — and so a place in the
+  // ranking — on the strength of a resemblance nobody would ever make. Below its floor an
+  // input counts as nothing; a look-alike under both floors scores 0 and sinks to the
+  // bottom of the list rather than pretending to be a candidate.
+  var CONF_MATCH_MIN = 0.10;   // Match < 10 % contributes nothing
+  var CONF_MISID_MIN = 5;      // misID < 5 % contributes nothing (mid is already a percentage)
+  function confScore(w) {
+    var m = w.w >= CONF_MATCH_MIN ? w.w : 0;
+    var d = w.mid >= CONF_MISID_MIN ? w.mid : 0;
+    return (0.25 * m + 0.75 * (d / 100)) * w.p;
+  }
   // The ranked look-alikes of a species: [{ m: label, w: Match, mid: misID %, p: Here }]
   // by Score (most likely confusion first) when a point is open, else by Match; `out`
   // is that week's prediction at the point (null without one). Shared by the
@@ -11354,7 +11518,11 @@
     if (pt) { try { out = await predictWeek(+pt.lat, +pt.lon, +document.getElementById("week-select").value); } catch (e) {} }
     var arr = members.map(function (mm) { return { m: mm.m, w: mm.w, mid: mm.mid, p: out ? (out[mm.m.index] || 0) : -1 }; });
     if (out) {
-      arr = arr.filter(function (w) { return w.p > 0; });                   // occurs-here only (0% hidden)
+      // Occurs-here only, and only where the Score survives its floors: a look-alike that
+      // scores 0 is one whose resemblance is under 10 % AND whose real-misidentification
+      // share is under 5 %, which is not a confusion anyone would make — listing it at the
+      // bottom said "consider this bird" about a bird nobody mistakes for this one.
+      arr = arr.filter(function (w) { return w.p > 0 && confScore(w) > 0; });
       arr.sort(function (a, b) { return confScore(b) - confScore(a); });    // by Score, most likely-confusion first
     } else {
       arr.sort(function (a, b) { return b.w - a.w; });                      // no point: by Match (confusion score)
@@ -13168,7 +13336,8 @@
       wireStatusFetchErrs(result.failed, result.timedOut, result.timedOutInfo, result.truncInfo);
       // Fetch settled (not a partial, not a background auto-open load) → run the
       // rarest-recently ticker once the probabilities are in.
-      if (!plotNoFit && !autoOpenPlotting) requestRarityTicker(rtFresh);
+      if (storedFetchBusy) tickerCollect(rtFresh);   // one intro for the whole run, fired when it ends
+      else if (!plotNoFit && !autoOpenPlotting) requestRarityTicker(rtFresh);
   }
   // Plot every per-entry GPS fix from the open field checklist on the map,
   // grouped by species — reuses the detPlot legend / recency filter / spider,
@@ -13574,6 +13743,20 @@
   function getObserverLists() { return window.GeoState.get("observerLists", []) || []; }
   function saveObserverLists(a) { window.GeoState.save({ observerLists: a }); }
   var obsListsDdOpen = false;   // keep the observer-lists dropdown open across re-renders
+  // The location checklist is as long as the fetch has distinct place names — hundreds
+  // after a wide fetch, which buried every other filter under it. It is a dropdown now,
+  // labelled with the count. null = not touched yet: short lists stay open (no extra
+  // click for three places), long ones start closed. Once the user opens or closes it,
+  // that choice is kept across the pane's re-renders.
+  var detLocDdOpen = null, detObsDdOpen = null, detSrcDdOpen = null, LOC_DD_INLINE = 8;
+  // A filter checklist behind its own count. `openState` is the section's remembered
+  // choice — null until the user touches it, when a short list shows itself and a long
+  // one stays out of the way.
+  function filterDd(cls, openState, n, summary, bodyHtml) {
+    var open = (openState === null) ? (n <= LOC_DD_INLINE) : openState;
+    return '<details class="filter-dd ' + cls + '"' + (open ? " open" : "") + '>' +
+      '<summary>' + escapeHtml(summary) + "</summary>" + bodyHtml + "</details>";
+  }
   // An observer list is ticked when all its observers are in the active filter.
   function obsListTicked(L) {
     if (!detObsFilter || !L.observers || !L.observers.length) return false;
@@ -14042,7 +14225,8 @@
     return '<div class="det-obs-panel">' +
       '<div class="det-obs-head">' + head + allTog +
         '<button type="button" class="det-obs-editlists" title="' + escapeHtml(t("obs.lists")) + '">✎</button></div>' +
-      '<div class="det-obs-list">' + rows.join("") + "</div></div>";
+      filterDd("det-obs-dd", detObsDdOpen, rows.length, t("det.obsCount", { n: rows.length }),
+        '<div class="det-obs-list">' + rows.join("") + "</div>") + "</div>";
   }
   // Time-window subwindow: preset chips (1/2/3 days, weeks, months + All) and a
   // from–to date range. A preset and a range are mutually exclusive — picking one
@@ -14174,7 +14358,8 @@
     var allTog = '<label class="det-obs-alltoggle" title="' + escapeHtml(t("det.locToggleAll")) + '"><input type="checkbox" class="det-loc-allcb"' + (allOn ? " checked" : "") + '> ' + escapeHtml(t("det.allLoc")) + "</label>";
     return '<div class="det-obs-panel">' +
       '<div class="det-obs-head"><span class="det-obs-scope">' + escapeHtml(locFilterLabel()) + "</span>" + allTog + "</div>" +
-      '<div class="det-loc-list">' + rows.join("") + "</div></div>";
+      filterDd("det-loc-dd", detLocDdOpen, rows.length, t("det.locCount", { n: rows.length }),
+        '<div class="det-loc-list">' + rows.join("") + "</div>") + "</div>";
   }
   // Clicking a location name → its filter chooser: Show only / Add / Remove / Show all.
   function locationActionMenu(name, anchor) {
@@ -14356,6 +14541,23 @@
   }
   var rarityTickerKeys = null;   // species THIS fetch added; the intro is limited to them
   var rtBaseline = null;         // species on the map when the current fetch started
+  // A multi-place run — several saved locations, or the ✓ Update across every fetched
+  // area — is ONE fetch as far as the user is concerned, so the intro belongs at the end
+  // of it. Per place it fired once per location, each run replacing the one before it
+  // before it could be read; and in the two Update loops (which plot with plotNoFit set,
+  // to stay on the current view) it never ran at all. Each place's new species are
+  // collected instead and introduced together when the loop finishes.
+  var multiFetchFresh = null;
+  function tickerCollect(fresh) {
+    if (!fresh) return;
+    if (!multiFetchFresh) multiFetchFresh = Object.create(null);
+    for (var k in fresh) multiFetchFresh[k] = 1;
+  }
+  function tickerDropMulti() { multiFetchFresh = null; }   // aborted run → nothing to introduce
+  function tickerFireMulti() {
+    var f = multiFetchFresh; multiFetchFresh = null;
+    if (f && Object.keys(f).length) { try { requestRarityTicker(f); } catch (e) {} }
+  }
   function requestRarityTicker(freshKeys) {
     if (!rarityTickerOn()) return;   // opt-in
     // Nothing NEW on the map → nothing to introduce. This also keeps plain re-plots
@@ -15200,6 +15402,12 @@
     });
     // Location checklist: All/None master toggle + per-location checkboxes + name→menu.
     // Applied on a 1 s debounce (scheduleLocApply) so ticking several places rebuilds once.
+    var locDd = el.querySelector(".det-loc-dd");
+    if (locDd) locDd.addEventListener("toggle", function () { detLocDdOpen = locDd.open; });
+    var obsDdList = el.querySelector(".det-obs-dd");
+    if (obsDdList) obsDdList.addEventListener("toggle", function () { detObsDdOpen = obsDdList.open; });
+    var srcDd = el.querySelector(".aff-src-dd");
+    if (srcDd) srcDd.addEventListener("toggle", function () { detSrcDdOpen = srcDd.open; });
     var allLocCb = el.querySelector(".det-loc-allcb");
     if (allLocCb) allLocCb.addEventListener("change", function (e) { e.stopPropagation(); scheduleLocApply(this.checked ? null : new Set()); });
     el.querySelectorAll(".det-loc-cb").forEach(function (cb) {
@@ -15251,10 +15459,12 @@
   function affSrcHtml() {
     var present = detSourcesPresent();
     if (!present.length) return "";
-    return '<div class="aff-src-list">' + present.map(function (s) {
+    var rows = present.map(function (s) {
       var kept = !detSrcFilter || detSrcFilter.has(s);
       return '<label class="det-obs-row"><input type="checkbox" class="aff-src-cb" data-src="' + escapeHtml(s) + '"' + (kept ? " checked" : "") + ">" + escapeHtml(s) + "</label>";
-    }).join("") + "</div>";
+    }).join("");
+    return filterDd("aff-src-dd", detSrcDdOpen, present.length, t("det.srcCount", { n: present.length }),
+      '<div class="aff-src-list">' + rows + "</div>");
   }
   // Sort controls for the pane — one tap-to-cycle button per sortable column (mirrors
   // clicking a column name in the table). Only meaningful in the multi-column table
@@ -19179,9 +19389,10 @@
         // toggles its expanded record list — EXCEPT on the active elements in the row
         // (the species name opens the species view, the date/count/flag cells filter).
         if (e.target.closest && e.target.closest(".sp-link, .dl-date-click, .spf, [role=button], a, button, input, select")) return;
-        var trg = e.target.closest && e.target.closest("tr.sp-has-det");
+        var trg = e.target.closest && e.target.closest("tr.sp-has-det, tr.sp-extra");
         if (trg && !trg.classList.contains("sp-detail-row")) {
-          var slk = trg.querySelector(".sp-link[data-key]"), rk = slk && slk.getAttribute("data-key");
+          var slk = trg.querySelector(".sp-link[data-key]");
+          var rk = (slk && slk.getAttribute("data-key")) || trg.getAttribute("data-key");   // extras: the key is on the row
           if (rk) { e.preventDefault(); toggleSpExpand(rk); return; }
         }
         return;
@@ -20923,9 +21134,10 @@
       if (b.isValid()) { try { fitBoundsMin(b, 0.1); } catch (e) {} }
     }
     (function next() {
-      if (myLoopGen !== fetchLoopGen) { autoOpenPlotting = false; if (autoOpen && fooEngageCleanup) fooEngageCleanup(); return; }   // map cleared → stop
+      if (myLoopGen !== fetchLoopGen) { autoOpenPlotting = false; obsSetPrefix(""); if (autoOpen && fooEngageCleanup) fooEngageCleanup(); return; }   // map cleared → stop
       if (i >= locs.length) {
-        storedFetchBusy = false; autoOpenPlotting = false;
+        storedFetchBusy = false; autoOpenPlotting = false; tickerFireMulti();
+        obsSetPrefix("");
         if (autoOpen) {
           if (fooEngageCleanup) fooEngageCleanup();
           // Only showcase if the user never interacted AND something got plotted —
@@ -20956,6 +21168,7 @@
       // Progress goes to the status line ABOVE the map (below the header) — the old
       // fixed top banner overlaid the header bar.
       var label = t("loc.fetching", { name: l.name, i: i, n: locs.length });
+      obsSetPrefix(label);   // keeps the per-source progress visible behind it
       setStatus(label);
       fetchAllSightingsAt(l.lat, l.lon, null, l.radius || recentRadiusKm(), daysOverride)
         .then(function (result) {
@@ -21340,6 +21553,7 @@
     }
     return undefined;
   }
+  var spAreasOpen = false;   // the fetched-areas list: open across its own re-renders
   function renderSpCoordsAreas(el, lat, lon, summary) {
     if (!el) return;
     lastSpCoords = { el: el, lat: lat, lon: lon, summary: summary };
@@ -21397,7 +21611,20 @@
                '<button type="button" class="sp-area-del" data-ids="' + escapeHtml(g.ids.join("|")) + '" title="' + escapeHtml(t("area.removeObs")) + '" aria-label="' + escapeHtml(t("area.removeObs")) + '">×</button>' +
              "</span>";
     }).join("");
+    // One area IS the header — leave it as a plain line. Several stack into a block that
+    // pushes the map down the screen (four fetched places cost four lines plus their ×),
+    // so they collapse behind a summary carrying the count and the total observations.
+    // The open/closed choice is kept: this re-renders every time a place name or a
+    // species count resolves, and it must not snap shut under the user each time.
+    if (order.length > 1) {
+      var totObs = order.reduce(function (n, l) { return n + agg[l].obs; }, 0);
+      var sum = t("sp.areasN", { n: order.length }) + " · " + t("sp.obsN", { n: totObs });
+      html = '<details class="sp-areas-dd"' + (spAreasOpen ? " open" : "") + '>' +
+        '<summary class="sp-areas-sum">' + escapeHtml(sum) + "</summary>" + html + "</details>";
+    }
     el.innerHTML = html;
+    var areasDd = el.querySelector(".sp-areas-dd");
+    if (areasDd) areasDd.addEventListener("toggle", function () { spAreasOpen = areasDd.open; });
     el.dataset.flat = flatParts.join(" · ");
     delete el.dataset.placeKey;
     // Delegated once on the container so it survives the innerHTML re-renders (name /
@@ -22162,7 +22389,7 @@
     (function next() {
       if (myLoopGen !== fetchLoopGen) return;   // map cleared → already reset by cancelPendingFetches()
       if (i >= total) {
-        plotNoFit = prevNoFit; storedFetchBusy = false;
+        plotNoFit = prevNoFit; storedFetchBusy = false; tickerFireMulti();
         try { updateDetLegend(); } catch (e) {}
         updateViewToggle();
         setFetchedAllStatus(total);
@@ -22562,6 +22789,16 @@
       var probLink = !!key && !!labelsByKey[key];   // model species only: the Migration view / year curve need the model
       var predicted = !!key && !tr.classList.contains("sp-has-det") && !tr.classList.contains("sp-extra");   // [?] mode: a model prediction with no records here
       function plain(prefix, el) { var v = el ? el.textContent.trim() : ""; return v ? '<span class="spg-m">' + escapeHtml(prefix + v) + "</span>" : ""; }
+      // The last-seen date, clickable like the table's: plain() keeps only textContent, so
+      // the card used to lose the .dl-date-click the Last column carries and the date was
+      // the one number on a card you could not filter by.
+      function dateChip(el, iso) {
+        var v = el ? el.textContent.trim() : "";
+        if (!v) return "";
+        if (!iso) return '<span class="spg-m">' + escapeHtml(v) + "</span>";
+        return '<span class="spg-m spg-date dl-date-click" role="button" tabindex="0" data-date="' + escapeHtml(iso) +
+          '" title="' + escapeHtml(t("detlist.dateFilterHint")) + '">' + escapeHtml(v) + "</span>";
+      }
       function cell(label, el, attrs) { var v = el ? el.textContent.trim() : ""; return v ? '<span class="spg-m' + (attrs ? " " + attrs.cls : "") + '"' + (attrs ? attrs.a : "") + '><span class="spg-k">' + escapeHtml(label) + "</span> " + escapeHtml(v) + "</span>" : ""; }
       // Prob · Season · Yr peak as bar cells on one line (the table's / observation list's cells);
       // Season + Yr peak are filled once the point's 48-week prediction is in (fillSpGalleryBars).
@@ -22578,7 +22815,7 @@
           (showSci ? ' <span class="spg-sci">(' + (sciEl ? sciEl.outerHTML : escapeHtml(sci)) + ")</span>" : "") + "</span>" + subBtn + "</div>" +
         // Compact, label-free meta line: "#total(n)  last-seen  distance" (the bars row below
         // carries the probabilities; a card without the bars keeps a labelled Probability).
-        '<div class="spg-meta">' + plain("#", nd) + plain("", last) + plain("", dist) + (barsRow ? "" : cell(lbl.prob, prob)) + "</div>" +
+        '<div class="spg-meta">' + plain("#", nd) + dateChip(last, lastDate) + plain("", dist) + (barsRow ? "" : cell(lbl.prob, prob)) + "</div>" +
         barsRow +
         '<div class="spg-credit"></div>' +
       "</div>";
@@ -22862,6 +23099,10 @@
           showSpgRecordsPop(b, b.getAttribute("data-key"));
           return;
         }
+        // The date opens the same Last-column panel (This day / Before / After …) the table
+        // gives — checked before the card actions so it is not swallowed by them.
+        var dc = e.target.closest && e.target.closest(".dl-date-click[data-date]");
+        if (dc) { e.preventDefault(); e.stopPropagation(); openSpHeadPanel("last", dc.getAttribute("data-date")); return; }
         var card = e.target.closest && e.target.closest(".spg-card"); if (!card) return;
         var key = card.getAttribute("data-key"), date = card.getAttribute("data-date") || "";
         if (e.target.closest(".spg-img-link")) {   // the photo → Macaulay Library, ±1 month around the last sighting
@@ -23075,7 +23316,10 @@
       '<button type="button" class="sp-date-clear" title="' + escapeHtml(t("btn.close")) + '" aria-label="' + escapeHtml(t("btn.close")) + '">' + X_MARK_SVG + "</button>";
   }
   function spHeadPanelHtml() {
-    if (spLayout !== "table" || !spHeadPanel) return "";
+    // The Images layout shows the same rows as cards and renderSpControls already gives it
+    // this wrapper — it was only this gate that kept the panels to the table, which made the
+    // date on a card the one value in the list you could not filter by.
+    if ((spLayout !== "table" && spLayout !== "gallery") || !spHeadPanel) return "";
     if (currentSpView && currentSpView.mode !== "point" && currentSpView.mode !== "historic") return "";   // panels are for the observation table only
     if (spHeadPanel === "species") return spSpeciesPanelHtml();
     if (spHeadPanel === "total") return spTotalPanelHtml();
