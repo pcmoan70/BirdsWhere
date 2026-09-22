@@ -158,6 +158,9 @@
   function applyShowSci() {
     var tbl = document.getElementById("species-list-table");
     if (tbl) tbl.classList.toggle("hide-sci", !showSci);
+    // The Images cards write "(Scientific name)" into their own markup, so the class above
+    // cannot reach them — rebuild them when the setting changes.
+    if (spLayout === "gallery" && typeof speciesPanelPopulated === "function" && speciesPanelPopulated()) { try { renderSpBody(); } catch (e) {} }
   }
 
   // ---- Species-group filter (taxonomic class) ------------------------------
@@ -1431,11 +1434,22 @@
   // merged across devices on sync. yearLists shape: { "YYYY": { key: true } }.
   var lifeList = {};
   var yearLists = {};
+  // Lists the user makes and names ("Garden", "Varanger 2027"), same shape as a year list.
+  // Kept apart from life/year on purpose: those record what has been SEEN (which is why a
+  // year tick is also a lifer), a custom list records whatever the user wants in it, so
+  // adding to one must never make a lifer. Ids are "c:<name>" so they cannot collide with
+  // "life" or a "YYYY".
+  var customLists = {};
   function curYear() { return String(new Date().getFullYear()); }
+  function customId(name) { return "c:" + name; }
+  function isCustomId(id) { return String(id || "").indexOf("c:") === 0; }
+  function customName(id) { return String(id || "").slice(2); }
   function loadLists() {
     lifeList = {}; (window.GeoState.get("lifeList", []) || []).forEach(function (k) { lifeList[k] = true; });
     yearLists = {}; var yl = window.GeoState.get("yearLists", {}) || {};
     Object.keys(yl).forEach(function (y) { yearLists[y] = {}; (yl[y] || []).forEach(function (k) { yearLists[y][k] = true; }); });
+    customLists = {}; var cl = window.GeoState.get("customLists", {}) || {};
+    Object.keys(cl).forEach(function (n) { customLists[n] = {}; (cl[n] || []).forEach(function (k) { customLists[n][k] = true; }); });
     reconcileLifeFromYears();
   }
   // The life list is the union of everything ever seen, so every species on ANY
@@ -1451,7 +1465,20 @@
   }
   function persistLists() {
     var yl = {}; Object.keys(yearLists).forEach(function (y) { yl[y] = Object.keys(yearLists[y]); });
-    window.GeoState.save({ lifeList: Object.keys(lifeList), yearLists: yl });
+    var cl = {}; Object.keys(customLists).forEach(function (n) { cl[n] = Object.keys(customLists[n]); });
+    window.GeoState.save({ lifeList: Object.keys(lifeList), yearLists: yl, customLists: cl });
+  }
+  // The set behind a list id, or null. One lookup for every id form the admin window,
+  // the move targets and the add-by-search picker deal in.
+  function listSetById(id) {
+    if (id === "life") return lifeList;
+    if (isCustomId(id)) return customLists[customName(id)] || null;
+    return yearLists[id] || null;
+  }
+  function listLabelById(id) {
+    if (id === "life") return t("lists.life");
+    if (isCustomId(id)) return customName(id);
+    return t("lists.year", { year: id });
   }
   function inLifeList(k) { return !!lifeList[k]; }
   function inYearList(k, y) { var s = yearLists[y || curYear()]; return !!(s && s[k]); }
@@ -1910,7 +1937,10 @@
     return '<td class="prob-cell' + (cls ? " " + cls : "") + '"><span class="prob-num">' + numHtml +
       '</span><div class="prob-bar" style="width:' + widthPct + '%' + (bg ? ";background:" + bg : "") + '"></div></td>';
   }
-  function probBarNa(cls) { return '<td class="prob-cell prob-na' + (cls ? " " + cls : "") + '">—</td>'; }
+  // No model number to show (a species the model doesn't cover, or no prediction at this
+  // point): the cell stays EMPTY. Probability, Season and Yr peak are the only things a
+  // non-model species lacks — everything else about its row reads like any other.
+  function probBarNa(cls) { return '<td class="prob-cell prob-na' + (cls ? " " + cls : "") + '"></td>'; }
   // One record row: colour swatch + species name, 2nd name, probability, [date],
   // distance, count, [observer] — separate columns (no parenthesised 2nd name).
   // Observer names as tappable filter spans. Long lists (shared checklists) show the
@@ -2174,7 +2204,22 @@
   // Pinch / wheel / double-tap zoom for one photograph. Pointer Events, so a single code
   // path serves mouse, touch and pen; `touch-action: none` on the frame stops the browser
   // claiming the gestures for page scroll and its own pinch-zoom.
-  function wirePhotoZoom(wrap, img) {
+  // The full-resolution copy of an observation photo, when the source's URL says how to
+  // ask for one. iNaturalist serves a size ladder under one photo id and the app lists the
+  // MEDIUM copy (~500 px) — fine for a mosaic tile, not for zooming into: measured over six
+  // research-grade bird photos, `original` is 9–28× the bytes (avg 17×, one of them 6.6 MB).
+  // That is exactly why this is fetched on the first ZOOM and never on open.
+  // Other sources already hand over the file itself (Laji's fullURL, GBIF's identifier,
+  // the Nordic portals' media links), so there is nothing to upgrade and this returns "".
+  function obsPhotoFullUrl(url) {
+    var u = String(url || "");
+    if (!u) return "";
+    var hi = u.replace(/\/(square|thumb|small|medium|large)\.(jpe?g|png|gif)(\?[^\/]*)?$/i, "/original.$2$3");
+    return hi !== u ? hi : "";
+  }
+  // `onZoomIn` (optional) fires the first time the picture is zoomed past 1× — the moment
+  // a sharper copy is worth its bytes.
+  function wirePhotoZoom(wrap, img, onZoomIn) {
     var sc = 1, tx = 0, ty = 0, MIN = 1, MAX = 6;
     var pts = Object.create(null), nPts = 0, pinchD0 = 0, pinchS0 = 1, panX = 0, panY = 0;
     var lastTap = 0, lastTapX = 0, lastTapY = 0;
@@ -2186,7 +2231,9 @@
       var mx = Math.max(0, (w - wrap.clientWidth) / 2), my = Math.max(0, (h - wrap.clientHeight) / 2);
       tx = Math.max(-mx, Math.min(mx, tx)); ty = Math.max(-my, Math.min(my, ty));
       img.style.transform = "translate(" + tx.toFixed(1) + "px," + ty.toFixed(1) + "px) scale(" + sc.toFixed(3) + ")";
-      wrap.classList.toggle("zoomed", sc > 1.01);
+      var zoomed = sc > 1.01;
+      wrap.classList.toggle("zoomed", zoomed);
+      if (zoomed && onZoomIn) { var f = onZoomIn; onZoomIn = null; f(); }   // once
     }
     // Keep the point under the fingers/cursor where it is: a point at screen offset u from
     // the frame centre sits at u = t + s·p, so holding p fixed gives t' = u − k(u − t).
@@ -2244,7 +2291,12 @@
     wrap.addEventListener("pointerup", up);
     wrap.addEventListener("pointercancel", up);
     wrap.addEventListener("dblclick", function (e) { e.preventDefault(); e.stopPropagation(); zoomTo(sc > 1.01 ? MIN : 2.5, e.clientX, e.clientY); });
-    img.addEventListener("load", function () { sc = 1; tx = 0; ty = 0; apply(); });
+    img.addEventListener("load", function () {
+      // A sharper copy of the SAME picture arriving must not throw away where the user has
+      // zoomed to — that is the whole point of fetching it.
+      if (img._keepZoom) { img._keepZoom = 0; apply(); return; }
+      sc = 1; tx = 0; ty = 0; apply();
+    });
     img.addEventListener("dragstart", function (e) { e.preventDefault(); });
   }
   function showObsPhoto(btn, pickUrl) {
@@ -2262,7 +2314,15 @@
         (src ? (by ? " · " : "") + '<a href="' + escapeHtml(src) + '" target="_blank" rel="noopener">' + escapeHtml(t("det.openSource")) + "</a>" : "") + "</div>";
     m.box.querySelector(".obs-photo-x").addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); m.close(); });
     var img = m.box.querySelector("img");
-    wirePhotoZoom(m.box.querySelector(".obs-photo-wrap"), img);
+    // Zooming in swaps in the full-resolution original — preloaded, so the picture on
+    // screen is only replaced once the sharper one has actually arrived, and a copy that
+    // does not exist simply leaves the current one alone.
+    var hiUrl = obsPhotoFullUrl(url);
+    wirePhotoZoom(m.box.querySelector(".obs-photo-wrap"), img, hiUrl ? function () {
+      var pre = new Image();
+      pre.onload = function () { if (img.isConnected) { img._keepZoom = 1; img.src = hiUrl; } };
+      pre.src = hiUrl;
+    } : null);
     img.addEventListener("error", function () {   // the big version may not exist → fall back to the thumbnail
       var th = pickUrl ? "" : btn.getAttribute("data-thumb");
       if (th && img.src !== th) img.src = th; else { img.remove(); m.box.querySelector(".obs-photo-wrap").textContent = t("spg.noImage"); }
@@ -3793,6 +3853,14 @@
       if (!a || !isFinite(+a.s) || !isFinite(+a.w) || !isFinite(+a.n) || !isFinite(+a.e)) return;
       addFetchedAreaRect(a.id || (+a.s).toFixed(3) + "," + (+a.w).toFixed(3), L.latLngBounds([[+a.s, +a.w], [+a.n, +a.e]]), a.nm || null, +a.d || undefined);
     });
+    // Heal a remembered exclusion that names squares which are no longer here: it would
+    // hide rows with nothing on screen to explain it (the same trap reconcileLocFilter fixes).
+    if (detAreaExcl) {
+      var live = Object.create(null);
+      (fetchedAreas || []).forEach(function (a) { live[a.id] = 1; });
+      detAreaExcl.forEach(function (id) { if (!live[id]) detAreaExcl.delete(id); });
+      if (!detAreaExcl.size) detAreaExcl = null;
+    }
   }
   // The distinct place names of the fetched areas (stored-location names, or a
   // point's reverse-geocoded name), in fetch order — for the list view's header
@@ -3844,6 +3912,9 @@
   function deleteFetchedArea(id) {
     var idx = -1; for (var i = 0; i < fetchedAreas.length; i++) if (fetchedAreas[i].id === id) { idx = i; break; }
     if (idx < 0) return;
+    // The square is going: forget any exclusion on it, or the filter would keep a state
+    // nothing on screen can explain or undo.
+    if (detAreaExcl) { detAreaExcl.delete(id); if (!detAreaExcl.size) detAreaExcl = null; }
     var area = fetchedAreas[idx], b = area.bounds;
     // Geometric fallback for rows without ownership tags (older persisted data,
     // "Show in map" plots): a 5% padded box, so edge/fuzzed dots go too.
@@ -4130,11 +4201,22 @@
     Object.keys(years).sort(function (a, b) { return b.localeCompare(a); }).forEach(function (y) {
       if (y !== fromId) out.push({ v: y, l: t("lists.year", { year: y }) });
     });
+    Object.keys(customLists).sort(function (a, b) { return a.localeCompare(b); }).forEach(function (n) {
+      if (customId(n) !== fromId) out.push({ v: customId(n), l: n });
+    });
     return out;
   }
   function listsRemoveSpecies(id, key) {
-    if (id === "life") delete lifeList[key];
-    else if (yearLists[id]) delete yearLists[id][key];
+    var set = listSetById(id); if (set) delete set[key];
+    persistLists(); rebuildDetLayers(); updateDetLegend(); renderListsModal();
+  }
+  // Put a species on a list. A year tick is also a lifer (that is what a year list
+  // means); a custom list is whatever the user wants in it, so it never implies one.
+  function listsAddSpecies(id, key) {
+    if (!key) return;
+    if (id === "life") lifeList[key] = true;
+    else if (isCustomId(id)) { var n = customName(id); if (!customLists[n]) customLists[n] = {}; customLists[n][key] = true; }
+    else { if (!yearLists[id]) yearLists[id] = {}; yearLists[id][key] = true; lifeList[key] = true; }
     persistLists(); rebuildDetLayers(); updateDetLegend(); renderListsModal();
   }
   // Per-point rows for an expanded map-point list (general or detection-saved):
@@ -4200,16 +4282,124 @@
   // source list and add it to the target ("life" or a year).
   function listsMoveSpecies(fromId, key, toId) {
     if (!key || !toId || toId === fromId) return;
-    if (fromId === "life") delete lifeList[key]; else if (yearLists[fromId]) delete yearLists[fromId][key];
+    var from = listSetById(fromId); if (from) delete from[key];
     if (toId === "life") lifeList[key] = true;
+    else if (isCustomId(toId)) { var n = customName(toId); if (!customLists[n]) customLists[n] = {}; customLists[n][key] = true; }
     else { if (!yearLists[toId]) yearLists[toId] = {}; yearLists[toId][key] = true; lifeList[key] = true; }   // onto a year list → also a lifer
     persistLists(); rebuildDetLayers(); updateDetLegend(); renderListsModal();
   }
   // Settings → Year & life lists: the life list + each year's list. Each row
   // expands to show (and individually remove) the species it contains, and
   // carries a × to clear the whole list.
+  // Add-by-search for the Administer-lists window. Matches the languages the user has
+  // SELECTED — the UI language, and the second one when set — plus the scientific name and
+  // the eBird code. Deliberately NOT filtered by the current species group: you are
+  // administering a list here, not browsing the map, and "Birds" hiding every mammal from
+  // the search would just look broken.
+  function listsSearchMatches(q) {
+    q = String(q || "").trim().toLowerCase();
+    if (q.length < 2 || !labels || !labels.length) return [];
+    var out = [];
+    for (var i = 0; i < labels.length; i++) {
+      var l = labels[i];
+      var n2 = secondLang ? secondName(l) : "";
+      if (speciesName(l).toLowerCase().indexOf(q) < 0 &&
+          (!n2 || n2.toLowerCase().indexOf(q) < 0) &&
+          l.sci.toLowerCase().indexOf(q) < 0 && l.key.indexOf(q) < 0) continue;
+      out.push(l);
+      if (out.length >= 200) break;
+    }
+    var probs = searchProbsCurrent();   // rank by likelihood at the open point, as the map search does
+    if (probs) out.sort(function (a, b) { return (probs[b.index] || 0) - (probs[a.index] || 0); });
+    return out.slice(0, 20);
+  }
+  // Every list a species can be put on, newest year first, the user's own lists last.
+  function listsAllIds() {
+    var ids = ["life"];
+    var years = {}; Object.keys(yearLists).forEach(function (y) { years[y] = 1; }); years[curYear()] = 1;
+    Object.keys(years).sort(function (a, b) { return b.localeCompare(a); }).forEach(function (y) { ids.push(y); });
+    Object.keys(customLists).sort(function (a, b) { return a.localeCompare(b); }).forEach(function (n) { ids.push(customId(n)); });
+    return ids;
+  }
+  function listsRenderSearch() {
+    var inp = document.getElementById("lists-add-search"), res = document.getElementById("lists-add-results");
+    if (!inp || !res) return;
+    var hits = listsSearchMatches(inp.value);
+    if (!inp.value.trim()) { res.style.display = "none"; res.innerHTML = ""; return; }
+    if (!hits.length) {
+      res.innerHTML = '<div class="lists-add-none">' + escapeHtml(t("lists.noMatch")) + "</div>";
+      res.style.display = "block"; return;
+    }
+    // Same name shape as the Images cards: own name, [second language], (Scientific name).
+    res.innerHTML = hits.map(function (l) {
+      var n2 = secondLang ? secondName(l) : "";
+      return '<div class="lists-add-item" data-key="' + escapeHtml(l.key) + '">' +
+        '<span class="lists-add-nm">' + escapeHtml(speciesName(l)) + "</span>" +
+        (n2 ? ' <span class="lists-add-n2">[' + escapeHtml(n2) + "]</span>" : "") +
+        ' <span class="lists-add-sci">(' + escapeHtml(l.sci) + ")</span></div>";
+    }).join("");
+    res.style.display = "block";
+    res.querySelectorAll(".lists-add-item").forEach(function (it) {
+      it.addEventListener("click", function () { listsShowPicker(it.getAttribute("data-key")); });
+    });
+  }
+  // A species was picked: which list should it go on? Shown in place of the results, so
+  // there is no second popup to dismiss.
+  function listsShowPicker(key) {
+    var res = document.getElementById("lists-add-results"); if (!res) return;
+    var l = labelsByKey[key]; if (!l) return;
+    res.innerHTML = '<div class="lists-pick"><div class="lists-pick-hd">' +
+        escapeHtml(t("lists.addTo", { name: speciesName(l) })) + "</div>" +
+      listsAllIds().map(function (id) {
+        var on = !!(listSetById(id) || {})[key];
+        return '<button type="button" class="lists-pick-btn" data-id="' + escapeHtml(id) + '"' + (on ? " disabled" : "") + ">" +
+          escapeHtml(listLabelById(id)) + (on ? " \u2713" : "") + "</button>";
+      }).join("") +
+      '<button type="button" class="lists-pick-cancel">' + escapeHtml(t("btn.cancel")) + "</button></div>";
+    res.style.display = "block";
+    res.querySelectorAll(".lists-pick-btn").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var inp = document.getElementById("lists-add-search");
+        listsAddSpecies(this.getAttribute("data-id"), key);   // re-renders the table
+        if (inp) { inp.value = ""; }
+        var r = document.getElementById("lists-add-results"); if (r) { r.style.display = "none"; r.innerHTML = ""; }
+      });
+    });
+    var cx = res.querySelector(".lists-pick-cancel");
+    if (cx) cx.addEventListener("click", function () { listsRenderSearch(); });
+  }
+  function listsNewList() {
+    modalPrompt(t("lists.newPrompt"), "").then(function (name) {
+      name = String(name == null ? "" : name).trim();
+      if (!name) return;
+      if (customLists[name]) { modalConfirm(t("lists.nameTaken", { name: name })); return; }
+      customLists[name] = {};
+      listsExpanded[customId(name)] = true;
+      persistLists(); renderListsModal();
+    });
+  }
+  // Settings → Year & life lists: the life list, each year's list, and the lists the user
+  // has made. Each row expands to show (and individually remove or move) the species it
+  // contains, and carries a × that deletes the whole list. Above the table: one search box
+  // that adds a species to any of them, and + New list.
   function renderListsModal() {
     var el = document.getElementById("lists-list"); if (!el) return;
+    // The toolbar is built ONCE and then left alone — rebuilding it on every render would
+    // take the caret out of the search box on the first keystroke.
+    if (!el.querySelector(".lists-admin-bar")) {
+      el.innerHTML = '<div class="lists-admin-bar">' +
+          '<div class="lists-add-wrap">' +
+            '<input id="lists-add-search" type="text" autocomplete="off" placeholder="' + escapeHtml(t("lists.addSearch")) + '" />' +
+            '<div id="lists-add-results" class="lists-add-results" style="display:none"></div>' +
+          '</div>' +
+          '<button type="button" id="lists-new" class="btn btn-light">' + escapeHtml(t("lists.new")) + "</button>" +
+        '</div><div class="lists-table-wrap"></div>';
+      el.querySelector("#lists-new").addEventListener("click", listsNewList);
+      var si = el.querySelector("#lists-add-search");
+      si.addEventListener("input", listsRenderSearch);
+      si.addEventListener("focus", listsRenderSearch);
+    }
+    var wrap = el.querySelector(".lists-table-wrap");
     var rows = [];
     function section(id, label, keys, delHtml) {
       var n = keys.length, open = !!listsExpanded[id] && n > 0;
@@ -4227,26 +4417,42 @@
       section(y, t("lists.year", { year: y }), Object.keys(yearLists[y]),
         '<button type="button" class="src-del lists-del-year" data-year="' + escapeHtml(y) + '" aria-label="' + escapeHtml(t("offline.delete")) + '">×</button>');
     });
+    // The user's own lists last — an empty one still shows (it was just made, and it is
+    // the row you drop the next species onto).
+    Object.keys(customLists).sort(function (a, b) { return a.localeCompare(b); }).forEach(function (n) {
+      section(customId(n), n, Object.keys(customLists[n]),
+        '<button type="button" class="src-del lists-del-custom" data-name="' + escapeHtml(n) + '" aria-label="' + escapeHtml(t("offline.delete")) + '">×</button>');
+    });
     // (Map-point lists are managed in their own popup — press-and-hold the Points
-    // button; see renderMpAdmin. This window is species year/life lists only.)
-    el.innerHTML = '<table class="src-tbl"><tbody>' + rows.join("") + "</tbody></table>";
-    el.querySelectorAll(".lists-toggle").forEach(function (b) {
+    // button; see renderMpAdmin. This window is species lists only.)
+    wrap.innerHTML = '<table class="src-tbl"><tbody>' + rows.join("") + "</tbody></table>";
+    wrap.querySelectorAll(".lists-toggle").forEach(function (b) {
       b.addEventListener("click", function () { var id = this.getAttribute("data-id"); listsExpanded[id] = !listsExpanded[id]; renderListsModal(); });
     });
-    el.querySelectorAll(".lists-sp-del").forEach(function (b) {
+    wrap.querySelectorAll(".lists-sp-del").forEach(function (b) {
       b.addEventListener("click", function () { listsRemoveSpecies(this.getAttribute("data-id"), this.getAttribute("data-key")); });
     });
-    el.querySelectorAll(".lists-sp-move").forEach(function (s) {
-      s.addEventListener("change", function () { listsMoveSpecies(this.getAttribute("data-id"), this.getAttribute("data-key"), this.value); });
+    wrap.querySelectorAll(".lists-sp-move").forEach(function (sel) {
+      sel.addEventListener("change", function () { listsMoveSpecies(this.getAttribute("data-id"), this.getAttribute("data-key"), this.value); });
     });
-    var cl = el.querySelector(".lists-clear-life");
+    var cl = wrap.querySelector(".lists-clear-life");
     if (cl) cl.addEventListener("click", function () {
       modalConfirm(t("lists.clearLifePrompt")).then(function (ok) { if (ok) { lifeList = {}; persistLists(); rebuildDetLayers(); updateDetLegend(); renderListsModal(); } });
     });
-    el.querySelectorAll(".lists-del-year").forEach(function (b) {
+    wrap.querySelectorAll(".lists-del-year").forEach(function (b) {
       b.addEventListener("click", function () {
         var y = this.getAttribute("data-year");
         modalConfirm(t("lists.deleteYearPrompt", { year: y })).then(function (ok) { if (ok) { delete yearLists[y]; delete listsExpanded[y]; persistLists(); rebuildDetLayers(); updateDetLegend(); renderListsModal(); } });
+      });
+    });
+    wrap.querySelectorAll(".lists-del-custom").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var n = this.getAttribute("data-name");
+        modalConfirm(t("lists.deletePrompt", { name: n })).then(function (ok) {
+          if (!ok) return;
+          delete customLists[n]; delete listsExpanded[customId(n)];
+          persistLists(); rebuildDetLayers(); updateDetLegend(); renderListsModal();
+        });
       });
     });
   }
@@ -4907,6 +5113,7 @@
     if (isFinite(+currentSpView.lat) && isFinite(+currentSpView.lon)) currentFetchAreaId = rememberFetchedArea(+currentSpView.lat, +currentSpView.lon, recentRadiusKm(), currentSpView.name || currentSpView.locName);
     entries.forEach(function (e) { plotDetections(e.key, e.name, e.rows, false, true, e.cls); });   // defer=true → rebuild once below
     currentFetchAreaId = null;
+    foldDetPlotSubspecies();   // a subspecies may have arrived in one fetch and its species in another
     rebuildDetLayers(); updateDetLegend();
     refreshSpCoords();   // the just-fetched square + its obs count now show in the header
   }
@@ -5481,7 +5688,11 @@
       if (exKm != null) tr.setAttribute("data-dist", exKm);
       var exKey = "x:" + k;   // the key detPlot/spExpanded use for a non-model species
       tr.setAttribute("data-key", exKey);   // so findSpRow / the row-expand click / refreshSpExpansions can reach it
-      var clsBadge = e.cls ? '<span class="sp-extra-cls" title="' + escapeHtml(e.cls) + '">' + classGlyph(e.cls) + "</span> " : "";
+      // The class travels as data, not as a glyph: a non-model species is drawn exactly
+      // like a model one (dot, name, 2nd name, scientific name), and only the model-derived
+      // cells stay empty. A little 🦊 beside four mammals and not beside the rest was the
+      // one thing that still told the two kinds of row apart.
+      if (e.cls) tr.setAttribute("data-cls", e.cls);
       tr.innerHTML =   // not a model species → no list/star status to show
         '<td class="num det-nd"><button type="button" class="det-count-btn det-count-extra" data-sci="' + escapeHtml(e.sci) + '" data-name="' + escapeHtml(name) + '">' + eSpec + '</button>' +
           (ePairs ? '<span class="det-pairs">(' + ePairs + ")</span>" : "") + '</td>' +
@@ -5491,16 +5702,16 @@
         // Carries .sp-link with the same data attributes a model name does, so the ONE
         // delegated handler opens the species menu here too — drmRenderMain already knows
         // an "x:" key (isExtra) and offers everything that is not model-derived.
-        '<td>' + spListDot(exKey) + clsBadge +
+        '<td>' + spListDot(exKey) +
           '<span class="sp-link sp-extra-name" data-key="' + escapeHtml(exKey) + '" data-name="' + escapeHtml(name) +
           '" data-sci="' + escapeHtml(e.sci) + '" title="' + escapeHtml(t("sp.extraHint")) + '">' + escapeHtml(name) + '</span></td>' +
         '<td class="name2">' + escapeHtml(extraSecondName(e.sci)) + '</td>' +
         // …and the scientific name opens the family, which these DO have: the aggregator
         // records it under the same "x:<sci>" key (recordFamily) as it does for a model species.
-        '<td class="sci"><span class="sci-link" data-key="' + escapeHtml(exKey) + '" title="' + escapeHtml(t("sci.familyTip")) + '">' + escapeHtml(e.sci) + '</span></td>' +
+        '<td class="sci"><span class="sci-link" data-key="' + escapeHtml(exKey) + '" title="' + escapeHtml(t("sci.familyTip")) + '">' + escapeHtml(sciShow(e.sci)) + '</span></td>' +
         '<td class="num sp-last">' + (e.latestTs ? lastDateCellHtml(e.latestTs) : "") + '</td>' +
         '<td class="num sp-dist">' + (exKm != null ? escapeHtml(nearbyFmtDist(exKm)) : "") + '</td>' +
-        '<td class="prob-cell prob-na">—</td>' +
+        probBarNa() +
         '<td class="season-cell"></td>' +   // extras have no model prediction → no Season
         '<td></td>';
       frag.appendChild(tr);
@@ -5822,6 +6033,12 @@
       Object.keys(yl || {}).forEach(function (y) { yearMerge[y] = yearMerge[y] || {}; (yl[y] || []).forEach(function (k) { if (k) yearMerge[y][k] = 1; }); });
     });
     var yearMergeArr = {}; Object.keys(yearMerge).forEach(function (y) { yearMergeArr[y] = Object.keys(yearMerge[y]); });
+    // The user's own named lists: union by name, exactly as the year lists are.
+    var custMerge = {};
+    [local.customLists, incoming.customLists].forEach(function (cl) {
+      Object.keys(cl || {}).forEach(function (n) { custMerge[n] = custMerge[n] || {}; (cl[n] || []).forEach(function (k) { if (k) custMerge[n][k] = 1; }); });
+    });
+    var custMergeArr = {}; Object.keys(custMerge).forEach(function (n) { custMergeArr[n] = Object.keys(custMerge[n]); });
     // Learned families (for dot colours): union both sides so a species keeps the
     // family — and therefore the colour — learned on either device.
     var mergedFam = {}; [local.detFamilies, incoming.detFamilies].forEach(function (m) { Object.keys(m || {}).forEach(function (k) { if (m[k]) mergedFam[k] = m[k]; }); });
@@ -5911,6 +6128,7 @@
     newState.interesting = Object.keys(interestUnion);
     newState.lifeList = Object.keys(lifeUnion);
     newState.yearLists = yearMergeArr;
+    newState.customLists = custMergeArr;
     newState.detFamilies = mergedFam;
     // Blogs: UNION the user-added links (by cc|url) and the removed-tombstones across
     // both sides, so a blog added/deleted on one device isn't clobbered by the other.
@@ -6008,7 +6226,7 @@
     fetched: ["mapDetections"]
   };
   // Small, union-safe lists that always sync regardless of the toggles.
-  var SYNC_ALWAYS_KEYS = { interesting: 1, lifeList: 1, yearLists: 1, detFamilies: 1, updatedAt: 1 };
+  var SYNC_ALWAYS_KEYS = { interesting: 1, lifeList: 1, yearLists: 1, customLists: 1, detFamilies: 1, updatedAt: 1 };
   // "settings" = every scalar key present on either side that no other category
   // owns and that isn't in the always-synced set.
   function syncSettingsKeys(stA, stB) {
@@ -6264,6 +6482,11 @@
     }
     if (!best) return null;
     if (best.indexOf("//") === 0) best = "https:" + best;
+    // Wikipedia now serves article images from thumb.wikimedia.org with an ?utm_source=…
+    // tracking query. Only upload.wikimedia.org holds the ORIGINAL: the same path on
+    // thumb.wikimedia.org 301s to the Commons main page, which is where "Open full image"
+    // was landing. Same normalisation spImgThumb already does for the species photos.
+    best = best.split("?")[0].replace(/^https:\/\/thumb\.wikimedia\.org\//, "https://upload.wikimedia.org/");
     // `best` is the page's own thumbnail (already generated, so it loads
     // reliably). The full image is the un-thumbnailed original. We avoid
     // requesting an arbitrary thumbnail width — Wikimedia won't always
@@ -7876,12 +8099,25 @@
     var tbody = document.getElementById("sp-tbody"); if (!tbody) return;
     Array.prototype.forEach.call(tbody.children, function (tr) {
       var link = tr.querySelector(".sp-link[data-key]"); if (!link) return;
-      var lbl = labelsByKey[link.getAttribute("data-key")]; if (!lbl) return;
-      var nm = speciesName(lbl);
+      var lbl = labelsByKey[link.getAttribute("data-key")];
+      var nm, n2v;
+      if (lbl) { nm = speciesName(lbl); n2v = secondLang ? secondName(lbl) : ""; }
+      else if (link.classList.contains("sp-extra-name")) {
+        // A species the model doesn't cover has no label — its name comes from the extras
+        // dictionary, exactly as the map legend's does. Skipping these left the LIST showing
+        // whatever name the source happened to send (GBIF and iNaturalist answer in English)
+        // while the legend beside it showed the local one: the same animal, two names.
+        var sciTd = tr.querySelector("td.sci");
+        var sci = link.getAttribute("data-sci") || (sciTd ? sciTd.textContent.trim() : "");
+        if (!sci) return;
+        nm = extraDisplayName(sci, link.textContent, tr.getAttribute("data-cls") || "");
+        n2v = secondLang ? extraSecondName(sci) : "";
+      } else return;
+      if (!nm) return;
       for (var n = link.lastChild; n; n = n.previousSibling) if (n.nodeType === 3) { n.nodeValue = nm; break; }   // the name text (after any ★)
       link.setAttribute("data-name", nm);
       tr.setAttribute("data-name", nm.toLowerCase());
-      var n2 = tr.querySelector("td.name2"); if (n2) n2.textContent = secondLang ? secondName(lbl) : "";
+      var n2 = tr.querySelector("td.name2"); if (n2) n2.textContent = n2v;
     });
     var tbl = document.getElementById("species-list-table"); if (tbl) tbl.classList.toggle("has-name2", !!secondLang);   // the column shows only with a second language
     renderSpControls();
@@ -9493,6 +9729,33 @@
     if (present) { detLocRestored = false; return false; }   // it fits the plotted data → confirmed
     setDetLocFilter(null); saveLegendState(); return true;
   }
+  // Fetched-area filter. The dropdown above the map lists every square that has been
+  // fetched; clicking one's name excludes it (red) and clicking again brings it back.
+  // Held as the EXCLUDED set, so a newly fetched square is included without being touched.
+  // Rows already carry their owning squares in r._areas (stamped at plot time for the
+  // per-area delete), so this costs a array scan per row and needs no new bookkeeping.
+  var detAreaExcl = null;
+  function detAreaOff(id) { return !!(detAreaExcl && detAreaExcl.has(id)); }
+  function detAreaPasses(r) {
+    if (!detAreaExcl || !detAreaExcl.size) return true;
+    var as = r && r._areas;
+    if (!as || !as.length) return true;   // untagged (an older save, a rarity alert) — an area filter must not swallow it
+    // Overlap-safe, the same rule the per-area delete uses: a record fetched by two
+    // squares survives while ANY of its owners is still included.
+    for (var i = 0; i < as.length; i++) if (!detAreaExcl.has(as[i])) return true;
+    return false;
+  }
+  // Toggle every square behind one line of the header (a place resolved from two
+  // squares is one line, so it carries several ids) and re-run every surface.
+  function toggleAreaFilter(ids) {
+    if (!ids || !ids.length) return;
+    if (!detAreaExcl) detAreaExcl = new Set();
+    var on = !detAreaOff(ids[0]);   // the line's state follows its first id
+    ids.forEach(function (id) { if (on) detAreaExcl.add(id); else detAreaExcl.delete(id); });
+    if (!detAreaExcl.size) detAreaExcl = null;
+    detFiltersRefresh();       // map dots, legend, histogram and every list, through detRowPasses
+    refreshSpCoords();         // and the header itself, so the colour follows
+  }
   function detLocPasses(r) {
     if (!detLocFilter) return true;
     var loc = detLocKey(r);
@@ -9614,7 +9877,7 @@
     applyAgeFilter();                            // the list's own show/hide pass
     if (allFiltersPane) renderAllFiltersPane();  // keep the pane's own summary line current
   }
-  function detRowPasses(r) { return detDatePasses(r.date) && detObsPasses(r) && detLocPasses(r) && detPassesSrc(r) && detPassesNew(r); }
+  function detRowPasses(r) { return detDatePasses(r.date) && detObsPasses(r) && detLocPasses(r) && detAreaPasses(r) && detPassesSrc(r) && detPassesNew(r); }
   // A species is an "alert" when its detPlot entry carries injected rarity rows
   // (syncAlertDetections flags the entry `alert`).
   function isAlertSpecies(k) { return !!(detPlot[k] && detPlot[k].alert); }
@@ -9921,6 +10184,10 @@
     return b.charAt(0).toUpperCase() + b.slice(1).toLowerCase();   // "fragaria viridis" → "Fragaria viridis"
   }
   function sciFallbackFor(cls) { return lang !== "en" && !!SCI_FALLBACK_GROUPS[String(cls || "").toLowerCase()]; }
+  // A scientific name AS SHOWN. An extra is keyed by its lowercased name (the key IS an
+  // id), so without this a model row printed "Lepus europaeus" and the row under it
+  // "ovibos moschatus". Unlike sciCase this keeps any subspecies epithet.
+  function sciShow(sci) { var s = String(sci || "").trim(); return s ? s.charAt(0).toUpperCase() + s.slice(1) : ""; }
   function extraDisplayName(sci, recName, cls) {
     var h = harvestedName(sci);                       // bundled pack, then the device's harvest
     if (h) return speciesCase(lang, h);
@@ -10058,9 +10325,9 @@
       }
       var ex = tr.querySelector(".sp-extra-name");
       if (!ex) return null;
-      var sciTd = tr.querySelector("td.sci"), badge = tr.querySelector(".sp-extra-cls");
+      var sciTd = tr.querySelector("td.sci");
       var sci = sciTd ? sciTd.textContent.trim() : "";
-      return sci ? { el: ex, nm: extraDisplayName(sci, ex.textContent, badge ? badge.getAttribute("title") : "") } : null;
+      return sci ? { el: ex, nm: extraDisplayName(sci, ex.textContent, tr.getAttribute("data-cls") || "") } : null;
     }
     if (tbody) Array.prototype.forEach.call(tbody.children, function (tr) {
       var r = rowName(tr); if (!r || !r.nm) return;
@@ -10074,9 +10341,8 @@
     if (rec) Array.prototype.forEach.call(rec.querySelectorAll(".spg-card"), function (c) {
       var key = c.getAttribute("data-key") || "", sci = c.getAttribute("data-sci") || "";
       var lbl = labelsByKey[key];
-      var badge = c.querySelector(".sp-extra-cls");
       var nm = lbl ? speciesName(lbl)
-        : (sci ? extraDisplayName(sci, "", badge ? badge.getAttribute("title") : "") : "");
+        : (sci ? extraDisplayName(sci, "", c.getAttribute("data-cls") || "") : "");
       setText(c.querySelector(".sp-link, .sp-extra-name"), nm);
     });
   }
@@ -10480,6 +10746,7 @@
         if (!detDatePasses(r.date)) return;
         if (!detObsPasses(r)) return;          // observer filter (legend 👤)
         if (!detLocPasses(r)) return;          // location filter (📍)
+        if (!detAreaPasses(r)) return;         // excluded fetched square (the list header's dropdown)
         if (!detPassesSrc(r)) return;          // data-source filter (click a source in the list)
         if (!detPassesNew(r)) return;          // "New" filter (only detections fetched after the baseline)
         if (center) {
@@ -11536,44 +11803,86 @@
   // per card is how you get rate-limited: four failures in a row trip spPhotoFailed()
   // and every remaining card is then told the service is down, so a big family came out
   // half empty and STAYED that way, nothing cached for next time.
-  // So: one BATCHED pass for the whole strip (spImagesPrefetch — fifty species per
-  // request, so Anatidae's 164 cards cost eight round trips instead of 328), then the
-  // per-card chain, three in flight, for whatever the batch could not place — a species
-  // with no article picture, whose file is non-free, or a name Wikipedia does not know.
+  // So: a BATCHED pass (spImagesPrefetch — fifty species per request) over the cards that
+  // are actually ON SCREEN plus the next five, then the per-card chain, three in flight,
+  // for whatever the batch could not place — a species with no article picture, whose file
+  // is non-free, or a name Wikipedia does not know. Scrolling sweeps again for whatever has
+  // come into view. Anatidae's 164 cards used to cost eight round trips on open whether or
+  // not you ever scrolled; now opening it costs one, and the rest arrive as you go.
   function wirePhotoCards(popup, strip) {
-    var PARALLEL = 3, queue = [], running = 0;
+    var PARALLEL = 3, AHEAD = 5, queue = [], running = 0, pending = 0;
+    var cards = Array.prototype.slice.call(strip.querySelectorAll(".cfi-card"));
+    if (!cards.length) return;
     function fill(card) {
       if (!card || card._cfiDone) return;
       card._cfiDone = true;
       queue.push(card); pump();
     }
     function pump() {
+      // `c` MUST be captured per card. It used to be a plain `var` in this loop, which the
+      // while runs up to PARALLEL times before any promise settles — so all three callbacks
+      // closed over the LAST card: a card whose lookup came back null re-queued its
+      // neighbour instead of itself and never retried, leaving it blank until the popup was
+      // closed and opened again (a fresh card clears _cfiDone). That is the "open it twice
+      // and then the pictures are there" in the confusion and family views.
       while (running < PARALLEL && queue.length) {
-        var c = queue.shift();
         running++;
-        loadSpPhoto(c.querySelector(".spg-img"), c.querySelector(".spg-none"), c.querySelector(".spg-credit"), c.getAttribute("data-sci"))
-          .then(function (ok) {
-            running--;
-            // null = the lookup could not be reached (offline, rate limit): nothing was
-            // remembered, so let it be asked for again rather than leaving a blank card.
-            if (ok === null && popup.isConnected) { c._cfiDone = false; setTimeout(function () { fill(c); }, 4000); }
-            pump();
-          }, function () { running--; pump(); });
+        (function (c) {
+          loadSpPhoto(c.querySelector(".spg-img"), c.querySelector(".spg-none"), c.querySelector(".spg-credit"), c.getAttribute("data-sci"))
+            .then(function (ok) {
+              running--;
+              // null = the lookup could not be reached (offline, rate limit): nothing was
+              // remembered, so it is worth asking again — ONCE. Past that the card is left
+              // as it is rather than retrying for as long as the popup stays open.
+              if (ok === null && popup.isConnected && !c._cfiRetried) {
+                c._cfiRetried = 1; c._cfiDone = false;
+                setTimeout(function () { fill(c); }, 4000);
+              }
+              pump();
+            }, function () { running--; pump(); });
+        })(queue.shift());
       }
     }
-    // EVERY card ends up fetched and cached — scrolled to or not. The species you never
-    // scrolled past are exactly the ones worth having on the next visit.
-    var cards = Array.prototype.slice.call(strip.querySelectorAll(".cfi-card"));
-    var want = [], seen = {}, store = spImgStore();
-    cards.forEach(function (c) {
-      var sci = c.getAttribute("data-sci");
-      if (sci && !seen[sci] && !store[sci]) { seen[sci] = 1; want.push(sci); }
-    });
-    cards.forEach(function (c) { if (store[c.getAttribute("data-sci")]) fill(c); });   // already on the device: paint now
-    if (!want.length) return;
-    strip.classList.add("cfi-loading");                        // a quiet placeholder while the batch is out
-    function rest() { strip.classList.remove("cfi-loading"); cards.forEach(fill); }
-    spImagesPrefetch(want).then(rest, rest);
+    // The cards on screen, plus AHEAD below the fold so a short scroll finds them already
+    // loading. Cards are in document order, so the walk stops as soon as it is far enough
+    // past the bottom — a 164-card family never measures 164 rectangles for one scroll.
+    function cardsToLoad() {
+      var pr = popup.getBoundingClientRect(), out = [], after = 0;
+      for (var i = 0; i < cards.length; i++) {
+        var c = cards[i], r = c.getBoundingClientRect();
+        if (r.bottom <= pr.top) continue;                      // scrolled past, above the view
+        if (r.top >= pr.bottom && ++after > AHEAD) break;       // five past the bottom is enough for now
+        if (!c._cfiDone && !c._cfiClaimed) out.push(c);
+      }
+      return out;
+    }
+    function sweep() {
+      if (!popup.isConnected) return;
+      var pick = cardsToLoad(); if (!pick.length) return;
+      var store = spImgStore(), want = [], seen = {};
+      pick.forEach(function (c) {
+        c._cfiClaimed = 1;                                     // a later sweep must not ask for it again
+        var sci = c.getAttribute("data-sci"); if (!sci) return;
+        if (store[sci]) return;                                // already on the device: no request needed
+        if (!seen[sci]) { seen[sci] = 1; want.push(sci); }
+      });
+      if (!want.length) { pick.forEach(fill); return; }        // all cached (or nothing to look up): paint now
+      strip.classList.add("cfi-loading");                      // a quiet placeholder while the batch is out
+      pending++;
+      function rest() { if (!--pending) strip.classList.remove("cfi-loading"); pick.forEach(fill); }
+      spImagesPrefetch(want).then(rest, rest);
+    }
+    var frame = 0;
+    function onScroll() {
+      if (!popup.isConnected) { window.removeEventListener("resize", onScroll); return; }   // the popup outlives nothing; the scroll listener goes with it
+      if (typeof requestAnimationFrame === "undefined") { sweep(); return; }
+      if (frame) return;
+      frame = requestAnimationFrame(function () { frame = 0; sweep(); });
+    }
+    popup.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    // The first sweep MEASURES the popup, so let the layout it was just given settle.
+    if (typeof requestAnimationFrame === "undefined") sweep(); else requestAnimationFrame(sweep);
   }
   function confSwitchBtn(el, label, open) {
     var b = document.createElement("button");
@@ -12582,6 +12891,7 @@
       if (allowed && !allowed.has(r)) return;   // global cap: only the newest N are drawn
       if (!detObsPasses(r)) return;             // observer filter (legend 👤)
       if (!detLocPasses(r)) return;             // location filter (📍)
+      if (!detAreaPasses(r)) return;            // excluded fetched square (the header's dropdown)
       if (!detPassesSrc(r)) return;             // data-source filter
       if (!detPassesNew(r)) return;             // "New" filter
       var lk = (+r.lat).toFixed(4) + "," + (+r.lon).toFixed(4);
@@ -12681,6 +12991,28 @@
       byId[id] = r; out.push(r);
     });
     return out;
+  }
+  // "x:lepus timidus timidus" plotted beside "x:lepus timidus" is ONE species to the map,
+  // the legend and every list — and both carry the same common name, so it read as the same
+  // animal listed twice. aggregateRecords folds these as records arrive, but detPlot keeps
+  // whatever key each dot was plotted with: anything fetched before that fold existed, or a
+  // subspecies that arrived in one fetch and its species in the next, still sits here as two
+  // entries. Fold them wherever the plotted set changes, so the next save writes the merged
+  // form. Only when the binomial is actually present — a subspecies-only record keeps its
+  // own identity, as it does in the aggregator.
+  function foldDetPlotSubspecies() {
+    var folded = 0;
+    Object.keys(detPlot).forEach(function (k) {
+      if (k.indexOf("x:") !== 0) return;
+      var w = k.slice(2).split(" ");
+      if (w.length !== 3) return;
+      var into = detPlot["x:" + w[0] + " " + w[1]]; if (!into) return;
+      into.rows = mergeDetRows(into.rows, detPlot[k].rows || []);
+      delete detPlot[k];
+      delete detSelected[k]; delete detExcluded[k];
+      folded++;
+    });
+    return folded;
   }
   function plotDetections(key, name, rows, fit, defer, cls) {
     var slim = detSlim(rows);
@@ -13298,6 +13630,7 @@
       // Use the legend's "Clear" to start over. No species cap — plot them all.
       entries.forEach(function (e) { plotDetections(e.key, e.name, e.rows, false, true, e.cls); });
       currentFetchAreaId = null;
+      foldDetPlotSubspecies();                 // a subspecies and its species can arrive in different fetches
       rebuildDetLayers();                      // recolour existing dots if families were just learned
       // A fresh fetch re-opens the per-day histogram strip (a collapse is a "not
       // needed right now" — new data is exactly when it IS needed).
@@ -13605,7 +13938,7 @@
   window.addEventListener("pagehide", flushLegendState);
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") flushLegendState(); });
   function saveLegendStateNow() {
-    window.GeoState.save({ mapLegend: { mini: detLegendMini, bflyFilter: detBflyFilter, starFilter: detStarFilter, rareFilter: detRareFilter, yearFilter: detYearFilter, lifeFilter: detLifeFilter, alertFilter: detAlertFilter, selected: Object.keys(detSelected), excluded: Object.keys(detExcluded), selBase: { sel: Object.keys(detSelBase.sel), exc: Object.keys(detSelBase.exc) }, obsFilter: detObsFilter ? Array.from(detObsFilter) : null, locFilter: detLocFilter ? Array.from(detLocFilter) : null, srcFilter: detSrcFilter ? Array.from(detSrcFilter) : null, deleted: deletedSpecies, countMin: spCountMin, countMax: spCountMax, countMetric: spCountMetric, ageDays: speciesAgeFilterDays, newFilter: detNewFilter, newSince: detNewSince, todayFilter: detTodayFilter, daySel: Object.keys(detDaySel), rows: detLegendRows, sort: detLegendSort, regionMode: detRegionMode, regionPick: detRegionPick } });
+    window.GeoState.save({ mapLegend: { mini: detLegendMini, bflyFilter: detBflyFilter, starFilter: detStarFilter, rareFilter: detRareFilter, yearFilter: detYearFilter, lifeFilter: detLifeFilter, alertFilter: detAlertFilter, selected: Object.keys(detSelected), excluded: Object.keys(detExcluded), selBase: { sel: Object.keys(detSelBase.sel), exc: Object.keys(detSelBase.exc) }, obsFilter: detObsFilter ? Array.from(detObsFilter) : null, locFilter: detLocFilter ? Array.from(detLocFilter) : null, srcFilter: detSrcFilter ? Array.from(detSrcFilter) : null, areaExcl: detAreaExcl ? Array.from(detAreaExcl) : null, deleted: deletedSpecies, countMin: spCountMin, countMax: spCountMax, countMetric: spCountMetric, ageDays: speciesAgeFilterDays, newFilter: detNewFilter, newSince: detNewSince, todayFilter: detTodayFilter, daySel: Object.keys(detDaySel), rows: detLegendRows, sort: detLegendSort, regionMode: detRegionMode, regionPick: detRegionPick } });
   }
   function loadDetections() {
     // Self-heal a store left over-quota by an older build: cap the stored
@@ -13624,6 +13957,7 @@
       var cls = d.cls || (taxByCode[key] && taxByCode[key].class_name) || "";
       detPlot[key] = { key: key, name: d.name || sk, color: d.color, rows: d.rows, group: null, cls: cls };
     });
+    foldDetPlotSubspecies();   // saved dots keep the keys they were plotted with
     // Restore the saved legend state, then render the layers honouring it.
     var ls = window.GeoState.get("mapLegend", {}) || {};
     detLegendMini = !!ls.mini;
@@ -13645,6 +13979,9 @@
     setDetObsFilter(Array.isArray(ls.obsFilter) ? new Set(ls.obsFilter) : null, true);   // restored → may be healed if stale
     setDetLocFilter(Array.isArray(ls.locFilter) ? new Set(ls.locFilter) : null, true);   // restored → may be healed if stale
     detSrcFilter = (Array.isArray(ls.srcFilter) && ls.srcFilter.length) ? new Set(ls.srcFilter) : null;
+    // Excluded fetched squares. Dropped when none of them is still a remembered area —
+    // a stale exclusion would silently hide rows with nothing on screen to explain it.
+    detAreaExcl = (Array.isArray(ls.areaExcl) && ls.areaExcl.length) ? new Set(ls.areaExcl) : null;
     // Heal a stale source filter (none of its sources plotted) so it can't blank the map.
     if (detSrcFilter && Object.keys(detPlot).length) {
       var pres = detSourcesPresent();
@@ -21606,8 +21943,11 @@
       parts.push(t("sp.radius", { km: g.rkm }));
       var txt = parts.join(" · ");
       flatParts.push(txt);
+      var off = detAreaOff(g.ids[0]);
       return '<span class="sp-area-line">' +
-               '<span class="sp-area-txt" title="' + escapeHtml(txt) + '">' + escapeHtml(txt) + "</span>" +
+               '<span class="sp-area-txt sp-area-pick' + (off ? " sp-area-off" : "") + '" role="button" tabindex="0"' +
+                 ' data-ids="' + escapeHtml(g.ids.join("|")) + '" aria-pressed="' + (off ? "true" : "false") + '"' +
+                 ' title="' + escapeHtml(txt + " — " + t("area.filterHint")) + '">' + escapeHtml(txt) + "</span>" +
                '<button type="button" class="sp-area-del" data-ids="' + escapeHtml(g.ids.join("|")) + '" title="' + escapeHtml(t("area.removeObs")) + '" aria-label="' + escapeHtml(t("area.removeObs")) + '">×</button>' +
              "</span>";
     }).join("");
@@ -21618,7 +21958,9 @@
     // species count resolves, and it must not snap shut under the user each time.
     if (order.length > 1) {
       var totObs = order.reduce(function (n, l) { return n + agg[l].obs; }, 0);
-      var sum = t("sp.areasN", { n: order.length }) + " · " + t("sp.obsN", { n: totObs });
+      var nOff = order.reduce(function (n, l) { return n + (detAreaOff(agg[l].ids[0]) ? 1 : 0); }, 0);
+      var sum = t("sp.areasN", { n: order.length }) + " · " + t("sp.obsN", { n: totObs }) +
+        (nOff ? " · " + t("sp.areasOff", { n: nOff }) : "");
       html = '<details class="sp-areas-dd"' + (spAreasOpen ? " open" : "") + '>' +
         '<summary class="sp-areas-sum">' + escapeHtml(sum) + "</summary>" + html + "</details>";
     }
@@ -21632,7 +21974,20 @@
     // overlap-safe (same deleteFetchedArea the map's per-area × uses).
     if (!el._areaDelWired) {
       el._areaDelWired = true;
+      el.addEventListener("keydown", function (e) {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        var pk = e.target && e.target.closest ? e.target.closest(".sp-area-pick") : null;
+        if (!pk || !el.contains(pk)) return;
+        e.preventDefault();
+        toggleAreaFilter((pk.getAttribute("data-ids") || "").split("|").filter(Boolean));
+      });
       el.addEventListener("click", function (e) {
+        var pick = e.target && e.target.closest ? e.target.closest(".sp-area-pick") : null;
+        if (pick && el.contains(pick)) {
+          e.stopPropagation(); e.preventDefault();   // inside a <details> summary this would also toggle the disclosure
+          toggleAreaFilter((pick.getAttribute("data-ids") || "").split("|").filter(Boolean));
+          return;
+        }
         var btn = e.target && e.target.closest ? e.target.closest(".sp-area-del") : null;
         if (!btn || !el.contains(btn)) return;
         e.stopPropagation(); e.preventDefault();
@@ -22758,7 +23113,6 @@
       // every plant, fungus and most insects — carries its name in .sp-extra-name instead,
       // and without this the card showed a scientific name and nothing else.
       var link = tr.querySelector(".sp-link") || tr.querySelector(".sp-extra-name");
-      var clsBadge = tr.querySelector(".sp-extra-cls");
       var sciTd = tr.querySelector("td.sci");
       var sci = sciTd ? sciTd.textContent.trim() : (link ? link.getAttribute("data-sci") || "" : "");
       var sciEl = sciTd ? sciTd.querySelector(".sci-link") : null;   // the table's clickable sci (→ Family menu), reused as-is
@@ -22784,7 +23138,15 @@
       // observed (.sp-has-det) OR an extra, which exists only BECAUSE it was observed.
       var subBtn = (key && (tr.classList.contains("sp-has-det") || tr.classList.contains("sp-extra")))
         ? '<button type="button" class="spg-sub" data-key="' + escapeHtml(key) + '" title="' + escapeHtml(t("spg.records")) + '" aria-label="' + escapeHtml(t("spg.records")) + '">\u2630</button>' : "";
-      var showSci = sci && !(link && link.textContent.trim() === sci);   // no "(sci)" when the name already IS the sci
+      // The card's name line reads "name [second language] (Scientific name)". The second
+      // name is taken from the row's own name2 cell, so it is whatever the table shows and
+      // stays right through a language change; the scientific name follows the
+      // Scientific-names setting exactly as the table's column does — this local used to
+      // SHADOW the module's `showSci` flag, so the cards printed it whatever the setting
+      // said. Still suppressed when the name already IS the scientific name.
+      var sciDiff = sci && !(link && link.textContent.trim() === sci);
+      var n2El = tr.querySelector("td.name2");
+      var n2 = (secondLang && n2El) ? n2El.textContent.trim() : "";
       var photoLink = !!key && isBirdKey(key);   // Macaulay Library is birds-only (as in the species menu)
       var probLink = !!key && !!labelsByKey[key];   // model species only: the Migration view / year curve need the model
       var predicted = !!key && !tr.classList.contains("sp-has-det") && !tr.classList.contains("sp-extra");   // [?] mode: a model prediction with no records here
@@ -22807,12 +23169,13 @@
           '<span class="spg-bar season-cell sp-season" data-key="' + escapeHtml(key) + '" role="button" title="' + escapeHtml(t("th.seasonHint")) + '"><span class="spg-k">' + escapeHtml(t("th.season")) + "</span></span>" +
           '<span class="spg-bar prob-cell sp-ytop" data-key="' + escapeHtml(key) + '" role="button"><span class="spg-k">' + escapeHtml(t("th.ytop")) + "</span></span>" +
         "</div>" : "";
-      return '<div class="spg-card' + (predicted ? " spg-pred" : "") + '" data-sci="' + escapeHtml(sci) + '" data-key="' + escapeHtml(key) + '" data-date="' + escapeHtml(lastDate) + '">' +
+      return '<div class="spg-card' + (predicted ? " spg-pred" : "") + '" data-sci="' + escapeHtml(sci) + '" data-key="' + escapeHtml(key) + '" data-cls="' + escapeHtml(tr.getAttribute("data-cls") || "") + '" data-date="' + escapeHtml(lastDate) + '">' +
         '<div class="spg-img' + (photoLink ? ' spg-img-link" role="button" title="' + escapeHtml(t("spg.photosTip")) : '"') + '">' +
           (predicted ? '<span class="spg-tag">' + escapeHtml(t("spg.predicted")) + "</span>" : "") +
           '<span class="spg-none" style="display:none">' + escapeHtml(t("spg.noImage")) + "</span></div>" +
-        '<div class="spg-name"><span class="spg-nm">' + (dot ? dot.outerHTML : "") + (clsBadge ? clsBadge.outerHTML : "") + (link ? link.outerHTML : "") +
-          (showSci ? ' <span class="spg-sci">(' + (sciEl ? sciEl.outerHTML : escapeHtml(sci)) + ")</span>" : "") + "</span>" + subBtn + "</div>" +
+        '<div class="spg-name"><span class="spg-nm">' + (dot ? dot.outerHTML : "") + (link ? link.outerHTML : "") +
+          (n2 ? ' <span class="spg-n2">[' + escapeHtml(n2) + "]</span>" : "") +
+          (showSci && sciDiff ? ' <span class="spg-sci">(' + (sciEl ? sciEl.outerHTML : escapeHtml(sci)) + ")</span>" : "") + "</span>" + subBtn + "</div>" +
         // Compact, label-free meta line: "#total(n)  last-seen  distance" (the bars row below
         // carries the probabilities; a card without the bars keeps a labelled Probability).
         '<div class="spg-meta">' + plain("#", nd) + dateChip(last, lastDate) + plain("", dist) + (barsRow ? "" : cell(lbl.prob, prob)) + "</div>" +

@@ -251,7 +251,13 @@ probability. Options:
   same panel as **"More of these"** in a species menu, which fetches that species' sightings of the
   **last 90 days** within **1.5 × your fetch radius** (eBird / GBIF / iNaturalist).
 - Species the model doesn't cover but that the sources reported are appended below the
-  predicted rows, tagged with a class glyph.
+  predicted rows, and are drawn **exactly like every other row** — no tinted background, no bold
+  name, no dashed rule; the same coloured dot as their dots on the map, a name that opens the
+  species menu, a scientific name that opens the family, a second-language name. Only the model's own columns — **Probability, Season and Yr peak** — stay
+  empty, because there is no model number to put there. Their names come from the bundled
+  `i18n/names-extra/<lang>.json` dictionary (grown by the iNaturalist name harvest), the same
+  source the map legend uses, so the two always agree and both follow a language change. A
+  subspecies reported alongside its own species is folded into it rather than listed twice.
 
 **The panel header** lists **every fetched square on its own line**, ordered by geography
 (north→south, west→east) rather than fetch order: *place name · N species · N obs · lat, lon ·
@@ -753,8 +759,37 @@ shared payload is all that is shown.
 Right-click / long-press / tap any species name for a menu **led by the species name in bold**
 (wrapping when long), followed by the record's *Open source* link when opened from an observation, then:
 
+- The **fetched-places list above the map doubles as a filter**: clicking a place's name leaves it
+  out (red, struck through) and clicking again brings it back. The species list, the observation
+  list, the legend and the map dots all follow, and the summary line counts how many are left out.
+  A record fetched by two overlapping squares stays while either is included, and the exclusion is
+  forgotten when its square is deleted.
+
+- **Zooming an observation photograph fetches the full-resolution original** (iNaturalist serves a
+  ~500 px copy for lists; the original is typically 10–30× the detail). Fetched on the first zoom
+  only, preloaded so the picture is replaced only once the sharper one has arrived, and your zoom
+  position is kept.
+
+- **Administer lists** (Settings → 🐦 Lists…) holds the **life list**, the **year lists** and any
+  **lists you make yourself**. One search box at the top adds a species to any of them — it matches
+  the languages you have selected (your own, your second, and the scientific name) and shows each
+  hit as *name* **[second language]** *(Scientific name)*; picking one asks which list. **+ New
+  list** names a list of your own, **×** deletes it, and inside a list each species can be removed
+  or moved elsewhere. Putting a species on a list of your own does **not** make it a lifer — only
+  a year list means "seen" — and your own lists carry no map edges or legend filter, which stay
+  the year/life "still needed" scheme.
+
+- The **family** and **Confusion species** picture views load on demand: the cards on screen plus
+  the next five, with more fetched as you scroll, and a failed lookup retried once.
+
+- In the **Images** layout each card's name line reads *name* **[second language]** *(Scientific
+  name)* — the species' own name in bold, the second language in square brackets when one is set,
+  the scientific name in italics inside parentheses when the Scientific-names setting is on.
+
 - **Information**, in this order — **Confusion species** (birds), **Distribution**: the model's own
-  range map or Wikipedia's range image (with a BirdLife link in its popup; **Settings → Distribution**
+  range map — labelled **"(AI‑)Artsutbredelse"** / *"(AI) Species distribution"* so it is never
+  confused with a drawn map — or Wikipedia's range image (with a BirdLife link in its popup;
+  **Settings → Distribution**
   picks which opens first, model by default, each falling back to the other when it has nothing for the
   species, Wikipedia also when offline; the Wikipedia dialog links to the model map), **Migration**,
   **Images** (Macaulay Library, birds), **Audio** (Xeno-canto, animals), **More of these**, **Wikipedia**,
