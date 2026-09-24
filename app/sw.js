@@ -21,19 +21,19 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v1858";
+var VERSION = "v1880";
 // The changelog shown under the lit "Reload to update" button in Settings.
 // THIS RELEASE ONLY — replace it wholesale on every version bump, never append.
 // A returning user wants to know what the update they are about to install changes,
 // not a scroll of things they already have; the feature history lives in Settings →
 // What's new, and the full record in CHANGES.md.
 var NOTES = [
-  "\u2022 Every species is drawn the same way. A species the habitat model does not cover \u2014 the wolverine, the muskox, most plants and insects \u2014 used to be set apart by a small animal icon, a bold name and a yellow-tinted row. All three are gone: it gets the same dot, the same plain name and a properly capitalised scientific name as every other row, and keeps its local name in the lists as well as in the map legend. Only Probability, Season and Yr peak stay blank, because those are the model\u2019s own numbers and there are none.",
-  "\u2022 Species lists are yours to arrange. Settings \u2192 Administer lists has a search box that adds any species to any list \u2014 type its name in your language, your second language or Latin \u2014 and a + that makes a new list with a name you choose, alongside the life list and the year lists. A list you made can be deleted outright, and a species moved between lists or taken off one.",
-  "\u2022 The fetched-places list above the map is now a filter: click a place\u2019s name to leave it out and click again to bring it back. The species list, the observation list, the legend and the map dots all follow.",
-  "\u2022 Photographs got sharper and lighter. Zooming into an observation\u2019s picture now fetches the full-resolution original \u2014 typically ten to thirty times the detail \u2014 and only when you zoom. Family and confusion pictures load as you look at them rather than all at once, and one that does not arrive is tried again.",
-  "\u2022 The model\u2019s own distribution map is labelled \u201c(AI-)Artsutbredelse\u201d so it is never mistaken for a drawn map, and \u201cOpen full image\u201d opens the map again instead of the Wikimedia Commons front page.",
-  "\u2022 Smaller things: in the Images layout a card reads \u201cl\u00f8ve [lion] (Panthera leo)\u201d and the scientific name now follows your setting; a subspecies reported next to its own species is no longer a second row under the same name; and confusion species need a real resemblance and a real misidentification record before they are scored or listed at all.",
+  "\u2022 Map points, end to end. Every saved list and trip downloads from the \u2193 beside its \u00d7 \u2014 KML, KMZ or GeoJSON \u2014 in the Points menu and in the lists window. \"Load from file\" reads all three formats (it understood only share links before, so picking a map file appeared to do nothing), and the file pickers offer .kmz / .kml / .geojson instead of every file on the device. An imported file's own colours are now obeyed.",
+  "\u2022 Clicking a point opens its record as a popup that stays put, with an \u00d7 \u2014 the details used to sit in a hover card a phone never showed. Where several reports share a spot they are listed together, newest first. Ticking a list no longer throws the panel back to the top.",
+  "\u2022 Google Drive sync moved into a folder you can open. Backups went to Drive's hidden app area before; they now go to a \u201cBirdsWhere\u201d folder, one dated subfolder per sync, each holding that sync's data file plus readable copies \u2014 a .kmz per point list and trip, CSV for your species lists and checklists. More of your data travels with it, the Sync button names the file it is writing, and ticking \u201cFetched points\u201d brings the downloaded observations too. The first sync asks Google for one new permission; approve it.",
+  "\u2022 Pictures for the groups that had none: GBIF and iNaturalist photographs for insects and plants, your own observations' photographs as a last source, and a link to Kew or iNaturalist where nothing illustrates a species. Family and confusion cards load as you scroll.",
+  "\u2022 Rarity-alert emails arrive formatted instead of as visible HTML. Species names beyond birds are looked up only when the bundled packs genuinely lack them \u2014 a language switch used to fire off a burst of needless lookups \u2014 and the harvested names can be exported as CSV.",
+  "\u2022 Also: the Yr-peak column follows the \u201cCompare to\u201d setting everywhere, a record with several observers lets you pick which one, plants no longer appear twice under two spellings, and every popup closes the same way \u2014 its \u00d7, or a click outside.",
 ].join("\n");
 // RC channel isolation: an RC deployment (SW served from a "…-rc/" path) shares the
 // browser ORIGIN with production, so its caches must be namespaced — and its activate

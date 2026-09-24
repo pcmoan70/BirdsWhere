@@ -489,7 +489,10 @@ When a **never-seen-before** rarity arrives it:
   the next message rather than being dropped. *Send test* mails the **latest real alerts** (a plain
   note when the list is empty), so what arrives is what an alert mail looks like, and the line under
   the address always says what became of the last message (alert sent · test sent · not confirmed
-  yet · failed). Your address and the alert text pass through that service, and — like every other
+  yet · failed). The relay composes the message itself from the fields it is handed and prints every
+  value literally — it accepts no HTML body of ours — so each sighting is sent as its own field
+  (bird · place · date · probability, with the record's link beside it) and arrives laid out as a
+  table. Your address and the alert text pass through that service, and — like every other
   alert — mail only goes out **while the app is open**.
 
 The **first** check of each location arms silently (everything already reported is marked
@@ -613,7 +616,14 @@ view**.
   right-click** that button for the **Edit & protect lists** admin: rename a list, set its
   colour/tags for every point, **protect** it from deletion (🔒), delete it, or expand it to
   edit/remove individual points.
-- **Import / export** — points import and export as **KML and KMZ** (Settings → *Map points*).
+- **Import / export** — points import and export as **KML, KMZ and GeoJSON**. Export everything from
+  Settings → *Map points*; download a **single list or trip** from the ↓ beside its × — in the Points
+  menu and in the lists window (press-and-hold or right-click the Points button) — choosing the format
+  there. Import from either the Settings *Import* button or *Load from file* in the Points menu — both
+  read all three formats (and share links).
+- **Clicking a point** opens its record in a popup that stays open until you press its × or interact
+  elsewhere; where several records share a coordinate they are listed together, newest first. Clicking
+  a card opens that point's actions (source, navigate, add to route or list).
   Import reports the placemarks found and lets you map each placemark field (name / description /
   folder / ExtendedData) to the point's name, tags and note, with a *Note contains HTML* option.
 - **Observer lists & nicknames** — build named sets of observers, filter the map/list to them
@@ -758,6 +768,55 @@ shared payload is all that is shown.
 
 Right-click / long-press / tap any species name for a menu **led by the species name in bold**
 (wrapping when long), followed by the record's *Open source* link when opened from an observation, then:
+
+- The **Yr column** (beside Season, in the species list, the observation list, the picture-card bars
+  and the family/look-alike cards) shows whatever **Settings → Compare to** names: the annual peak
+  (default), the annual mean, or the previous/next week — and the heading says which. *Season* is
+  always measured against the species' own true annual peak, so it stays comparable between species
+  whatever the comparison is set to.
+
+- **Names beyond birds.** The bundled name packs were built for birds, so most insects, plants and
+  fungi have no name in your language. Settings → Display & language → **Look up missing names at
+  iNaturalist** (on by default) asks iNaturalist once per species and keeps every language it
+  answers with; off, those species show their scientific name. What it collects is its own cache —
+  Settings → Storage → **Downloaded names** (count, size, clear) — and can be taken out with
+  **Download CSV** (one row per species and language) or **Send CSV**, which hands the file to the
+  device's share sheet where Mail can attach it.
+
+- Where **no picture exists at all**, the frame carries a link to where the pictures are, for the
+  groups that have such a place: **Kew Plants of the World Online** for plants, **iNaturalist** for
+  fungi, insects, spiders and snails. Neither can be shown inline — Kew answers only to a person at
+  a browser, iNaturalist's photos are mostly CC BY-NC — so a link is what can honestly be offered.
+  Birds and mammals are well covered and unchanged.
+
+- **Species photographs** come from, in order: the English Wikipedia article image, Wikidata's
+  P18, iNaturalist's own taxon photo, **observers' photographs from GBIF** (requested under CC0/CC
+  BY only), and finally **a photograph from your own fetched observations** — credited to the
+  photographer, whose name links to the observation report it came from. The first three are curated and still win; GBIF fills the gaps, which for
+  insects and plants is most of them (measured over 30 species of each from Norwegian records:
+  Wikipedia 73 %/93 %, GBIF 100 %/100 %). Every picture is credited to its photographer with a link
+  to the record, or to the service when no photographer is named.
+
+- Scientific names are **canonicalised once, for every source**: the author citation and year are
+  stripped (`Sonchus arvensis L.` → `Sonchus arvensis`) and an infraspecific name folds into its
+  species when both were found, so one organism is one row however each database spells it. Only
+  GBIF sends a pre-cleaned name; the national portals and iNaturalist do not, which is why
+  botanical lists were worst affected.
+
+- **Popups all behave the same way**: every one carries a ×, and closes only when you click that ×
+  or interact with something outside it — never on its own because the pointer moved away. A popup
+  opened from inside another (a picture from a record list, a ⓘ note) sits *on* it rather than
+  replacing it, so closing the picture puts you back in the list. The ⓘ note opens at your pointer.
+
+- A species' **record list** shows Probability, Season and Yr peak on every row, as the observation
+  list does (blank for species the model does not cover).
+
+- The **funnel pulses while anything is loading** — any fetch (a stored place, an update of every
+  area, a source still arriving) as well as a filter being applied.
+
+- A record reported by **several observers** lets you pick which one you meant: tapping any of the
+  names — or the "…" standing in for those that did not fit — lists everyone on that record, and
+  choosing one opens the usual actions for that person. A single-observer record acts immediately.
 
 - The **fetched-places list above the map doubles as a filter**: clicking a place's name leaves it
   out (red, struck through) and clicking again brings it back. The species list, the observation
@@ -986,9 +1045,23 @@ app can draw.
 **Google Drive sync** — an optional **manual, one-shot** sync: tapping *Synchronize* opens a small
 dialog to pick **which categories** travel (Settings · Point lists · Trips · Checklists · Fetched
 points) and **one direction** (two-way merge — the default — upload-only, or download-only), then
-signs in with a `drive.appdata`-only scope, does one pull → merge → push to a hidden per-user Drive
-file, and disconnects (token kept in memory only; no background sync). Collections always merge, so
-no direction can delete data on the other device.
+signs in (`drive.file` + `drive.appdata` — per-file access to what the app itself creates, and
+nothing else in your Drive), does one pull → merge → push, and disconnects (token kept in memory
+only; no background sync). Collections always merge, so no direction can delete data on the other
+device.
+
+Everything lands in a folder called **BirdsWhere** in your Drive, which you can open like any
+other. Alongside the sync file (`migration_calendar.json`, plus the ten most recent dated copies)
+each push writes **readable exports** of the same data: a `.kmz` for every point list and every
+saved trip, `Species lists.csv` (life, year, custom and starred lists) and `Checklists.csv`. Those
+are one-way — nothing reads them back, they are there so the data is usable in Google Earth, a
+spreadsheet or anywhere else. Backups written before v1875 live in Drive's hidden app-data area
+and are still read; the next push brings them into the folder.
+
+The sync carries your settings, lists, trips, checklists, starred/life/year lists, the species
+names harvested from iNaturalist and your own Drive client ID. The **fetched observations** are
+the one thing left out by default — they are much the largest thing the app holds — so tick
+*Fetched points* in the sync dialog to include them.
 
 ---
 
@@ -1073,7 +1146,7 @@ Your data leaves the device only when **you** act:
 
 - a **🔗 share link** or **Share map** — packs the points / detections you pick into a URL you hand out;
 - an **export** — CSV, KML/KMZ, GeoJSON or PDF, or the full backup file;
-- the optional one-tap **Google Drive backup**, into your *own* Drive's private app folder.
+- the optional one-tap **Google Drive backup**, into a **BirdsWhere** folder in your *own* Drive.
 
 Separately, simply using the app sends the **map coordinates you are viewing** to the third-party
 observation databases (GBIF, eBird, iNaturalist…) and the map / place-name provider, so they can

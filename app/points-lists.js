@@ -335,9 +335,11 @@ window.AppPoints = (function () {
   // Export every pin to plain, interoperable KML (opens in Google Earth etc.):
   // named lists become <Folder>s, loose pins sit at the document root. Just
   // name / description / Point — no app-specific extensions.
-  function buildPointsKml() {
+  // colls/loose default to "everything" — the per-list download passes just one list.
+  function buildPointsKml(colls, loose) {
     var xml = function (s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); };
-    var loose = mpActiveName ? [] : mapPoints;
+    colls = colls || mpCollections;
+    loose = loose !== undefined ? loose : (mpActiveName ? [] : mapPoints);
     var parts = ['<?xml version="1.0" encoding="UTF-8"?>',
       '<kml xmlns="http://www.opengis.net/kml/2.2">', "<Document>", "<name>Map points</name>"];
     var placemark = function (p) {
@@ -353,7 +355,7 @@ window.AppPoints = (function () {
       parts.push("<Point><coordinates>" + Number(p.lon).toFixed(6) + "," + Number(p.lat).toFixed(6) + ",0</coordinates></Point>");
       parts.push("</Placemark>");
     };
-    mpCollections.forEach(function (c) {
+    colls.forEach(function (c) {
       parts.push("<Folder><name>" + xml(c.name) + "</name>");
       (c.points || []).forEach(placemark);
       parts.push("</Folder>");
@@ -373,8 +375,10 @@ window.AppPoints = (function () {
   // download and keep their points/lists as a standard file: name, tags, note, colour
   // and species key survive in each feature's properties; the saved-list name goes in
   // "list". (KML flattens these into folders + description; GeoJSON keeps them exact.)
-  function buildPointsGeoJson() {
-    var loose = mpActiveName ? [] : mapPoints, feats = [];
+  function buildPointsGeoJson(colls, loose) {
+    colls = colls || mpCollections;
+    loose = loose !== undefined ? loose : (mpActiveName ? [] : mapPoints);
+    var feats = [];
     function feat(p, listName) {
       var props = {};
       if (p.name) props.name = p.name;
@@ -388,7 +392,7 @@ window.AppPoints = (function () {
       if (listName) props.list = listName;
       return { type: "Feature", properties: props, geometry: { type: "Point", coordinates: [+(+p.lon).toFixed(6), +(+p.lat).toFixed(6)] } };
     }
-    mpCollections.forEach(function (c) { (c.points || []).forEach(function (p) { if (isFinite(+p.lat) && isFinite(+p.lon)) feats.push(feat(p, c.name)); }); });
+    colls.forEach(function (c) { (c.points || []).forEach(function (p) { if (isFinite(+p.lat) && isFinite(+p.lon)) feats.push(feat(p, c.name)); }); });
     loose.forEach(function (p) { if (isFinite(+p.lat) && isFinite(+p.lon)) feats.push(feat(p, "")); });
     return JSON.stringify({ type: "FeatureCollection", features: feats }, null, 2);
   }
@@ -483,7 +487,28 @@ window.AppPoints = (function () {
   }
   function downloadBlob(filename, blob) {
     var url = URL.createObjectURL(blob), a = document.createElement("a");
-    a.href = url; a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    a.href = url; a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    // Revoke on a timer, not in this tick: mobile browsers start reading the blob
+    // after the click handler returns, and a same-tick revoke kills the save.
+    setTimeout(function () { URL.revokeObjectURL(url); }, 20000);
+  }
+  // One download entry point for the three formats, used by the per-list download
+  // button. `colls` is the list(s) to write, `loose` the unfiled pins; both default
+  // to everything, so the Settings "Export" keeps its old whole-set behaviour.
+  var DL_MIME = { kml: "application/vnd.google-earth.kml+xml", geojson: "application/geo+json",
+                  kmz: "application/vnd.google-earth.kmz" };
+  function exportPointsAs(fmt, baseName, colls, loose) {
+    var stamp = new Date().toISOString().slice(0, 10);
+    var base = String(baseName || "map_points").replace(/[\\/:*?"<>|]+/g, "_").slice(0, 60) + "_" + stamp;
+    if (fmt === "geojson") {
+      downloadBlob(base + ".geojson", new Blob([buildPointsGeoJson(colls, loose)], { type: DL_MIME.geojson }));
+      return;
+    }
+    var kml = buildPointsKml(colls, loose);
+    if (fmt !== "kmz") { downloadBlob(base + ".kml", new Blob([kml], { type: DL_MIME.kml })); return; }
+    buildKmz(kml).then(function (bytes) {
+      downloadBlob(base + ".kmz", new Blob([bytes], { type: DL_MIME.kmz }));
+    }).catch(function () { setStatus(t("kml.parseErr")); });
   }
   function exportPointsKmz() {
     if (!pointsHasAny()) { setStatus(t("points.exportEmpty")); return; }
@@ -495,10 +520,43 @@ window.AppPoints = (function () {
   // Parse a KML document into plain placemark records. Each carries its name,
   // coordinates, description, the enclosing folder name, and any ExtendedData /
   // SimpleData fields — which become the selectable import "fields".
+  // KML writes colour as aabbggrr — alpha first and BLUE before red, the reverse of CSS.
+  function kmlColorToHex(v) {
+    var c = String(v || "").trim().replace(/^#/, "");
+    if (!/^[0-9a-fA-F]{8}$/.test(c)) return "";
+    return "#" + c.slice(6, 8) + c.slice(4, 6) + c.slice(2, 4);   // rr gg bb
+  }
+  // Every <Style> in the document, by id → its icon colour. <StyleMap> is followed to its
+  // "normal" pair, which is how most exporters (Google Earth included) write styles.
+  function kmlStyleColors(doc) {
+    var out = {}, i, id, st;
+    var ss = doc.getElementsByTagName("Style");
+    for (i = 0; i < ss.length; i++) {
+      id = ss[i].getAttribute("id"); if (!id) continue;
+      var ic = ss[i].getElementsByTagName("IconStyle")[0];
+      var col = ic && ic.getElementsByTagName("color")[0];
+      var hex = col ? kmlColorToHex(col.textContent) : "";
+      if (hex) out[id] = hex;
+    }
+    var sm = doc.getElementsByTagName("StyleMap");
+    for (i = 0; i < sm.length; i++) {
+      id = sm[i].getAttribute("id"); if (!id) continue;
+      var pairs = sm[i].getElementsByTagName("Pair");
+      for (var k = 0; k < pairs.length; k++) {
+        var key = pairs[k].getElementsByTagName("key")[0];
+        if (!key || (key.textContent || "").trim() !== "normal") continue;
+        var su = pairs[k].getElementsByTagName("styleUrl")[0];
+        var ref = su ? (su.textContent || "").trim().replace(/^#/, "") : "";
+        if (ref && out[ref]) out[id] = out[ref];
+      }
+    }
+    return out;
+  }
   function parseKmlText(text) {
     var doc = new DOMParser().parseFromString(text, "application/xml");
     if (doc.getElementsByTagName("parsererror").length) throw new Error(t("kml.parseErr"));
     var marks = [], fieldSet = {}, folderSet = {};
+    var styleCol = kmlStyleColors(doc);
     var pms = doc.getElementsByTagName("Placemark");
     function txt(el, tag) { var n = el.getElementsByTagName(tag)[0]; return n ? (n.textContent || "").trim() : ""; }
     for (var i = 0; i < pms.length; i++) {
@@ -519,7 +577,20 @@ window.AppPoints = (function () {
       var folder = "", a = pm.parentNode;
       while (a && a.nodeType === 1) { if (a.tagName === "Folder") { var fn = a.getElementsByTagName("name")[0]; if (fn) { folder = (fn.textContent || "").trim(); break; } } a = a.parentNode; }
       if (folder) folderSet[folder] = 1;
-      marks.push({ name: txt(pm, "name"), lat: lat, lon: lon, desc: txt(pm, "description"), data: data, folder: folder });
+      // The placemark's own colour: an inline <Style> first, else the <styleUrl> it names.
+      var pcol = "";
+      var inline = pm.getElementsByTagName("Style")[0];
+      if (inline) {
+        var iic = inline.getElementsByTagName("IconStyle")[0];
+        var icol = iic && iic.getElementsByTagName("color")[0];
+        if (icol) pcol = kmlColorToHex(icol.textContent);
+      }
+      if (!pcol) {
+        var suEl = pm.getElementsByTagName("styleUrl")[0];
+        var sref = suEl ? (suEl.textContent || "").trim().replace(/^#/, "") : "";
+        if (sref && styleCol[sref]) pcol = styleCol[sref];
+      }
+      marks.push({ name: txt(pm, "name"), lat: lat, lon: lon, desc: txt(pm, "description"), data: data, folder: folder, color: pcol });
     }
     return { marks: marks, fields: Object.keys(fieldSet), folders: Object.keys(folderSet) };
   }
@@ -603,6 +674,10 @@ window.AppPoints = (function () {
         var pt = { id: mpUid(), lat: pm.lat, lon: pm.lon,
           name: kmlFieldValue(pm, nameTok).trim() || pm.name || "",
           tags: tag ? [tag] : [], note: note, source: "kml", createdAt: new Date().toISOString() };
+        // A file that says what colour a point should be is obeyed — without this every
+        // imported set came out in ONE colour hashed from the list name, whatever the
+        // file's own styling said.
+        if (pm.color) pt.color = pm.color;
         if (noteIsHtml && note) pt.noteHtml = true;
         return pt;
       });
@@ -955,8 +1030,55 @@ window.AppPoints = (function () {
   function onMpPinClick(rec) {
     clearSpider();
     var group = mpOverlaps(rec, 16);
-    if (group.length <= 1) { mpPinAction(rec); return; }
+    if (group.length <= 1) {
+      // A read-only pin shows its record FIRST, as a popup that stays put and carries an
+      // × — the details used to live in a hover tooltip, which a touch device never gets.
+      // The action menu (source, navigate, add to list …) is one tap further in, on the
+      // card itself. An editable working pin still opens its editor straight away.
+      if (rec.editable) { mpPinAction(rec); return; }
+      openMpStackPopup(L.latLng(rec.p.lat, rec.p.lon), [rec]);
+      return;
+    }
+    // Points that share a coordinate cannot be told apart by fanning them out — the
+    // spokes only repeat "several here", which is what the dot already said. Those get
+    // listed. A fan still earns its place when the points are genuinely a few metres
+    // apart (it shows you WHERE each one is), until there are too many to read.
+    var same = 0;
+    group.forEach(function (o) { if (mpSamePlace(o.p, rec.p)) same++; });
+    if (same > 1 || group.length > MP_FAN_MAX) { openMpStackPopup(L.latLng(rec.p.lat, rec.p.lon), group); return; }
     spiderOutMp(L.latLng(rec.p.lat, rec.p.lon), group);
+  }
+  var MP_FAN_MAX = 6;
+  // ~1e-5 degrees is about a metre — closer than any two genuinely different
+  // records, and what repeated reports from one site come in as.
+  function mpSamePlace(a, b) { return Math.abs(a.lat - b.lat) < 1e-5 && Math.abs(a.lon - b.lon) < 1e-5; }
+  // When a point carries no explicit date (an imported placemark, say) fall back to
+  // the first ISO date in its note — KML descriptions from the point builders put the
+  // record's date there — and only then to when the pin was created.
+  function mpPointWhen(p) {
+    var d = p.date || "";
+    if (!d) { var m = /\b(\d{4}-\d{2}-\d{2})\b/.exec(String(p.note || "")); if (m) d = m[1]; }
+    var ts = Date.parse(d || p.createdAt || "");
+    return isNaN(ts) ? -8640000000000 : ts;
+  }
+  function openMpStackPopup(center, group) {
+    var items = group.slice().sort(function (a, b) { return mpPointWhen(b.p) - mpPointWhen(a.p); });
+    var html = (items.length > 1 ? '<div class="mp-stack-hd">' + escapeHtml(t("points.stackN", { n: items.length })) + "</div>" : "") +
+      items.map(function (o, i) {
+        return '<div class="mp-stack-it' + (items.length > 1 ? "" : " one") + '" role="button" tabindex="0" data-i="' + i + '" title="' + escapeHtml(t("points.cardMore")) + '">' + mpTipHtml(o.p) + "</div>";
+      }).join("");
+    // Leaflet's own maxHeight gives the popup its scrollbar (.leaflet-popup-scrolled).
+    var pop = L.popup({ className: "area-tip mp-stack-pop", maxWidth: 320, maxHeight: 300, autoPan: true })
+      .setLatLng(center).setContent(html).openOn(getMap());
+    var el = pop.getElement();
+    if (!el) return;
+    el.querySelectorAll(".mp-stack-it").forEach(function (it) {
+      it.addEventListener("click", function () {
+        var o = items[+this.getAttribute("data-i")];
+        try { getMap().closePopup(pop); } catch (e) {}
+        if (o) mpPinAction(o);
+      });
+    });
   }
   // Fan the co-located pins out around their shared point ("rainbow"), each in
   // its per-species colour, with a leader line and its species/date/activity
@@ -1025,7 +1147,8 @@ window.AppPoints = (function () {
     mpHashColor: mpHashColor, mpColorFor: mpColorFor, mpColorRow: mpColorRow,
     mpReadColor: mpReadColor, mpHex6: mpHex6, wireMpColorRow: wireMpColorRow,
     // ---- import / export / share ----
-    exportPointsKml: exportPointsKml, exportPointsKmz: exportPointsKmz,
+    exportPointsKml: exportPointsKml, exportPointsKmz: exportPointsKmz, exportPointsAs: exportPointsAs,
+    buildPointsKml: buildPointsKml, buildPointsGeoJson: buildPointsGeoJson, buildKmz: buildKmz,
     exportPointsGeoJson: exportPointsGeoJson, extractKmlFromKmz: extractKmlFromKmz,
     startKmlImport: startKmlImport, startGeoJsonImport: startGeoJsonImport,
     sendPointsToGoogle: sendPointsToGoogle,

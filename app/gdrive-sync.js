@@ -31,7 +31,13 @@ window.GDriveSync = (function () {
   // by design — the browser token flow uses no client secret.
   var DEFAULT_CLIENT_ID = "309967713424-o0vgr5cgb1t8bvc9pk78br2mmo4v8kkm.apps.googleusercontent.com";
 
-  var SCOPE = "https://www.googleapis.com/auth/drive.appdata";
+  // drive.file gives per-file access to what this app creates — enough to keep the
+  // backups in a folder the user can actually open, and nothing else in their Drive.
+  // drive.appdata is kept alongside it so backups written before v1875, which live in
+  // the hidden application-data folder, can still be read and carried across.
+  var SCOPE = "https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/drive.file";
+  var FOLDER_NAME = "BirdsWhere";
+  var LS_FOLDER_ID = "gdrive-folder-id";
   var FILE_NAME = "migration_calendar.json";
   // Every push also leaves a DATED copy beside the current file, so the app-data
   // folder carries a history instead of one endlessly overwritten file. The newest
@@ -102,7 +108,10 @@ window.GDriveSync = (function () {
     for (k in state) { if (Object.prototype.hasOwnProperty.call(state, k) && k !== "updatedAt") copy[k] = state[k]; }
     return JSON.stringify(copy);
   }
-  function snapshot() { return { connected: connected, hasClientId: !!clientId(), status: lastStatus, busy: syncing, lastSyncAt: lastSyncAt, error: lastError }; }
+  var lastPhase = "";                // which step of a sync is running, for the button
+  var lastPhaseName = "";            // …and, while files are being written, WHICH file
+  function phase(p, name) { lastPhase = p || ""; lastPhaseName = name || ""; emit(lastStatus); }
+  function snapshot() { return { connected: connected, hasClientId: !!clientId(), status: lastStatus, busy: syncing, lastSyncAt: lastSyncAt, error: lastError, phase: lastPhase, phaseName: lastPhaseName }; }
   function emit(s) { lastStatus = s; for (var i = 0; i < statusListeners.length; i++) { try { statusListeners[i](snapshot()); } catch (e) {} } }
   // Record a failure's detail so the UI can show WHY a sync failed, then emit.
   function fail(status, e) { lastError = (e && e.message) ? String(e.message) : (typeof e === "string" ? e : "sync failed"); emit(status); }
@@ -119,6 +128,7 @@ window.GDriveSync = (function () {
     });
   }
 
+  var consentAsked = false;          // the missing-scope prompt is asked at most once per load
   function initTokenClient() {
     if (tokenClient || !clientId()) return;
     tokenClient = google.accounts.oauth2.initTokenClient({
@@ -126,6 +136,15 @@ window.GDriveSync = (function () {
       scope: SCOPE,
       callback: function (resp) {
         if (resp && resp.access_token) {
+          // Anyone who connected before v1875 granted drive.appdata ALONE. A silent
+          // request hands that old grant straight back, and every call to the visible
+          // folder then fails with 403 insufficient scope — the sync sees none of the
+          // new structure. Ask once, with a real consent prompt, for what is missing.
+          var granted = String(resp.scope || "");
+          if (granted && granted.indexOf("drive.file") < 0 && !consentAsked) {
+            consentAsked = true;
+            try { tokenClient.requestAccessToken({ prompt: "consent" }); return; } catch (e) {}
+          }
           accessToken = resp.access_token;   // in memory only — never persisted
           tokenExpiry = Date.now() + ((+resp.expires_in || 3600) * 1000) - 60000;
           if (tokenResolve) { tokenResolve(accessToken); }
@@ -170,44 +189,131 @@ window.GDriveSync = (function () {
       opts.headers["Authorization"] = "Bearer " + token;
       r = await fetch(url, opts);
     }
+    // 403 from Drive is usually "you hold a token, but not for this scope" — which is
+    // exactly what an account connected before the visible folder existed will get.
+    // Re-ask with a consent prompt once, then retry the call.
+    if (r.status === 403 && !consentAsked) {
+      var body = ""; try { body = await r.clone().text(); } catch (e) {}
+      if (/insufficient|scope|ACCESS_TOKEN_SCOPE/i.test(body)) {
+        consentAsked = true; accessToken = null; tokenExpiry = 0;
+        try {
+          token = await new Promise(function (resolve, reject) {
+            tokenResolve = resolve; tokenReject = reject;
+            tokenClient.requestAccessToken({ prompt: "consent" });
+          });
+          opts.headers["Authorization"] = "Bearer " + token;
+          r = await fetch(url, opts);
+        } catch (e) { /* fall through with the 403 */ }
+      }
+    }
     return r;
   }
 
-  // Every file of ours in the app-data folder: the current one plus the dated copies.
+  // The visible folder. Found by name in My Drive (only folders this app made are
+  // visible to drive.file, so this never picks up a stranger's folder), created on
+  // first use, and its id remembered so later syncs skip the lookup.
+  var _folderId = null;
+  async function ensureFolder() {
+    if (_folderId) return _folderId;
+    var cached = "";
+    try { cached = localStorage.getItem(LS_FOLDER_ID) || ""; } catch (e) {}
+    if (cached) {
+      var chk = await driveFetch("https://www.googleapis.com/drive/v3/files/" + cached + "?fields=id,trashed", {});
+      if (chk.ok) {
+        var cj = await chk.json();
+        if (cj && cj.id && !cj.trashed) { _folderId = cj.id; return _folderId; }
+      }
+      try { localStorage.removeItem(LS_FOLDER_ID); } catch (e) {}   // deleted or emptied from Drive
+    }
+    var q = encodeURIComponent("trashed=false and mimeType='application/vnd.google-apps.folder' and name='" + FOLDER_NAME + "'");
+    var r = await driveFetch("https://www.googleapis.com/drive/v3/files?fields=files(id)&pageSize=10&q=" + q, {});
+    if (r.ok) {
+      var j = await r.json();
+      if (j.files && j.files.length) { _folderId = j.files[0].id; }
+    }
+    if (!_folderId) {
+      var c = await driveFetch("https://www.googleapis.com/drive/v3/files?fields=id", {
+        method: "POST", headers: { "Content-Type": "application/json; charset=UTF-8" },
+        body: JSON.stringify({ name: FOLDER_NAME, mimeType: "application/vnd.google-apps.folder" })
+      });
+      if (!c.ok) throw new Error("Drive folder create failed (" + c.status + ")");
+      _folderId = (await c.json()).id;
+    }
+    try { localStorage.setItem(LS_FOLDER_ID, _folderId); } catch (e) {}
+    return _folderId;
+  }
+  // Each sync writes into its own subfolder of BirdsWhere, named for the moment it ran
+  // ("2026-09-24 1830"). That IS the history: the folder holds that sync's payload and
+  // its readable copies together, and the names sort chronologically.
+  function runFolderName(ts) {
+    var d = new Date(ts || Date.now());
+    return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()) +
+      " " + pad2(d.getHours()) + pad2(d.getMinutes());
+  }
+  async function createRunFolder() {
+    var parent = await ensureFolder();
+    var r = await driveFetch("https://www.googleapis.com/drive/v3/files?fields=id", {
+      method: "POST", headers: { "Content-Type": "application/json; charset=UTF-8" },
+      body: JSON.stringify({ name: runFolderName(Date.now()), parents: [parent],
+                             mimeType: "application/vnd.google-apps.folder" })
+    });
+    if (!r.ok) throw new Error("Drive run folder failed (" + r.status + ")");
+    return (await r.json()).id;
+  }
+  // The dated subfolders, newest first. Their names sort chronologically, but Drive is
+  // asked for createdTime too so a hand-renamed folder cannot reorder the history.
+  async function listRunFolders() {
+    var parent;
+    try { parent = await ensureFolder(); } catch (e) { return []; }
+    var q = encodeURIComponent("trashed=false and mimeType='application/vnd.google-apps.folder' and '" + parent + "' in parents");
+    var r = await driveFetch("https://www.googleapis.com/drive/v3/files?pageSize=200" +
+      "&fields=files(id,name,createdTime)&orderBy=" + encodeURIComponent("createdTime desc") + "&q=" + q, {});
+    if (!r.ok) return [];
+    return ((await r.json()).files || []).slice();
+  }
+  // Keep the newest few runs; trashing a folder takes its contents with it.
+  async function pruneRunFolders(keep) {
+    try {
+      var f = await listRunFolders();
+      for (var i = keep; i < f.length; i++) {
+        try { await driveFetch("https://www.googleapis.com/drive/v3/files/" + f[i].id, { method: "DELETE" }); } catch (e) {}
+      }
+    } catch (e) {}
+  }
+  // Every file of ours: the current one plus the dated copies. Looked for in the
+  // visible folder AND in the old app-data space, so a device that has synced for
+  // years still finds its history — the next push writes to the folder.
   async function listOurFiles() {
-    var q = encodeURIComponent("trashed=false and (name='" + FILE_NAME + "' or name contains '" + SNAP_PREFIX + "')");
-    var r = await driveFetch("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&pageSize=100" +
-      "&fields=files(id,name,modifiedTime,size)&orderBy=" + encodeURIComponent("modifiedTime desc") + "&q=" + q, {});
-    if (!r.ok) throw new Error("Drive list failed (" + r.status + ")");
-    var j = await r.json();
-    return (j.files || []).slice();
+    var base = "trashed=false and (name='" + FILE_NAME + "' or name contains '" + SNAP_PREFIX + "')";
+    var fields = "&fields=files(id,name,modifiedTime,size)&orderBy=" + encodeURIComponent("modifiedTime desc") + "&pageSize=100";
+    var out = [], seen = {};
+    var fid = null;
+    try { fid = await ensureFolder(); } catch (e) {}
+    var urls = [];
+    if (fid) {
+      urls.push("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent(base + " and '" + fid + "' in parents") + fields);
+      var runs = await listRunFolders();
+      for (var k = 0; k < runs.length && k < 20; k++) {
+        urls.push("https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent(base + " and '" + runs[k].id + "' in parents") + fields);
+      }
+    }
+    urls.push("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=" + encodeURIComponent(base) + fields);   // legacy
+    var okAny = false, lastCode = 0;   // NOT lastStatus — that is the module's sync state
+    for (var i = 0; i < urls.length; i++) {
+      var r = await driveFetch(urls[i], {});
+      if (!r.ok) { lastCode = r.status; continue; }   // one space failing must not hide the other
+      okAny = true;
+      var j = await r.json();
+      (j.files || []).forEach(function (f) { if (f && !seen[f.id]) { seen[f.id] = 1; out.push(f); } });
+    }
+    if (!okAny) throw new Error("Drive list failed (" + lastCode + ")");
+    return out;
   }
   // What a DOWNLOAD reads: the most recent of everything we hold — normally the last
   // dated copy, or the current file when another build wrote it more recently.
   async function findFile() {
     var files = byNewest(await listOurFiles());
     return files.length ? files[0] : null;
-  }
-  // What a PUSH writes to: the plain-named current file (never a dated backup).
-  async function findCurrentFile() {
-    var files = byNewest((await listOurFiles()).filter(function (f) { return f && f.name === FILE_NAME; }));
-    return files.length ? files[0] : null;
-  }
-  // Leave a dated copy of what was just pushed, then drop the oldest beyond the cap.
-  // A copy is a Drive-side operation: no second upload of the payload. History is a
-  // bonus — a failure here must never fail the sync.
-  async function snapshotAfterPush(id) {
-    try {
-      var r = await driveFetch("https://www.googleapis.com/drive/v3/files/" + id + "/copy?fields=id", {
-        method: "POST", headers: { "Content-Type": "application/json; charset=UTF-8" },
-        body: JSON.stringify({ name: snapName(Date.now()), parents: ["appDataFolder"] })
-      });
-      if (!r.ok) return;
-      var old = snapsToPrune(await listOurFiles(), SNAP_KEEP);
-      for (var i = 0; i < old.length; i++) {
-        try { await driveFetch("https://www.googleapis.com/drive/v3/files/" + old[i].id, { method: "DELETE" }); } catch (e) {}
-      }
-    } catch (e) { /* the sync itself already succeeded */ }
   }
 
   async function downloadFile(id) {
@@ -234,18 +340,47 @@ window.GDriveSync = (function () {
     return await put.json();
   }
 
-  async function createFile(payloadStr) {
+  async function createFile(payloadStr, parentId) {
     return resumableUpload("POST",
       "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id",
-      { name: FILE_NAME, parents: ["appDataFolder"] }, payloadStr);
+      { name: FILE_NAME, parents: [parentId || await ensureFolder()] }, payloadStr);
   }
 
-  async function updateFile(id, payloadStr) {
-    return resumableUpload("PATCH",
-      "https://www.googleapis.com/upload/drive/v3/files/" + id + "?uploadType=resumable&fields=id",
-      {}, payloadStr);
-  }
 
+  // Write (or replace) one plainly-named file in the visible folder. Two steps rather
+  // than a multipart body: create the metadata, then PUT the bytes — so the same code
+  // handles a KMZ (binary) and a CSV (text) without hand-rolling MIME boundaries.
+  async function putNamedFile(name, mime, body, parentId) {
+    var fid = parentId || await ensureFolder();
+    var q = encodeURIComponent("trashed=false and name='" + String(name).replace(/'/g, "\\'") + "' and '" + fid + "' in parents");
+    var found = await driveFetch("https://www.googleapis.com/drive/v3/files?fields=files(id)&pageSize=1&q=" + q, {});
+    var id = "";
+    if (found.ok) { var fj = await found.json(); if (fj.files && fj.files.length) id = fj.files[0].id; }
+    if (!id) {
+      var c = await driveFetch("https://www.googleapis.com/drive/v3/files?fields=id", {
+        method: "POST", headers: { "Content-Type": "application/json; charset=UTF-8" },
+        body: JSON.stringify({ name: name, parents: [fid], mimeType: mime })
+      });
+      if (!c.ok) throw new Error("create " + name + " failed (" + c.status + ")");
+      id = (await c.json()).id;
+    }
+    var put = await driveFetch("https://www.googleapis.com/upload/drive/v3/files/" + id + "?uploadType=media",
+      { method: "PATCH", headers: { "Content-Type": mime }, body: body });
+    if (!put.ok) throw new Error("write " + name + " failed (" + put.status + ")");
+  }
+  // The readable copies (a .kmz per list and trip, CSV for species and checklists).
+  // Built by the app, written one at a time; a failure here never fails the sync.
+  async function writeReadableCopies(parentId) {
+    if (!window.AppData || !window.AppData.driveExtraFiles) return;
+    var files = [];
+    try { files = await window.AppData.driveExtraFiles(); } catch (e) { return; }
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i];
+      phase("files", f.name);
+      try { await putNamedFile(f.name, f.mime, f.bytes ? new Blob([f.bytes], { type: f.mime }) : f.text, parentId); }
+      catch (e) { /* one bad file must not cost the others, or the sync */ }
+    }
+  }
   // ---- sync orchestration ---------------------------------------------------
   // One manual pull→merge→push, run only from the Connect / Sync now buttons.
   // `options` (from the sync dialog) may narrow it: { direction, cats } where
@@ -257,13 +392,12 @@ window.GDriveSync = (function () {
     // Fetched observation dots are excluded unless asked for: re-fetchable, bulky, and
     // not something the user made. Anything already on Drive is left as it is.
     var inc = (options && options.cats) || { settings: 1, lists: 1, trips: 1, checklists: 1, fetched: 0 };
-    syncing = true; emit("syncing");
+    syncing = true; lastPhase = "signin"; lastPhaseName = ""; emit("syncing");
     try {
-      var meta = await findFile();                 // newest of ours — the last dated copy, normally
-      var cur = await findCurrentFile();           // the plain-named file a push writes to
-      if (cur && cur.id !== fileId) { fileId = cur.id; try { localStorage.setItem(LS_FILE_ID, fileId); } catch (e) {} }
-      if (!cur) { fileId = ""; try { localStorage.removeItem(LS_FILE_ID); } catch (e) {} }
+      phase("read");
+      var meta = await findFile();                 // newest payload: latest dated run folder, else legacy
       var remote = meta ? await downloadFile(meta.id) : null;
+      phase("merge");
 
       // Scalar-settings direction (collections always union regardless). Two-way:
       // remote wins ONLY when its change-stamp is strictly newer than what THIS
@@ -294,9 +428,14 @@ window.GDriveSync = (function () {
         (merged.ebirdKey && merged.ebirdKey !== (remote.ebirdKey || "")));
       if (needPush) {
         var str = JSON.stringify(merged);
-        if (fileId) { await updateFile(fileId, str); }
-        else { var created = await createFile(str); fileId = created.id; try { localStorage.setItem(LS_FILE_ID, fileId); } catch (e) {} }
-        await snapshotAfterPush(fileId);   // dated copy + prune (never fails the sync)
+        // Each sync gets its own dated folder holding that run's payload AND its readable
+        // copies, instead of overwriting one file and leaving loose dated JSONs beside it.
+        phase("write", FILE_NAME);
+        var runId = await createRunFolder();
+        var created = await createFile(str, runId);
+        fileId = created.id; try { localStorage.setItem(LS_FILE_ID, fileId); } catch (e) {}
+        await writeReadableCopies(runId);   // .kmz / .csv in the same folder, for a human to open
+        await pruneRunFolders(SNAP_KEEP);   // keep the newest few runs (never fails the sync)
       }
 
       localDirty = false;
@@ -309,6 +448,7 @@ window.GDriveSync = (function () {
         if (dir !== "download" && needPush) window.AppData.markBackedUp();
         else window.GeoState.save({ gdriveLastSync: lastSyncAt });
       } catch (e) {}
+      lastPhase = ""; lastPhaseName = "";
       emit("idle");
 
       // A pull that overwrote scalar settings the UI already rendered needs a
@@ -332,6 +472,7 @@ window.GDriveSync = (function () {
       fail(/storage/i.test(msg) ? "storagefull" : "reconnect", e);
     } finally {
       syncing = false;
+      lastPhase = ""; lastPhaseName = "";   // a failed run must not leave the button mid-sentence
     }
   }
 
@@ -365,8 +506,21 @@ window.GDriveSync = (function () {
       try {
         await waitForGis(); initTokenClient(); connected = true;   // same gesture sequence as syncNow
         await ensureToken();
-        var files = byNewest((await listOurFiles()).filter(function (f) { return f && String(f.name || "").indexOf(SNAP_PREFIX) === 0; }));
-        return files.map(function (f) { return { id: f.id, name: f.name, at: Date.parse(f.modifiedTime) || 0, size: +f.size || 0 }; });
+        // One entry per dated run folder — its name is the date, its payload is what a
+        // restore reads. Folders written before v1876 have none; the loose dated JSONs
+        // from then are listed after them so nothing already on Drive disappears.
+        var runs = await listRunFolders(), out = [];
+        for (var i = 0; i < runs.length; i++) {
+          var q = encodeURIComponent("trashed=false and name='" + FILE_NAME + "' and '" + runs[i].id + "' in parents");
+          var rr = await driveFetch("https://www.googleapis.com/drive/v3/files?fields=files(id,size)&pageSize=1&q=" + q, {});
+          if (!rr.ok) continue;
+          var ff = (await rr.json()).files || [];
+          if (!ff.length) continue;
+          out.push({ id: ff[0].id, name: runs[i].name, at: Date.parse(runs[i].createdTime) || 0, size: +ff[0].size || 0 });
+        }
+        byNewest((await listOurFiles()).filter(function (f) { return f && String(f.name || "").indexOf(SNAP_PREFIX) === 0; }))
+          .forEach(function (f) { out.push({ id: f.id, name: f.name, at: Date.parse(f.modifiedTime) || 0, size: +f.size || 0 }); });
+        return out;
       } catch (e) { fail("reconnect", e); return []; }
       finally { teardown(); emit(lastStatus); }
     },
