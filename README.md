@@ -90,10 +90,14 @@ OpenFreeMap's OpenMapTiles data, no key) on the Voyager and Satellite maps, so l
 smoothly by zoom + importance with collision avoidance (yr.no-style); it falls back to raster labels
 where WebGL is unavailable.
 
-**Species-group filter** (Settings → *Species group*): **All · Birds · Mammals · Amphibians ·
+**Species-group filter** (tap the gear → the quick panel; since v1889 it is not repeated in the
+long Settings panel): **All 🔭 · Birds · Mammals · Amphibians ·
 Insects · Plants · Fungi**. It restricts every view — model layers, the species list, the
-map dots and the observation fetch. The model covers birds/mammals/amphibians/insects;
-**Plants 🌿 and Fungi 🍄 are observation-only** (Range/Richness/Migration are hidden for them).
+map dots and the observation fetch. Choosing **All** (the binoculars) shows every group you have
+fetched at once; it is a *display* choice, so what a fetch asks for is still decided by the
+"Species types to fetch" ticks. The model covers
+birds/mammals/amphibians/insects; **Plants 🌿 and Fungi 🍄 are observation-only**
+(Range/Richness/Migration are hidden for them).
 
 **Overlay layers** (layer control): **WDPA · Protected Planet** (*Experimental* — enable in Settings), **Ramsar wetlands**,
 **Natura 2000** (EU SPA/SCI; *Experimental* — enable in Settings), **Emerald Network** (Bern Convention — the non-EU counterpart
@@ -408,8 +412,9 @@ station and day, tunable by **min detections/day** and **min confidence**. **eBi
 (FR, historic)**, **SABAP2 (ZA)** and **Birdata (AU)**. You can add your own datasets by hand (country
 code + dataset key or gbif.org URL).
 
-**Sightings radius** — set it with the Settings slider **or Shift + mouse-wheel over the map**
-(scroll up = larger). It steps a 0.1 … 150 km ladder (default **25 km**), controls the fetch
+**Sightings radius** — set it in the gear's **quick panel** (tap the gear) **or Shift +
+mouse-wheel over the map** (scroll up = larger). Since v1889 it is not duplicated in the long
+Settings panel. It steps a 0.1 … 150 km ladder (default **25 km**), controls the fetch
 box for Recent/Historic mode (previewed as a live dashed square), and sets the default radius
 of newly saved locations.
 
@@ -612,7 +617,10 @@ view**.
   the **point editor**: name, tags, a per-point colour (or automatic), a note (optionally
   rendered as HTML), a copyable-coordinates pill, and a *Save to list* picker. The **Points**
   header button (badge = number of lists) opens a panel of tick-to-show lists, per-tag filter
-  chips, a one-button Distance ⇄ Name sort toggle, and the merged points sorted by distance. **Press-and-hold or
+  chips, a one-button Distance ⇄ Name sort toggle, and the merged points sorted by distance. Each saved
+  list is one row — **tick · name · funnel · ⋯** — and the **⋯** opens a menu where every action is a
+  labelled row that says what it does: navigate, share link, edit list, download, delete (a protected
+  list shows the lock there instead of delete). **Press-and-hold or
   right-click** that button for the **Edit & protect lists** admin: rename a list, set its
   colour/tags for every point, **protect** it from deletion (🔒), delete it, or expand it to
   edit/remove individual points.
@@ -620,7 +628,12 @@ view**.
   Settings → *Map points*; download a **single list or trip** from the ↓ beside its × — in the Points
   menu and in the lists window (press-and-hold or right-click the Points button) — choosing the format
   there. Import from either the Settings *Import* button or *Load from file* in the Points menu — both
-  read all three formats (and share links).
+  read all three formats (and share links), and both take **several files at once**: each file becomes
+  its own list, named after the file, and the field mapping is asked once and applied to all of them.
+  A single file pre-fills the new list's name from its own file name too. A name already in use gets
+  ` #2`, ` #3` … rather than being merged into the existing list. The **note** can be built from
+  *several* fields — its picker is a checkbox dropdown — and when more than one is chosen each line is
+  labelled with the field it came from.
 - **Clicking a point** opens its record in a popup that stays open until you press its × or interact
   elsewhere; where several records share a coordinate they are listed together, newest first. Clicking
   a card opens that point's actions (source, navigate, add to route or list).
@@ -1077,13 +1090,17 @@ the one thing left out by default — they are much the largest thing the app ho
   source has one page budget per fetch shared across the requested types, so fewer ticks return
   more of each in a dense place. The type currently being viewed is always fetched (shown ticked
   and disabled), and changing the set starts a fresh fetch — the persisted cache is keyed by it.
-- **One fetch, every group** (since v1809) — a fetch always retrieves the superset (birds, mammals,
-  amphibians, insects, plants, fungi) whatever group is selected; the **species group is a display
-  filter** (`detPassesGroup`), so switching group re-filters the dots, legend and lists instantly
-  instead of leaving an empty map. A location therefore behaves identically whatever group you are
-  in, and whether the model covers that group no longer affects the fetch. Cost: each source's
-  paging budget is shared across six taxa, so a very dense spot truncates sooner than a birds-only
-  fetch would.
+  The override applies to a **single** group only: **All** (the binoculars) is a display choice
+  and deliberately leaves the ticks alone, so selecting it never widens a fetch. A user with only
+  *Birds* ticked therefore sees birds under All too — the ticks are what keep a fetch fast, and
+  All shows everything they have already brought back.
+- **The species group is a display filter** (since v1809) — switching group re-filters the dots,
+  legend and lists instantly (`detPassesGroup`) instead of leaving an empty map, so a location
+  behaves the same whatever group you are in. What a fetch *asks for* is a separate choice (the
+  ticks above): until v1811 it was always the superset; since then it is the ticked set, widened
+  only to include a single group you select. Whether the model
+  covers a group never affects the fetch. Cost of the wide case: each source's paging budget is
+  shared across six taxa, so a very dense spot truncates sooner than a birds-only fetch would.
 - **Species names outside birds** — the name packs were built for birds (measured 2026-09-18:
   95.6 % of insect and amphibian entries, and 42.5 % of mammal entries, were the English name
   repeated; plants and fungi have no packs at all, not being in the model). When a species appears

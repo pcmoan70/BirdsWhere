@@ -100,24 +100,48 @@ window.GDriveSync = (function () {
     try { return localStorage.getItem(LS_CLIENT_ID) || ""; } catch (e) { return ""; }
   }
   function localStateStr() { try { return localStorage.getItem(window.GeoState.storageKey) || "{}"; } catch (e) { return "{}"; } }
-  // Stringify a state object with `updatedAt` excluded, so a push decision
-  // ignores a timestamp-only difference (every local write bumps updatedAt).
-  function stateStrNoStamp(state) {
-    if (!state || typeof state !== "object") return JSON.stringify(state);
-    var copy = {}, k;
-    for (k in state) { if (Object.prototype.hasOwnProperty.call(state, k) && k !== "updatedAt") copy[k] = state[k]; }
-    return JSON.stringify(copy);
+  // "Has anything changed?" without stringifying the whole state twice. A big imported
+  // list puts tens of megabytes in `mapPointSets`, and serialising both copies of that to
+  // answer a yes/no question is most of what made a sync feel like a hang. Compare key by
+  // key, smallest first, and stop at the first difference.
+  var BULK_KEYS = { mapPointSets: 1, mapDetections: 1, mapDetectionSets: 1, sightingsCache: 1, nameHarvest: 1, extraVernac: 1 };
+  function stateDiffers(a, b) {
+    if (!a || !b || typeof a !== "object" || typeof b !== "object") return true;
+    var keys = {}, k;
+    for (k in a) if (Object.prototype.hasOwnProperty.call(a, k) && k !== "updatedAt") keys[k] = 1;
+    for (k in b) if (Object.prototype.hasOwnProperty.call(b, k) && k !== "updatedAt") keys[k] = 1;
+    var all = Object.keys(keys);
+    var small = all.filter(function (x) { return !BULK_KEYS[x]; });
+    var big = all.filter(function (x) { return BULK_KEYS[x]; });
+    var order = small.concat(big);
+    for (var i = 0; i < order.length; i++) {
+      var key = order[i];
+      var av = a[key], bv = b[key];
+      if (av === bv) continue;
+      // A cheap shape test before serialising a megabyte-sized value.
+      if (Array.isArray(av) && Array.isArray(bv) && av.length !== bv.length) return true;
+      if ((av == null) !== (bv == null)) return true;
+      if (JSON.stringify(av) !== JSON.stringify(bv)) return true;
+    }
+    return false;
   }
   var lastPhase = "";                // which step of a sync is running, for the button
   var lastPhaseName = "";            // …and, while files are being written, WHICH file
   var lastPull = null;               // what the last pull found on Drive, for the status line
+  var lastSkippedCopies = null;      // lists too big for a .kmz copy (the payload still carries them)
   var LS_LAST_PULL = "gdrive-last-pull";
-  function phase(p, name) { lastPhase = p || ""; lastPhaseName = name || ""; emit(lastStatus); }
+  // `done`/`total` drive the progress bar; they are 0 for the steps that have no count.
+  var lastDone = 0, lastTotal = 0;
+  function phase(p, name, done, total) {
+    lastPhase = p || ""; lastPhaseName = name || "";
+    lastDone = done || 0; lastTotal = total || 0;
+    emit(lastStatus);
+  }
   function pullSummary() {
     if (lastPull) return lastPull;
     try { var raw = sessionStorage.getItem(LS_LAST_PULL); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
   }
-  function snapshot() { return { connected: connected, hasClientId: !!clientId(), status: lastStatus, busy: syncing, lastSyncAt: lastSyncAt, error: lastError, phase: lastPhase, phaseName: lastPhaseName, pull: pullSummary() }; }
+  function snapshot() { return { connected: connected, hasClientId: !!clientId(), status: lastStatus, busy: syncing, lastSyncAt: lastSyncAt, error: lastError, phase: lastPhase, phaseName: lastPhaseName, done: lastDone, total: lastTotal, pull: pullSummary(), skippedCopies: lastSkippedCopies }; }
   function emit(s) { lastStatus = s; for (var i = 0; i < statusListeners.length; i++) { try { statusListeners[i](snapshot()); } catch (e) {} } }
   // Record a failure's detail so the UI can show WHY a sync failed, then emit.
   function fail(status, e) { lastError = (e && e.message) ? String(e.message) : (typeof e === "string" ? e : "sync failed"); emit(status); }
@@ -258,9 +282,20 @@ window.GDriveSync = (function () {
   }
   async function createRunFolder() {
     var parent = await ensureFolder();
+    var name = runFolderName(Date.now());
+    // Two syncs inside the same minute share a name, and Drive is happy to hold two
+    // folders called the same thing — which left a duplicate run beside the real one,
+    // each with its own copy of every file. Reuse the folder if it is already there.
+    var q = encodeURIComponent("trashed=false and mimeType='application/vnd.google-apps.folder' and name='" +
+                               name + "' and '" + parent + "' in parents");
+    var found = await driveFetch("https://www.googleapis.com/drive/v3/files?fields=files(id)&pageSize=1&q=" + q, {});
+    if (found.ok) {
+      var fj = await found.json();
+      if (fj.files && fj.files.length) return fj.files[0].id;
+    }
     var r = await driveFetch("https://www.googleapis.com/drive/v3/files?fields=id", {
       method: "POST", headers: { "Content-Type": "application/json; charset=UTF-8" },
-      body: JSON.stringify({ name: runFolderName(Date.now()), parents: [parent],
+      body: JSON.stringify({ name: name, parents: [parent],
                              mimeType: "application/vnd.google-apps.folder" })
     });
     if (!r.ok) throw new Error("Drive run folder failed (" + r.status + ")");
@@ -317,7 +352,27 @@ window.GDriveSync = (function () {
   }
   // What a DOWNLOAD reads: the most recent of everything we hold — normally the last
   // dated copy, or the current file when another build wrote it more recently.
+  // The payload inside one dated run folder, if it has one.
+  async function payloadIn(folderId) {
+    var q = encodeURIComponent("trashed=false and name='" + FILE_NAME + "' and '" + folderId + "' in parents");
+    var r = await driveFetch("https://www.googleapis.com/drive/v3/files?fields=files(id,name,modifiedTime,size)&pageSize=1&q=" + q, {});
+    if (!r.ok) return null;
+    var f = ((await r.json()).files || [])[0];
+    return f || null;
+  }
+  // What "Sync now" reads: the LATEST dated run, chosen by the run's own date rather than
+  // by file timestamps — a legacy backup that Drive touched later must not outrank today's
+  // sync. Only when no dated run holds a payload does it fall back to the folder root and
+  // then to the old hidden app-data space. Restoring a specific backup goes through
+  // restoreBackup(id) instead and is the only way to read an older run.
   async function findFile() {
+    try {
+      var runs = await listRunFolders();          // newest first, by createdTime
+      for (var i = 0; i < runs.length; i++) {
+        var f = await payloadIn(runs[i].id);
+        if (f) return f;
+      }
+    } catch (e) { /* fall through to the older layouts */ }
     var files = byNewest(await listOurFiles());
     return files.length ? files[0] : null;
   }
@@ -346,10 +401,20 @@ window.GDriveSync = (function () {
     return await put.json();
   }
 
+  // Write the payload into a run folder: replace the one already there (a second sync
+  // inside the same minute reuses the folder) rather than leaving two files of the same
+  // name side by side, which is what Drive would otherwise happily do.
   async function createFile(payloadStr, parentId) {
+    var parent = parentId || await ensureFolder();
+    var existing = await payloadIn(parent);
+    if (existing && existing.id) {
+      return resumableUpload("PATCH",
+        "https://www.googleapis.com/upload/drive/v3/files/" + existing.id + "?uploadType=resumable&fields=id",
+        {}, payloadStr);
+    }
     return resumableUpload("POST",
       "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id",
-      { name: FILE_NAME, parents: [parentId || await ensureFolder()] }, payloadStr);
+      { name: FILE_NAME, parents: [parent] }, payloadStr);
   }
 
 
@@ -380,9 +445,10 @@ window.GDriveSync = (function () {
     if (!window.AppData || !window.AppData.driveExtraFiles) return;
     var files = [];
     try { files = await window.AppData.driveExtraFiles(); } catch (e) { return; }
+    lastSkippedCopies = (files && files._skipped) || null;
     for (var i = 0; i < files.length; i++) {
       var f = files[i];
-      phase("files", f.name);
+      phase("files", f.name, i + 1, files.length);
       try { await putNamedFile(f.name, f.mime, f.bytes ? new Blob([f.bytes], { type: f.mime }) : f.text, parentId); }
       catch (e) { /* one bad file must not cost the others, or the sync */ }
     }
@@ -398,7 +464,7 @@ window.GDriveSync = (function () {
     // Fetched observation dots are excluded unless asked for: re-fetchable, bulky, and
     // not something the user made. Anything already on Drive is left as it is.
     var inc = (options && options.cats) || { settings: 1, lists: 1, trips: 1, checklists: 1, fetched: 0 };
-    syncing = true; lastPhase = "signin"; lastPhaseName = ""; emit("syncing");
+    syncing = true; lastPhase = "signin"; lastPhaseName = ""; lastDone = lastTotal = 0; emit("syncing");
     try {
       phase("read");
       var meta = await findFile();                 // newest payload: latest dated run folder, else legacy
@@ -441,7 +507,7 @@ window.GDriveSync = (function () {
       var merged = window.AppData.buildPayload();
       window.AppData.overlayExcludedForPush(merged, remote, inc, localState);
       var needPush = dir !== "download" && (!remote ||
-        stateStrNoStamp(merged.state) !== stateStrNoStamp(remote.state) ||
+        stateDiffers(merged.state, remote.state) ||
         (merged.ebirdKey && merged.ebirdKey !== (remote.ebirdKey || "")));
       if (needPush) {
         var str = JSON.stringify(merged);
@@ -455,6 +521,10 @@ window.GDriveSync = (function () {
         await pruneRunFolders(SNAP_KEEP);   // keep the newest few runs (never fails the sync)
       }
 
+      // The merge wrote to IndexedDB asynchronously. Wait for those writes to commit
+      // before the sync reports success — and certainly before the reload below, which
+      // would otherwise abort them and leave the synced lists on screen but unstored.
+      try { if (window.AppData && window.AppData.flushWrites) await window.AppData.flushWrites(); } catch (e) {}
       localDirty = false;
       lastSyncAt = Date.now();
       lastError = "";        // clear any previous failure on success
@@ -465,7 +535,7 @@ window.GDriveSync = (function () {
         if (dir !== "download" && needPush) window.AppData.markBackedUp();
         else window.GeoState.save({ gdriveLastSync: lastSyncAt });
       } catch (e) {}
-      lastPhase = ""; lastPhaseName = "";
+      lastPhase = ""; lastPhaseName = ""; lastDone = lastTotal = 0;
       emit("idle");
 
       // A pull that overwrote scalar settings the UI already rendered needs a
@@ -489,7 +559,7 @@ window.GDriveSync = (function () {
       fail(/storage/i.test(msg) ? "storagefull" : "reconnect", e);
     } finally {
       syncing = false;
-      lastPhase = ""; lastPhaseName = "";   // a failed run must not leave the button mid-sentence
+      lastPhase = ""; lastPhaseName = ""; lastDone = lastTotal = 0;   // a failed run must not leave the button mid-sentence
     }
   }
 
@@ -552,6 +622,7 @@ window.GDriveSync = (function () {
         var data = await downloadFile(id);
         if (!data) throw new Error("backup could not be read");
         window.AppData.applyRemote(data, { incomingWins: true, interactive: false });
+        try { if (window.AppData.flushWrites) await window.AppData.flushWrites(); } catch (e) {}   // durable before we call it restored
         lastSyncAt = Date.now(); lastError = "";
         try { window.AppData.markBackedUp(); } catch (e) {}   // restored → in step with Drive
         emit("idle");

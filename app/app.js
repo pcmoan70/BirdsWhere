@@ -203,8 +203,6 @@
         modeEl.dispatchEvent(new Event("change"));   // run the full mode switch
       }
     }
-    var hint = document.getElementById("group-nomodel-hint");
-    if (hint) hint.style.display = hasModel ? "none" : "";
   }
   // WHAT A FETCH RETRIEVES, as opposed to what the app is currently showing. Since
   // v1809 a fetch is not limited to the group on screen: the active group filters what
@@ -227,8 +225,10 @@
     FETCH_GROUP_IDS.forEach(function (g) { out[g] = saved && typeof saved === "object" ? saved[g] !== false : true; });
     // Never fetch nothing: an empty selection falls back to the group on screen (or birds).
     if (!FETCH_GROUP_IDS.some(function (g) { return out[g]; })) out[speciesGroup === "all" ? "aves" : speciesGroup] = true;
-    // The group being VIEWED is always fetched, whatever the ticks say — otherwise
-    // selecting it would show an empty map with no way to see why.
+    // The single group being VIEWED is always fetched, whatever the ticks say — otherwise
+    // selecting it would show an empty map with no way to see why. "All" is NOT such a
+    // group: it is a display choice that shows every type already fetched, so it leaves
+    // the ticks alone — they are what keeps a fetch fast.
     if (speciesGroup !== "all" && out[speciesGroup] === false) out[speciesGroup] = true;
     return out;
   }
@@ -560,12 +560,6 @@
       : '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/></svg>';
   }
   function isFullscreen() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
-  function fsIconSvg() {
-    // Outward arrows when normal (→ expand), inward when already full-screen.
-    return isFullscreen()
-      ? '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>'
-      : '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
-  }
   function toggleFullscreen() {
     var d = document, el = d.documentElement;
     if (!isFullscreen()) { var req = el.requestFullscreen || el.webkitRequestFullscreen; if (req) req.call(el); }
@@ -2733,6 +2727,8 @@
     return n;
   }
   function filterSpRows() {
+    // The same search also filters list pins on the map (listPointPasses → pointNameMatches).
+    try { if (mpState && mpState.mpFilterRefresh) mpState.mpFilterRefresh(); } catch (e) {}
     var tb = document.getElementById("sp-tbody"); if (!tb) return;
     var q = spNameQuery.trim();
     Array.prototype.forEach.call(tb.querySelectorAll("tr"), function (tr) {
@@ -2753,7 +2749,8 @@
     if (active && agg) Object.keys(agg).forEach(function (k) { (agg[k].rows || []).forEach(function (r) { if (!detDatePasses(r.date)) hidden++; }); });
     if (!active || !hidden) {
       // Nothing to say about the date window — but an empty spot explains itself here.
-      if (spMissingAuto) { el.textContent = t("sp.modelOnly"); el.style.display = ""; return; }
+      // Belt and braces: never claim "no observations here" while the list is showing some.
+      if (spMissingAuto && !aggHasRows(agg)) { el.textContent = t("sp.modelOnly"); el.style.display = ""; return; }
       el.style.display = "none"; return;
     }
     var win = rg ? ((rg.from ? fmtDate(rg.from) : "…") + " – " + (rg.to ? fmtDate(rg.to) : "…"))
@@ -5045,9 +5042,21 @@
         if (ctrl) { activeFetchCtrls.add(ctrl); try { updateFilterBusy(); } catch (e) {} }   // registered so a map-clear can abort it; the funnel pulses while it runs
         if (ctrl && T > 0) tmr = setTimeout(function () { killed = true; try { ctrl.abort(); } catch (e) {} }, T * 1000);
         var cs = ctrl ? Object.assign({}, c, { signal: ctrl.signal }) : c;
-        return guardFetch(failed, s.name, obsTrack(s.name, s.run(cs))).then(function (recs) {
-          if (tmr) clearTimeout(tmr);
-          if (ctrl) { activeFetchCtrls.delete(ctrl); try { updateFilterBusy(); } catch (e) {} }
+        // Releasing the registration is what stops the funnel pulsing, so it has to happen on
+        // EVERY exit — it used to sit in the success handler alone. guardFetch turns a
+        // rejection into [], which covered the async failures; what it did not cover is
+        // `s.run(cs)` throwing SYNCHRONOUSLY, while the chain is still being built. The
+        // controller was already registered, no .then was ever attached, and the funnel then
+        // pulsed "fetching" for the rest of the session with nothing in flight.
+        var release = function () {
+          if (tmr) { clearTimeout(tmr); tmr = null; }
+          if (ctrl && activeFetchCtrls.delete(ctrl)) { try { updateFilterBusy(); } catch (e) {} }
+        };
+        var started;
+        try { started = obsTrack(s.name, s.run(cs)); }
+        catch (e) { release(); started = Promise.reject(e); }
+        return guardFetch(failed, s.name, started).then(function (recs) {
+          release();
           var rr = recs || [];
           if (killed) {
             timedOut.push(s.name); var fi = failed.indexOf(s.name); if (fi >= 0) failed.splice(fi, 1);   // a timeout isn't a hard failure
@@ -5510,20 +5519,20 @@
     (rarRows || []).forEach(function (d) { if (d.key.indexOf("x:") === 0) add(d.key.slice(2), d.name, d.key.slice(2), "Aves", [d]); });
     return out;
   }
+  // Does the species list actually hold any observation? (Any species with at least one
+  // row in the merged aggregate.)
+  function aggHasRows(agg) {
+    if (!agg) return false;
+    var keys = Object.keys(agg);
+    for (var i = 0; i < keys.length; i++) { var e = agg[keys[i]]; if (e && e.rows && e.rows.length) return true; }
+    return false;
+  }
   function applySightings(tbody, token, result, isFinal) {
     if (!tbody || tbody.dataset.sightingsToken !== token) return;
     if (isFinal) showSourceCounts(result.bySrc, result.dedupTotal, result.timedOut, result.failed, result.truncInfo);
     // Nothing found at this spot: rather than an empty page, show what the model expects
     // here, commonest first (the filtering pass below already honours spMissingAuto).
     var missingFlip = false;
-    if (isFinal && !spShowMissing) {
-      var nothingHere = !(result && result.dedupTotal > 0);
-      if (nothingHere !== spMissingAuto) {
-        spMissingAuto = nothingHere;
-        missingFlip = true;
-        if (nothingHere) { speciesListSort = { col: "prob", dir: "desc" }; try { updateSortIndicators(); } catch (e) {} }
-      }
-    }
     // Union across ALL plotted point-fetches, so the list mirrors the accumulated
     // map dots — not just this one fetch's data.
     // Rarity records within the list's own neighbourhood (the same radius the
@@ -5536,6 +5545,18 @@
     try { var rcz = (typeof rarityCfg === "function") ? rarityCfg() : null; if (rcz && rcz.enabled !== false && rcz.showMap !== false) rarRows = rarityNearRows(null) || []; } catch (e) {}
     var extras = mergedExtras(result.extras, rarRows), agg = mergedSightingsAgg(result.agg, rarRows);
     tbody._sightingsAgg = agg;
+    // "Nothing here → show what the model expects instead" is decided on the UNION that
+    // this list actually displays, not on THIS fetch's dedupTotal. The list merges every
+    // plotted fetch plus the rarity rows, so a point that returned nothing of its own can
+    // still be listing plenty — and the note then contradicted the rows right beneath it.
+    if (isFinal && !spShowMissing) {
+      var nothingHere = !aggHasRows(agg);
+      if (nothingHere !== spMissingAuto) {
+        spMissingAuto = nothingHere;
+        missingFlip = true;
+        if (nothingHere) { speciesListSort = { col: "prob", dir: "desc" }; try { updateSortIndicators(); } catch (e) {} }
+      }
+    }
     tbody._fetchAgg = (result && result.agg) || {};   // THIS point's fetch only (no detPlot union / rarity) — the PDF/CSV "Seen" column reads this
     if (currentSpView) currentSpView._result = result;   // latest data for plotAllSightings (partial or final)
     updateSpMapBtn();
@@ -5834,10 +5855,34 @@
     var due = now > 0 && now > was && Date.now() - from > BACKUP_DUE_MS;
     return { at: at, pts: now, was: was, due: due, from: from };
   }
-  function backupLineText(st) {
-    if (!st.at) return t("sync.neverBackedUp");
-    var d = new Date(st.at);
-    return t("sync.lastBackup", { t: d.toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) });
+  // A sync runs while the Settings panel is usually shut, so its spinner and progress bar
+  // are out of sight. This is the one indicator that is always on screen: a turning ⟳ in
+  // the corner for as long as the sync is busy, with the step and the file count beside it.
+  // Registered at boot, independent of the Settings wiring, so it works even if that panel
+  // is never opened.
+  function wireSyncSpinner() {
+    if (!window.GDriveSync || !window.GDriveSync.onStatus) return;
+    var PH = { signin: "sync.phSignin", read: "sync.phRead", merge: "sync.phMerge",
+               write: "sync.phWrite", files: "sync.phFiles" };
+    window.GDriveSync.onStatus(function (st) {
+      var el = document.getElementById("sync-spinner");
+      if (!st || !st.busy) { if (el) el.remove(); return; }
+      if (!el) {
+        el = document.createElement("div");
+        el.id = "sync-spinner"; el.className = "sync-spinner";
+        el.setAttribute("role", "status"); el.setAttribute("aria-live", "polite");
+        el.innerHTML = '<svg class="sync-spinner-ico" viewBox="0 0 24 24" width="18" height="18" fill="none" ' +
+          'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+          '<path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg><span class="sync-spinner-txt"></span>';
+        document.body.appendChild(el);
+      }
+      var txt = st.phaseName ? t("sync.phWriteFile", { name: st.phaseName })
+                             : (PH[st.phase] ? t(PH[st.phase]) : t("gdrive.syncing"));
+      if (st.total > 1) txt = st.done + "/" + st.total + " " + txt;
+      var sp = el.querySelector(".sync-spinner-txt");
+      if (sp) sp.textContent = txt;
+      el.title = txt;
+    });
   }
   function updateBackupNudge() {
     var st = backupState();
@@ -5850,7 +5895,10 @@
     if (sb) { sb.classList.toggle("backup-due", st.due); sb.title = st.due ? t("sync.backupDue") : ""; }
     var line = document.getElementById("mp-backup-line");
     if (line) {
-      line.textContent = backupLineText(st) + (st.due ? " · " + t("sync.backupDue") : "");
+      // The "last backed up to Drive …" sentence was removed (2026-09-24): it sat in the
+      // Points panel on every open saying nothing the user could act on. The overdue
+      // nudge stays — that one asks for something.
+      line.textContent = st.due ? t("sync.backupDue") : "";
       line.classList.toggle("backup-due", st.due);
     }
   }
@@ -6041,6 +6089,14 @@
     });
     return out;
   }
+  // Durable-write register. applyRemote's IndexedDB writes are async; anything that
+  // navigates straight afterwards must wait for them, or the merge is only ever in memory.
+  var pendingIdbWrites = [];
+  function flushWrites() {
+    var w = pendingIdbWrites; pendingIdbWrites = [];
+    if (!w.length) return Promise.resolve();
+    return Promise.all(w.map(function (p) { return Promise.resolve(p).catch(function () {}); }));
+  }
   function applyRemote(data, opts) {
     opts = opts || {};
     if (!data || data.app !== "migration_calendar") throw new Error(t("sync.notBackup"));
@@ -6101,12 +6157,14 @@
       });
     });
     var mergedSetsList = setOrder.map(function (n) { return setByName[n]; });
-    // Which lists / detection-sets are SHOWN: union both sides (a list shown on
-    // EITHER device stays shown after the merge), keeping only names that still
-    // exist — otherwise a list synced in from the other device lands unticked and
-    // its markers never render, so it looks like nothing synced.
+    // Which lists are SHOWN is THIS device's business: a sync must not draw a list on
+    // the map because another device had it ticked. It used to union both sides — so a
+    // sync could silently cover the map with lists the user had never shown here.
+    // (Detection sets still union; they are trips, and a synced trip you cannot see
+    // looks like a failed sync.)
     var setNames = {}; mergedSets.forEach(function (c) { setNames[c.name] = 1; });
-    var shownUnion = {}; [local.mapPointsShownColls, incoming.mapPointsShownColls].forEach(function (a) { (Array.isArray(a) ? a : []).forEach(function (n) { if (n && setNames[n]) shownUnion[n] = 1; }); });
+    var shownUnion = {}; (Array.isArray(local.mapPointsShownColls) ? local.mapPointsShownColls : [])
+      .forEach(function (n) { if (n && setNames[n]) shownUnion[n] = 1; });
     var detSetNames = {}; mergedSetsList.forEach(function (s) { detSetNames[s.name] = 1; });
     var detShownUnion = {}; [local.mapDetSetsShown, incoming.mapDetSetsShown].forEach(function (a) { (Array.isArray(a) ? a : []).forEach(function (n) { if (n && detSetNames[n]) detShownUnion[n] = 1; }); });
     // Scalar settings: the winning side overrides, the other fills any gaps.
@@ -6162,7 +6220,10 @@
     // union of two devices' lists is exactly the write that used to break the sync.
     if (mpState.mpIdbReady && mpState.mpIdbReady()) {
       mpState.setMpCollections(mergedSets);
-      try { window.AppPoints.persistMpSets(mergedSets); } catch (e) {}
+      // Collected, not fired and forgotten: a caller about to reload (or a user about to
+      // close the app) waits on these through AppData.flushWrites(), or the synced lists
+      // are lost with the transaction.
+      try { pendingIdbWrites.push(window.AppPoints.persistMpSets(mergedSets)); } catch (e) {}
       delete newState.mapPointSets;
     } else newState.mapPointSets = mergedSets;
     newState.mapDetections = mergedDet;
@@ -6193,14 +6254,14 @@
       // (matches persistDetSet): a failed write leaves the trip in the in-memory
       // mirror but not durable, so flag it instead of swallowing the rejection.
       var onIdbErr = function () { setStatus(t("err.storageFull")); };
-      mergedSetsList.forEach(function (s) { if (s && s.name) window.AppIDB.put("set:" + s.name, s).then(null, onIdbErr); });
-      Object.keys(setTomb).forEach(function (n) { window.AppIDB.del("set:" + n).then(null, onIdbErr); });
+      mergedSetsList.forEach(function (s) { if (s && s.name) pendingIdbWrites.push(window.AppIDB.put("set:" + s.name, s).then(null, onIdbErr)); });
+      Object.keys(setTomb).forEach(function (n) { pendingIdbWrites.push(window.AppIDB.del("set:" + n).then(null, onIdbErr)); });
       delete newState.mapDetectionSets;   // trips live in IDB; keep them out of the blob (the scalar copy may have set this)
     } else {
       newState.mapDetectionSets = mergedSetsList;
     }
     newState.mapDetectionSetsDel = Object.keys(setTomb);
-    newState.mapPointsShownColls = Object.keys(shownUnion);   // union, so synced-in lists are visible
+    newState.mapPointsShownColls = Object.keys(shownUnion);   // this device's own ticks only
     newState.mapDetSetsShown = Object.keys(detShownUnion);
     // Working set + active list: a file IMPORT shows the merged loose set (no
     // active list); a background SYNC keeps the user's loaded list active and
@@ -6366,10 +6427,16 @@
   }
   // Name a file the way a person would, without letting a list name break the path.
   function safeFileName(x) { return String(x || "").replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 60) || "unnamed"; }
+  // A readable copy is a convenience; the sync payload is the data. Building one for a
+  // very large list is not worth what it costs — a 73 000-point list makes ~115 MB of KML
+  // string before it is even deflated, which on a phone is the sync "hanging". Lists past
+  // this go to Drive in the payload as always, just without a .kmz beside them.
+  var COPY_MAX_POINTS = 20000;
   function driveExtraFiles() {
-    var out = [], jobs = [];
+    var out = [], jobs = [], skipped = [];
     function kmz(name, points) {
       if (!points || !points.length) return;
+      if (points.length > COPY_MAX_POINTS) { skipped.push(name + " (" + points.length + ")"); return; }
       var coll = [{ name: name, points: points }];
       jobs.push(mpState.buildKmz(mpState.buildPointsKml(coll, [])).then(function (bytes) {
         out.push({ name: safeFileName(name) + ".kmz", mime: "application/vnd.google-earth.kmz", bytes: bytes });
@@ -6398,13 +6465,17 @@
       var fc = window.AppField && window.AppField.fieldChecklistCsv && window.AppField.fieldChecklistCsv();
       if (fc) out.push({ name: "Checklists.csv", mime: "text/csv;charset=utf-8", text: fc });
     } catch (e) {}
-    return Promise.all(jobs).then(function () { return out; });
+    return Promise.all(jobs).then(function () {
+      if (skipped.length) out._skipped = skipped;   // reported by the sync, not silently dropped
+      return out;
+    });
   }
   // Surface the data layer for the Google Drive sync module (gdrive-sync.js),
   // which lives outside this IIFE. It builds the payload and merges remote
   // copies through the exact same code path as the file Export/Import.
   window.AppData = {
     buildPayload: buildPayload,
+    flushWrites: flushWrites,
     driveExtraFiles: driveExtraFiles,
     markBackedUp: markBackedUp,
     applyRemote: applyRemote,
@@ -7090,9 +7161,6 @@
           '<div class="ctrl-group" id="viewtoggle-wrap" style="display:none">' +
             '<button type="button" id="viewtoggle-btn" class="hdr-icon-btn" title="" aria-label=""></button>' +
           '</div>' +
-          '<div class="ctrl-group" id="fs-wrap" style="display:none">' +
-            '<button type="button" id="hdr-fs-toggle" class="hdr-icon-btn fs-toggle-btn" aria-label="Fullscreen" title="Fullscreen"></button>' +
-          '</div>' +
           '<div class="ctrl-group" id="settings-wrap">' +
             '<button type="button" id="settings-toggle" class="settings-icon-btn" aria-haspopup="true" aria-label="Settings" data-i18n-title="ctrl.settingsHold" title="Settings"></button>' +
             '<div id="settings-panel" class="dd-panel settings-panel" style="display:none">' +
@@ -7105,9 +7173,13 @@
               '<button type="button" id="settings-update" class="settings-update" style="display:none"></button>' +
               '<div id="settings-update-notes" class="cu-hint" style="display:none"></div>' +
               '<div class="settings-section" data-i18n="settings.secView">View</div>' +
-              '<div class="ctrl-group">' +
-                '<label for="group-select" data-i18n="ctrl.group">Species group</label>' +
-                '<select id="group-select" style="display:none">' +
+              // Species group and Sightings radius are NOT shown here: both live in the gear's
+              // quick panel (a tap), which is where they belong — one tap instead of opening
+              // the long panel. The controls themselves stay as the app's registers, hidden:
+              // the quick panel builds itself by reading them, and every other call site keeps
+              // them in step. Same arrangement as the probability inputs further down.
+              '<div id="settings-registers" style="display:none">' +
+                '<select id="group-select">' +
                   '<option value="all" data-i18n="group.all">All groups</option>' +
                   '<option value="aves" data-i18n="group.aves">Birds</option>' +
                   '<option value="mammalia" data-i18n="group.mammalia">Mammals</option>' +
@@ -7116,15 +7188,13 @@
                   '<option value="plantae" data-i18n="group.plantae">Plants</option>' +
                   '<option value="fungi" data-i18n="group.fungi">Fungi</option>' +
                 '</select>' +
-                // Custom picker in front of the hidden select: a native <option>
-                // can't render SVG, and the group icons should match the app's
-                // line-icon set (same rows as the gear's long-press quick menu).
+                // Kept (hidden) because the group picker and several callers address them.
                 '<div id="group-picker-wrap">' +
                   '<button type="button" id="group-picker-btn" aria-haspopup="listbox"></button>' +
                   '<div id="group-picker-panel" class="group-quick-panel" style="display:none" role="listbox"></div>' +
                 '</div>' +
-                '<p class="cu-hint" id="group-nomodel-hint" style="display:none" data-i18n="group.noModelHint">No habitat model for this group — observation search only (no range, richness or migration).</p>' +
-                '<p class="cu-hint" data-i18n="ctrl.groupHint">Limit the whole app — lists, Range, Richness and observation search — to one group: birds, mammals, amphibians, insects, plants or fungi.</p>' +
+                '<span id="recent-radius-val" class="radius-val"></span>' +
+                '<input type="range" id="recent-radius" min="0" max="18" step="1" />' +
               '</div>' +
               // Which TYPES a fetch asks for (the group picker above only decides what is
               // shown). Every source shares one paging budget across the types requested,
@@ -7133,11 +7203,6 @@
                 '<label data-i18n="ctrl.fetchGroups">Species types to fetch</label>' +
                 '<div class="fetch-groups" id="fetch-groups"></div>' +
                 '<p class="cu-hint" data-i18n="ctrl.fetchGroupsHint">Every source has one page budget per fetch, shared across the types you ask for — so fetching fewer types returns more of each in a busy place. The type you are viewing is always fetched.</p>' +
-              '</div>' +
-              '<div class="ctrl-group">' +
-                '<div class="ctrl-label-row"><label for="recent-radius" data-i18n="ctrl.recentradius">Sightings radius</label><span id="recent-radius-val" class="radius-val"></span></div>' +
-                '<div class="radius-row"><input type="range" id="recent-radius" min="0" max="18" step="1" /></div>' +
-                '<p class="cu-hint" data-i18n="ctrl.recentradiusHint">How far around a clicked point or stored location each source is searched for recent observations.</p>' +
               '</div>' +
               // The probability range is no longer a Settings control — it lives in the
               // list's own Filters pane (the funnel → Probability), where the other
@@ -7280,7 +7345,7 @@
                   icoBtn("points-kml-import", "upload", "btn.import", "Import") +
                   '<button type="button" id="points-fmt-toggle" class="btn btn-light kml-fmt-toggle" data-i18n-title="btn.fmtToggle" title="Export format">KML</button>' +
                 "</div>" +
-                '<input type="file" id="points-kml-file" accept=".kmz,.kml,.geojson,.json" style="display:none" />' +
+                '<input type="file" id="points-kml-file" accept=".kmz,.kml,.geojson,.json" multiple style="display:none" />' +
                 '<p class="cu-hint" data-i18n="ctrl.exportPointsHint">Export the map points you’ve placed as a KML or GeoJSON file, or import points from one.</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
@@ -7829,8 +7894,6 @@
       if (hdr && chkWrap) hdr.appendChild(chkWrap);
       var mpWrap = document.getElementById("mp-wrap");
       if (hdr && mpWrap) hdr.appendChild(mpWrap);
-      var fsWrap = document.getElementById("fs-wrap");
-      if (hdr && fsWrap) hdr.appendChild(fsWrap);   // fullscreen toggle next to the Points button
       var vtWrap = document.getElementById("viewtoggle-wrap");
       if (hdr && vtWrap) hdr.appendChild(vtWrap);   // List⇄Map switch, far right of the top bar
       syncHeaderHeight();
@@ -7967,7 +8030,14 @@
       if (plainOpen && fetchOnOpen()) { armFetchOnOpen(); setTimeout(fetchOnOpenLocations, 1200); }
       // Start Google Drive sync last, after all init-time GeoState writes, so
       // its open-time pull isn't fooled into thinking local is newer.
-      if (window.GDriveSync) window.GDriveSync.init();
+      if (window.GDriveSync) { window.GDriveSync.init(); wireSyncSpinner(); }
+      // The List⇄Map switch starts hidden (display:none in the template) and was only ever
+      // re-evaluated on a mode change, a fetch or a list render. So opening the app already
+      // in list mode with nothing fetched — a restored session — left it hidden for the whole
+      // session: there was no button to press, which is what "the button seems unresponsive"
+      // looks like. viewToggleAvail() also needs `labels`, which only exists once the model's
+      // label file has loaded, so this has to run here at the end of boot rather than earlier.
+      try { updateViewToggle(); } catch (e) {}
       hideBootSplash();   // boot complete — drop the static splash from index.html
     } catch (e) {
       document.getElementById("app-loading").style.display = "";   // may have been hidden before the failure
@@ -8716,7 +8786,12 @@
       var el = document.getElementById("det-legend"); if (el) el.classList.add("det-counts-stale");
       setListStaleInd(true);
       clearTimeout(legendRedrawTimer);
-      legendRedrawTimer = setTimeout(function () { if (legendHasData()) updateDetLegendKeepObsScroll(); }, LEGEND_REDRAW_IDLE);
+      legendRedrawTimer = setTimeout(function () {
+        // Clear the pulse either way: recounting is what ends it, and "there is nothing
+        // left to recount" ends it just as definitely.
+        if (legendHasData()) updateDetLegendKeepObsScroll();
+        else setListStaleInd(false);
+      }, LEGEND_REDRAW_IDLE);
     });
     window.addEventListener("offline", scheduleOfflineCheck);
     window.addEventListener("online", refreshOfflineZoomCap);   // reconnected → fetch full-res deep tiles again
@@ -9025,19 +9100,23 @@
     // button, same size as the other header icons. Only shown where the
     // Fullscreen API is available.
     if (document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen) {
-      var fsBtn = document.getElementById("hdr-fs-toggle"), fsWrap = document.getElementById("fs-wrap");
-      if (fsBtn && fsWrap) {
-        fsWrap.style.display = "";
-        fsBtn.title = t("ctrl.fullscreen"); fsBtn.setAttribute("aria-label", t("ctrl.fullscreen"));
-        fsBtn.innerHTML = fsIconSvg();
-        fsBtn.addEventListener("click", function (e) { e.preventDefault(); toggleFullscreen(); });
+      // No button any more: press and hold the green top bar itself to fill the screen,
+      // hold again to come back. The hold must start on the BAR — a hold that begins on
+      // one of its controls belongs to that control (the Points button opens the lists
+      // window that way), so presses landing on a control are ignored here.
+      var hdrBar = document.getElementById("site-header");
+      if (hdrBar) {
+        hdrBar.title = t("ctrl.fullscreen");
+        wireHoldButton(hdrBar, toggleFullscreen, function (e) {
+          var el = e && e.target;
+          return !(el && el.closest && el.closest("button, a, input, select, textarea, label, .dd-panel"));
+        });
       }
       // iPad/iPhone Safari draws its own large ✕ (exit full-screen) over the top-left
       // corner, right where the settings (bird) button sits — while full-screen on an
       // Apple touch device the header is pushed right so every control stays reachable.
       var appleTouch = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
       function onFsChange() {
-        var b = document.querySelector(".fs-toggle-btn"); if (b) b.innerHTML = fsIconSvg();
         document.body.classList.toggle("fs-apple", appleTouch && isFullscreen());
         fitMapHeight();
       }
@@ -10160,7 +10239,9 @@
   // `holdAt` guards a short window after the RELEASE (the emulated burst follows
   // touchend, so a long hold must not let the window lapse), touchend preventDefaults
   // where the browser honours it, and `firedAt` makes one hold call `onHold` once.
-  function wireHoldButton(btn, onHold) {
+  // `canStart(e)` (optional) vetoes a press before it can become a hold — used where the
+  // element being held is a CONTAINER whose own children have their own hold behaviour.
+  function wireHoldButton(btn, onHold, canStart) {
     if (!btn) return;
     var lpT = null, lpFired = false, lpX = 0, lpY = 0, holdAt = 0, firedAt = 0;
     var HOLD_GUARD_MS = 800;
@@ -10179,16 +10260,21 @@
     // Capture phase: swallow the hold's own click AND its emulated twin before the
     // button's ordinary tap handler (or anything else) sees them.
     btn.addEventListener("click", function (e) {
+      // A press that could never have started a hold here must not have its click eaten
+      // either. On a CONTAINER (the header) the swallow would otherwise apply to every
+      // control inside it: hold the bar for full screen, and the next tap on the gear or
+      // the Points button vanished.
+      if (canStart && !canStart(e)) return;
       if (!lpFired && Date.now() - holdAt >= HOLD_GUARD_MS) return;
       lpFired = false; e.stopImmediatePropagation(); e.preventDefault();
     }, true);
-    btn.addEventListener("touchstart", function (e) { var tt = e.touches && e.touches[0]; start(tt ? tt.clientX : 0, tt ? tt.clientY : 0); }, { passive: true });
+    btn.addEventListener("touchstart", function (e) { if (canStart && !canStart(e)) return; var tt = e.touches && e.touches[0]; start(tt ? tt.clientX : 0, tt ? tt.clientY : 0); }, { passive: true });
     btn.addEventListener("touchmove", function (e) { var tt = e.touches && e.touches[0]; if (tt && (Math.abs(tt.clientX - lpX) > 12 || Math.abs(tt.clientY - lpY) > 12)) clearTimeout(lpT); }, { passive: true });
     btn.addEventListener("touchend", function (e) { clearTimeout(lpT); if (lpFired) { holdAt = Date.now(); if (e.cancelable) e.preventDefault(); } });
-    btn.addEventListener("mousedown", function (e) { if (e.button === 0) start(e.clientX, e.clientY); });
+    btn.addEventListener("mousedown", function (e) { if (canStart && !canStart(e)) return; if (e.button === 0) start(e.clientX, e.clientY); });
     btn.addEventListener("mouseup", function () { clearTimeout(lpT); if (lpFired) holdAt = Date.now(); });
     btn.addEventListener("mouseleave", function () { clearTimeout(lpT); });
-    btn.addEventListener("contextmenu", function (e) { e.preventDefault(); e.stopPropagation(); fire(); });
+    btn.addEventListener("contextmenu", function (e) { if (canStart && !canStart(e)) return; e.preventDefault(); e.stopPropagation(); fire(); });
   }
   function detSelectionActive() { return Object.keys(detSelected).some(function (k) { return detPlot[k] && detPassesStatus(k) && detPassesGroup(k); }); }
   function detExclusionActive() { return Object.keys(detExcluded).some(function (k) { return detPlot[k]; }); }
@@ -12583,6 +12669,8 @@
       if (typeof speciesPanelPopulated === "function" && speciesPanelPopulated()) renderSpControls();
       if (allFiltersPane) renderAllFiltersPane();   // keep the "all filters" pane in sync
     });
+    // the pane's filters reach imported list pins too (mpVisible → listPointPasses)
+    try { if (mpState && mpState.mpFilterRefresh) mpState.mpFilterRefresh(); } catch (e) {}
   }
   // Re-render just the filter bar on whichever surface currently hosts it (the popup,
   // or the fetch list) — for panel-open toggles that don't change the data.
@@ -13509,6 +13597,9 @@
       e.group.addTo(map);
     });
     if (dotDC && dotDC.clusters.length) renderDotClusters(dotDC.clusters);
+    // A filter change reaches the list pins too (mpVisible → listPointPasses); coalesced to
+    // one redraw per frame inside mpFilterRefresh, and guarded against re-entry.
+    try { if (mpState && mpState.mpFilterRefresh) mpState.mpFilterRefresh(); } catch (e) {}
   }
   // While a legend hover isolates a species/observer, the spot overlays (eBird
   // hotspots, Best sites and birding spots all render in spotsPane) hide too —
@@ -13649,6 +13740,7 @@
   }
   function renderPlottedObsPage() {
     var rec = document.getElementById("sp-records"); if (!rec) return;
+    spPageIsObs = true;
     var tbl = document.getElementById("species-list-table"); if (tbl) tbl.style.display = "none";
     // Header: list EVERY fetched square, one line each, ordered by geography (not by
     // fetch time). No generic "species here" title.
@@ -13705,8 +13797,21 @@
       var movedAway = !!(spMissingAuto && refNow && currentSpView &&
         (Math.abs(refNow.lat - +currentSpView.lat) > 1e-4 || Math.abs(refNow.lon - +currentSpView.lon) > 1e-4));
       var showedObsPage = false;
-      if (!speciesPanelPopulated() || movedAway || mapFromMultiFetch) {
-        var refPt = mapFromMultiFetch ? null : refNow;
+      var haveDots = hasPlottedDetections();
+      // The Observation layout draws plotted dots and nothing else. With none on the map it
+      // renders a header over an EMPTY body — the species table is display:none in that
+      // layout — so the page opened and looked blank, which is what "clicking the List
+      // button does nothing" is. Fall back to the species table for THIS render only: the
+      // stored preference is untouched and returns as soon as there are dots again, and the
+      // layout tabs show which view you actually got.
+      var obsLayoutEmpty = (spLayout === "observation") && !haveDots;
+      if (obsLayoutEmpty) spLayout = "table";
+      // Rebuild when the page holds an observation list that has nothing left to list —
+      // otherwise the old empty page is shown again and the click looks ignored.
+      var staleObsPage = spPageIsObs && !haveDots;
+      if (!speciesPanelPopulated() || movedAway || staleObsPage || obsLayoutEmpty || (mapFromMultiFetch && haveDots)) {
+        // The multi-fetch flag only decides anything while its dots are still on the map.
+        var refPt = (mapFromMultiFetch && haveDots) ? null : refNow;
         // Dots on the map → their "By observation" list. Nothing fetched at all → the model's
         // own species for the pin / map centre, commonest first (renderSpeciesList's noFetch
         // path ends in applySightings with an empty result, which is what turns that on).
@@ -15538,8 +15643,16 @@
   }
   // ⏳ staleness indicator next to the list title ("Recent Observations") while the
   // counts/distances recalculation is pending (the 2 s map-stillness window).
+  var staleWatchdog = null, STALE_MAX_MS = 8000;
   function setListStaleInd(on) {
     filterStale = !!on;      // same signal drives the funnel's pulse
+    // Whatever set it, something must unset it. Every clear path so far ran inside the
+    // legend's own redraw, which is skipped when the data it would recount is gone.
+    clearTimeout(staleWatchdog); staleWatchdog = null;
+    if (on) staleWatchdog = setTimeout(function () {
+      staleWatchdog = null;
+      if (filterStale) setListStaleInd(false);
+    }, STALE_MAX_MS);
     try { updateFilterBusy(); } catch (e) {}
     var tt = document.getElementById("sp-title"); if (!tt) return;
     var ind = tt.querySelector(".stale-ind");
@@ -16440,7 +16553,8 @@
       exportPointsKmz = mpState.exportPointsKmz, exportPointsGeoJson = mpState.exportPointsGeoJson,
       exportPointsAs = mpState.exportPointsAs,
       extractKmlFromKmz = mpState.extractKmlFromKmz, startKmlImport = mpState.startKmlImport,
-      startGeoJsonImport = mpState.startGeoJsonImport, sendPointsToGoogle = mpState.sendPointsToGoogle,
+      startGeoJsonImport = mpState.startGeoJsonImport, startMultiImport = mpState.startMultiImport,
+      sendPointsToGoogle = mpState.sendPointsToGoogle,
       loadRoute = mpState.loadRoute, addToRoute = mpState.addToRoute,
       renderRoutePoints = mpState.renderRoutePoints, updateRouteChip = mpState.updateRouteChip,
       navigatePoints = mpState.navigatePoints, navigateStops = mpState.navigateStops,
@@ -16451,10 +16565,12 @@
     clearSpider: clearSpider, detRenderer: detRenderer, detStarMarker: detStarMarker,
     downloadCsv: downloadCsv, escapeHtml: escapeHtml, haversineKm: haversineKm, ico: ico,
     looksLikeHtml: looksLikeHtml, makePopupBtn: makePopupBtn, modalPrompt: modalPrompt,
-    mpTipHtml: mpTipHtml, openExternal: openExternal, openPointEditor: openPointEditor,
+    mpTipHtml: mpTipHtml, listPointPasses: listPointPasses, openExternal: openExternal, openPointEditor: openPointEditor,
+    copyPointToList: copyPointToList, deleteListPoint: deleteListPoint,
     refreshMpPanel: refreshMpPanel, renderMpAdmin: renderMpAdmin, setStatus: setStatus,
     showDetRowMenu: showDetRowMenu, syncListDetections: syncListDetections,
     updateDetSetOverlays: updateDetSetOverlays, updateMpBadge: updateMpBadge,
+    tagDisplay: tagDisplay,
     updateSpDistances: updateSpDistances, t: t,
     getMap: function () { return map; },
     getMarker: function () { return marker; },
@@ -16496,6 +16612,170 @@
   // the list's colour for the halo) so they can be re-derived each render and are
   // never persisted as fetched dots (see serializeDetPlot). Reuses mergeDetRows,
   // recolourDetections, rebuildDetLayers and updateDetLegend.
+  // The filter pane's predicates, applied to an imported LIST PIN rather than a fetched row.
+  // Each test runs only when the pin carries that field: a list imported before the app read
+  // species/date/observer out of a file has none of them, and must never be filtered away by
+  // a control it cannot answer to. That is the backward-compatibility rule for old lists.
+  // Anything worth a Save button: fetched observations on the map, or loose pins.
+  // The list chooser, drawn exactly like "add this observation to a list" — used by Save,
+  // and by "copy this point to another list". `skip` hides one list (a point's own).
+  function chooseListThen(anchor, then, title, skip) {
+    var br = anchor.getBoundingClientRect();
+    var lists = mpState.mpCollections().slice()
+      .filter(function (c) { return c.name !== skip; })
+      .sort(function (a, b) { return a.name.localeCompare(b.name); });
+    var el = openAnchoredMenu("detrow-menu mp-saveinto-menu", anchor);
+    var hdr = document.createElement("div");
+    hdr.className = "detrow-menu-hdr";
+    hdr.textContent = title || t("detlist.saveTitle");
+    el.appendChild(hdr);
+    lists.forEach(function (c) {
+      var cn = (c.points && c.points.length) || 0;
+      el.appendChild(drmBtn(c.name + " (" + cn + ")", function () { closeAnchoredMenu(); then(c.name); }, "pin"));
+    });
+    el.appendChild(drmBtn(t("detmenu.newList"), function () {
+      closeAnchoredMenu();
+      modalPrompt(t("points.saveAsPrompt"), "").then(function (nm) { nm = (nm || "").trim(); if (nm) then(nm); });
+    }));
+    positionAnchoredMenu(el, br.left, br.bottom + 4);
+  }
+  // Which saved list holds this point (by object identity).
+  function ownerListOf(p) {
+    var found = "";
+    mpState.mpCollections().forEach(function (c) { if (!found && (c.points || []).indexOf(p) >= 0) found = c.name; });
+    return found;
+  }
+  // Copy — not move: the point stays where it is and a copy, with a fresh id, joins the
+  // chosen list. Filing one record under two headings is the normal case (a lek that is also
+  // a ringing site); a move is a copy followed by a delete, both of which are here.
+  function copyPointToList(anchor, p) {
+    if (!p) return;
+    chooseListThen(anchor, function (name) {
+      var c = mpState.mpCollections().filter(function (x) { return x.name === name; })[0];
+      if (!c) { c = { name: name, points: [] }; mpState.mpCollections().push(c); }
+      var copy = Object.assign({}, p);
+      copy.id = mpState.mpUid();
+      copy.tags = (p.tags || []).slice();
+      c.points.push(copy);
+      mpState.shownColls()[name] = true;
+      saveMapPoints(); saveShownState(); renderMapPoints(); refreshMpPanel();
+      setStatus(t("points.copiedTo", { name: name }));
+    }, t("points.copyTo"), ownerListOf(p));
+  }
+  // Delete one point from the list that holds it, after asking.
+  function deleteListPoint(p) {
+    if (!p) return;
+    var name = ownerListOf(p);
+    if (!name) { try { mpState.deleteMapPoint(p.id); } catch (e) {} return; }   // a loose working pin
+    modalConfirm(t("points.deletePrompt", { name: p.name || "" })).then(function (ok) {
+      if (!ok) return;
+      if (!p.id) { p.id = mpState.mpUid(); saveMapPoints(); }
+      if (removeListPoint(name, p.id)) { refreshMpPanel(); setStatus(t("points.deleted", { name: name })); }
+    });
+  }
+  // One list's own filter: a date range and a set of observers, matched fuzzily. Drawn in the
+  // shared .detrow-menu shape, like every other menu here.
+  function openListFilterMenu(anchor, name) {
+    var br = anchor.getBoundingClientRect();
+    var f = mpState.listFilter(name) || { from: "", to: "", obs: [] };
+    var span = mpState.listDateSpan(name), obs = mpState.listObservers(name);
+    var el = openAnchoredMenu("detrow-menu mp-listfilt-menu", anchor);
+    var hdr = document.createElement("div");
+    hdr.className = "detrow-menu-hdr"; hdr.textContent = t("points.listFilterFor", { name: name });
+    el.appendChild(hdr);
+    var box = document.createElement("div");
+    box.className = "mp-listfilt-dates";
+    box.innerHTML = '<label>' + escapeHtml(t("filters.from")) + '<input type="date" class="lf-from" value="' + escapeHtml(f.from || "") +
+        '"' + (span.from ? ' min="' + escapeHtml(span.from) + '"' : "") + (span.to ? ' max="' + escapeHtml(span.to) + '"' : "") + "></label>" +
+      '<label>' + escapeHtml(t("filters.to")) + '<input type="date" class="lf-to" value="' + escapeHtml(f.to || "") +
+        '"' + (span.from ? ' min="' + escapeHtml(span.from) + '"' : "") + (span.to ? ' max="' + escapeHtml(span.to) + '"' : "") + "></label>" +
+      (span.from ? '<div class="mp-listfilt-span">' + escapeHtml(span.from + " … " + span.to) + "</div>" : "");
+    el.appendChild(box);
+    if (obs.length) {
+      var oh = document.createElement("div");
+      oh.className = "detrow-menu-hdr mp-listfilt-obshdr"; oh.textContent = t("points.listFilterObs", { n: obs.length });
+      el.appendChild(oh);
+      var wrap = document.createElement("div");
+      wrap.className = "mp-listfilt-obs";
+      obs.slice(0, 200).forEach(function (o) {
+        var lab = document.createElement("label");
+        lab.className = "detrow-menu-item mp-savepick";
+        var cb = document.createElement("input");
+        cb.type = "checkbox"; cb.className = "lf-obs"; cb.value = o.name;
+        cb.checked = (f.obs || []).indexOf(o.name) >= 0;
+        lab.appendChild(cb);
+        var sp = document.createElement("span"); sp.textContent = o.name + " (" + o.n + ")";
+        lab.appendChild(sp);
+        wrap.appendChild(lab);
+      });
+      el.appendChild(wrap);
+    }
+    el.appendChild(drmBtn(t("points.listFilterApply"), function () {
+      var from = (el.querySelector(".lf-from") || {}).value || "";
+      var to = (el.querySelector(".lf-to") || {}).value || "";
+      var picked = [];
+      el.querySelectorAll(".lf-obs").forEach(function (c) { if (c.checked) picked.push(c.value); });
+      closeAnchoredMenu();
+      mpState.setListFilter(name, { from: from, to: to, obs: picked });
+    }, "check", "mp-listfilt-go"));
+    if (mpState.listFilterActive(name)) {
+      el.appendChild(drmBtn(t("points.listFilterClear"), function () {
+        closeAnchoredMenu(); mpState.setListFilter(name, null);
+      }, "block", "mp-listfilt-clear"));
+    }
+    positionAnchoredMenu(el, br.left - 120, br.bottom + 4);
+  }
+  function mpSaveableAny() {
+    try { if (Object.keys(detPlot).length) return true; } catch (e) {}
+    try { if (mpHasUnsaved()) return true; } catch (e) {}
+    return false;
+  }
+  function listPointPasses(p) {
+    if (!p) return true;
+    if (p.date && !detDatePasses(p.date)) return false;
+    if (p.observer && !detObsPasses({ observer: p.observer })) return false;
+    var q = spNameQuery.trim();
+    if (q && !pointNameMatches(p, q)) return false;
+    return true;
+  }
+  // A pin's species, as the app knows it: the file's scientific name looked up in the
+  // model's index, so the LOCAL name (and the second language) match too — typing
+  // "kattugle" finds a pin whose file only ever said "Strix aluco".
+  function labelForSci(sci) {
+    if (!sci) return null;
+    try {
+      var idx = window.AppAggregate && window.AppAggregate.ensureSciIndex && window.AppAggregate.ensureSciIndex();
+      return (idx && idx[String(sci).toLowerCase()]) || null;
+    } catch (e) { return null; }
+  }
+  // A tag that IS a scientific name is shown as the local species name. The point files
+  // carry "Buteo buteo" as a tag so several lists can be told apart by species, but a tile
+  // reading "Buteo buteo" is the wrong thing to put in front of someone whose app is in
+  // Norwegian. The stored tag and the filter value stay the literal string — only the label
+  // is localised, so filtering, matching and the files themselves are untouched.
+  function tagDisplay(tag) {
+    if (!tag) return tag;
+    var l = labelForSci(tag);
+    if (!l) return tag;
+    var nm = speciesName(l);
+    return nm || tag;
+  }
+  function pointNameMatches(p, q) {
+    q = String(q).toLowerCase();
+    if (String(p.name || "").toLowerCase().indexOf(q) >= 0) return true;
+    var sci = p.sci || "";
+    if (sci && sci.toLowerCase().indexOf(q) >= 0) return true;
+    var l = labelForSci(sci) || (p.spKey ? labelsByKey[p.spKey] : null);
+    if (l) {
+      if (String(speciesName(l) || "").toLowerCase().indexOf(q) >= 0) return true;
+      if (secondLang) { var n2 = secondName(l); if (n2 && n2.toLowerCase().indexOf(q) >= 0) return true; }
+      if (String(l.sci || "").toLowerCase().indexOf(q) >= 0) return true;
+    }
+    // A pin with no species at all is never hidden by a species search — the
+    // backward-compatibility rule, same as for dates and observers.
+    if (!sci && !p.spKey) return true;
+    return false;
+  }
   function syncListDetections() {
     if (!map || typeof detPlot === "undefined") return;
     var changed = false;
@@ -16530,22 +16810,44 @@
   // One reader behind every "load points from a file" button. Branch on the bytes,
   // not on the button: ZIP magic → KMZ, a leading { or [ → GeoJSON, < → KML, and
   // anything else → a share link (the points panel's original job).
-  function importPointsFile(f, allowShare) {
+  var importBusy = false;
+  function importPointsFile(files, allowShare) {
+    var f = (files && files.length != null) ? files[0] : files;
     if (!f) return;
+    if (files && files.length > 1) {
+      if (importBusy) { setStatus(t("kml.busy")); return; }
+      importBusy = true;
+      Promise.resolve(startMultiImport(Array.prototype.slice.call(files)))
+        .then(function () { importBusy = false; },
+              function () { importBusy = false; setStatus(t("kml.parseErr")); });
+      return;
+    }
+    // One import at a time. A big file freezes the main thread for seconds, so the app
+    // looks dead and the natural reaction is to pick the file again — which used to start
+    // a SECOND parse of 120 MB behind the first. Say what is happening instead.
+    if (importBusy) { setStatus(t("kml.busy")); return; }
+    importBusy = true;
+    var done = function () { importBusy = false; };
     setStatus(t("kml.reading", { name: f.name }));
     var rd = new FileReader();
-    rd.onerror = function () { setStatus(t("kml.parseErr")); };
+    rd.onerror = function () { done(); setStatus(t("kml.parseErr")); };
     rd.onload = function () {
       var buf = rd.result;
       var h = new Uint8Array(buf, 0, Math.min(4, buf.byteLength || 0));
       var isZip = h.length >= 4 && h[0] === 0x50 && h[1] === 0x4B && h[2] === 0x03 && h[3] === 0x04;
-      var doneKml = function (kml) { try { startKmlImport(kml); } catch (err) { setStatus(t("kml.parseErr")); } };
-      if (isZip) { extractKmlFromKmz(buf).then(doneKml).catch(function () { setStatus(t("kml.parseErr")); }); return; }
+      var doneKml = function (kml) {
+        Promise.resolve(startKmlImport(kml, f.name)).then(done, function () { done(); setStatus(t("kml.parseErr")); });
+      };
+      if (isZip) {
+        setStatus(t("kml.unpacking", { name: f.name }));
+        extractKmlFromKmz(buf).then(doneKml).catch(function () { done(); setStatus(t("kml.parseErr")); });
+        return;
+      }
       var txt = new TextDecoder().decode(new Uint8Array(buf)).replace(/^\uFEFF/, "").trim();
       var c0 = txt.charAt(0);
-      if (c0 === "{" || c0 === "[") startGeoJsonImport(txt);
+      if (c0 === "{" || c0 === "[") { startGeoJsonImport(txt, f.name); done(); }
       else if (c0 === "<") doneKml(txt);
-      else if (allowShare) importShared(txt);
+      else if (allowShare) { importShared(txt); done(); }
       else doneKml(txt);
     };
     rd.readAsArrayBuffer(f);
@@ -16665,7 +16967,7 @@
     // Don't repeat a tag that just duplicates the name (detection pins tag the
     // species, which is also the name) — otherwise the species shows twice.
     var tagList = (p.tags || []).filter(function (tg) { return tg && tg !== p.name; });
-    var tags = tagList.length ? '<span class="area-tip-sub">' + escapeHtml(tagList.join(" · ")) + "</span>" : "";
+    var tags = tagList.length ? '<span class="area-tip-sub">' + escapeHtml(tagList.map(tagDisplay).join(" · ")) + "</span>" : "";
     // Notes flagged as HTML (imported KML descriptions) render as sanitised markup;
     // plain notes show their text lines (date / activity / remark), dropping any
     // source URL line — so a saved detection reveals when & what behaviour was
@@ -17057,6 +17359,7 @@
     pop.update();
   }
   // ---- Points dropdown panel ----
+  var MP_LIST_MAX = 300;   // rows drawn in the Points panel's merged point list
   function refreshMpPanel() {
     var panel = document.getElementById("mp-panel"); if (!panel) return;
     // The whole panel is rebuilt from innerHTML below, which resets its scroll — so
@@ -17081,12 +17384,23 @@
       var col = collColor(c);
       (c.points || []).forEach(function (p) { if (p && isFinite(p.lat) && isFinite(p.lon)) unionPts.push({ p: p, color: col, list: c.name, editable: false }); });
     });
+    // Distance ONCE per point, not twice per comparison: the comparator used to call
+    // haversineKm on both sides, so sorting an imported 64,542-point list ran ~2.1 M
+    // haversines and blocked the main thread for ~1.4 s — on every tick, filter change
+    // and save, because renderMapPoints ends by rebuilding this panel.
+    if (center) for (var ui = 0; ui < unionPts.length; ui++) {
+      unionPts[ui].d = haversineKm(center.lat, center.lng, unionPts[ui].p.lat, unionPts[ui].p.lon);
+    }
     unionPts.sort(mpState.mpSort() === "name"
       ? function (a, b) { return (a.p.name || "").localeCompare(b.p.name || ""); }
-      : function (a, b) { if (!center) return 0; return haversineKm(center.lat, center.lng, a.p.lat, a.p.lon) - haversineKm(center.lat, center.lng, b.p.lat, b.p.lon); });
+      : function (a, b) { return center ? (a.d - b.d) : 0; });
+    // And the panel is a list a person reads: 64,542 rows of HTML is both useless and the
+    // other half of the cost. Show the nearest MP_LIST_MAX and say how many there are.
+    var unionTotal = unionPts.length;
+    if (unionTotal > MP_LIST_MAX) unionPts = unionPts.slice(0, MP_LIST_MAX);
     var chipsHtml = allTags.map(function (tag) {
       var active = mpState.mpFilter().indexOf(tag) >= 0;
-      return '<button type="button" class="mp-chip' + (active ? " is-active" : "") + '" data-tag="' + escapeHtml(tag) + '" style="--mp-c:' + mpHashColor(tag) + '">' + escapeHtml(tag) + "</button>";
+      return '<button type="button" class="mp-chip' + (active ? " is-active" : "") + '" data-tag="' + escapeHtml(tag) + '" style="--mp-c:' + mpHashColor(tag) + '">' + escapeHtml(tagDisplay(tag)) + "</button>";
     }).join("");
     if (hasUntagged) {
       var actNoTag = mpState.mpFilter().indexOf("") >= 0;
@@ -17098,7 +17412,7 @@
       var dt = dist == null ? "" : (dist < 1 ? Math.round(dist * 1000) + " m" : dist.toFixed(1) + " km");
       var meta = u.list
         ? '<span class="mp-row-list">' + escapeHtml(u.list) + "</span>"
-        : (p.tags || []).slice(0, 3).map(function (x) { return '<span class="mp-row-tag" style="--mp-c:' + mpHashColor(x) + '">' + escapeHtml(x) + "</span>"; }).join("");
+        : (p.tags || []).slice(0, 3).map(function (x) { return '<span class="mp-row-tag" style="--mp-c:' + mpHashColor(x) + '">' + escapeHtml(tagDisplay(x)) + "</span>"; }).join("");
       return '<div class="dd-row mp-row">' +
         '<button type="button" class="dd-name mp-fly" data-id="' + escapeHtml(u.editable ? p.id : "") + '" data-lat="' + p.lat + '" data-lon="' + p.lon + '"><span class="mp-sw" style="background:' + u.color + '"></span>' + escapeHtml(p.name || "(point)") + "</button>" +
         '<span class="mp-row-meta">' + meta + '<span class="mp-dist">' + escapeHtml(dt) + "</span></span>" +
@@ -17130,10 +17444,22 @@
       // Download the list itself to a file — the format (KML / KMZ / GeoJSON) is picked
       // in a small menu on click. Sits behind the ×, and works for detection sets too.
       var dlBtn = count ? '<button type="button" class="mp-coll-dl ico-btn" data-type="' + type + '" data-name="' + escapeHtml(name) + '" title="' + escapeHtml(t("points.download")) + '" aria-label="' + escapeHtml(t("points.download")) + '">' + ico("download") + "</button>" : "";
+      // Per-list filter: observers and a date range, for THIS list only. Point-lists only —
+      // a detection set is filtered by the pane like any fetched data.
+      var fOn = type === "p" && mpState.listFilterActive(name);
+      var filtBtn = (type === "p" && count)
+        ? '<button type="button" class="mp-coll-filt ico-btn' + (fOn ? " is-on" : "") + '" data-name="' + escapeHtml(name) + '" title="' + escapeHtml(t("points.listFilter")) + '" aria-label="' + escapeHtml(t("points.listFilter")) + '">' + ico("funnel") + "</button>"
+        : "";
+      // Six icons on one row left no room for the name on a phone, and none of them said
+      // what it did. The row now carries the tick, the name and the funnel; the rest go
+      // behind "...", which opens a menu where every action is a labelled row.
+      var moreBtn = '<button type="button" class="mp-coll-more ico-btn" data-type="' + type + '" data-name="' + escapeHtml(name) +
+        '" data-count="' + count + '" data-prot="' + (isProt ? "1" : "") + '" data-route="' + (isRoute ? "1" : "") +
+        '" title="' + escapeHtml(t("points.more")) + '" aria-label="' + escapeHtml(t("points.more")) + '">\u22EF</button>';
       return '<div class="mp-coll-row' + (isRoute ? " is-route" : "") + '">' +
         '<label class="mp-coll-lbl"><input type="checkbox" class="mp-coll-cb" data-type="' + type + '" data-name="' + escapeHtml(name) + '"' + (checked ? " checked" : "") + ">" +
           swIcon + '<span class="mp-coll-name">' + escapeHtml(name) + ' <span class="mp-coll-n">(' + count + ")</span></span></label>" +
-        navBtn + shareBtn + editBtn + del + dlBtn +
+        filtBtn + moreBtn +
         "</div>";
     }
     var collItems = mpState.mpCollections().slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (c) {
@@ -17150,42 +17476,113 @@
       // (import a shared file) is always available.
       '<div class="mp-head mp-head-actions">' +
         (Object.keys(detPlot).length ?
-          '<button type="button" id="mp-share-det" class="btn btn-light" title="' + escapeHtml(t("share.detHover")) + '" data-i18n="share.shareBtn">' + escapeHtml(t("share.shareBtn")) + "</button>" +
-          '<button type="button" id="mp-save-det" class="btn" data-i18n="points.save">' + escapeHtml(t("points.save")) + "</button>"
-          : "") +
+          '<button type="button" id="mp-share-det" class="btn btn-light" title="' + escapeHtml(t("share.detHover")) + '" data-i18n="share.shareBtn">' + escapeHtml(t("share.shareBtn")) + "</button>" : "") +
+        // ONE Save, for both kinds of point. It opens a small popup where the user ticks what
+        // to keep — the fetched observations, the pins they placed themselves, or both — and
+        // then picks the list. Two separate buttons made the user decide the WHERE before
+        // they had said WHAT, and put the same destination behind two different flows.
+        (mpSaveableAny() ? '<button type="button" id="mp-save-pts" class="btn' +
+          (mpHasUnsaved() ? " mp-save-unsaved" : "") + '">' + escapeHtml(t("points.save")) + "</button>" : "") +
         '<button type="button" id="mp-import-share" class="btn btn-light" title="' + escapeHtml(tLabel("share.importFile")) + '" data-i18n="points.loadFile">' + escapeHtml(t("points.loadFile")) + "</button>" +
-        '<input type="file" id="share-file-input" accept=".kmz,.kml,.geojson,.json,.share,.mcshare,.txt" style="display:none" />' +
+        '<input type="file" id="share-file-input" accept=".kmz,.kml,.geojson,.json,.share,.mcshare,.txt" multiple style="display:none" />' +
       "</div>" +
       '<div id="mp-backup-line" class="mp-backup-line"></div>' +
       collSection +
-      (mpHasUnsaved() ? '<div class="mp-unsaved">' + escapeHtml(t("points.unsaved", { n: mpState.mapPoints().length })) +
-        ' <button type="button" id="mp-saveas" class="mp-saveas-btn">' + escapeHtml(t("points.saveAsList")) + "</button></div>" : "") +
       (chipsHtml ? '<div class="mp-chips">' + chipsHtml + "</div>" : "") +
       (unionPts.length > 1 ?
         '<div class="mp-sort"><span class="mp-sort-lbl">⇅</span>' +
           '<button type="button" class="mp-sort-btn active" title="' + escapeHtml(t("points.sortToggle")) + '">' + escapeHtml(t(mpState.mpSort() === "name" ? "points.byName" : "points.byDist")) + "</button>" +
         "</div>" : "") +
-      '<div class="mp-list">' + listHtml + "</div>";
+      '<div class="mp-list">' + listHtml +
+        (unionTotal > unionPts.length
+          ? '<p class="dd-empty">' + escapeHtml(t("points.listTrimmed", { n: unionPts.length, total: unionTotal })) + "</p>"
+          : "") + "</div>";
     // Wire interactions
     var importShareBtn = panel.querySelector("#mp-import-share"), shareFileInput = panel.querySelector("#share-file-input");
     if (importShareBtn && shareFileInput) {
-      importShareBtn.addEventListener("click", function (e) { e.stopPropagation(); shareFileInput.click(); });
+      importShareBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        shareFileInput.click();
+        closeDropdowns();   // the import's progress goes to the status line this panel covers
+      });
       shareFileInput.addEventListener("change", function (e) {
-        importPointsFile(e.target.files && e.target.files[0], true);
+        importPointsFile(e.target.files, true);
         e.target.value = "";
       });
     }
-    var saveAsBtn = panel.querySelector("#mp-saveas");
-    if (saveAsBtn) saveAsBtn.addEventListener("click", function () {
-      modalPrompt(t("points.saveAsPrompt"), "").then(function (n) {
-        n = (n || "").trim(); if (!n) return;
-        var c = mpState.mpCollections().filter(function (x) { return x.name === n; })[0];
-        if (!c) { c = { name: n, points: [] }; mpState.mpCollections().push(c); }
-        mpState.mapPoints().forEach(function (p) { c.points.push(Object.assign({}, p)); });   // file all loose pins into the list
-        mpState.setMapPoints([]); mpState.setMpActiveName(""); mpState.shownColls()[n] = true;
-        saveMapPoints(); saveShownState(); renderMapPoints(); refreshMpPanel();
+    // File every loose pin into `name`, creating the list if it is new. One path for both
+    // "add to an existing list" and "make a new one".
+    function fileLoosePoints(name) {
+      name = String(name || "").trim(); if (!name) return;
+      var c = mpState.mpCollections().filter(function (x) { return x.name === name; })[0];
+      if (!c) { c = { name: name, points: [] }; mpState.mpCollections().push(c); }
+      var n = mpState.mapPoints().length;
+      mpState.mapPoints().forEach(function (p) { c.points.push(Object.assign({}, p)); });
+      mpState.setMapPoints([]); mpState.setMpActiveName(""); mpState.shownColls()[name] = true;
+      saveMapPoints(); saveShownState(); renderMapPoints(); refreshMpPanel();
+      setStatus(t("points.savedInto", { n: n, name: name }));
+    }
+    // What the Save popup offers, and what it does once the user has chosen a list. Both
+    // kinds end up in the SAME place — a point list — which is what makes one flow possible:
+    // commitDetSave writes the fetched rows into a collection, fileLoosePoints the loose pins.
+    function openSavePointsMenu(anchor) {
+      var br = anchor.getBoundingClientRect();
+      var rows = [];
+      try { rows = collectVisibleDetections(null) || []; } catch (e) { rows = []; }
+      var loose = mpState.mapPoints().length;
+      // Nothing visible to keep on either side — say so rather than opening a popup whose
+      // only outcome is "tick at least one". (The old Save button had the same guard.)
+      if (!rows.length && !loose) { setStatus(t("points.empty")); return; }
+      var el = openAnchoredMenu("detrow-menu mp-savepick-menu", anchor);
+      var hdr = document.createElement("div");
+      hdr.className = "detrow-menu-hdr"; hdr.textContent = t("points.saveWhat");
+      el.appendChild(hdr);
+      function tick(id, label, on) {
+        var lab = document.createElement("label");
+        lab.className = "detrow-menu-item mp-savepick";
+        var cb = document.createElement("input");
+        cb.type = "checkbox"; cb.id = id; cb.checked = !!on;
+        lab.appendChild(cb);
+        var sp = document.createElement("span"); sp.textContent = label; lab.appendChild(sp);
+        el.appendChild(lab);
+        return cb;
+      }
+      var cbFetched = rows.length ? tick("sp-cb-fetched", t("points.saveFetched", { n: rows.length }), true) : null;
+      var cbLoose = loose ? tick("sp-cb-loose", t("points.saveCreated", { n: loose }), true) : null;
+      var go = drmBtn(t("points.save"), function () {
+        var wantF = !!(cbFetched && cbFetched.checked), wantL = !!(cbLoose && cbLoose.checked);
+        if (!wantF && !wantL) { setStatus(t("points.saveNothing")); return; }
+        closeAnchoredMenu();
+        chooseListThen(anchor, function (name) {
+          if (wantL) fileLoosePoints(name);
+          if (wantF) commitDetSave(name, rows);          // asks for the batch colour, as before
+        });
+      }, "save", "mp-savepick-go");
+      el.appendChild(go);
+      positionAnchoredMenu(el, br.left, br.bottom + 4);
+    }
+    // The list chooser, drawn exactly like "add this observation to a list".
+    function chooseListThen(anchor, then) {
+      var br = anchor.getBoundingClientRect();
+      var lists = mpState.mpCollections().slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
+      // Built exactly like the "add this observation to a list" menu (drmRenderLists):
+      // the same .detrow-menu-hdr heading and the same drmBtn rows with the pin icon, so
+      // filing points and filing an observation look and read the same.
+      var el = openAnchoredMenu("detrow-menu mp-saveinto-menu", anchor);
+      var hdr = document.createElement("div");
+      hdr.className = "detrow-menu-hdr";
+      hdr.textContent = t("detlist.saveTitle");
+      el.appendChild(hdr);
+      lists.forEach(function (c) {
+        var n = (c.points && c.points.length) || 0;
+        el.appendChild(drmBtn(c.name + " (" + n + ")", function () { closeAnchoredMenu(); then(c.name); }, "pin"));
       });
-    });
+      el.appendChild(drmBtn(t("detmenu.newList"), function () {
+        closeAnchoredMenu();
+        modalPrompt(t("points.saveAsPrompt"), "").then(function (nm) { nm = (nm || "").trim(); if (nm) then(nm); });
+      }));
+      positionAnchoredMenu(el, br.left, br.bottom + 4);
+    }
     panel.querySelectorAll(".mp-sort-btn").forEach(function (b) {
       b.addEventListener("click", function () {
         mpState.setMpSort(mpState.mpSort() === "name" ? "dist" : "name");   // one button: shows the current order, flips it
@@ -17199,7 +17596,9 @@
         var i = mpState.mpFilter().indexOf(tag);
         if (i >= 0) mpState.mpFilter().splice(i, 1); else mpState.mpFilter().push(tag);
         saveMapPoints();
-        renderMapPoints();
+        // The chip blinks until the map has caught up (mpFilterRefresh), instead of the
+        // click looking ignored while a large list redraws.
+        mpState.mpFilterRefresh(this);
       });
     });
     panel.querySelectorAll(".mp-fly").forEach(function (b) {
@@ -17224,12 +17623,17 @@
         var set = type === "d" ? mpState.shownDetSets() : mpState.shownColls();
         if (this.checked) set[name] = true; else delete set[name];
         saveShownState();
-        renderMapPoints();
+        // Blink the list's own row while its points are drawn or removed.
+        mpState.mpFilterRefresh(this.closest(".mp-coll-row") || this);
       });
     });
     // Per-row 🧭: export this list's / set's points as a pin overlay for Google
     // My Maps (no route — routes are a per-observation action).
-    panel.querySelectorAll(".mp-coll-nav").forEach(function (b) {
+    // The row shows checkbox / name / funnel / "..." — navigate, share, edit, download and
+    // delete live in the "..." menu, each as a row that says what it does. One wiring
+    // function serves the row's funnel and the menu's rows alike.
+    function wireCollActions(root) {
+      root.querySelectorAll(".mp-coll-nav").forEach(function (b) {
       b.addEventListener("click", function (e) {
         e.preventDefault();
         var type = this.getAttribute("data-type"), name = this.getAttribute("data-name"), pts = [];
@@ -17251,7 +17655,7 @@
       });
     });
     // Per-row 🔗: share this list / detection set as a self-contained URL (no keys needed).
-    panel.querySelectorAll(".mp-coll-share").forEach(function (b) {
+      root.querySelectorAll(".mp-coll-share").forEach(function (b) {
       b.addEventListener("click", function (e) {
         e.preventDefault();
         var type = this.getAttribute("data-type"), name = this.getAttribute("data-name");
@@ -17259,17 +17663,23 @@
       });
     });
     // Per-row ✎ opens the whole-list editor (colour + tags + rename).
-    panel.querySelectorAll(".mp-coll-edit").forEach(function (b) {
+      root.querySelectorAll(".mp-coll-edit").forEach(function (b) {
       b.addEventListener("click", function (e) { e.preventDefault(); openCollEditModal(this.getAttribute("data-name")); });
     });
     // Per-row × deletes that saved list / detection set (after confirming).
-    panel.querySelectorAll(".mp-coll-dl").forEach(function (b) {
+      root.querySelectorAll(".mp-coll-filt").forEach(function (b) {
+      b.addEventListener("click", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        openListFilterMenu(this, this.getAttribute("data-name"));
+      });
+    });
+      root.querySelectorAll(".mp-coll-dl").forEach(function (b) {
       b.addEventListener("click", function (e) {
         e.preventDefault(); e.stopPropagation();
         openPointsDownloadMenu(this, this.getAttribute("data-type"), this.getAttribute("data-name"));
       });
     });
-    panel.querySelectorAll(".mp-coll-del").forEach(function (b) {
+      root.querySelectorAll(".mp-coll-del").forEach(function (b) {
       b.addEventListener("click", function (e) {
         e.preventDefault();
         var type = this.getAttribute("data-type"), name = this.getAttribute("data-name");
@@ -17282,6 +17692,49 @@
         });
       });
     });
+      root.querySelectorAll(".mp-coll-more").forEach(function (b) {
+        b.addEventListener("click", function (e) {
+          e.preventDefault(); e.stopPropagation();
+          openCollMoreMenu(this);
+        });
+      });
+    }
+    // One row per action, each with a line saying what it does — the icons alone were a
+    // guessing game. The buttons carry the SAME classes and data attributes they had on
+    // the row, so wireCollActions handles them unchanged.
+    function openCollMoreMenu(anchor) {
+      var type = anchor.getAttribute("data-type"), name = anchor.getAttribute("data-name");
+      var count = +anchor.getAttribute("data-count") || 0;
+      var isProt = !!anchor.getAttribute("data-prot"), isRoute = !!anchor.getAttribute("data-route");
+      var d = 'data-type="' + type + '" data-name="' + escapeHtml(name) + '"';
+      // Measure the "..." BEFORE opening: openAnchoredMenu closes the dropdowns, and the
+      // Points panel is one — once hidden the anchor's rect is all zeros and the menu is
+      // clamped into the top-left corner.
+      var br = anchor.getBoundingClientRect();
+      function row(cls, icon, label, desc, extra) {
+        return '<button type="button" class="dd-item mp-more-item ' + cls + '" ' + (extra || d) + '>' +
+          '<span class="mp-more-ico">' + icon + "</span>" +
+          '<span class="mp-more-txt"><b>' + escapeHtml(label) + "</b>" +
+            (desc ? '<span class="mp-more-desc">' + escapeHtml(desc) + "</span>" : "") + "</span></button>";
+      }
+      var html = '<div class="dd-head">' + escapeHtml(name) + "</div>";
+      html += row("mp-coll-nav", ico("nav"), isRoute ? t("nav.title") : t("nav.send"),
+                  t(isRoute ? "points.navDescRoute" : "points.navDesc"));
+      html += row("mp-coll-share", ico("share"), t("share.link"), t("points.shareDesc"));
+      if (type === "p") html += row("mp-coll-edit", ico("edit"), t("points.editList"), t("points.editDesc"),
+                                    'data-name="' + escapeHtml(name) + '"');
+      if (count) html += row("mp-coll-dl", ico("download"), t("points.download"), t("points.downloadDesc"));
+      html += isProt
+        ? row("mp-more-locked", ico("lock"), t("lists.protect"), t("points.protectedDesc"), 'disabled')
+        : row("mp-coll-del", "\u00D7", t(type === "d" ? "dset.delete" : "points.deleteColl"), t("points.deleteDesc"));
+      var el = openAnchoredMenu("detrow-menu mp-more-menu", anchor);
+      el.innerHTML = html;
+      wireCollActions(el);
+      // After the content, so the viewport clamp measures the real size — and because
+      // positionAnchoredMenu is what gives the popup its × and key navigation.
+      positionAnchoredMenu(el, br.right - el.offsetWidth, br.bottom + 4);
+    }
+    wireCollActions(panel);
     // "Save" captures the current work into a named list/set shown via its tick:
     //   - loose working pins        → a point-list
     //   - otherwise plotted species → a detection set
@@ -17291,14 +17744,10 @@
     // "Save detections" → all observations plotted on the map saved as a
     // point-list (new or appended to an existing one). Distinct from the "Save"
     // button below, which stores plotted species as a detection SET.
-    var saveDet = panel.querySelector("#mp-save-det");
-    if (saveDet) saveDet.addEventListener("click", function (e) {
-      e.stopPropagation();
-      var rows = collectVisibleDetections(null);   // every visible plotted observation
-      if (!rows.length) { setStatus(t("points.empty")); return; }
-      var r = this.getBoundingClientRect();
-      panel.style.display = "none";   // close the points dropdown so the chooser isn't clipped
-      showDetSaveMenu(r.left, r.bottom + 4, rows);
+    var savePts = panel.querySelector("#mp-save-pts");
+    if (savePts) savePts.addEventListener("click", function (e) {
+      e.preventDefault(); e.stopPropagation();
+      openSavePointsMenu(this);
     });
     var shareDet = panel.querySelector("#mp-share-det");
     if (shareDet) shareDet.addEventListener("click", function (e) { e.stopPropagation(); shareCurrentDetections(); });
@@ -19174,7 +19623,7 @@
     var kmlFile = document.getElementById("points-kml-file");
     document.getElementById("points-kml-import").addEventListener("click", function () { kmlFile.click(); });
     kmlFile.addEventListener("change", function (e) {
-      importPointsFile(e.target.files && e.target.files[0], false);
+      importPointsFile(e.target.files, false);
       e.target.value = "";
     });
     renderOfflineAreas();
@@ -19187,7 +19636,9 @@
         try {
           var s = importAppData(rd.result);
           setStatus(t("sync.imported", { n: s.checklistsIncoming, total: s.checklistsTotal }));
-          setTimeout(function () { location.reload(); }, 1000);
+          // Reload only once the imported lists have actually reached IndexedDB — a
+          // reload mid-write aborts the transaction and the import is lost.
+          flushWrites().then(function () { setTimeout(function () { location.reload(); }, 800); });
         } catch (err) { setStatus(t("sync.importFailed", { msg: err.message || "" })); }
         e.target.value = "";
       };
@@ -19223,10 +19674,24 @@
         var phTxt = "";
         if (st.busy && st.phaseName) phTxt = t("sync.phWriteFile", { name: st.phaseName });
         else if (st.busy && PH[st.phase]) phTxt = t(PH[st.phase]);
+        // A count while the files go up ("3/12"), so a long sync visibly advances.
+        if (st.busy && st.total > 1) phTxt = st.done + "/" + st.total + " " + phTxt;
         var lbl = gdSync.querySelector(".ico-label");
         if (lbl) lbl.textContent = phTxt || t("gdrive.syncNow");
         gdSync.classList.toggle("gd-busy", !!st.busy);
         gdSync.title = phTxt;
+        // …and a bar under the status line: a determinate fill while files are counted,
+        // an indeterminate sweep for the steps that have no count (sign-in, read, merge).
+        var bar = document.getElementById("gd-progress");
+        if (bar) {
+          bar.style.display = st.busy ? "" : "none";
+          var fill = bar.firstChild;
+          if (fill) {
+            var pct = st.total > 0 ? Math.round((st.done / st.total) * 100) : 0;
+            bar.classList.toggle("gd-indet", !st.total);
+            fill.style.width = st.total > 0 ? pct + "%" : "";
+          }
+        }
         var msg = "";
         var failed = st.status === "reconnect" || st.status === "error" || st.status === "storagefull";
         if (st.status === "syncing") msg = "⟳ " + t("gdrive.syncing");
@@ -19241,6 +19706,7 @@
             msg += " · " + t("sync.driveHas", { lists: st.pull.lists });
             if (st.pull.skippedLists) msg += " · " + t("sync.listsSkipped");
           }
+          if (st.skippedCopies && st.skippedCopies.length) msg += " · " + t("sync.noCopyBig", { names: st.skippedCopies.join(", ") });
         }
         // Surface the actual failure reason so a sync error isn't silent.
         if (failed && st.error) msg += " · " + st.error;
@@ -19249,6 +19715,12 @@
         gdStatus.classList.toggle("gd-syncing", st.status === "syncing");
         gdStatus.classList.toggle("gd-error", failed);
       };
+      if (gdStatus && !document.getElementById("gd-progress")) {
+        var pb = document.createElement("div");
+        pb.id = "gd-progress"; pb.className = "gd-progress"; pb.style.display = "none";
+        pb.appendChild(document.createElement("span"));
+        gdStatus.parentNode.insertBefore(pb, gdStatus.nextSibling);
+      }
       window.GDriveSync.onStatus(function (st) { renderGd(st); try { updateBackupNudge(); } catch (e) {} });
 
       // The sync dialog: pick which categories + one global direction, then run.
@@ -22729,6 +23201,7 @@
   // table on screen belongs to some earlier point and has nothing to do with the dots —
   // so the list view must show the "By observation" page instead of re-showing that table.
   var mapFromMultiFetch = false;
+  var spPageIsObs = false;   // the list page currently holds the "By observation" list, not a point's species table
   // Bumped on every renderSpeciesList call AND on a mode change. A render that
   // suspends at its inference await while the user switches mode (or clicks a new
   // point) sees its captured gen fall behind and bails BEFORE firing its
@@ -24527,6 +25000,7 @@
     // (so a fresh fetch's list narrows the same way the map does).
     spFilters.star = detStarFilter === 1; spFilters.rare = detRareFilter === 1; spFilters.year = detYearFilter === -1; spFilters.life = detLifeFilter === -1;
     mapFromMultiFetch = false;   // this list IS about a point again
+    spPageIsObs = false;         // ...and it holds that point's species table, not the observation list
     currentSpView = hist
       ? { mode: "historic", lat: lat, lon: lon, from: hist.from, to: hist.to, range: hist.range, months: hist.months || [] }
       : { mode: "point", lat: lat, lon: lon };

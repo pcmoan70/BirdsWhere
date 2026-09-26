@@ -22,9 +22,9 @@ window.AppPoints = (function () {
   // ---- injected by app.js (init) -----------------------------------------
   // Plain function aliases (stable references) …
   var clearSpider, detRenderer, detStarMarker, downloadCsv, escapeHtml, haversineKm, ico,
-      looksLikeHtml, makePopupBtn, modalPrompt, mpTipHtml, openExternal, openPointEditor,
+      copyPointToList, deleteListPoint, listPointPasses, looksLikeHtml, makePopupBtn, modalPrompt, mpTipHtml, openExternal, openPointEditor,
       refreshMpPanel, renderMpAdmin, setStatus, showDetRowMenu, syncListDetections,
-      updateDetSetOverlays, updateMpBadge, updateSpDistances, t;
+      tagDisplay, updateDetSetOverlays, updateMpBadge, updateSpDistances, t;
   // … and accessors for app state that is replaced at runtime (the map and the
   // clicked-spot marker are built later; the spider layer is app.js's).
   var getMap, getMarker, getSpiderHidden, setSpiderLayer;
@@ -33,10 +33,12 @@ window.AppPoints = (function () {
     clearSpider = ctx.clearSpider; detRenderer = ctx.detRenderer; detStarMarker = ctx.detStarMarker;
     downloadCsv = ctx.downloadCsv; escapeHtml = ctx.escapeHtml; haversineKm = ctx.haversineKm;
     ico = ctx.ico; looksLikeHtml = ctx.looksLikeHtml; makePopupBtn = ctx.makePopupBtn;
-    modalPrompt = ctx.modalPrompt; mpTipHtml = ctx.mpTipHtml; openExternal = ctx.openExternal;
+    copyPointToList = ctx.copyPointToList; deleteListPoint = ctx.deleteListPoint;
+    listPointPasses = ctx.listPointPasses; modalPrompt = ctx.modalPrompt; mpTipHtml = ctx.mpTipHtml; openExternal = ctx.openExternal;
     openPointEditor = ctx.openPointEditor; refreshMpPanel = ctx.refreshMpPanel;
     renderMpAdmin = ctx.renderMpAdmin; setStatus = ctx.setStatus; showDetRowMenu = ctx.showDetRowMenu;
     syncListDetections = ctx.syncListDetections; updateDetSetOverlays = ctx.updateDetSetOverlays;
+    tagDisplay = ctx.tagDisplay || function (x) { return x; };
     updateMpBadge = ctx.updateMpBadge; updateSpDistances = ctx.updateSpDistances; t = ctx.t;
     getMap = ctx.getMap; getMarker = ctx.getMarker;
     getSpiderHidden = ctx.getSpiderHidden; setSpiderLayer = ctx.setSpiderLayer;
@@ -218,8 +220,29 @@ window.AppPoints = (function () {
       mpCollections = Object.keys(all).filter(function (k) { return k.indexOf("pts:") === 0; })
         .map(function (k) { return all[k]; }).filter(function (c) { return c && c.name; });
       mpCollections.forEach(function (c) { try { mpSetSig[c.name] = mpSig(JSON.stringify(c)); } catch (e) {} });
+      mpCollections.forEach(function (c) { (c.points || []).forEach(function (p) { delete p._dn; delete p._ot; }); });
+      loadListFilters();
       mpIdbReady = true;
-    } catch (e) { mpIdbReady = false; }
+    } catch (e) {
+      mpIdbReady = false;
+      // IndexedDB can refuse to open for reasons that pass: another tab holding the
+      // database during a version upgrade makes open() fire `onblocked`. Giving up for
+      // the session then showed NO lists at all — the blob no longer carries them, it was
+      // emptied when they moved into IndexedDB — so the lists looked lost when they were
+      // merely unreachable. Try again a few times, and redraw once one succeeds.
+      scheduleMpStoreRetry();
+    }
+  }
+  var mpRetryLeft = 4, mpRetryT = null;
+  function scheduleMpStoreRetry() {
+    if (mpIdbReady || mpRetryLeft <= 0 || mpRetryT) return;
+    mpRetryT = setTimeout(function () {
+      mpRetryT = null; mpRetryLeft--;
+      initMpSetStore().then(function () {
+        if (!mpIdbReady) return;
+        try { loadMapPoints(); renderMapPoints(); if (typeof refreshMpPanel === "function") refreshMpPanel(); } catch (e) {}
+      }, function () {});
+    }, (5 - mpRetryLeft) * 1500);
   }
   // Write the current lists to IndexedDB and retire the records of any that are gone.
   // Only the lists that actually CHANGED are written: these run to megabytes, and
@@ -231,30 +254,38 @@ window.AppPoints = (function () {
     for (var i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
     return str.length + ":" + h;
   }
+  // Returns a promise that settles when every write has COMMITTED. A sync that reloads
+  // the page (or a user closing the app) straight after merging used to abort the writes
+  // in flight, so freshly synced lists were never stored — they were on screen and gone
+  // on the next open. Callers that are about to navigate await this.
   function persistMpSets(list) {
-    if (!mpIdbReady || !window.AppIDB) return;
-    var keep = Object.create(null), gone = false;
+    if (!mpIdbReady || !window.AppIDB) return Promise.resolve();
+    var keep = Object.create(null), gone = false, writes = [];
     (list || []).forEach(function (c) {
       if (!c || !c.name) return;
       keep[c.name] = 1;
       var sig;
       try { sig = mpSig(JSON.stringify(c)); } catch (e) { sig = null; }
       if (sig && mpSetSig[c.name] === sig) return;   // unchanged since the last write
-      window.AppIDB.put("pts:" + c.name, c).then(function () { if (sig) mpSetSig[c.name] = sig; },
-        function () { setStatus(t("err.storageFull")); });
+      writes.push(window.AppIDB.put("pts:" + c.name, c).then(function () { if (sig) mpSetSig[c.name] = sig; },
+        function () { setStatus(t("err.storageFull")); }));
     });
     Object.keys(mpSetSig).forEach(function (n) { if (!keep[n]) { gone = true; delete mpSetSig[n]; } });
-    if (!gone) return;   // nothing was deleted → no need to scan the store for orphans
+    if (!gone) return Promise.all(writes);   // nothing was deleted → no need to scan the store for orphans
     // Never let an EMPTY list wipe the store. A user deleting their last list is one
     // thing; a transient empty mirror (a failed hydrate, a code path that resets it
     // before a save) must not take every saved list with it. Deleting the last list
     // still works — it just leaves its record for the next real save to retire.
-    if (!Object.keys(keep).length) return;
-    window.AppIDB.getAll().then(function (all) {
-      Object.keys(all).forEach(function (k) { if (k.indexOf("pts:") === 0 && !keep[k.slice(4)]) window.AppIDB.del(k).catch(function () {}); });
-    }).catch(function () {});
+    if (!Object.keys(keep).length) return Promise.all(writes);
+    writes.push(window.AppIDB.getAll().then(function (all) {
+      var dels = [];
+      Object.keys(all).forEach(function (k) { if (k.indexOf("pts:") === 0 && !keep[k.slice(4)]) dels.push(window.AppIDB.del(k).catch(function () {})); });
+      return Promise.all(dels);
+    }).catch(function () {}));
+    return Promise.all(writes);
   }
   function loadMapPoints() {
+    loadListFilters();   // also when IndexedDB never hydrated (initMpSetStore bailed)
     mapPoints = (window.GeoState.get("mapPoints", []) || []).filter(function (p) { return p && isFinite(p.lat) && isFinite(p.lon); });
     mpFilter = window.GeoState.get("mapPointsFilter", []) || [];
     // With IndexedDB as the store the lists are already hydrated (initMpSetStore) and
@@ -284,9 +315,16 @@ window.AppPoints = (function () {
     // Named lists are IndexedDB's business when it is available: persist them there
     // and let the blob drop the key (undefined removes it), so the ~5 MB cap applies
     // only to the small state again.
-    if (mpIdbReady && patch && Object.prototype.hasOwnProperty.call(patch, "mapPointSets")) {
-      persistMpSets(patch.mapPointSets);
-      patch.mapPointSets = undefined;
+    if (patch && Object.prototype.hasOwnProperty.call(patch, "mapPointSets")) {
+      if (mpIdbReady) {
+        persistMpSets(patch.mapPointSets);
+        patch.mapPointSets = undefined;
+      } else if (window.AppIDB && window.AppIDB.available()) {
+        // The store exists but has not hydrated (yet). `mpCollections` is therefore an
+        // empty MIRROR, not the truth — writing it into the blob would record "no lists"
+        // over the top of lists that are sitting safely in IndexedDB.
+        patch.mapPointSets = undefined;
+      }
     }
     window.GeoState.save(patch);
     if (window.GeoState.lastSaveOk && !window.GeoState.lastSaveOk()) { setStatus(t("err.storageFull")); return false; }
@@ -423,9 +461,10 @@ window.AppPoints = (function () {
     });
     return { marks: marks, fields: Object.keys(fieldSet), folders: Object.keys(folderSet) };
   }
-  function startGeoJsonImport(text) {
+  function startGeoJsonImport(text, fileName) {
     var parsed; try { parsed = parseGeoJsonText(text); } catch (e) { setStatus(t("kml.parseErr")); return; }
     if (!parsed.marks.length) { setStatus(t("kml.none")); return; }
+    parsed.fileName = fileName || "";
     kmlImport = parsed; openKmlImportDialog();
   }
   // ---- KMZ (a ZIP holding doc.kml) — a tiny single-entry ZIP writer/reader,
@@ -552,7 +591,16 @@ window.AppPoints = (function () {
     }
     return out;
   }
-  function parseKmlText(text) {
+  // Async, and it yields: a 6.5 MB KMZ is 120 MB of KML and 73 891 placemarks, which used
+  // to block the main thread long enough that the app looked dead — "Reading …" on screen
+  // and nothing else for the better part of a minute on a phone. The DOMParser call itself
+  // cannot be split (one native call, ~7 s for that file on a desktop), so the status is
+  // painted BEFORE it, and the placemark walk then reports its way through in chunks.
+  var PARSE_CHUNK = 4000;
+  function yieldToUi() { return new Promise(function (r) { setTimeout(r, 0); }); }
+  async function parseKmlText(text) {
+    setStatus(t("kml.parsing"));
+    await yieldToUi();                       // let that message paint before the long call
     var doc = new DOMParser().parseFromString(text, "application/xml");
     if (doc.getElementsByTagName("parsererror").length) throw new Error(t("kml.parseErr"));
     var marks = [], fieldSet = {}, folderSet = {};
@@ -560,6 +608,10 @@ window.AppPoints = (function () {
     var pms = doc.getElementsByTagName("Placemark");
     function txt(el, tag) { var n = el.getElementsByTagName(tag)[0]; return n ? (n.textContent || "").trim() : ""; }
     for (var i = 0; i < pms.length; i++) {
+      if (i && i % PARSE_CHUNK === 0) {
+        setStatus(t("kml.reading2", { n: i, total: pms.length }));
+        await yieldToUi();
+      }
       var pm = pms[i];
       // First coordinates found under this placemark (Point, else first vertex).
       var co = pm.getElementsByTagName("coordinates")[0];
@@ -596,6 +648,15 @@ window.AppPoints = (function () {
   }
   // Resolve a placemark field to text given a mapping token: "name" / "desc" /
   // "folder" / "data:<key>" / "" (none).
+  // The same names the dialog's pickers show, for labelling a note built from several
+  // fields. Mirrors opts() in openKmlImportDialog -- keep the two in step.
+  function noteLabel(token) {
+    if (token === "name") return t("kml.fName");
+    if (token === "desc") return t("kml.fDesc");
+    if (token === "folder") return t("kml.fFolder");
+    if (token.indexOf("data:") === 0) return token.slice(5);
+    return token;
+  }
   function kmlFieldValue(pm, token) {
     if (!token) return "";
     if (token === "name") return pm.name || "";
@@ -605,11 +666,85 @@ window.AppPoints = (function () {
     return "";
   }
   var kmlImport = null;   // { marks, fields, folders } currently staged for import
-  function startKmlImport(text) {
+  async function startKmlImport(text, fileName) {
     var parsed;
-    try { parsed = parseKmlText(text); } catch (e) { setStatus(t("kml.parseErr")); return; }
+    try { parsed = await parseKmlText(text); } catch (e) { setStatus(t("kml.parseErr")); return; }
     if (!parsed.marks.length) { setStatus(t("kml.none")); return; }
+    parsed.fileName = fileName || "";
     kmlImport = parsed;
+    setStatus("");
+    openKmlImportDialog();
+  }
+  // ---- Several files in one go ----
+  // Each file becomes its own list, named after the file, and the field mapping is asked
+  // ONCE and applied to all of them: the files come from one builder run, so per-file
+  // questions would be the same answer typed N times. The single-file path is untouched
+  // (it still offers the list picker and the share-link fallback).
+  function readFileBuf(f) {
+    return new Promise(function (res, rej) {
+      var rd = new FileReader();
+      rd.onerror = function () { rej(new Error("read")); };
+      rd.onload = function () { res(rd.result); };
+      rd.readAsArrayBuffer(f);
+    });
+  }
+  // Branch on the bytes, not the extension: ZIP magic → KMZ, a leading { or [ → GeoJSON,
+  // anything else → KML. Same test the single-file reader uses, minus the share link
+  // (a share link is one pasted list, never one of a batch).
+  async function parsePointsBuf(buf) {
+    var h = new Uint8Array(buf, 0, Math.min(4, buf.byteLength || 0));
+    if (h.length >= 4 && h[0] === 0x50 && h[1] === 0x4B && h[2] === 0x03 && h[3] === 0x04)
+      return await parseKmlText(await extractKmlFromKmz(buf));
+    var txt = new TextDecoder().decode(new Uint8Array(buf)).replace(/^\uFEFF/, "").trim();
+    var c0 = txt.charAt(0);
+    if (c0 === "{" || c0 === "[") return parseGeoJsonText(txt);
+    return await parseKmlText(txt);
+  }
+  // "grouse_lek_points_2026-09-25.kmz" → "grouse_lek_points_2026-09-25". The list can be
+  // renamed afterwards like any other, so keep the file's own name rather than guessing.
+  function listNameFromFile(name) {
+    return String(name || "").replace(/\.[^.]+$/, "").replace(/[\\/:*?"<>|]+/g, "_").trim().slice(0, 60);
+  }
+  // Two files can carry the same base name (the same builder run from two folders, or a
+  // browser's "grouse (1).kmz"), and the name may already belong to a saved list. Suffix
+  // "#2", "#3" ... rather than merging them: an import must never silently fold new points
+  // into a list the user did not choose.
+  function uniqueListName(base, taken) {
+    if (taken.indexOf(base) < 0) return base;
+    for (var n = 2; ; n++) {
+      var cand = base + " #" + n;
+      if (taken.indexOf(cand) < 0) return cand;
+    }
+  }
+  async function startMultiImport(files) {
+    var items = [], failed = [];
+    var taken = mpCollections.map(function (c) { return c.name; });
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i];
+      setStatus(t("kml.readingN", { i: i + 1, n: files.length, name: f.name }));
+      try {
+        var parsed = await parsePointsBuf(await readFileBuf(f));
+        if (parsed.marks.length) {
+          var nm = uniqueListName(listNameFromFile(f.name) || f.name, taken);
+          taken.push(nm);
+          items.push({ name: nm, parsed: parsed });
+        }
+        else failed.push(f.name);
+      } catch (e) { failed.push(f.name); }
+    }
+    if (!items.length) { setStatus(t("kml.none")); return; }
+    // One staged import holding every file: the union of fields/folders drives the
+    // pickers (so a field present in only one file is still offerable), and the union
+    // of marks drives the count and the "note looks like HTML" default.
+    var fieldSet = {}, folderSet = {}, marks = [], batch = [];
+    items.forEach(function (it) {
+      it.parsed.fields.forEach(function (f) { fieldSet[f] = 1; });
+      it.parsed.folders.forEach(function (f) { folderSet[f] = 1; });
+      marks = marks.concat(it.parsed.marks);
+      batch.push({ name: it.name, marks: it.parsed.marks });
+    });
+    kmlImport = { marks: marks, fields: Object.keys(fieldSet), folders: Object.keys(folderSet), files: batch };
+    setStatus(failed.length ? t("kml.someFailed", { n: failed.length }) : "");
     openKmlImportDialog();
   }
   // A small modal: choose the target list and which placemark field maps to the
@@ -631,8 +766,28 @@ window.AppPoints = (function () {
         return '<option value="' + escapeHtml(it.v) + '"' + (it.v === cur ? " selected" : "") + ">" + escapeHtml(it.l) + "</option>";
       }).join("") + "</select>";
     }
+    // The note may be built from SEVERAL fields, so it gets a checkbox dropdown rather
+    // than a single-choice <select>: a placemark often splits what belongs in one note
+    // across description + behaviour + habitat, and picking one threw the rest away.
+    function multiSel(id, items, cur) {
+      return '<div class="kml-ms" id="' + id + '-ms">' +
+        '<button type="button" class="kml-ms-btn" id="' + id + '-btn" aria-expanded="false" aria-haspopup="true"></button>' +
+        '<div class="kml-ms-menu" id="' + id + '-menu">' + items.map(function (it) {
+          return '<label class="kml-ms-item"><input type="checkbox" value="' + escapeHtml(it.v) + '"' +
+            (it.v === cur ? " checked" : "") + ">" + escapeHtml(it.l) + "</label>";
+        }).join("") + "</div></div>";
+    }
     var listItems = [{ v: "__new__", l: t("detmenu.newList") }].concat(
       mpCollections.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (c) { return { v: c.name, l: c.name }; }));
+    // A batch has no target picker: the list names are the file names, shown so the user
+    // can see what they are about to get (and what each file contributed) before importing.
+    var multi = !!(p.files && p.files.length > 1);
+    var targetRow = multi
+      ? '<div class="kml-row kml-multi">' + escapeHtml(t("kml.perFile", { n: p.files.length })) + "</div>" +
+        '<div class="kml-multi-list">' + p.files.map(function (b) {
+          return escapeHtml(b.name) + ' <span class="dh-meta">' + b.marks.length + "</span>";
+        }).join("<br>") + "</div>"
+      : '<label class="kml-row">' + escapeHtml(t("kml.target")) + sel("kml-target", listItems, "__new__") + "</label>";
     // Sensible defaults: name←Name, tag←folder (if any) else none, note←description.
     var defName = "name", defTag = p.folders.length ? "folder" : "", defNote = "desc";
     // Pre-tick "note is HTML" when the descriptions look like markup (common for
@@ -643,10 +798,10 @@ window.AppPoints = (function () {
       '<button type="button" id="kml-close" class="kml-close" aria-label="Close">×</button>' +
       "<h3>" + escapeHtml(t("kml.title")) + "</h3>" +
       '<p class="cu-hint">' + escapeHtml(t("kml.found", { n: p.marks.length })) + "</p>" +
-      '<label class="kml-row">' + escapeHtml(t("kml.target")) + sel("kml-target", listItems, "__new__") + "</label>" +
+      targetRow +
       '<label class="kml-row">' + escapeHtml(t("kml.nameFrom")) + sel("kml-name", opts([]), defName) + "</label>" +
       '<label class="kml-row">' + escapeHtml(t("kml.tagFrom")) + sel("kml-tag", opts([{ v: "", l: t("kml.fNone") }]), defTag) + "</label>" +
-      '<label class="kml-row">' + escapeHtml(t("kml.noteFrom")) + sel("kml-note", opts([{ v: "", l: t("kml.fNone") }]), defNote) + "</label>" +
+      '<label class="kml-row">' + escapeHtml(t("kml.noteFrom")) + multiSel("kml-note", opts([]), defNote) + "</label>" +
       '<label class="kml-row kml-check"><input type="checkbox" id="kml-note-html"' + (defHtml ? " checked" : "") + " />" + escapeHtml(t("points.noteHtml")) + "</label>" +
       '<div class="kml-actions"><button type="button" id="kml-do" class="btn">' + escapeHtml(t("kml.import")) + "</button></div>" +
       "</div>";
@@ -657,23 +812,99 @@ window.AppPoints = (function () {
     ov.addEventListener("click", function (e) { if (e.target === ov) closeKmlImportDialog(); });
     document.getElementById("kml-close").addEventListener("click", closeKmlImportDialog);
     document.getElementById("kml-do").addEventListener("click", doKmlImport);
+    wireNoteMulti(ov);
   }
   function closeKmlImportDialog() { var m = document.getElementById("kml-import-modal"); if (m && m.parentNode) m.parentNode.removeChild(m); }
+  // Which fields the note is built from, in the order the dialog lists them (not the order
+  // they were ticked) so the note reads the same way every time.
+  function noteTokens() {
+    var menu = document.getElementById("kml-note-menu");
+    if (!menu) return [];
+    return [].filter.call(menu.querySelectorAll("input[type=checkbox]"), function (c) { return c.checked; })
+             .map(function (c) { return c.value; });
+  }
+  function wireNoteMulti(root) {
+    var btn = root.querySelector("#kml-note-btn"), menu = root.querySelector("#kml-note-menu");
+    if (!btn || !menu) return;
+    function label() {
+      var on = [].filter.call(menu.querySelectorAll("input[type=checkbox]"), function (c) { return c.checked; });
+      btn.textContent = (on.length === 0 ? t("kml.fNone")
+        : on.length === 1 ? on[0].parentNode.textContent.trim()
+        : t("kml.nFields", { n: on.length })) + " \u25BE";
+    }
+    btn.addEventListener("click", function (e) {
+      e.preventDefault(); e.stopPropagation();
+      var open = menu.classList.toggle("is-open");
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    menu.addEventListener("click", function (e) { e.stopPropagation(); });   // ticking must not close it
+    menu.addEventListener("change", label);
+    // A click anywhere else in the dialog closes it, like any dropdown.
+    root.addEventListener("click", function () {
+      menu.classList.remove("is-open"); btn.setAttribute("aria-expanded", "false");
+    });
+    label();
+  }
+  // Field names the builders (and GBIF/Google Earth exports generally) use, mapped onto the
+  // point's own structured fields. First match wins; a value the user mapped by hand in the
+  // dialog is never overwritten.
+  var FIELD_ALIASES = {
+    sci: ["species", "scientificName", "scientific_name", "sciname", "taxon"],
+    date: ["date", "eventDate", "event_date", "observed", "obsDate"],
+    observer: ["observer", "recordedBy", "recorded_by", "recorder", "collector"],
+    count: ["count", "individualCount", "individual_count", "number"],
+    place: ["place", "locality", "location"]
+  };
+  function applyKmlFields(pt, data) {
+    if (!data) return;
+    Object.keys(FIELD_ALIASES).forEach(function (field) {
+      if (pt[field] != null && pt[field] !== "") return;   // the dialog's mapping wins
+      var names = FIELD_ALIASES[field];
+      for (var i = 0; i < names.length; i++) {
+        var v = data[names[i]];
+        if (v == null || String(v).trim() === "") continue;
+        v = String(v).trim();
+        if (field === "date") { var m = /\d{4}-\d{2}-\d{2}/.exec(v); v = m ? m[0] : v.slice(0, 10); }
+        pt[field] = v;
+        return;
+      }
+    });
+    // Tags may travel as a field too ("a; b" or "a, b"), alongside whatever the dialog mapped.
+    var tg = data.tags || data.tag;
+    if (tg) {
+      String(tg).split(/[;,|]/).forEach(function (x) {
+        x = x.trim(); if (x && (pt.tags || []).indexOf(x) < 0) (pt.tags = pt.tags || []).push(x);
+      });
+    }
+  }
   function doKmlImport() {
     var p = kmlImport; if (!p) return;
-    var target = document.getElementById("kml-target").value;
+    var targetEl = document.getElementById("kml-target");
+    var target = targetEl ? targetEl.value : "";
     var nameTok = document.getElementById("kml-name").value;
     var tagTok = document.getElementById("kml-tag").value;
-    var noteTok = document.getElementById("kml-note").value;
+    var noteToks = noteTokens();
     var noteHtmlBox = document.getElementById("kml-note-html");
     var noteIsHtml = !!(noteHtmlBox && noteHtmlBox.checked);
-    function finish(listName) {
-      var pts = p.marks.map(function (pm) {
+    function finish(listName, marks) {
+      var pts = (marks || p.marks).map(function (pm) {
         var tag = kmlFieldValue(pm, tagTok).trim();
-        var note = kmlFieldValue(pm, noteTok).trim();
+        // One field → exactly what it always was. Several → each line labelled, because
+        // three bare values stacked in a note say nothing about what they are.
+        var note = noteToks.length === 1
+          ? kmlFieldValue(pm, noteToks[0]).trim()
+          : noteToks.map(function (tk) {
+              var v = kmlFieldValue(pm, tk).trim();
+              return v ? (noteLabel(tk) + ": " + v) : "";
+            }).filter(Boolean).join("\n");
         var pt = { id: mpUid(), lat: pm.lat, lon: pm.lon,
           name: kmlFieldValue(pm, nameTok).trim() || pm.name || "",
           tags: tag ? [tag] : [], note: note, source: "kml", createdAt: new Date().toISOString() };
+        // Structured fields, taken from the placemark's own ExtendedData when it has them —
+        // the point builders already write species / date / observer / count, and throwing
+        // them away is what left an imported list unfilterable. Purely additive: a file
+        // without them yields exactly the point it did before.
+        applyKmlFields(pt, pm.data);
         // A file that says what colour a point should be is obeyed — without this every
         // imported set came out in ONE colour hashed from the list name, whatever the
         // file's own styling said.
@@ -684,14 +915,30 @@ window.AppPoints = (function () {
       var c = mpCollections.filter(function (x) { return x.name === listName; })[0];
       if (!c) { c = { name: listName, points: [] }; mpCollections.push(c); }
       c.points = c.points.concat(pts);
-      shownColls[listName] = true; saveShownState();
-      saveMapPoints(); renderMapPoints();
-      closeKmlImportDialog(); kmlImport = null;
-      setStatus(t("kml.imported", { n: pts.length, name: listName }));
+      shownColls[listName] = true;
+      return pts.length;
     }
+    // Commit once for the whole batch: one saveMapPoints / renderMapPoints for N lists
+    // instead of N of each (a ten-file import re-rendered the map ten times otherwise).
+    function commit() {
+      saveShownState(); saveMapPoints(); renderMapPoints();
+      closeKmlImportDialog(); kmlImport = null;
+    }
+    if (p.files && p.files.length) {
+      var total = 0;
+      p.files.forEach(function (b) { total += finish(b.name, b.marks); });
+      commit();
+      setStatus(p.files.length > 1 ? t("kml.importedN", { n: total, lists: p.files.length })
+                                   : t("kml.imported", { n: total, name: p.files[0].name }));
+      return;
+    }
+    var one = function (nm) { var n = finish(nm); commit(); setStatus(t("kml.imported", { n: n, name: nm })); };
     if (target === "__new__") {
-      modalPrompt(t("detmenu.newListPrompt"), "").then(function (n) { n = (n || "").trim(); if (n) finish(n); });
-    } else finish(target);
+      var suggest = p.fileName
+        ? uniqueListName(listNameFromFile(p.fileName) || p.fileName, mpCollections.map(function (c) { return c.name; }))
+        : "";
+      modalPrompt(t("detmenu.newListPrompt"), suggest).then(function (n) { n = (n || "").trim(); if (n) one(n); });
+    } else one(target);
   }
   // Open Google Maps with a navigable route through the given points (the start
   // is the user's own location). A single point → directions straight to it;
@@ -906,18 +1153,27 @@ window.AppPoints = (function () {
     openExternal("https://www.google.com/maps/d/");
     setStatus(t("nav.kml", { n: n }));
   }
+  // A point the user just created or edited must never vanish without a word. With a tag
+  // chip active, mpVisible hides any pin that does not carry that tag — so the pin was
+  // saved and simply not drawn, and saying nothing made it look like the save had failed.
+  function mpWarnIfHidden(p) {
+    if (!p || mpVisible(p)) return;
+    setStatus(t("points.savedHidden", { name: p.name || "" }));
+  }
   function addMapPoint(p) {
     p.id = p.id || mpUid();
     p.createdAt = p.createdAt || new Date().toISOString();
     mapPoints.push(p);
     saveMapPoints();
     renderMapPoints();
+    mpWarnIfHidden(p);
   }
   function updateMapPoint(id, patch) {
     var p = mapPoints.filter(function (x) { return x.id === id; })[0]; if (!p) return;
     Object.assign(p, patch);
     saveMapPoints();
     renderMapPoints();
+    mpWarnIfHidden(p);
   }
   function deleteMapPoint(id) {
     mapPoints = mapPoints.filter(function (x) { return x.id !== id; });
@@ -932,17 +1188,176 @@ window.AppPoints = (function () {
   // Distinct tag pool across all stored points, alphabetically sorted.
   function mpAllTags() {
     var s = {};
-    mapPoints.forEach(function (p) { (p.tags || []).forEach(function (t) { if (t) s[t] = true; }); });
+    var add = function (p) { (p.tags || []).forEach(function (t) { if (t) s[t] = true; }); };
+    mapPoints.forEach(add);
+    // …and every ticked saved list: an imported list's tags are the ones worth filtering on,
+    // and before this they never reached the chip row at all.
+    mpCollections.forEach(function (c) { if (shownColls[c.name]) (c.points || []).forEach(add); });
     return Object.keys(s).sort();
   }
   // OR-filter: when no tags active, show everything; otherwise show points
   // whose tag list intersects mpFilter. "(no tag)" is represented by "".
+  // ---- per-point comparison keys, and per-LIST filters -----------------------
+  // Dates and observer names are compared on every redraw, for every point, so they are
+  // reduced ONCE per point and cached on it (leading "_" keys are working state, not saved
+  // data — they are rebuilt from `date`/`observer` whenever a list is hydrated).
+  //   _dn : the date as an integer, 2015-04-12 -> 20150412, 0 when there is no date.
+  //   _ot : the observer as normalised tokens — lowercased, diacritics folded, punctuation
+  //         dropped — which is what makes fuzzy matching cheap.
+  function pDateNum(p) {
+    if (p._dn !== undefined) return p._dn;
+    var d = String(p.date || "");
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
+    p._dn = m ? (+m[1] * 10000 + +m[2] * 100 + +m[3]) : 0;
+    return p._dn;
+  }
+  var DIA = { "å":"a","ä":"a","á":"a","à":"a","â":"a","ã":"a","ø":"o","ö":"o","ó":"o","ò":"o","ô":"o","õ":"o",
+              "æ":"ae","é":"e","è":"e","ê":"e","ë":"e","í":"i","ì":"i","î":"i","ï":"i","ú":"u","ù":"u","û":"u",
+              "ü":"u","ý":"y","ÿ":"y","ñ":"n","ç":"c","š":"s","ž":"z","ð":"d","þ":"th","ł":"l" };
+  function foldName(x) {
+    return String(x || "").toLowerCase().replace(/[^\u0000-\u007f]/g, function (ch) { return DIA[ch] || ch; });
+  }
+  function obsTokens(name) {
+    return foldName(name).split(/[^a-z0-9]+/).filter(function (x) { return x.length > 0; });
+  }
+  function pObsTokens(p) {
+    if (p._ot !== undefined) return p._ot;
+    p._ot = obsTokens(p.observer || "");
+    return p._ot;
+  }
+  // Fuzzy: every token of the QUERY must be a prefix of some token of the record, so
+  // "K Nordmann" finds "Kari Nordmann", "nordmann" finds it too, and "Kari Olsen" does not.
+  // Diacritics and punctuation are already folded away on both sides.
+  function obsFuzzyHit(recTokens, queryTokens) {
+    if (!queryTokens.length) return true;
+    for (var i = 0; i < queryTokens.length; i++) {
+      var q = queryTokens[i], hit = false;
+      for (var j = 0; j < recTokens.length; j++) { if (recTokens[j].indexOf(q) === 0) { hit = true; break; } }
+      if (!hit) return false;
+    }
+    return true;
+  }
+  // { "<list name>": { from: "YYYY-MM-DD", to: "…", obs: ["name", …] } }
+  var listFilters = {};
+  function loadListFilters() { listFilters = window.GeoState.get("mapListFilters", {}) || {}; }
+  function listFilter(name) { return listFilters[name] || null; }
+  function setListFilter(name, f) {
+    if (!name) return;
+    if (f && (f.from || f.to || (f.obs && f.obs.length))) listFilters[name] = f; else delete listFilters[name];
+    window.GeoState.save({ mapListFilters: listFilters });
+    renderMapPoints();
+    if (typeof refreshMpPanel === "function") refreshMpPanel();
+  }
+  function listFilterActive(name) { return !!listFilter(name); }
+  // Does this point pass its OWN list's filter? Cheap integer and token compares.
+  function listOwnFilterPasses(p, f) {
+    if (!f) return true;
+    if (f.from || f.to) {
+      var dn = pDateNum(p);
+      if (!dn) return false;                                   // a filtered range excludes undated points
+      if (f.from && dn < +f.from.replace(/-/g, "")) return false;
+      if (f.to && dn > +f.to.replace(/-/g, "")) return false;
+    }
+    if (f.obs && f.obs.length) {
+      var rec = pObsTokens(p);
+      if (!rec.length) return false;
+      for (var i = 0; i < f.obs.length; i++) if (obsFuzzyHit(rec, obsTokens(f.obs[i]))) return true;
+      return false;
+    }
+    return true;
+  }
+  // Every observer named in a list, with a count — what the filter popup offers.
+  function listObservers(name) {
+    var c = mpCollections.filter(function (x) { return x.name === name; })[0];
+    if (!c) return [];
+    var seen = {};
+    (c.points || []).forEach(function (p) {
+      var o = String(p.observer || "").trim();
+      if (!o) return;
+      seen[o] = (seen[o] || 0) + 1;
+    });
+    return Object.keys(seen).sort(function (a, b) { return seen[b] - seen[a] || a.localeCompare(b); })
+      .map(function (k) { return { name: k, n: seen[k] }; });
+  }
+  // The date span a list actually covers, for the popup's placeholders.
+  function listDateSpan(name) {
+    var c = mpCollections.filter(function (x) { return x.name === name; })[0];
+    var lo = "", hi = "";
+    ((c && c.points) || []).forEach(function (p) {
+      var d = String(p.date || "").slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
+      if (!lo || d < lo) lo = d;
+      if (!hi || d > hi) hi = d;
+    });
+    return { from: lo, to: hi };
+  }
   function mpVisible(p) {
+    // The pane's own filters (date, observer, …) reach list pins too — see
+    // listPointPasses in app.js. A pin is judged only on the fields it HAS, so a list
+    // imported before those fields existed is never hidden by them.
+    if (listPointPasses && !listPointPasses(p)) return false;
     if (!mpFilter.length) return true;
     var tags = p.tags || [];
     if (!tags.length) return mpFilter.indexOf("") >= 0;
     for (var i = 0; i < tags.length; i++) if (mpFilter.indexOf(tags[i]) >= 0) return true;
     return false;
+  }
+  // Re-draw the pins after a filter change, at most once per frame: a filter click can
+  // touch several controls, and a list of tens of thousands of pins must not be rebuilt
+  // once per keystroke. Guarded against re-entry — renderMapPoints runs
+  // syncListDetections, which is itself what calls back in here.
+  var mpFilterT = null, mpRendering = false, mpBusyEls = [], mpBusyKeys = [];
+  // The redraw rebuilds the Points panel's innerHTML, which destroys the very tile we put
+  // the blink on — so remember the tile by IDENTITY and re-apply the class to whatever
+  // element takes its place.
+  function mpBusyKeyOf(el) {
+    if (!el || !el.getAttribute) return "";
+    if (el.classList && el.classList.contains("mp-chip")) return '.mp-chip[data-tag="' + (el.getAttribute("data-tag") || "") + '"]';
+    var cb = el.querySelector ? el.querySelector(".mp-coll-cb") : null;
+    var src = cb || el;
+    var nm = src.getAttribute && src.getAttribute("data-name"), ty = src.getAttribute && src.getAttribute("data-type");
+    if (nm) return '.mp-coll-row:has(.mp-coll-cb[data-name="' + nm + '"][data-type="' + (ty || "p") + '"])';
+    return "";
+  }
+  function mpBusyReapply() {
+    mpBusyKeys.forEach(function (sel) {
+      if (!sel) return;
+      var el = null;
+      try { el = document.querySelector(sel); } catch (e) { el = null; }
+      if (!el && sel.indexOf(":has(") >= 0) {                       // :has() unsupported → find it the long way
+        var m = /data-name="([^"]*)"/.exec(sel);
+        if (m) {
+          var cb = document.querySelector('.mp-coll-cb[data-name="' + m[1] + '"]');
+          el = cb && cb.closest ? cb.closest(".mp-coll-row") : null;
+        }
+      }
+      if (el && mpBusyEls.indexOf(el) < 0) { el.classList.add("filter-busy"); mpBusyEls.push(el); }
+    });
+  }
+  // `el` (optional): the tile that was clicked. It blinks with the app's existing
+  // .filter-busy pulse until the redraw is done — with a big list that redraw takes long
+  // enough that a click otherwise looked ignored. Held for a moment at minimum, so a fast
+  // filter still blinks once rather than flickering invisibly.
+  function mpFilterRefresh(el) {
+    if (el && el.classList && mpBusyEls.indexOf(el) < 0) { el.classList.add("filter-busy"); mpBusyEls.push(el); }
+    var key = mpBusyKeyOf(el);
+    if (key && mpBusyKeys.indexOf(key) < 0) mpBusyKeys.push(key);
+    var since = Date.now();
+    if (mpRendering || mpFilterT) return;
+    mpFilterT = (window.requestAnimationFrame || setTimeout)(function () {
+      mpFilterT = null;
+      if (mpRendering) { mpFilterBusyDone(since); return; }
+      mpRendering = true;
+      try { renderMapPoints(); mpBusyReapply(); } catch (e) {} finally { mpRendering = false; mpFilterBusyDone(since); }
+    }, 16);
+  }
+  function mpFilterBusyDone(since) {
+    if (!mpBusyEls.length) { mpBusyKeys = []; return; }
+    var els = mpBusyEls; mpBusyEls = []; mpBusyKeys = [];
+    var wait = Math.max(0, 260 - (Date.now() - since));
+    setTimeout(function () {
+      els.forEach(function (e) { try { e.classList.remove("filter-busy"); } catch (x) {} });
+    }, wait);
   }
 
   function ensureMpLayer() { if (!mpLayer) { mpLayer = L.layerGroup(); if (getMap()) mpLayer.addTo(getMap()); } return mpLayer; }
@@ -967,7 +1382,6 @@ window.AppPoints = (function () {
       // add it FIRST, so within that one <svg> the DOM order guarantees the disc
       // sits behind the marker pattern/colour (different renderers wouldn't).
       var halo = L.circleMarker([p.lat, p.lon], { radius: 10, color: listCol, weight: 1.5, opacity: 0.95, fillColor: listCol, fillOpacity: 0.5, renderer: detRenderer() });
-      halo.bindTooltip(mpTipHtml(p), { direction: "top", className: "det-hover-tip" });
       var hrec = { m: halo, p: p, editable: false };
       mpPins.push(hrec);
       halo.on("click", function (e) { if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent); onMpPinClick(hrec); });
@@ -985,7 +1399,6 @@ window.AppPoints = (function () {
     var m = p.shared
       ? L.marker([p.lat, p.lon], { icon: mpTriangleIcon(fill), keyboard: false })
       : L.circleMarker([p.lat, p.lon], { radius: 7, color: "#111", weight: 1, opacity: 0.9, fillColor: fill, fillOpacity: editable ? 0.9 : 0.65 });
-    m.bindTooltip(mpTipHtml(p), { direction: "top", className: p.spColor ? "det-hover-tip" : "area-tip" });
     var rec = { m: m, p: p, editable: editable };
     mpPins.push(rec);
     // Stop propagation so a marker click doesn't open the species-list popup
@@ -1061,24 +1474,148 @@ window.AppPoints = (function () {
     var ts = Date.parse(d || p.createdAt || "");
     return isNaN(ts) ? -8640000000000 : ts;
   }
+  // ---- per-point tags, edited from the point's own card ---------------------
+  // Which saved list owns this point (by object identity), so a tag edit persists to the
+  // right place. Loose working pins return null and are saved with the working set.
+  function ownerColl(p) {
+    var found = null;
+    mpCollections.forEach(function (c) { if (!found && (c.points || []).indexOf(p) >= 0) found = c; });
+    return found;
+  }
+  // Every tag in use in the point's own list — what the picker offers, so tagging is
+  // mostly one tap rather than typing the same word again.
+  function tagsInScope(p) {
+    var c = ownerColl(p), seen = {}, out = [];
+    ((c && c.points) || mapPoints || []).forEach(function (q) {
+      (q.tags || []).forEach(function (tg) { if (tg && !seen[tg]) { seen[tg] = 1; out.push(tg); } });
+    });
+    return out.sort(function (a, b) { return a.localeCompare(b); });
+  }
+  function pointTagsSave(p) {
+    var c = ownerColl(p);
+    if (c) { saveMapPoints(); persistMpSets(mpCollections); } else saveMapPoints();
+    renderMapPoints();
+    if (typeof refreshMpPanel === "function") refreshMpPanel();
+  }
+  function togglePointTag(p, tag) {
+    tag = String(tag || "").trim(); if (!tag) return;
+    p.tags = p.tags || [];
+    var i = p.tags.indexOf(tag);
+    if (i >= 0) p.tags.splice(i, 1); else p.tags.push(tag);
+    pointTagsSave(p);
+  }
+  // The card's tag row: the point's tags as removable chips, then ＋ to open the picker.
+  function pointTagsHtml(p) {
+    var tags = (p.tags || []).filter(function (x) { return !!x; });
+    return '<div class="mp-tagrow">' +
+      tags.map(function (tg) {
+        return '<button type="button" class="mp-tag-chip" data-tag="' + escapeHtml(tg) + '" title="' +
+          escapeHtml(t("points.tagRemove")) + '">' + escapeHtml(tagDisplay(tg)) + " \u00d7</button>";
+      }).join("") +
+      '<button type="button" class="mp-tag-add" title="' + escapeHtml(t("points.tagAdd")) + '">+</button>' +
+      // Copy this one record into another list, and delete it. Both act on the point the
+      // card belongs to, so they sit on the card rather than behind the action menu.
+      '<span class="mp-card-acts">' +
+        '<button type="button" class="mp-card-copy ico-btn" title="' + escapeHtml(t("points.copyTo")) + '" aria-label="' + escapeHtml(t("points.copyTo")) + '">' + ico("copy") + "</button>" +
+        '<button type="button" class="mp-card-del" title="' + escapeHtml(t("points.deleteOne")) + '" aria-label="' + escapeHtml(t("points.deleteOne")) + '">\u00d7</button>' +
+      "</span></div>";
+  }
+  // The picker, opened inside the card itself — no second popup to stack, dismiss or
+  // position, and it cannot cover the record it belongs to.
+  function pointTagPickerHtml(p) {
+    var mine = p.tags || [], opts = tagsInScope(p);
+    return '<div class="mp-tagpick">' +
+      '<div class="mp-tagpick-opts">' +
+        opts.map(function (tg) {
+          return '<button type="button" class="mp-tagpick-opt' + (mine.indexOf(tg) >= 0 ? " on" : "") +
+            '" data-tag="' + escapeHtml(tg) + '">' + escapeHtml(tagDisplay(tg)) + "</button>";
+        }).join("") +
+        (opts.length ? "" : '<span class="mp-tagpick-none">' + escapeHtml(t("points.tagNone")) + "</span>") +
+      "</div>" +
+      '<div class="mp-tagpick-new"><input type="text" class="mp-tagpick-in" placeholder="' +
+        escapeHtml(t("points.tagNew")) + '" maxlength="40" />' +
+        '<button type="button" class="mp-tagpick-ok">\u2713</button></div>' +
+      "</div>";
+  }
   function openMpStackPopup(center, group) {
     var items = group.slice().sort(function (a, b) { return mpPointWhen(b.p) - mpPointWhen(a.p); });
     var html = (items.length > 1 ? '<div class="mp-stack-hd">' + escapeHtml(t("points.stackN", { n: items.length })) + "</div>" : "") +
       items.map(function (o, i) {
-        return '<div class="mp-stack-it' + (items.length > 1 ? "" : " one") + '" role="button" tabindex="0" data-i="' + i + '" title="' + escapeHtml(t("points.cardMore")) + '">' + mpTipHtml(o.p) + "</div>";
+        return '<div class="mp-stack-it' + (items.length > 1 ? "" : " one") + '" data-i="' + i + '">' +
+          '<div class="mp-stack-body" role="button" tabindex="0" title="' + escapeHtml(t("points.cardMore")) + '">' +
+            mpTipHtml(o.p) + "</div>" + pointTagsHtml(o.p) + "</div>";
       }).join("");
     // Leaflet's own maxHeight gives the popup its scrollbar (.leaflet-popup-scrolled).
     var pop = L.popup({ className: "area-tip mp-stack-pop", maxWidth: 320, maxHeight: 300, autoPan: true })
       .setLatLng(center).setContent(html).openOn(getMap());
     var el = pop.getElement();
     if (!el) return;
-    el.querySelectorAll(".mp-stack-it").forEach(function (it) {
-      it.addEventListener("click", function () {
-        var o = items[+this.getAttribute("data-i")];
+    // The card body opens the point's actions; the tag row is edited in place, so a tag
+    // click must not also fire the action menu.
+    el.querySelectorAll(".mp-stack-body").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var o = items[+this.parentNode.getAttribute("data-i")];
         try { getMap().closePopup(pop); } catch (e) {}
         if (o) mpPinAction(o);
       });
     });
+    function wireTags() {
+      el.querySelectorAll(".mp-tag-chip").forEach(function (ch) {
+        ch.addEventListener("click", function (e) {
+          e.stopPropagation();
+          var o = items[+this.closest(".mp-stack-it").getAttribute("data-i")];
+          if (o) { togglePointTag(o.p, this.getAttribute("data-tag")); redraw(); }
+        });
+      });
+      el.querySelectorAll(".mp-card-copy").forEach(function (b) {
+        b.addEventListener("click", function (e) {
+          e.stopPropagation();
+          var o = items[+this.closest(".mp-stack-it").getAttribute("data-i")];
+          if (o && copyPointToList) copyPointToList(this, o.p);
+        });
+      });
+      el.querySelectorAll(".mp-card-del").forEach(function (b) {
+        b.addEventListener("click", function (e) {
+          e.stopPropagation();
+          var o = items[+this.closest(".mp-stack-it").getAttribute("data-i")];
+          if (!o || !deleteListPoint) return;
+          try { getMap().closePopup(pop); } catch (x) {}   // the record is about to go
+          deleteListPoint(o.p);
+        });
+      });
+      el.querySelectorAll(".mp-tag-add").forEach(function (b) {
+        b.addEventListener("click", function (e) {
+          e.stopPropagation();
+          var row = this.parentNode, card = this.closest(".mp-stack-it");
+          var o = items[+card.getAttribute("data-i")];
+          if (!o || card.querySelector(".mp-tagpick")) return;
+          row.insertAdjacentHTML("afterend", pointTagPickerHtml(o.p));
+          var pick = card.querySelector(".mp-tagpick");
+          pick.addEventListener("click", function (ev) { ev.stopPropagation(); });
+          pick.querySelectorAll(".mp-tagpick-opt").forEach(function (opt) {
+            opt.addEventListener("click", function () { togglePointTag(o.p, this.getAttribute("data-tag")); redraw(); });
+          });
+          var inp = pick.querySelector(".mp-tagpick-in");
+          var add = function () { var v = inp.value.trim(); if (v) { togglePointTag(o.p, v); redraw(); } };
+          pick.querySelector(".mp-tagpick-ok").addEventListener("click", add);
+          inp.addEventListener("keydown", function (ev) { if (ev.key === "Enter") { ev.preventDefault(); add(); } });
+          try { inp.focus(); } catch (e) {}
+        });
+      });
+    }
+    // Re-render the cards in place after a tag change — the popup stays open where it is.
+    function redraw() {
+      var keep = el.querySelector(".mp-stack-hd");
+      el.querySelectorAll(".mp-stack-it").forEach(function (card, idx) {
+        var o = items[idx]; if (!o) return;
+        var row = card.querySelector(".mp-tagrow");
+        if (row) row.outerHTML = pointTagsHtml(o.p);
+        var pk = card.querySelector(".mp-tagpick"); if (pk) pk.remove();
+      });
+      wireTags();
+      if (keep) { /* heading unchanged */ }
+    }
+    wireTags();
   }
   // Fan the co-located pins out around their shared point ("rainbow"), each in
   // its per-species colour, with a leader line and its species/date/activity
@@ -1096,15 +1633,49 @@ window.AppPoints = (function () {
       var ll = getMap().layerPointToLatLng(L.point(cpt.x + R * Math.cos(a), cpt.y + R * Math.sin(a)));
       layer.addLayer(L.polyline([center, ll], { color: "#888", weight: 1, opacity: 0.6, interactive: false }));
       var fm = L.circleMarker(ll, { radius: 7, color: "#111", weight: 1, fillColor: mpColorFor(o.p), fillOpacity: 0.95 });
-      fm.bindTooltip(mpTipHtml(o.p), { direction: "top", className: o.p && o.p.spColor ? "det-hover-tip" : "area-tip" });
       fm.on("click", function (e) { if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent); clearSpider(); mpPinAction(o); });
       layer.addLayer(fm);
     });
     layer.addTo(getMap());
     setSpiderLayer(layer);
   }
+  // Above a few thousand pins Leaflet is the wrong tool: renderMapPoints makes ONE marker
+  // per point and runs on every tick, filter change and save. Measured against the
+  // generated lek file (64,542 points): 500 pts = 25 ms, 10k = 302 ms, 40k = 1,212 ms,
+  // 64.5k = 2,154 ms -- linear, and 2 s of blocked main thread per redraw.
+  //
+  // So a big list is drawn for the CURRENT VIEW only, with a hard pin budget as a
+  // backstop (zoomed out over a whole country, 64k pins are a blob: drawing 4,000 of them
+  // looks the same and costs 2 % of the time). The user's own "Max points on map" lowers
+  // it further. Small lists are untouched -- no cull, no move-redraw.
+  var MP_CULL_MIN = 2000;        // total shown list points below this -> draw everything
+  // Pins actually drawn per render when culling is on. Measured cost of renderMpPin alone
+  // (draw + clearLayers): 4k = 50 ms, 10k = 118 ms, 30k = 350 ms, 64.5k = 661 ms. 8k keeps a
+  // zoomed-out redraw around 100 ms on this machine while showing far more than 4k did.
+  var MP_DRAW_MAX = 8000;
+  var mpMoveT = null, mpCulling = false;
+  function mpPinBudget() {
+    var n = +window.GeoState.get("maxMapPoints", 50000);
+    return Math.min(MP_DRAW_MAX, (n > 0 ? n : MP_DRAW_MAX));
+  }
+  function mpViewBounds() {
+    var m = getMap(); if (!m) return null;
+    try { return m.getBounds().pad(0.3); } catch (e) { return null; }
+  }
+  // Re-draw after a pan/zoom, but only while a list is actually being culled, and only
+  // once the map has been still -- the same shape the legend's redraw uses.
+  function mpWatchMoves() {
+    var m = getMap(); if (!m || mpWatchMoves.on) return;
+    mpWatchMoves.on = true;
+    m.on("moveend zoomend", function () {
+      if (!mpCulling) return;
+      clearTimeout(mpMoveT);
+      mpMoveT = setTimeout(function () { if (mpCulling) renderMapPoints(); }, 320);
+    });
+  }
   function renderMapPoints() {
     if (!getMap()) return;
+    mpWatchMoves();
     clearSpider();            // any open fan-out refers to markers about to be replaced
     ensureMpLayer().clearLayers();
     mpPins = [];
@@ -1115,16 +1686,63 @@ window.AppPoints = (function () {
     // so they obey the same legend filters and open the same popups as fetched
     // data. Manually-tagged points (no species key) keep their own pin + editor.
     var routeShows = routePoints.length === 0;   // reloaded saved routes own the numbered-pin display only when the basket is empty
+    // How many list points are in play at all? Only that decides whether to cull, so a
+    // handful of hand-made lists keep behaving exactly as before.
+    var shownTotal = 0, shownLists = [];
     mpCollections.forEach(function (c) {
       if (!shownColls[c.name]) return;
-      if (routeShows && isRouteColl(c)) return;   // drawn as numbered route stops (renderRoutePoints), not plain pins
+      if (routeShows && isRouteColl(c)) return;
+      shownLists.push(c);
+      shownTotal += (c.points || []).length;
+    });
+    mpCulling = shownTotal > MP_CULL_MIN;
+    // Every shown list gets a FAIR SHARE of the pin budget, allocated smallest-first so a
+    // small list uses less than its share and the surplus rolls on to the bigger ones.
+    // Without this the budget went to whichever list came first: 30,000 imported points ate
+    // all of it and a hand-made five-point list was never drawn at all, with no filter
+    // anywhere near it. Rendering then runs largest-first, so the small lists land on top
+    // instead of under a dense import.
+    shownLists.sort(function (a, b) { return ((a.points || []).length) - ((b.points || []).length); });
+    // Plain numbers, not L.LatLngBounds.contains([lat, lon]) — that allocates a LatLng per
+    // point, and this runs 64k times on the generated lek file.
+    var vb = mpCulling ? mpViewBounds() : null, bb = null;
+    if (vb) { var sw = vb.getSouthWest(), ne = vb.getNorthEast(); bb = [sw.lat, sw.lng, ne.lat, ne.lng]; }
+    var budget = mpCulling ? mpPinBudget() : Infinity;
+    var drawn = 0, passed = 0;
+    // Pass 1: how many pins each list may draw.
+    var share = {}, left = budget, nLeft = shownLists.length;
+    shownLists.forEach(function (c) {
+      var want = nLeft > 0 ? Math.max(1, Math.floor(left / nLeft)) : 0;
+      var have = 0;
+      (c.points || []).forEach(function (p) { if (p && !p.spKey && isFinite(p.lat) && isFinite(p.lon)) have++; });
+      var give = Math.min(want, have);
+      share[c.name] = (budget === Infinity) ? Infinity : give;
+      left -= give; nLeft--;
+    });
+    // Pass 2: draw, largest list first so the smallest end up on top.
+    shownLists.slice().reverse().forEach(function (c) {
       var col = collColor(c);
+      var lf = listFilter(c.name);
+      var quota = share[c.name], used = 0;
       (c.points || []).forEach(function (p) {
         if (!p || !isFinite(p.lat) || !isFinite(p.lon)) return;
         if (p.spKey) return;   // detection point → detPlot pipeline (handled below)
+        // The view test goes FIRST because it is the cheapest by far: four number
+        // comparisons against the filters' string folding and date arithmetic.
+        if (bb && (p.lat < bb[0] || p.lat > bb[2] || p.lon < bb[1] || p.lon > bb[3])) return;
+        // Until now this loop drew every point in a ticked list unconditionally, so the
+        // pane's filters AND the tag chips were no-ops for list pins. Both apply here now,
+        // together with the list's own observer / date-range filter.
+        if (!mpVisible(p)) return;
+        if (!listOwnFilterPasses(p, lf)) return;
+        passed++;
+        if (used >= quota) return;
+        used++; drawn++;
         renderMpPin(p, false, col);
       });
     });
+    // Say what is missing rather than quietly drawing a subset.
+    if (mpCulling && drawn < passed) setStatus(t("points.capped", { n: drawn, total: passed }));
     syncListDetections();     // merge shown lists' detection points into detPlot
     renderRoutePoints();      // numbered stops for the basket, or a reloaded saved route
     updateRouteChip();        // and its bottom nav bar
@@ -1134,7 +1752,9 @@ window.AppPoints = (function () {
 
   return {
     init: init,
-    initMpSetStore: initMpSetStore, persistMpSets: persistMpSets,
+    initMpSetStore: initMpSetStore, persistMpSets: persistMpSets, mpFilterRefresh: mpFilterRefresh,
+    listFilter: listFilter, setListFilter: setListFilter, listFilterActive: listFilterActive,
+    listObservers: listObservers, listDateSpan: listDateSpan,
     // ---- points, lists, collections ----
     loadMapPoints: loadMapPoints, saveMapPoints: saveMapPoints, saveChecked: saveChecked,
     saveShownState: saveShownState, addMapPoint: addMapPoint, updateMapPoint: updateMapPoint,
@@ -1150,7 +1770,7 @@ window.AppPoints = (function () {
     exportPointsKml: exportPointsKml, exportPointsKmz: exportPointsKmz, exportPointsAs: exportPointsAs,
     buildPointsKml: buildPointsKml, buildPointsGeoJson: buildPointsGeoJson, buildKmz: buildKmz,
     exportPointsGeoJson: exportPointsGeoJson, extractKmlFromKmz: extractKmlFromKmz,
-    startKmlImport: startKmlImport, startGeoJsonImport: startGeoJsonImport,
+    startKmlImport: startKmlImport, startGeoJsonImport: startGeoJsonImport, startMultiImport: startMultiImport,
     sendPointsToGoogle: sendPointsToGoogle,
     // ---- route ----
     loadRoute: loadRoute, addToRoute: addToRoute, renderRoutePoints: renderRoutePoints,
