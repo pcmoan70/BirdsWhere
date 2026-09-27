@@ -1074,6 +1074,11 @@
   // Stops the moment the last fetch lands and the recount is done. Never pulses with
   // no filter set — then a partial view is just a partial view.
   var filterStale = false;   // pan/zoom happened; the filtered counts are pending a recompute
+  // Every funnel in the app, in one place. setFunnelBusy and updateFilterBusy each had
+  // their own list and they disagreed: a fetch pulsed three of them, a filter pass four,
+  // and the Points panel's per-list funnels were in neither. A cue that appears on some
+  // funnels and not others teaches the user to ignore it.
+  var FUNNEL_SEL = ".sp-filter-btn, .filterclear-btn, .det-clear-sel, .sp-head-funnel, .mp-coll-filt";
   function updateFilterBusy() {
     var on = false;
     // Pulse for ANY fetch in progress — a map click, a stored-location run, an "update all
@@ -1083,7 +1088,7 @@
     try { on = userFetchActive() || filterStale; } catch (e) {}
     var fb = document.getElementById("sp-filter-btn");
     if (fb) fb.classList.toggle("busy", !!on);
-    Array.prototype.forEach.call(document.querySelectorAll(".filterclear-btn, .det-clear-sel, .sp-head-funnel"), function (el) {
+    Array.prototype.forEach.call(document.querySelectorAll(FUNNEL_SEL), function (el) {
       el.classList.toggle("filter-stale", !!on);
     });
   }
@@ -3757,12 +3762,17 @@
       }
       var l = locs[i++];
       setStatus(t("filters.reloading", { i: i, n: total }));
-      fetchAllSightingsAt(l.lat, l.lon, null, l.radius, null)
+      var settled = false, adv = function () { if (!settled) { settled = true; setTimeout(next, 400); } };
+      var guard = setTimeout(function () { if (myLoopGen === fetchLoopGen) adv(); }, LOC_MAX_MS);
+      var started; try { started = fetchAllSightingsAt(l.lat, l.lon, null, l.radius, null); }
+      catch (e) { started = Promise.reject(e); }
+      Promise.resolve(started)
         .then(function (result) {
+          clearTimeout(guard);
           if (myLoopGen !== fetchLoopGen) return;   // red × mid-fetch → drop this location's late result
           try { plotSightingsResult(result); } catch (e) {}
-          setTimeout(next, 400);
-        }, function () { if (myLoopGen === fetchLoopGen) setTimeout(next, 400); });
+          adv();
+        }, function () { clearTimeout(guard); if (myLoopGen === fetchLoopGen) adv(); });
     })();
   }
   // ---- Update fetched areas (the ↻ button) ---------------------------------
@@ -3805,11 +3815,16 @@
       }
       var l = locs[i++];
       setStatus(t("update.running", { i: i, n: total }));
-      fetchAllSightingsAt(l.lat, l.lon, null, l.radius, l.days).then(function (result) {
+      var settled2 = false, adv2 = function () { if (!settled2) { settled2 = true; setTimeout(next, 400); } };
+      var guard2 = setTimeout(function () { if (myLoopGen === fetchLoopGen) adv2(); }, LOC_MAX_MS);
+      var started2; try { started2 = fetchAllSightingsAt(l.lat, l.lon, null, l.radius, l.days); }
+      catch (e) { started2 = Promise.reject(e); }
+      Promise.resolve(started2).then(function (result) {
+        clearTimeout(guard2);
         if (myLoopGen !== fetchLoopGen) return;
         try { plotSightingsResult(result); } catch (e) {}   // re-stamps the area's end-date to now
-        setTimeout(next, 400);
-      }, function () { if (myLoopGen === fetchLoopGen) setTimeout(next, 400); });
+        adv2();
+      }, function () { clearTimeout(guard2); if (myLoopGen === fetchLoopGen) adv2(); });
     })();
   }
   // Long-press the ↻ button → its two settings: overlap days + only-in-view.
@@ -4935,6 +4950,9 @@
   // loops, so clearing the map (red ×) can cancel every pending detection fetch.
   var activeFetchCtrls = new Set();
   var fetchLoopGen = 0;
+  // A whole location's fetch is bounded, not just its individual sources: several sources at
+  // 120 s each can serialise past any patience, and one with its timeout set to 0 has none.
+  var LOC_MAX_MS = 150000;
   // The rarity sweep's own controllers (see rarityFetchSources). Kept OUT of
   // activeFetchCtrls so a background sweep never reads as a user fetch — but a
   // map-clear aborts it like everything else.
@@ -6953,7 +6971,8 @@
   // the natural default) and rarity_decreasing = probability asc (rarest first).
   function urlSortState(sortby) {
     switch ((sortby || "").toLowerCase()) {
-      case "rarity_increasing": return { col: "prob", dir: "desc" };
+      case "probable": case "likely":
+      case "rarity_increasing": return { col: "prob", dir: "desc" };   // most probable first
       case "rarity_decreasing": return { col: "prob", dir: "asc" };
       case "time_recent":       return { col: "recent", dir: "desc" };
       case "distance":          return { col: "dist", dir: "asc" };   // nearest first; ties by rarity
@@ -6969,8 +6988,9 @@
   //   show=list|map  → land on the list page, or the map with dots dropping in (default)
   //   layout=table|observation → the list page's layout: ranked species table (default) or
   //                    one row per observation ("By observation")
-  //   sortby=…       → rarity_increasing (default) | rarity_decreasing | time_recent | distance
-  //                    (nearest first, equal distances by rarity) — both layouts
+  //   sortby=…       → probable (alias: likely, rarity_increasing — most probable first, the
+  //                    default) | rarity_decreasing | time_recent | distance (nearest first,
+  //                    equal distances by rarity) — all layouts
   function maybeUrlLocationParam() {
     var p = parseSemiParams();
     var locRaw = (p.location || "").trim();
@@ -7024,6 +7044,13 @@
     // the next fetch honours the Settings ticks again.
     launchBirdsOnce = true;
     showGroupWithoutSaving("aves");
+    // A poster visitor wants "what can I see here", which is the sightings AND the species
+    // the model expects. A predicted species with no observations is normally hidden (the
+    // [?] toggle, off by default), so the Images cards showed the fetched species only.
+    // Set in memory and NOT saved: this launch shows both, the visitor's own [?] choice is
+    // untouched, and pressing [?] still overrides it (that handler saves). The prediction
+    // floor (prob-min, else rarePct — 10 % by default) keeps it from becoming the whole model.
+    spShowMissing = true;
     launchNotePending = true;   // the first settled fetch may add the "few sightings — add keys" note
     stripShortcutParams();   // everything above is consumed — a reload must not run the shortcut again
 
@@ -9119,6 +9146,10 @@
       function onFsChange() {
         document.body.classList.toggle("fs-apple", appleTouch && isFullscreen());
         fitMapHeight();
+        // Entering or leaving full screen re-lays the whole page out, and onListView() is
+        // read from the panel's on-screen geometry — so the switch has to be re-evaluated
+        // here like it is after any other view change.
+        try { updateViewToggle(); } catch (e) {}
       }
       document.addEventListener("fullscreenchange", onFsChange);
       document.addEventListener("webkitfullscreenchange", onFsChange);   // Safari's name for it
@@ -12649,9 +12680,15 @@
   function setFunnelBusy(on) {
     funnelBusyN = Math.max(0, funnelBusyN + (on ? 1 : -1));
     var busy = funnelBusyN > 0;
-    Array.prototype.forEach.call(document.querySelectorAll(".sp-filter-btn, .filterclear-btn, .det-clear-sel, .sp-head-funnel"), function (el) {
+    Array.prototype.forEach.call(document.querySelectorAll(FUNNEL_SEL), function (el) {
       el.classList.toggle("filter-busy", busy);
     });
+  }
+  var funnelPulseT = null;
+  function pulseFunnels(ms) {
+    if (funnelPulseT) clearTimeout(funnelPulseT);   // already pulsing → extend it
+    else setFunnelBusy(true);
+    funnelPulseT = setTimeout(function () { funnelPulseT = null; setFunnelBusy(false); }, ms || 320);
   }
   function withFunnelBusy(fn) {
     setFunnelBusy(true);
@@ -16570,7 +16607,7 @@
     refreshMpPanel: refreshMpPanel, renderMpAdmin: renderMpAdmin, setStatus: setStatus,
     showDetRowMenu: showDetRowMenu, syncListDetections: syncListDetections,
     updateDetSetOverlays: updateDetSetOverlays, updateMpBadge: updateMpBadge,
-    tagDisplay: tagDisplay,
+    pulseFunnels: pulseFunnels, tagDisplay: tagDisplay,
     updateSpDistances: updateSpDistances, t: t,
     getMap: function () { return map; },
     getMarker: function () { return marker; },
@@ -20590,7 +20627,14 @@
       renderSpControls();   // re-glyphs the button and rebuilds the body (table rows / Images cards)
     });
     var vtBtn = document.getElementById("viewtoggle-btn");
-    if (vtBtn) vtBtn.addEventListener("click", function () { if (onListView()) goToMapView(); else showListView(); });
+    if (vtBtn) vtBtn.addEventListener("click", function () {
+      // Both showListView and goToMapView open with `if (!viewToggleAvail()) return;`, so a
+      // button left visible after the mode stopped qualifying was DEAD and silent — pressing
+      // it did nothing at all, with nothing to tell you why. Re-evaluate instead: that hides
+      // the switch when it genuinely does not apply, and says so.
+      if (!viewToggleAvail()) { updateViewToggle(); setStatus(t("view.unavailable")); return; }
+      if (onListView()) goToMapView(); else showListView();
+    });
 
     // Click a count cell in the per-point species list to open the recent-
     // sightings panel for that species (multi-source merge with Show in map).
@@ -22406,13 +22450,33 @@
       var label = t("loc.fetching", { name: l.name, i: i, n: locs.length });
       obsSetPrefix(label);   // keeps the per-source progress visible behind it
       setStatus(label);
-      fetchAllSightingsAt(l.lat, l.lon, null, l.radius || recentRadiusKm(), daysOverride)
+      // The queue advances ONLY when this location settles, so anything that stops it
+      // settling stops the whole run — and the user sees one location fetched out of four
+      // with no error. Two ways that happened:
+      //   * a source that never answers. Each SOURCE has a timeout, but a source configured
+      //     with timeout 0 ("none") has none, and nothing bounded the LOCATION.
+      //   * fetchAllSightingsAt throwing SYNCHRONOUSLY — then no .then is ever attached and
+      //     the exception unwinds out of next(), killing the queue silently. The same trap
+      //     leaked an abort controller in v1911.
+      // advance() is idempotent, so the watchdog and a late real answer cannot both step on.
+      var settled = false;
+      function advance() { if (settled) return; settled = true; setTimeout(next, 500); }
+      var guard = setTimeout(function () {
+        if (settled || myLoopGen !== fetchLoopGen) return;
+        if (!silent) setStatus(t("loc.fetchTimeout", { name: l.name }));
+        advance();
+      }, LOC_MAX_MS);
+      var started;
+      try { started = fetchAllSightingsAt(l.lat, l.lon, null, l.radius || recentRadiusKm(), daysOverride); }
+      catch (e) { started = Promise.reject(e); }
+      Promise.resolve(started)
         .then(function (result) {
+          clearTimeout(guard);
           if (myLoopGen !== fetchLoopGen) return;   // red × mid-fetch → drop this location's late result
           if (!silent) setStatus("✓ " + l.name + ": " + ((result && result.dedupTotal) || 0) + " obs");
           try { plotSightingsResult(result); } catch (e) {}
-          setTimeout(next, 500);
-        }, function () { if (myLoopGen !== fetchLoopGen) return; if (!silent) setStatus("✗ " + l.name); setTimeout(next, 500); });   // ~0.5s gap between locations
+          advance();
+        }, function () { clearTimeout(guard); if (myLoopGen !== fetchLoopGen) return; if (!silent) setStatus("✗ " + l.name); advance(); });   // ~0.5s gap between locations
     })();
   }
 
@@ -23702,6 +23766,12 @@
     });
   }
   function renderSpBody() {
+    // Every heavy list pass blinks the funnels, in every layout: the table, the observation
+    // list and the Images cards all come through here, and the Images rebuild in particular
+    // had no cue at all. renderSpBody is change-driven (9 call sites: filters, sort, layout,
+    // settings, a photo arriving), not a scroll path, so this cannot flutter — and repeated
+    // calls extend one pulse rather than stacking.
+    pulseFunnels();
     var tbl = document.getElementById("species-list-table"), rec = document.getElementById("sp-records");
     if (!tbl || !rec) return;
     hideLocHoverMap();   // the hovered place name is about to be re-rendered away
