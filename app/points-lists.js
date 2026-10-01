@@ -125,6 +125,7 @@ window.AppPoints = (function () {
         '<input type="color" id="ce-color" data-auto="' + esc(auto) + '" value="' + esc(cur) + '" />' +
         '<button type="button" id="ce-color-auto" class="mp-color-reset" title="' + esc(t("points.colorAuto")) + '" aria-label="' + esc(t("points.colorAuto")) + '">↺</button></span>' +
       '<label class="kml-row kml-check"><input type="checkbox" id="ce-note-html"' + (allHtml ? " checked" : "") + " />" + esc(t("points.noteHtml")) + "</label>" +
+      '<label class="kml-row kml-check"><input type="checkbox" id="ce-protect"' + (isCollProtected(c.name) ? " checked" : "") + " />" + esc(t("lists.protect")) + "</label>" +
       '<p class="cu-hint">' + esc(t("points.editListHint")) + "</p>" +
       '<div class="kml-actions"><button type="button" id="ce-save" class="btn">' + esc(t("points.save")) + "</button></div>" +
       "</div>";
@@ -159,6 +160,7 @@ window.AppPoints = (function () {
         if (wasProt) { setCollProtected(old, false); setCollProtected(newName, true); }
         saveShownState();
       }
+      setCollProtected(c.name, document.getElementById("ce-protect").checked);   // after the rename: keyed by the final name
       saveMapPoints(); renderMapPoints(); if (typeof refreshMpPanel === "function") refreshMpPanel();
       if (typeof renderMpAdmin === "function") renderMpAdmin();
       close();
@@ -196,8 +198,11 @@ window.AppPoints = (function () {
     if (reset && ci) reset.addEventListener("click", function () { ci.value = ci.getAttribute("data-auto") || "#888888"; });
   }
   // Comma-separated free-form tag input → clean, deduped lowercase-trimmed array.
+  // A tag never carries a record count: a KML folder "eggs (3)" and a category "eggs" are the
+  // same tag (owner, 2026-10-01 — the chips showed both); the chip shows the live count instead.
+  function normTag(t) { return String(t || "").replace(/\s*\(\d[\d\s.,]*\)\s*$/, "").trim(); }
   function mpParseTags(s) {
-    return String(s || "").split(",").map(function (t) { return t.trim(); }).filter(function (t, i, a) { return t && a.indexOf(t) === i; });
+    return String(s || "").split(",").map(function (t) { return normTag(t); }).filter(function (t, i, a) { return t && a.indexOf(t) === i; });
   }
   function mpUid() { return "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
   // ---- Named lists in IndexedDB ---------------------------------------------
@@ -236,6 +241,7 @@ window.AppPoints = (function () {
         // so share the ARRAY, not just its strings.
         var tg = p.tags;
         if (tg && tg.length) {
+          for (var j0 = 0; j0 < tg.length; j0++) tg[j0] = normTag(tg[j0]);   // stored "eggs (3)" → "eggs" (idempotent)
           var key = tg.join("\u0001"), hit = tagPool[key];
           if (hit) p.tags = hit;
           else { for (var j = 0; j < tg.length; j++) tg[j] = sh(tg[j]); tagPool[key] = tg; }
@@ -328,7 +334,7 @@ window.AppPoints = (function () {
   function loadMapPoints() {
     loadListFilters();   // also when IndexedDB never hydrated (initMpSetStore bailed)
     mapPoints = (window.GeoState.get("mapPoints", []) || []).filter(function (p) { return p && isFinite(p.lat) && isFinite(p.lon); });
-    mpFilter = window.GeoState.get("mapPointsFilter", []) || [];
+    mpFilter = (window.GeoState.get("mapPointsFilter", []) || []).map(normTag).filter(function (t, i, a) { return a.indexOf(t) === i; });
     // With IndexedDB as the store the lists are already hydrated (initMpSetStore) and
     // the blob no longer carries them — reading it here would wipe them.
     if (!mpIdbReady) mpCollections = (window.GeoState.get("mapPointSets", []) || []).filter(function (c) { return c && c.name; });
@@ -639,8 +645,23 @@ window.AppPoints = (function () {
   // painted BEFORE it, and the placemark walk then reports its way through in chunks.
   var PARSE_CHUNK = 4000;
   function yieldToUi() { return new Promise(function (r) { setTimeout(r, 0); }); }
+  // A visible "Loading <file>…" while a point list is read, parsed and added (owner, 2026-10-01):
+  // the status line alone is easy to miss under an open panel, and a big file blocks the page for
+  // seconds. One fixed overlay (spinner + text); null hides it. Also mirrors every status update
+  // of the import path, so the text moves with the parse ("Reading records… 12000 of 183588").
+  function mpLoading(text) {
+    var el = document.getElementById("mp-loading");
+    if (!text) { if (el && el.parentNode) el.parentNode.removeChild(el); return; }
+    if (!el) {
+      el = document.createElement("div"); el.id = "mp-loading"; el.className = "kml-modal mp-loading";
+      el.innerHTML = '<div class="kml-modal-box spg-wait"><div class="spinner"></div><span id="mp-loading-txt"></span></div>';
+      document.body.appendChild(el);
+    }
+    el.querySelector("#mp-loading-txt").textContent = text;
+  }
+  function loadStatus(msg) { setStatus(msg); if (document.getElementById("mp-loading")) mpLoading(msg); }
   async function parseKmlText(text) {
-    setStatus(t("kml.parsing"));
+    loadStatus(t("kml.parsing"));
     await yieldToUi();                       // let that message paint before the long call
     var doc = new DOMParser().parseFromString(text, "application/xml");
     if (doc.getElementsByTagName("parsererror").length) throw new Error(t("kml.parseErr"));
@@ -650,7 +671,7 @@ window.AppPoints = (function () {
     function txt(el, tag) { var n = el.getElementsByTagName(tag)[0]; return n ? (n.textContent || "").trim() : ""; }
     for (var i = 0; i < pms.length; i++) {
       if (i && i % PARSE_CHUNK === 0) {
-        setStatus(t("kml.reading2", { n: i, total: pms.length }));
+        loadStatus(t("kml.reading2", { n: i, total: pms.length }));
         await yieldToUi();
       }
       var pm = pms[i];
@@ -709,8 +730,8 @@ window.AppPoints = (function () {
   var kmlImport = null;   // { marks, fields, folders } currently staged for import
   async function startKmlImport(text, fileName) {
     var parsed;
-    try { parsed = await parseKmlText(text); } catch (e) { setStatus(t("kml.parseErr")); return; }
-    if (!parsed.marks.length) { setStatus(t("kml.none")); return; }
+    try { parsed = await parseKmlText(text); } catch (e) { mpLoading(null); setStatus(t("kml.parseErr")); return; }
+    if (!parsed.marks.length) { mpLoading(null); setStatus(t("kml.none")); return; }
     parsed.fileName = fileName || "";
     kmlImport = parsed;
     setStatus("");
@@ -762,7 +783,7 @@ window.AppPoints = (function () {
     var taken = mpCollections.map(function (c) { return c.name; });
     for (var i = 0; i < files.length; i++) {
       var f = files[i];
-      setStatus(t("kml.readingN", { i: i + 1, n: files.length, name: f.name }));
+      loadStatus(t("kml.readingN", { i: i + 1, n: files.length, name: f.name }));
       try {
         var parsed = await parsePointsBuf(await readFileBuf(f));
         if (parsed.marks.length) {
@@ -773,7 +794,7 @@ window.AppPoints = (function () {
         else failed.push(f.name);
       } catch (e) { failed.push(f.name); }
     }
-    if (!items.length) { setStatus(t("kml.none")); return; }
+    if (!items.length) { mpLoading(null); setStatus(t("kml.none")); return; }
     // One staged import holding every file: the union of fields/folders drives the
     // pickers (so a field present in only one file is still offerable), and the union
     // of marks drives the count and the "note looks like HTML" default.
@@ -792,6 +813,7 @@ window.AppPoints = (function () {
   // point's name / tag / note, then import. Built on demand and removed on close.
   function openKmlImportDialog() {
     var p = kmlImport; if (!p) return;
+    mpLoading(null);
     closeKmlImportDialog();
     // Field options shared by the name/tag/note pickers.
     function opts(extra) {
@@ -1039,6 +1061,13 @@ window.AppPoints = (function () {
   }
   function doKmlImport() {
     var p = kmlImport; if (!p) return;
+    var targetEl0 = document.getElementById("kml-target"), tsel = targetEl0 ? targetEl0.value : "";
+    var into = (p.files && p.files.length) ? p.files.map(function (b) { return b.name; }).join(", ") : (tsel === "__new__" ? (p.fileName || "") : tsel);
+    mpLoading(t("kml.importing", { name: into || "…" }));
+    setTimeout(function () { try { doKmlImportNow(); } finally { mpLoading(null); } }, 30);   // let the overlay paint before the page blocks
+  }
+  function doKmlImportNow() {
+    var p = kmlImport; if (!p) return;
     var targetEl = document.getElementById("kml-target");
     var target = targetEl ? targetEl.value : "";
     var nameTok = document.getElementById("kml-name").value;
@@ -1048,7 +1077,7 @@ window.AppPoints = (function () {
     var noteIsHtml = !!(noteHtmlBox && noteHtmlBox.checked);
     function finish(listName, marks) {
       var pts = (marks || p.marks).map(function (pm) {
-        var tag = kmlFieldValue(pm, tagTok).trim();
+        var tag = normTag(kmlFieldValue(pm, tagTok));
         // One field → exactly what it always was. Several → each line labelled, because
         // three bare values stacked in a note say nothing about what they are.
         var note = noteToks.length === 1
@@ -1951,7 +1980,7 @@ window.AppPoints = (function () {
     saveShownState: saveShownState, addMapPoint: addMapPoint, updateMapPoint: updateMapPoint,
     deleteMapPoint: deleteMapPoint, mpHasUnsaved: mpHasUnsaved, mpVisible: mpVisible,
     mpAllTags: mpAllTags, mpUid: mpUid, mpParseTags: mpParseTags,
-    deleteCollection: deleteCollection, isCollProtected: isCollProtected,
+    deleteCollection: deleteCollection, isCollProtected: isCollProtected, mpLoading: mpLoading,
     setCollProtected: setCollProtected, isRouteColl: isRouteColl,
     openCollEditModal: openCollEditModal, collColor: collColor,
     // ---- colours ----
@@ -1974,7 +2003,7 @@ window.AppPoints = (function () {
     // ---- state (app.js reads through these) ----
     mapPoints: function () { return mapPoints; },
     setMapPoints: function (v) { mapPoints = v; },
-    mpFilter: function () { return mpFilter; },
+    mpFilter: function () { return mpFilter; }, normTag: normTag,
     setMpFilter: function (v) { mpFilter = v; },
     mpShown: function () { return mpShown; },
     setMpShown: function (v) { mpShown = v; },

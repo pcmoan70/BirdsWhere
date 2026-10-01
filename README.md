@@ -135,7 +135,7 @@ with several on, the legends stack as separate cards you can individually **mini
 
 **Place search (🔍)** — type two or more letters to find a place name (OpenStreetMap's Nominatim,
 biased to the current view; recent searches are listed under the empty box). The box also takes
-**coordinates** in any common form — decimal `59.9139, 10.7522` (decimal commas too), degrees-minutes-seconds
+**coordinates** in any common form — decimal `59.9139, 10.7522` (decimal commas too), degrees-minutes-seconds UTM with the zone band is accepted as well (33V 357344 6731644).
 `59°54'50"N 10°45'08"E`, `N59.91 E10.75`, or a pasted Google Maps / BirdsWhere `?lat=&lon=` / `geo:` link —
 shown as one **📍** result; **Enter** flies straight there and drops the pin.
 
@@ -303,8 +303,9 @@ these headers — or **Dist** — for a wrapped explanation of how the value is 
 records grouped by *date · observer · location · distance · source(s) · count*, each species row
 showing prob / season / yr-peak / count plus an **ⓘ** that pops up the observation's **activity,
 notes and status** where the source provides them (GBIF, iNaturalist, Artsobservasjoner,
-Artportalen — and eBird checklist comments plus unconfirmed/exotic flags); hover the ⓘ on a
-desktop, tap it on touch. Expanding a species in the table opens its records as an aligned
+Artportalen — and eBird checklist comments plus unconfirmed/exotic flags). Hovering the ⓘ shows
+the note itself; a click opens the note window, which has a copy button. The same ⓘ sits on each
+record of the map-dot observation popup. Expanding a species in the table opens its records as an aligned
 sub-table.
 
 **Observation photos** — when the source ships the observer's own pictures (iNaturalist, GBIF,
@@ -637,12 +638,15 @@ and re-filters as you pan or zoom, the same way the legend counts only what is o
   the **point editor**: name, tags, a per-point colour (or automatic), a note (optionally
   rendered as HTML), a copyable-coordinates pill, and a *Save to list* picker. The **Points**
   header button (badge = number of lists) opens a panel of tick-to-show lists, per-tag filter
-  chips, a one-button Distance ⇄ Name sort toggle, and the merged points sorted by distance. Each saved
+  chips — ordered counts · months and season · mention categories · other words · species names,
+  each with the number of shown points carrying it, plus an **All** chip that selects every tag or
+  clears them all; the filter is applied one second after the last tap — a one-button Distance ⇄ Name sort toggle, and the merged points sorted by distance. Each saved
   list is one row — **tick · name · funnel · ⋯** — and the **⋯** opens a menu where every action is a
   labelled row that says what it does: navigate, share link, edit list, download, delete (a protected
   list shows the lock there instead of delete). **Press-and-hold or
   right-click** that button for the **Edit & protect lists** admin: rename a list, set its
-  colour/tags for every point, **protect** it from deletion (🔒), delete it, or expand it to
+  colour/tags for every point and tick **Protect from deletion** there (a protected list then shows a
+  🔒 in place of its red × — hover it for the note), delete it, or expand it to
   edit/remove individual points.
 - **Opening a file from the OS** — a `.kml`, `.kmz` or `.geojson` can be opened **from outside the
   app**, landing in the same import dialog. On **desktop Chromium** (Chrome/Edge 102+, Windows ·
@@ -653,9 +657,10 @@ and re-filters as you pan or zoom, the same way the legend counts only what is o
 - **Import / export** — points import and export as **KML, KMZ and GeoJSON**. Export everything from
   Settings → *Map points*; download a **single list or trip** from the ↓ beside its × — in the Points
   menu and in the lists window (press-and-hold or right-click the Points button) — choosing the format
-  there. *Load from file* also takes a **direct link** to a .kmz / .kml / .geojson the host lets a
-  browser fetch (a GitHub raw link, say) — the popover has the file picker and a link field; the
-  bytes then take the same import path. Google Drive share links cannot be fetched by a web page
+  there. *Load from file* also takes a **direct link** to a .kmz / .kml / .geojson — or a BirdsWhere
+  **.share** file (an observation list: it opens as plotted detections, like fetched observations) —
+  that the host lets a browser fetch (a GitHub raw link, say) — the popover has the file picker and
+  a link field; the bytes then take the same import path. Google Drive share links cannot be fetched by a web page
   (Drive refuses cross-site browser requests), so download such a file and choose it instead.
   Import from either the Settings
   *Import* button or *Load from file* in the Points menu — both
@@ -959,6 +964,8 @@ habitat model puts above 0 % at your point/week and ranks them by local likeliho
   or a single stray misidentification. A look-alike under both floors scores **0 and is not listed
   at all** — alongside the existing rule that drops anything the model puts at 0 % for your point.
   If nothing survives, the popup says so.
+  **Press-and-hold any card photo** (here, in the Family view and in the species list's Images layout)
+  to see the same picture **full screen** with its credit; tap to close.
   Clicking a row opens a **compare card** (focal bird vs look-alike): a **plumage-colour deviation chart**
   (one diverging strip per sex, ♂ above ♀ — collapsing to a single ♂♀ strip when the sexes match; each colour scored `200·(base − look-alike)/(base + look-alike)`
   so the bar rises when the base bird has relatively more of that colour and drops when the look-alike does —

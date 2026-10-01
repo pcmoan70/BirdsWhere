@@ -1992,6 +1992,17 @@
     return spans.slice(0, OBS_SHOWN).join(", ") +
       '<span class="sp-obs-more sp-obs-filter" role="button" data-obs="' + escapeHtml(all) + '" title="' + escapeHtml(t("obs.showAll")) + '">\u2026</span>';
   }
+  // The record's ⓘ (activity / note / status flags — source-dependent: GBIF, iNaturalist,
+  // Artsobservasjoner, Artportalen have them; eBird/BirdNET don't). Hovering shows the note
+  // itself; a click opens the note window (showObsInfoPopup), where the text can be copied.
+  // A note that carries a web link gets the green "link out" arrow instead of ⓘ.
+  function obsInfoIconHtml(d, note) {
+    var al = d.act ? actLabel(d.act) : "", nt = String(note == null ? (d.note || "") : note).trim(), fl = String(d.flags || "").trim();
+    if (!al && !nt && !fl) return "";
+    var hasLink = /https?:\/\//i.test(nt), tip = nt ? (nt.length > 400 ? nt.slice(0, 400) + "…" : nt) : (al || t("obs.infoLabel"));
+    return ' <span class="obs-info' + (hasLink ? " obs-info-link" : "") + '" role="button" tabindex="0" aria-label="' + escapeHtml(t("obs.infoLabel")) + '" title="' + escapeHtml(tip) +
+      '" data-act="' + escapeHtml(d.act || "") + '" data-note="' + escapeHtml(String(d.note || "")) + '" data-flags="' + escapeHtml(fl) + '" data-src="' + escapeHtml(srcLabel(d)) + '">' + ico(hasLink ? "linkout" : "info") + "</span>";
+  }
   function spRecRowHtml(d, opts) {
     var km = spRecDistKm(d); km = isFinite(km) ? escapeHtml(nearbyFmtDist(km)) : "";
     // Probability as a coloured bar (same treatment as the Species-list table), black
@@ -2026,7 +2037,6 @@
     // iNaturalist, Artsobservasjoner, Artportalen have them; eBird/BirdNET don't),
     // an ⓘ opens a small formatted popup with those details.
     var infoAl = d.act ? actLabel(d.act) : "", infoNt = String(d.note || "").trim(), infoFl = String(d.flags || "").trim();
-    var hasLink = /https?:\/\//i.test(infoNt);   // the note carries a web link → green "link out" arrow instead of ⓘ
     // The recorder's OWN photo of this bird (iNaturalist / GBIF / Artsobservasjoner and the
     // other Nordic portals): a camera button straight to the picture, no detour via the source.
     // All of this observation's pictures (most sources ship several); the button carries
@@ -2038,10 +2048,7 @@
         '" data-photos="' + escapeHtml(plist.join(" ")) + '" data-name="' + escapeHtml(dispName) + '" data-url="' + escapeHtml(d.url || "") + '">' + ico("camera") +
         (plist.length > 1 ? '<span class="obs-photo-n">' + plist.length + "</span>" : "") + "</span>"
       : "";
-    var infoIcon = (infoAl || infoNt || infoFl)
-      ? ' <span class="obs-info' + (hasLink ? " obs-info-link" : "") + '" role="button" tabindex="0" aria-label="' + escapeHtml(t("obs.infoLabel")) + '" title="' + escapeHtml(t("obs.infoLabel")) +
-        '" data-act="' + escapeHtml(d.act || "") + '" data-note="' + escapeHtml(String(d.note || "")) + '" data-flags="' + escapeHtml(infoFl) + '" data-src="' + escapeHtml(srcLabel(d)) + '">' + ico(hasLink ? "linkout" : "info") + "</span>"
-      : "";
+    var infoIcon = obsInfoIconHtml(d, infoNt);
     return '<tr class="sp-d-row"' + recAttrs + ">" +
       '<td class="num sp-d-cnt">' + cnt + "</td>" +   // count FIRST, left of the name
       (showName ? '<td class="sp-d-name">' + sw + nameLink + "</td>" : "") +
@@ -4524,8 +4531,10 @@
         '<td class="dset-actions">' +
           '<button type="button" class="mp-coll-edit ico-btn lists-coll-edit" data-name="' + escapeHtml(c.name) + '" title="' + escapeHtml(t("points.editList")) + '" aria-label="' + escapeHtml(t("points.editList")) + '">' + ico("edit") + "</button>" +
           (n ? '<button type="button" class="mp-coll-dl ico-btn lists-coll-dl" data-type="p" data-name="' + escapeHtml(c.name) + '" title="' + escapeHtml(t("points.download")) + '" aria-label="' + escapeHtml(t("points.download")) + '">' + ico("download") + "</button>" : "") +
-          '<label class="lists-protect' + (prot ? " on" : "") + '" title="' + escapeHtml(t("lists.protect")) + '"><input type="checkbox" class="lists-protect-cb" data-name="' + escapeHtml(c.name) + '"' + (prot ? " checked" : "") + " />" + ico(prot ? "lock" : "lockopen") + "</label>" +
-          '<button type="button" class="src-del lists-del-coll" data-name="' + escapeHtml(c.name) + '"' + (prot ? " disabled" : "") + ' aria-label="' + escapeHtml(t("offline.delete")) + '">×</button>' +
+          // One column: a protected list shows a lock (hover explains; protection is set in ✎ Edit list),
+          // an unprotected one the red × (owner, 2026-10-01 — two columns, lock toggle + ×, before).
+          (prot ? '<span class="mp-coll-lock lists-lock" title="' + escapeHtml(t("lists.protectedMsg", { name: c.name })) + '" aria-label="' + escapeHtml(t("lists.protect")) + '">' + ico("lock") + "</span>"
+                : '<button type="button" class="src-del lists-del-coll" data-name="' + escapeHtml(c.name) + '" aria-label="' + escapeHtml(t("offline.delete")) + '">×</button>') +
         "</td></tr>");
       if (open) rows.push('<tr class="lists-body-row"><td colspan="2">' + listPointRows(c.name) + "</td></tr>");
     });
@@ -4535,9 +4544,6 @@
         e.preventDefault(); e.stopPropagation();
         openPointsDownloadMenu(this, "p", this.getAttribute("data-name"));
       });
-    });
-    el.querySelectorAll(".lists-protect-cb").forEach(function (cb) {
-      cb.addEventListener("change", function () { setCollProtected(this.getAttribute("data-name"), this.checked); renderMpAdmin(); });
     });
     el.querySelectorAll(".lists-del-coll").forEach(function (b) {
       b.addEventListener("click", function () {
@@ -9385,7 +9391,7 @@
     // Tile fetches failing (even when navigator reports "online" — captive portal /
     // dead connection) → treat like offline so the zoom cap upscales cached tiles
     // instead of leaving blank deep tiles; a successful load clears the flag.
-    baseLayer.on("tileerror", function () { window.AppOffline.setTilesFailing(true); scheduleOfflineCheck(); });
+    baseLayer.on("tileerror", function () { window.AppOffline.setTilesFailing(true); scheduleOfflineCheck(); noteTileError(); });
     baseLayer.on("tileload", function () { if (window.AppOffline.tilesFailing()) { window.AppOffline.setTilesFailing(false); refreshOfflineZoomCap(); } });
     baseLayer.addTo(map);
     baseLayer.bringToBack();
@@ -9483,6 +9489,23 @@
   // Offline = no network for vector tiles/glyphs. Treat a dead/captive connection
   // (tiles erroring despite navigator.onLine) the same, so labels don't blank out.
   function isOfflineNow() { return (navigator.onLine === false) || window.AppOffline.tilesFailing(); }
+  // Tiles that failed to load (offline, captive portal, a dropped request) stay blank: Leaflet
+  // never retries them on its own. Count the failures and redraw the base + label layers when
+  // the connection comes back, or — while online — every 20 s until a redraw comes back clean
+  // (owner, 2026-10-01: "make sure the webpage triggers fetching of map tiles when there are none").
+  // Cached tiles are served by the service worker instantly, so a redraw only costs the gaps.
+  var tileRetryT = null, tileFailN = 0;
+  function noteTileError() { tileFailN++; scheduleTileRetry(20000); }
+  function scheduleTileRetry(ms) { if (tileRetryT) return; tileRetryT = setTimeout(function () { tileRetryT = null; retryFailedTiles(); }, ms); }
+  function retryFailedTiles() {
+    if (!tileFailN) return;
+    if (navigator.onLine === false || !map) { scheduleTileRetry(20000); return; }   // still offline: look again later
+    tileFailN = 0;
+    // NOT l.redraw(): under zoomSnap 0 it sets a fractional tile zoom and every tile URL reads
+    // ".../2.4876…/x/y.png" — a blank map (reproduced on v1965). AppOffline.redrawTiles rounds.
+    [baseLayer, labelsOverlay].forEach(function (l) { if (l && l._map) window.AppOffline.redrawTiles(l); });
+  }
+  window.addEventListener("online", function () { if (tileFailN) { clearTimeout(tileRetryT); tileRetryT = null; setTimeout(retryFailedTiles, 1500); } });
   var labelsRenderedOffline = null;   // connectivity the current label layer was built for
   function applyLabelsOverlay() {
     if (labelsOverlay) { try { map.removeLayer(labelsOverlay); } catch (e) {} labelsOverlay = null; }
@@ -9509,6 +9532,7 @@
     // don't match the cached (aligned) grid, so only use it online; offline stays aligned.
     if (off > 0 && !offline) { opts.zoomOffset = off; opts.tileSize = 256 / Math.pow(2, off); }
     labelsOverlay = L.tileLayer(rasterLabelsUrl(bm), opts).addTo(map);
+    labelsOverlay.on("tileerror", noteTileError);
     try { labelsOverlay.bringToFront(); } catch (e) {}   // above basemap tiles, below data markers
   }
   // Swap the label layer vector↔raster when connectivity flips — but only on an actual
@@ -10612,7 +10636,7 @@
       // Then drop anything the packs can now answer — a dictionary lookup instead of a request.
       var k = Object.keys(nhPending)[0];
       while (k && harvestedName(nhPending[k])) { delete nhPending[k]; k = Object.keys(nhPending)[0]; }
-      if (!k) { saveNameHarvest(); return; }
+      if (!k) { saveNameHarvest(); if (nhAsked) { nhAsked = 0; try { updateDetLegend(); } catch (e) {} } return; }   // queue drained → one full legend rebuild (sort order)
       var sci = nhPending[k]; delete nhPending[k];
       nhAsked++;
       fetch("https://api.inaturalist.org/v1/taxa?per_page=5&all_names=true&q=" + encodeURIComponent(sci))
@@ -10649,9 +10673,21 @@
     nhRefreshTimer = setTimeout(function () {
       nhRefreshTimer = null;
       saveNameHarvest();
-      try { updateDetLegend(); } catch (e) {}
+      try { refreshLegendNamesInPlace(); } catch (e) {}
       try { refreshNamesInPlace(); } catch (e) {}
-    }, 2000);
+    }, 4000);
+  }
+  // A harvested name changes TEXT only, so the legend is renamed in place. It used to be
+  // rebuilt (updateDetLegend = legend + header histogram, ~600 ms on a 2,462-species
+  // imported person list) every 2 s for the whole harvest — 2,200 lookups, 40 minutes of a
+  // page that felt frozen (measured 2026-10-01). The full rebuild (sort order) runs once,
+  // when the harvest queue is empty.
+  function refreshLegendNamesInPlace() {
+    var leg = document.getElementById("det-legend") || document.querySelector(".det-legend"); if (!leg) return;
+    Array.prototype.forEach.call(leg.querySelectorAll("div[data-key]"), function (row) {
+      var e = dEntry(row.getAttribute("data-key")), nmEl = row.querySelector(".det-nm"); if (!e || !nmEl) return;
+      var nm = detName(e); if (nm && nmEl.textContent !== nm) { nmEl.textContent = nm; nmEl.title = nm; }
+    });
   }
   // Rewrite the names already on screen — table rows and gallery cards — without
   // rebuilding anything. A name is text; nothing else about the list has changed.
@@ -10766,12 +10802,13 @@
       chain.then(function () {
         if (changed) {
           saveVernacCache();   // unlimited — no cap; lives in the general cache (IDB)
-          try { updateDetLegend(); } catch (e) {}
+          try { refreshLegendNamesInPlace(); } catch (e) {}
           // In place, for the same reason as nhRefresh: refreshCurrentView() re-runs the
           // whole list render (and its fetch) to change some text.
           try { refreshNamesInPlace(); } catch (e) {}
         }
         if (Object.keys(vernacPending).length) scheduleVernacFetch();
+        else if (changed) try { updateDetLegend(); } catch (e) {}   // last batch → one full rebuild (sort order)
       });
     }, 400);
   }
@@ -10795,7 +10832,10 @@
     // instead of showing the capture-locale name (e.g. Norwegian "hønsehauk").
     if (e.key && e.key.indexOf("x:") === 0) {
       var sci = e.key.slice(2);
-      var l2 = AppAggregate.ensureSciIndex()[sci.toLowerCase()] || AppAggregate.labelBySciEpithet(sci, e.cls) || AppAggregate.labelBySciGenus(sci, e.cls);
+      // The epithet-only matcher needs the record's class: without one, "Astragalus norvegicus"
+      // (a plant) resolved to the Brown Rat and every "… vulgare" to a katydid (seen on an
+      // imported person list, 2026-10-01). Genus + epithet is still allowed to answer.
+      var l2 = AppAggregate.ensureSciIndex()[sci.toLowerCase()] || (e.cls ? AppAggregate.labelBySciEpithet(sci, e.cls) : null) || AppAggregate.labelBySciGenus(sci, e.cls);
       if (l2) return speciesName(l2);
       return extraDisplayName(sci, e.name, e.cls);
     }
@@ -11522,7 +11562,7 @@
       meta = [distTxt ? '<span class="dl-dist">' + escapeHtml(distTxt) + "</span>" : "",
         showDate ? dateClickHtml(d.date) : "",
         (d.count != null && d.count !== "") ? "×" + escapeHtml(String(d.count)) : "",
-        srcHtml].filter(Boolean).join(" · ");
+        srcHtml].filter(Boolean).join(" · ") + obsInfoIconHtml(d, note);   // ⓘ: hover = the note, click = a copyable note window
       subLines =
         (al ? '<span class="dl-sub" title="' + escapeHtml(al) + '">' + escapeHtml(al) + "</span>" : "") +
         (note ? '<span class="dl-sub dl-note" title="' + escapeHtml(note) + '">' + linkifyHtml(note) + "</span>" : "");
@@ -11767,7 +11807,7 @@
   // eBird status codes → localized labels (U = unconfirmed; X/N/P = exotic tiers).
   function obsFlagLabels(flags) {
     var M = { U: "obs.unconfirmed", X: "obs.exEscapee", N: "obs.exNaturalized", P: "obs.exProvisional" };
-    return String(flags || "").split(",").map(function (c) { return M[c] ? t(M[c]) : ""; }).filter(Boolean);
+    return String(flags || "").split(",").map(function (c) { return M[c] ? t(M[c]) : c.trim(); }).filter(Boolean);   // an unknown flag is free text (a person list's "named in the notes")
   }
   var _obsInfoAnchor = null, _obsInfoPop = null;
   // Escape text, then turn any http(s) URL in it into a link that opens in a new tab
@@ -11785,11 +11825,20 @@
     // Anchored to the ⓘ, so a note opened from inside a records list stacks on it.
     var el = openAnchoredMenu("obs-info-pop", anchor);
     _obsInfoPop = el;
-    var html = '<div class="oip-head">' + escapeHtml(src || t("obs.infoLabel")) + "</div>";
+    var html = '<div class="oip-head">' + escapeHtml(src || t("obs.infoLabel")) +
+      (nt ? '<button type="button" class="oip-copy" title="' + escapeHtml(t("obs.copyNote")) + '" aria-label="' + escapeHtml(t("obs.copyNote")) + '">' + ico("copy") + "</button>" : "") + "</div>";
     if (fls.length) html += '<div class="oip-row"><span class="oip-lbl">' + escapeHtml(t("obs.status")) + '</span><span class="oip-val">' + escapeHtml(fls.join(" · ")) + "</span></div>";
     if (al) html += '<div class="oip-row"><span class="oip-lbl">' + escapeHtml(t("obs.activity")) + '</span><span class="oip-val">' + escapeHtml(al) + "</span></div>";
     if (nt) html += '<div class="oip-row"><span class="oip-lbl">' + escapeHtml(t("obs.notes")) + '</span><span class="oip-val">' + linkifyHtml(nt) + "</span></div>";
     el.innerHTML = html;
+    var cp = el.querySelector(".oip-copy");
+    if (cp) cp.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var txt = [fls.length ? t("obs.status") + ": " + fls.join(" · ") : "", al ? t("obs.activity") + ": " + al : "", nt].filter(Boolean).join("\n");
+      var ok = function () { cp.classList.add("done"); setStatus(t("obs.noteCopied")); setTimeout(function () { cp.classList.remove("done"); }, 1200); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(ok, function () {});
+      else { try { var ta = document.createElement("textarea"); ta.value = txt; el.appendChild(ta); ta.select(); document.execCommand("copy"); el.removeChild(ta); ok(); } catch (err) {} }
+    });
     // Just clear of the pointer, so the note does not open under the finger/cursor that
     // asked for it. Without coordinates (a keyboard activation) fall back to the icon.
     var px, py;
@@ -13290,14 +13339,22 @@
     try { window.AppSites.fanSpotsAt(ll.lat, ll.lng); } catch (e) {}
     // A rarity ★ passes its group key so that group always shows in the window,
     // even when the star sits away from the group's stored coordinates.
-    openDetListModal({ lat: ll.lat, lon: ll.lng, meters: 50, rarityKey: rarityKey || null }, rarityFrame);
+    openDetListModal({ lat: ll.lat, lon: ll.lng, meters: detClickMeters(ll.lat), rarityKey: rarityKey || null }, rarityFrame);
+  }
+  // Records "at" a clicked dot: everything within ~12 px at the current zoom, never under 50 m
+  // (owner, 2026-10-01: dots that overlap on screen because they sit a few hundred metres
+  // apart at a wide zoom were unclickable one by one — now the merged window takes them all).
+  function detClickMeters(lat) {
+    var z = map ? map.getZoom() : 15;
+    var mpp = 156543.03 * Math.cos((lat || 0) * Math.PI / 180) / Math.pow(2, z);   // metres per pixel at this zoom + latitude
+    return Math.max(50, Math.round(12 * mpp));
   }
   // Hover tooltip: the distinct species plotted within ~50 m of the point, each
   // with ×N individuals (summed over the nearby records that carry a count) and
   // (n d) days since the most recent of those records.
   var detHoverTip = null;
   function showDetHover(latlng, rarityEdge, metersOverride) {
-    var near = collectVisibleDetections({ lat: latlng.lat, lon: latlng.lng, meters: metersOverride > 0 ? metersOverride : 50 });
+    var near = collectVisibleDetections({ lat: latlng.lat, lon: latlng.lng, meters: metersOverride > 0 ? metersOverride : detClickMeters(latlng.lat) });
     if (!near.length) return;
     // Break the spot's records into DATE sections (newest first); under each date
     // header list the species seen that day with ×N individuals and 👥observer
@@ -16432,6 +16489,8 @@
       '<input type="range" min="0" max="100" step="1" class="aff-prob-max" value="' + hi + '" /></div>' +
       '<div class="sp-prob-vals"><span class="aff-prob-lo">' + lo + '%</span> – <span class="aff-prob-hi">' + hi + "%</span></div>";
   }
+  // ?perf=1: time each section of the all-filters pane (a 2,462-species import took >10 s to open it, 2026-10-01)
+  function affT(name, fn) { return perfOn ? perfWrap("aff:" + name, fn)() : fn(); }
   function allFiltersBodyHtml() {
     var head = '<div class="aff-head"><b class="aff-title">' + escapeHtml(t("filters.title")) + "</b>" +
       ((detHasFilter() || speciesFilterActive()) ? '<button type="button" class="aff-clear-all btn btn-light">' + escapeHtml(t("det.clearFilters")) + "</button>" : "") +
@@ -16452,11 +16511,11 @@
     var listApplied = selKeys.length > 0 || exKeys.length > 0;
     var secLists = affSection("lists", t("filters.lists"), listApplied,
       listApplied ? t("filters.nSelected", { n: selKeys.length || exKeys.length }) : t("filters.any"),
-      spListsPickerHtml(selKeys, true));
+      affT("spListsPickerHtml", function () { return spListsPickerHtml(selKeys, true); }));
 
     // Status (★/◉/year/life) — reuse the tri-state mode panel
     var modeActive = !!(detStarFilter || detRareFilter || detYearFilter || detLifeFilter);
-    var secMode = affSection("mode", t("filters.status"), modeActive, statusSummary(), detModePanelHtml());
+    var secMode = affSection("mode", t("filters.status"), modeActive, statusSummary(), affT("detModePanelHtml", function () { return detModePanelHtml(); }));
 
     // "New" — only detections first fetched after the baseline (re-fetch to reveal arrivals)
     var todayCk = '<label class="det-obs-row' + (detNewFilter ? "" : " aff-disabled") + '"><input type="checkbox" class="aff-today-cb"' + (detTodayFilter ? " checked" : "") + (detNewFilter ? "" : " disabled") + "> " + escapeHtml(t("filters.today")) + "</label>";
@@ -16493,14 +16552,14 @@
     var dateSum = rg ? ((rg.from || "…") + "–" + (rg.to || "…"))
       : daysBackActive() ? detDaysLabel()
       : detMonths().length ? detMonths().map(histMonthShort).join(" ") : t("filters.allTime");
-    var secDate = affSection("date", t("det.recency"), dateActive, dateSum, detDaysPanelHtml());
+    var secDate = affSection("date", t("det.recency"), dateActive, dateSum, affT("detDaysPanelHtml", function () { return detDaysPanelHtml(); }));
 
     // Location — a checklist of the plotted places (mirrors the observer panel)
-    var locBody = detLocPanelHtml();
+    var locBody = affT("detLocPanelHtml", function () { return detLocPanelHtml(); });
     var secLoc = locBody ? affSection("loc", t("filters.locations"), !!detLocFilter, locFilterLabel(), locBody) : "";
 
     // Observer — reuse the observer panel
-    var secObs = affSection("obs", t("obs.people"), !!detObsFilter, obsFilterLabel(), detObsPanelHtml());
+    var secObs = affSection("obs", t("obs.people"), !!detObsFilter, obsFilterLabel(), affT("detObsPanelHtml", function () { return detObsPanelHtml(); }));
 
     // Source
     var present = detSourcesPresent();
@@ -16705,8 +16764,8 @@
     } });
     m.overlay.classList.add("aff-right");   // desktop CSS docks the pane at the right edge
     allFiltersPane = m;
-    m.box.innerHTML = allFiltersBodyHtml();
-    wireAllFiltersPane(m.box);
+    m.box.innerHTML = affT("allFiltersBodyHtml", allFiltersBodyHtml);
+    affT("wireAllFiltersPane", function () { wireAllFiltersPane(m.box); });
   }
   // Wire the legend's filter-clear × : a plain click clears all filters; a long-press
   // (or right-click) opens the "all filters" pane instead.
@@ -16888,6 +16947,23 @@
   }
   // One list's own filter: a date range and a set of observers, matched fuzzily. Drawn in the
   // shared .detrow-menu shape, like every other menu here.
+  var mpChipTimer = null;   // the tag-chip row's "apply 1 s after the last click" timer
+  // Where a tag chip sorts: [group, key]. 0 numbers (by their first number) · 1 months (calendar
+  // order, English / Norwegian / Swedish names, then the season words) · 2 mention categories ·
+  // 3 everything else · 4 species names (what tagDisplay resolves to a species).
+  var TAG_MONTHS = ["january|januar|januari", "february|februar|februari", "march|mars", "april", "may|mai|maj", "june|juni", "july|juli",
+                    "august|augusti", "september", "october|oktober", "november", "december|desember"];
+  var TAG_MENTION = /^mention:|species mentioned|interaction with the species|prey or kill|breeding of the species|uncertain identification|generic term|falcon nest|plucking post|arten nevnt|arten n[äa]mnd/i;
+  function tagRank(tag) {
+    var s = String(tag || "").trim(), low = s.toLowerCase();
+    var m = /^(\d+(?:[.,]\d+)?)/.exec(s);
+    if (m) return [0, parseFloat(m[1].replace(",", "."))];
+    for (var i = 0; i < TAG_MONTHS.length; i++) if (new RegExp("^(?:" + TAG_MONTHS[i] + ")$").test(low)) return [1, i];
+    if (/season|sesong|s[äa]song/.test(low)) return [1, 12];
+    if (TAG_MENTION.test(low)) return [2, 0];
+    if (labelForSci(s) || /^[A-Z][a-z-]+ [a-z-]+$/.test(s)) return [4, 0];
+    return [3, 0];
+  }
   function openListFilterMenu(anchor, name) {
     var br = anchor.getBoundingClientRect();
     var f = mpState.listFilter(name) || { from: "", to: "", obs: [] };
@@ -17084,14 +17160,14 @@
     try { var u = new URL(url); if (!/^https?:$/.test(u.protocol)) throw new Error("scheme"); name = decodeURIComponent(u.pathname.split("/").pop() || ""); }
     catch (e) { setStatus(t("points.linkFail")); return; }
     if (importBusy) { setStatus(t("kml.busy")); return; }
-    setStatus(t("points.linkFetching"));
+    setStatus(t("points.linkFetching")); mpState.mpLoading(t("points.linkFetching"));
     fetch(url, { mode: "cors", credentials: "omit" })
       .then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.blob(); })
       .then(function (b) {
         if (/text\/html/i.test(b.type || "")) throw new Error("html");   // a web page, not a list
-        importPointsFile([new File([b], name || "points", { type: b.type || "" })], false);
+        importPointsFile([new File([b], name || "points", { type: b.type || "" })], true);   // a .share file by link imports like one picked from disk
       })
-      .catch(function () { setStatus(t("points.linkFail")); });
+      .catch(function () { mpState.mpLoading(null); setStatus(t("points.linkFail")); });
   }
   function importPointsFile(files, allowShare) {
     var f = (files && files.length != null) ? files[0] : files;
@@ -17099,9 +17175,10 @@
     if (files && files.length > 1) {
       if (importBusy) { setStatus(t("kml.busy")); return; }
       importBusy = true;
+      mpState.mpLoading(t("kml.reading", { name: files[0].name }));
       Promise.resolve(startMultiImport(Array.prototype.slice.call(files)))
         .then(function () { importBusy = false; },
-              function () { importBusy = false; setStatus(t("kml.parseErr")); });
+              function () { importBusy = false; mpState.mpLoading(null); setStatus(t("kml.parseErr")); });
       return;
     }
     // One import at a time. A big file freezes the main thread for seconds, so the app
@@ -17110,26 +17187,26 @@
     if (importBusy) { setStatus(t("kml.busy")); return; }
     importBusy = true;
     var done = function () { importBusy = false; };
-    setStatus(t("kml.reading", { name: f.name }));
+    setStatus(t("kml.reading", { name: f.name })); mpState.mpLoading(t("kml.reading", { name: f.name }));
     var rd = new FileReader();
-    rd.onerror = function () { done(); setStatus(t("kml.parseErr")); };
+    rd.onerror = function () { done(); mpState.mpLoading(null); setStatus(t("kml.parseErr")); };
     rd.onload = function () {
       var buf = rd.result;
       var h = new Uint8Array(buf, 0, Math.min(4, buf.byteLength || 0));
       var isZip = h.length >= 4 && h[0] === 0x50 && h[1] === 0x4B && h[2] === 0x03 && h[3] === 0x04;
       var doneKml = function (kml) {
-        Promise.resolve(startKmlImport(kml, f.name)).then(done, function () { done(); setStatus(t("kml.parseErr")); });
+        Promise.resolve(startKmlImport(kml, f.name)).then(done, function () { done(); mpState.mpLoading(null); setStatus(t("kml.parseErr")); });
       };
       if (isZip) {
         setStatus(t("kml.unpacking", { name: f.name }));
-        extractKmlFromKmz(buf).then(doneKml).catch(function () { done(); setStatus(t("kml.parseErr")); });
+        extractKmlFromKmz(buf).then(doneKml).catch(function () { done(); mpState.mpLoading(null); setStatus(t("kml.parseErr")); });
         return;
       }
       var txt = new TextDecoder().decode(new Uint8Array(buf)).replace(/^\uFEFF/, "").trim();
       var c0 = txt.charAt(0);
-      if (c0 === "{" || c0 === "[") { startGeoJsonImport(txt, f.name); done(); }
+      if (c0 === "{" || c0 === "[") { startGeoJsonImport(txt, f.name); mpState.mpLoading(null); done(); }
       else if (c0 === "<") doneKml(txt);
-      else if (allowShare) { importShared(txt); done(); }
+      else if (allowShare) { mpState.mpLoading(null); importShared(txt); done(); }
       else doneKml(txt);
     };
     rd.readAsArrayBuffer(f);
@@ -17734,13 +17811,33 @@
     // other half of the cost. Show the nearest MP_LIST_MAX and say how many there are.
     var unionTotal = unionPts.length;
     if (unionTotal > MP_LIST_MAX) unionPts = unionPts.slice(0, MP_LIST_MAX);
+    // Chip order and counts (owner, 2026-10-01): numbers first ("1-3 birds"), then months and
+    // season, then the mention categories, then every other word, species names last; each
+    // chip shows how many of the shown points carry the tag.
+    var tagCount = Object.create(null), untaggedN = 0;
+    function countTags(p) { if (!p) return; if (p.tags && p.tags.length) p.tags.forEach(function (tg) { if (tg) tagCount[tg] = (tagCount[tg] || 0) + 1; }); else untaggedN++; }
+    mpState.mapPoints().forEach(countTags);
+    mpState.mpCollections().forEach(function (c) { if (mpState.shownColls()[c.name]) (c.points || []).forEach(countTags); });
+    allTags.sort(function (a, b) {
+      var ra = tagRank(a), rb = tagRank(b);
+      if (ra[0] !== rb[0]) return ra[0] - rb[0];
+      if (ra[1] !== rb[1]) return ra[1] - rb[1];
+      return tagDisplay(a).localeCompare(tagDisplay(b));
+    });
     var chipsHtml = allTags.map(function (tag) {
       var active = mpState.mpFilter().indexOf(tag) >= 0;
-      return '<button type="button" class="mp-chip' + (active ? " is-active" : "") + '" data-tag="' + escapeHtml(tag) + '" style="--mp-c:' + mpHashColor(tag) + '">' + escapeHtml(tagDisplay(tag)) + "</button>";
+      return '<button type="button" class="mp-chip' + (active ? " is-active" : "") + '" data-tag="' + escapeHtml(tag) + '" style="--mp-c:' + mpHashColor(tag) + '">' + escapeHtml(tagDisplay(tag)) + ' <span class="mp-chip-n">(' + (tagCount[tag] || 0) + ")</span></button>";
     }).join("");
     if (hasUntagged) {
       var actNoTag = mpState.mpFilter().indexOf("") >= 0;
-      chipsHtml += '<button type="button" class="mp-chip' + (actNoTag ? " is-active" : "") + '" data-tag="">' + escapeHtml(t("points.notag")) + "</button>";
+      chipsHtml += '<button type="button" class="mp-chip' + (actNoTag ? " is-active" : "") + '" data-tag="">' + escapeHtml(t("points.notag")) + ' <span class="mp-chip-n">(' + untaggedN + ")</span></button>";
+    }
+    // "All" in front: one click selects every tag (then untick the few to exclude), the next
+    // clears them all (owner, 2026-10-01). Only worth showing with two or more chips.
+    var allChips = allTags.concat(hasUntagged ? [""] : []);
+    if (allChips.length > 1) {
+      var allOn = allChips.every(function (tg) { return mpState.mpFilter().indexOf(tg) >= 0; });
+      chipsHtml = '<button type="button" class="mp-chip mp-chip-all' + (allOn ? " is-active" : "") + '" data-all="1" title="' + escapeHtml(t("points.tagsAllHint")) + '">' + escapeHtml(t("points.tagsAll")) + "</button>" + chipsHtml;
     }
     unionPts.forEach(function (u, i) { u.i = i; });   // the note button's handle back to its point
     mpRowsShown = unionPts;
@@ -17948,15 +18045,33 @@
         refreshMpPanel();
       });
     });
+    // Tag chips: the chip flips at once, the filter is applied ONE SECOND after the last click
+    // (owner, 2026-10-01: picking many tags redrew a big list after every tap). The All chip
+    // flips every chip and reaches the same timer.
     panel.querySelectorAll(".mp-chip").forEach(function (b) {
       b.addEventListener("click", function () {
-        var tag = this.getAttribute("data-tag");
-        var i = mpState.mpFilter().indexOf(tag);
-        if (i >= 0) mpState.mpFilter().splice(i, 1); else mpState.mpFilter().push(tag);
-        saveMapPoints();
-        // The chip blinks until the map has caught up (mpFilterRefresh), instead of the
-        // click looking ignored while a large list redraws.
-        mpState.mpFilterRefresh(this);
+        var chips = panel.querySelectorAll(".mp-chip");
+        if (this.getAttribute("data-all")) {   // every tag ↔ none
+          var every = mpAllTags().concat(mpState.mapPoints().some(function (p) { return !p.tags || !p.tags.length; }) ? [""] : []);
+          var on = every.every(function (tg) { return mpState.mpFilter().indexOf(tg) >= 0; });
+          mpState.setMpFilter(on ? [] : every);
+          chips.forEach(function (c) { c.classList.toggle("is-active", !on); });
+        } else {
+          var tag = this.getAttribute("data-tag");
+          var i = mpState.mpFilter().indexOf(tag);
+          if (i >= 0) mpState.mpFilter().splice(i, 1); else mpState.mpFilter().push(tag);
+          this.classList.toggle("is-active", i < 0);
+          var allC = panel.querySelector(".mp-chip-all");
+          if (allC) allC.classList.toggle("is-active", Array.prototype.every.call(chips, function (c) { return c.getAttribute("data-all") || c.classList.contains("is-active"); }));
+        }
+        // The selection is remembered on this device at once — a tiny write of the tag array
+        // alone (owner, 2026-10-01); it is not part of the Drive sync. NOTHING heavy on the
+        // click itself: the full save serialises every stored point (the lag felt with 35k
+        // points), so the redraw waits for the timer. The chip blinks until the map caught up.
+        window.GeoState.save({ mapPointsFilter: mpState.mpFilter().slice() });
+        clearTimeout(mpChipTimer);
+        var el = this;
+        mpChipTimer = setTimeout(function () { mpChipTimer = null; mpState.mpFilterRefresh(el); }, 1000);
       });
     });
     panel.querySelectorAll(".mp-row-note").forEach(function (b) {
@@ -21382,6 +21497,10 @@
   function parseCoordText(s) {
     s = (s || "").trim();
     if (!s) return null;
+    // UTM with the latitude band: "33V 357344 6731644" (also "33 V 357344E 6731644N", a comma
+    // between). Band letters C–M are the southern hemisphere, N–X the northern (owner, 2026-10-01).
+    var u = /^(\d{1,2})\s*([C-HJ-NP-X])\s*[,;]?\s*(\d{5,7}(?:\.\d+)?)\s*E?\s*[,;]?\s+(\d{6,8}(?:\.\d+)?)\s*N?$/i.exec(s);
+    if (u) return utmToLatLon(+u[1], u[2].toUpperCase() >= "N", +u[3], +u[4]);
     var m = /[?&#](?:lat|latitude)=(-?\d+(?:\.\d+)?)(?:[^\d-]|-(?!\d))*?(?:lon|lng|longitude)=(-?\d+(?:\.\d+)?)/i.exec(s) ||
             /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/.exec(s) || /^geo:(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/i.exec(s);
     if (m) return coordPair([+m[1]], null, [+m[2]], null);
@@ -21411,6 +21530,24 @@
     }
     if (comps.length !== 2) return null;
     return coordPair(comps[0].n, comps[0].h, comps[1].n, comps[1].h);
+  }
+  // UTM (WGS84) → {lat, lon}; the standard transverse-Mercator series (Krüger), good to the cm.
+  function utmToLatLon(zone, northern, E, N) {
+    if (!(zone >= 1 && zone <= 60) || !isFinite(E) || !isFinite(N)) return null;
+    var a = 6378137, f = 1 / 298.257223563, k0 = 0.9996, e2 = f * (2 - f), e = Math.sqrt(e2), ep2 = e2 / (1 - e2);
+    var x = E - 500000, y = northern ? N : N - 10000000, lon0 = ((zone - 1) * 6 - 180 + 3) * Math.PI / 180;
+    var M = y / k0, mu = M / (a * (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 * e2 * e2 / 256));
+    var e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+    var phi1 = mu + (3 * e1 / 2 - 27 * Math.pow(e1, 3) / 32) * Math.sin(2 * mu) + (21 * e1 * e1 / 16 - 55 * Math.pow(e1, 4) / 32) * Math.sin(4 * mu)
+             + (151 * Math.pow(e1, 3) / 96) * Math.sin(6 * mu) + (1097 * Math.pow(e1, 4) / 512) * Math.sin(8 * mu);
+    var sp = Math.sin(phi1), cp = Math.cos(phi1), tp = Math.tan(phi1);
+    var N1 = a / Math.sqrt(1 - e2 * sp * sp), T1 = tp * tp, C1 = ep2 * cp * cp, R1 = a * (1 - e2) / Math.pow(1 - e2 * sp * sp, 1.5), D = x / (N1 * k0);
+    var lat = phi1 - (N1 * tp / R1) * (D * D / 2 - (5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * ep2) * Math.pow(D, 4) / 24
+              + (61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * ep2 - 3 * C1 * C1) * Math.pow(D, 6) / 720);
+    var lon = lon0 + (D - (1 + 2 * T1 + C1) * Math.pow(D, 3) / 6 + (5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * ep2 + 24 * T1 * T1) * Math.pow(D, 5) / 120) / cp;
+    lat *= 180 / Math.PI; lon *= 180 / Math.PI;
+    if (!(lat >= -80 && lat <= 84) || !(lon >= -180 && lon <= 180)) return null;
+    return { lat: +lat.toFixed(6), lon: +lon.toFixed(6) };
   }
   function coordPair(n1, h1, n2, h2) {
     function val(n, h) {
@@ -24364,6 +24501,57 @@
   // 960 rather than 500: a gallery card is ~300 CSS px, i.e. ~900 device px on a 3× phone.
   var SP_IMG_W = 960, SP_IMG_W_FALLBACK = 500;
   function spImgAtWidth(u, w) { return String(u || "").replace(/\/\d+px-/, "/" + w + "px-"); }
+  // Press-and-hold on ANY card photo (confusion species, family, the species list's Images
+  // layout) opens the same picture full screen (owner, 2026-10-01): a 1600 px rendition of the
+  // card's thumbnail (falling back to the thumbnail itself), the card's credit line under it,
+  // a tap or Escape closes. Delegated once on the document; the emulated click that follows a
+  // touch hold is swallowed so the card underneath does not open as well.
+  var PHOTO_BIG_W = 1600, lbHoldT = null, lbHoldAt = 0, lbStart = null;
+  function openPhotoLightbox(img) {
+    closePhotoLightbox();
+    var box = document.createElement("div"); box.id = "photo-lightbox"; box.setAttribute("role", "dialog");
+    box._openedAt = Date.now();   // the overlay's own clock: the release of the hold must not count as the closing tap
+    var big = document.createElement("img"); big.alt = img.alt || ""; big.decoding = "async";
+    var src = img.currentSrc || img.src, bigSrc = spImgAtWidth(src, PHOTO_BIG_W);
+    big.addEventListener("error", function () { if (big.src !== src) big.src = src; });   // no 1600 px rendition → the card's own picture
+    big.src = bigSrc;
+    box.appendChild(big);
+    var cr = img.parentNode && img.parentNode.parentNode && img.parentNode.parentNode.querySelector(".spg-credit");
+    var cap = document.createElement("div"); cap.className = "lb-credit";
+    cap.innerHTML = (img.alt ? "<b>" + escapeHtml(img.alt) + "</b> " : "") + (cr ? cr.innerHTML : "");
+    box.appendChild(cap);
+    var x = document.createElement("button"); x.type = "button"; x.className = "lb-close"; x.textContent = "×"; x.setAttribute("aria-label", t("btn.close"));
+    box.appendChild(x);
+    // The click a touch hold emits on release lands on the OVERLAY (it is on top by then) and
+    // closed the picture before it was seen (owner's report, 2026-10-01): ignore clicks for a
+    // moment after the hold fired.
+    box.addEventListener("click", function (e) { if (e.target.closest("a")) return; e.stopPropagation(); if (Date.now() - box._openedAt < 900) return; closePhotoLightbox(); });
+    box.addEventListener("pointerup", function (e) { e.stopPropagation(); }, true);   // the hold's release lands here on touch: not a tap
+    document.body.appendChild(box);
+    document.addEventListener("keydown", lbKey);
+  }
+  function lbKey(e) { if (e.key === "Escape") { closePhotoLightbox(); e.stopPropagation(); } }
+  function closePhotoLightbox() {
+    var b = document.getElementById("photo-lightbox");
+    if (b && b.parentNode) b.parentNode.removeChild(b);
+    document.removeEventListener("keydown", lbKey);
+  }
+  (function wirePhotoHold() {
+    function cancel() { clearTimeout(lbHoldT); lbHoldT = null; lbStart = null; }
+    document.addEventListener("pointerdown", function (e) {
+      var img = e.target.closest && e.target.closest(".spg-img img");
+      if (!img || e.button > 0) return;
+      cancel(); lbStart = { x: e.clientX, y: e.clientY };
+      lbHoldT = setTimeout(function () { lbHoldT = null; lbHoldAt = Date.now(); holdFeedback(img.parentNode); openPhotoLightbox(img); }, holdDelay());
+    }, true);
+    document.addEventListener("pointermove", function (e) { if (lbHoldT && lbStart && (Math.abs(e.clientX - lbStart.x) > 8 || Math.abs(e.clientY - lbStart.y) > 8)) cancel(); }, true);
+    document.addEventListener("pointerup", cancel, true); document.addEventListener("pointercancel", cancel, true);
+    document.addEventListener("click", function (e) {
+      var lb = document.getElementById("photo-lightbox");
+      if ((Date.now() - lbHoldAt < 900 || (lb && Date.now() - lb._openedAt < 900)) && e.target.closest && e.target.closest(".spg-img img, #photo-lightbox")) { e.stopPropagation(); e.preventDefault(); }
+    }, true);
+    document.addEventListener("contextmenu", function (e) { if (e.target.closest && e.target.closest(".spg-img img") && (lbHoldT || Date.now() - lbHoldAt < 800)) e.preventDefault(); }, true);
+  })();
   function spImgThumb(thumb) {
     return spImgAtWidth(thumb.split("?")[0].replace(/^https:\/\/thumb\.wikimedia\.org\//, "https://upload.wikimedia.org/"), SP_IMG_W);
   }
@@ -24885,7 +25073,7 @@
       // portal (Artsobservasjoner serves GBIF's media and sends no
       // access-control-allow-origin), where an anonymous request fails to load at all.
       if (/^https:\/\/upload\.wikimedia\.org\//i.test(String(r.t || ""))) img.crossOrigin = "anonymous";
-      img.src = r.t;
+      img.src = r.t; img.title = t("photo.holdBig");   // press-and-hold → the full-size picture (photoLightbox)
       img.addEventListener("error", function () {
         // A width this file has no thumbnail for → try the narrower standard width once
         // before giving up, so one odd file (or a future ladder change) can't blank the card.

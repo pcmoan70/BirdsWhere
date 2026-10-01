@@ -463,6 +463,10 @@ window.AppOffline = (function () {
       var here = coveringAreas(getRenderedBasemap());
       if (here.length) cap = here.reduce(function (m, a) { return Math.max(m, a.zMax || 0); }, 0);
     }
+    // ALWAYS an integer: a fractional maxNativeZoom (an area saved at a fractional map zoom)
+    // became a fractional tile zoom in every tile URL — "…/cyclosm/2.487615…/2/2.png" — so not
+    // one tile loaded and the map stayed blank for good (measured 2026-10-01 on the RC profile).
+    cap = Math.max(1, Math.floor(+cap || MAX_ZOOM));
     if (getBaseLayer().options.maxNativeZoom !== cap) {
       getBaseLayer().options.maxNativeZoom = cap;
       redrawTiles(getBaseLayer());
@@ -525,6 +529,7 @@ window.AppOffline = (function () {
     setMaxZoom: function (v) { offlineMaxZoom = v; },
     // the basemap is erroring out → the app treats itself as offline
     tilesFailing: function () { return offlineTilesFailing; },
+    redrawTiles: redrawTiles,   // rounding-safe re-request (layer.redraw() leaves a fractional tile zoom under zoomSnap 0)
     setTilesFailing: function (v) { offlineTilesFailing = v; },
   };
 })();
