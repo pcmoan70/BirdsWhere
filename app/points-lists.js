@@ -205,6 +205,45 @@ window.AppPoints = (function () {
   // the one localStorage blob (~5 MB for the WHOLE app). That capped the app, and it
   // broke Drive sync outright: a sync writes the MERGED state — both devices' lists —
   // so the write could not fit and the sync failed every time. Lists now live in
+  // Points arrive from JSON.parse (IndexedDB, an import, a synced payload), and JSON.parse
+  // does NOT share equal strings — every point gets its own copy of "Lyrurus tetrix",
+  // "2024-04-12", "lek / display ground", its own 6-string tags array, and so on. Across the
+  // generated species files that is the single largest avoidable cost: measured over 60,000
+  // points with a forced GC, sharing them takes the set from 24.3 MB to 6.2 MB.
+  //
+  // Purely a representation change: every value is identical afterwards, so nothing that
+  // reads a point can tell the difference. The pool is local to the call, so it is collected
+  // and only the shared strings the points still hold survive.
+  var INTERN_FIELDS = ["name", "sci", "date", "observer", "count", "place", "source",
+                       "createdAt", "color", "spColor", "src", "act", "list",
+                       "stage", "country", "dset"];
+  function internPoints(colls) {
+    var pool = Object.create(null), tagPool = Object.create(null), n = 0;
+    function sh(v) {
+      if (typeof v !== "string" || !v) return v;
+      var hit = pool[v];
+      return hit === undefined ? (pool[v] = v) : hit;
+    }
+    (colls || []).forEach(function (c) {
+      (c && c.points || []).forEach(function (p) {
+        if (!p) return;
+        n++;
+        for (var i = 0; i < INTERN_FIELDS.length; i++) {
+          var k = INTERN_FIELDS[i];
+          if (typeof p[k] === "string") p[k] = sh(p[k]);
+        }
+        // Identical tag lists are extremely common (one per species/criterion combination),
+        // so share the ARRAY, not just its strings.
+        var tg = p.tags;
+        if (tg && tg.length) {
+          var key = tg.join("\u0001"), hit = tagPool[key];
+          if (hit) p.tags = hit;
+          else { for (var j = 0; j < tg.length; j++) tg[j] = sh(tg[j]); tagPool[key] = tg; }
+        }
+      });
+    });
+    return n;
+  }
   // IndexedDB, one record per list ("pts:<name>"), exactly like saved trips
   // (initDetSetStore in app.js). The Drive payload shape is unchanged: buildPayload
   // re-attaches them, so existing backups stay compatible.
@@ -222,6 +261,7 @@ window.AppPoints = (function () {
         .map(function (k) { return all[k]; }).filter(function (c) { return c && c.name; });
       mpCollections.forEach(function (c) { try { mpSetSig[c.name] = mpSig(JSON.stringify(c)); } catch (e) {} });
       mpCollections.forEach(function (c) { (c.points || []).forEach(function (p) { delete p._dn; delete p._ot; }); });
+      internPoints(mpCollections);   // share equal strings/tag arrays across every hydrated list
       loadListFilters();
       mpIdbReady = true;
     } catch (e) {
@@ -854,8 +894,120 @@ window.AppPoints = (function () {
     date: ["date", "eventDate", "event_date", "observed", "obsDate"],
     observer: ["observer", "recordedBy", "recorded_by", "recorder", "collector"],
     count: ["count", "individualCount", "individual_count", "number"],
-    place: ["place", "locality", "location"]
+    place: ["place", "locality", "location"],
+    // The observer's own remark. Without this it survived ONLY inside the placemark's
+    // <description> HTML, so dropping that table would have thrown the one piece of free
+    // text the file carries away with the duplication.
+    note: ["notes", "occurrenceRemarks", "remarks", "fieldNotes", "comment"],
+    // What the record SHOWS, plus the rest of what the <description> table displayed. Every
+    // one of these travels in ExtendedData on the files the point builders write, and until
+    // v1927 NOTHING read them: the value existed only inside that table. So dropping the
+    // table -- on import since v1923, and in Compact -- is what took the activity off the
+    // card. "evidence" is listed before "category" because a mentions file carries both and
+    // evidence is the specific one.
+    act: ["activity", "act", "evidence", "behavior", "behaviour",
+          "breedingEvidence", "breeding_evidence", "category"],
+    stage: ["lifeStage", "life_stage", "lifestage", "age"],
+    country: ["country", "countryCode", "country_code"],
+    dset: ["dataset", "datasetName", "dataset_name", "collectionCode"]
   };
+  // Our own point builders write the whole record as an HTML <table> into <description>:
+  // species, date, place, country, evidence, count, notes, observer, dataset, a GBIF link.
+  // Every one of those is ALSO in the placemark's ExtendedData, which is what the app reads
+  // into structured fields — so keeping the table costs ~780 bytes a point (86 MB across the
+  // 23 generated files) to say the same thing twice. Recognised by its own shape, so a
+  // description written by Google Earth or anyone else is left untouched.
+  function isGeneratedTable(note) {
+    if (!note || note.length < 40) return false;
+    var s = String(note);
+    return s.indexOf("<table>") >= 0 && /<td><b>(Species|Date|Place|Breeding evidence)<\/b><\/td>/.test(s);
+  }
+  // Pull the observer's remark back out of a generated table. On points imported BEFORE the
+  // note became a field, that text exists nowhere else — dropping the table without this would
+  // destroy it. The builder writes it as the row <td><b>Notes</b></td><td>…</td>.
+  function unTable(html) {
+    return String(html || "").replace(/<[^>]*>/g, "")
+      .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+      .replace(/&#x27;|&#39;/g, "'").replace(/&amp;/g, "&").trim();
+  }
+  function remarkFromTable(note) {
+    var m = /<td><b>Notes<\/b><\/td>\s*<td>([\s\S]*?)<\/td>/i.exec(String(note || ""));
+    return m ? unTable(m[1]) : "";
+  }
+  // Which table rows can fill each structured field, BEST FIRST. Order matters and row order
+  // must not decide it: a per-species file writes both "Category" (the palette bucket, whose
+  // value is the 4-language legend label) and "Breeding evidence" (what THIS record shows),
+  // and the specific one has to win even though the table prints it later.
+  var TABLE_FIELD_ROWS = {
+    sci: ["species"],
+    date: ["date"],
+    place: ["place", "locality"],
+    country: ["country"],
+    count: ["count"],
+    stage: ["life stage"],
+    note: ["notes"],
+    observer: ["observer"],
+    dset: ["dataset"],
+    act: ["breeding evidence", "evidence", "activity", "behaviour", "behavior", "category"]
+  };
+  // A point imported before v1923 kept the whole table as its note and has NO fields at all:
+  // its activity, life stage, country and dataset live only in these rows. So the table has to
+  // be READ before it is dropped -- otherwise compacting is itself what destroys the record.
+  function fieldsFromTable(note, pt) {
+    var s = String(note || ""), got = 0, m, rows = {};
+    var rx = /<td><b>([^<]+)<\/b><\/td>\s*<td>([\s\S]*?)<\/td>/gi;
+    while ((m = rx.exec(s))) {
+      var lab = m[1].trim().toLowerCase(), v = unTable(m[2]);
+      if (v && rows[lab] == null) rows[lab] = v;
+    }
+    Object.keys(TABLE_FIELD_ROWS).forEach(function (f) {
+      if (pt[f] != null && pt[f] !== "") return;
+      var cand = TABLE_FIELD_ROWS[f];
+      for (var i = 0; i < cand.length; i++) {
+        var v = rows[cand[i]];
+        if (!v) continue;
+        // The Species row carries a binomial in a per-record file but the CATEGORY label in a
+        // per-category one -- only take it when it really looks like a scientific name.
+        if (f === "sci" && !/^[A-Z][a-z]+ [a-z][a-z-]+$/.test(v)) continue;
+        if (f === "date") { var d = /\d{4}-\d{2}-\d{2}/.exec(v); v = d ? d[0] : v.slice(0, 10); }
+        // "territory - territory / display / revir / spill" is a legend label, not a value:
+        // keep the key and drop the translations it carries for the map legend.
+        if (f === "act" && / - /.test(v) && /\//.test(v.split(" - ").slice(1).join(" - "))) v = v.split(" - ")[0].trim();
+        pt[f] = v; got++; return;
+      }
+    });
+    // the "Record" row was a link to the source occurrence
+    if (!pt.url) {
+      var a = /<td><b>Record<\/b><\/td>\s*<td>\s*<a href="([^"]+)"/i.exec(s);
+      if (a) { pt.url = a[1]; got++; }
+    }
+    return got;
+  }
+  // One-off: bring lists imported before v1923 down to the same size as a fresh import.
+  // Returns {points, stripped, before, after} in bytes so the UI can say what it freed.
+  async function compactStoredPoints() {
+    var before = 0, after = 0, stripped = 0, npts = 0, recovered = 0;
+    mpCollections.forEach(function (c) {
+      (c.points || []).forEach(function (p) {
+        if (!p) return;
+        npts++;
+        var n = p.note ? String(p.note).length : 0;
+        before += n;
+        if (isGeneratedTable(p.note)) {
+          recovered += fieldsFromTable(p.note, p);   // MUST run before the table goes
+          var remark = remarkFromTable(p.note);
+          if (remark) p.note = remark; else delete p.note;
+          delete p.noteHtml;
+          stripped++;
+        }
+        after += p.note ? String(p.note).length : 0;
+      });
+    });
+    internPoints(mpCollections);
+    await persistMpSets(mpCollections);
+    renderMapPoints();
+    return { points: npts, stripped: stripped, before: before, after: after, recovered: recovered };
+  }
   function applyKmlFields(pt, data) {
     if (!data) return;
     Object.keys(FIELD_ALIASES).forEach(function (field) {
@@ -870,6 +1022,13 @@ window.AppPoints = (function () {
         return;
       }
     });
+    // The source occurrence link, so the card's "source" row still works once the generated
+    // table (whose last row was that link) is gone.
+    if (!pt.url) {
+      var u = data.url || data.link || data.references || data.occurrenceURL;
+      if (!u && data.gbifID) u = "https://www.gbif.org/occurrence/" + String(data.gbifID).trim();
+      if (u) pt.url = String(u).trim();
+    }
     // Tags may travel as a field too ("a; b" or "a, b"), alongside whatever the dialog mapped.
     var tg = data.tags || data.tag;
     if (tg) {
@@ -906,16 +1065,32 @@ window.AppPoints = (function () {
         // them away is what left an imported list unfilterable. Purely additive: a file
         // without them yields exactly the point it did before.
         applyKmlFields(pt, pm.data);
+        // The note the dialog mapped is our own generated table → keep only what it was
+        // duplicating. applyKmlFields has just put the observer's remark into pt.note when the
+        // placemark carried one, so prefer that; otherwise the table said nothing the
+        // structured fields do not, and goes.
+        var droppedTable = false;
+        if (isGeneratedTable(pt.note)) {
+          fieldsFromTable(pt.note, pt);   // anything the ExtendedData did not already carry
+          var remark = "";
+          try { remark = String((pm.data && (pm.data.notes || pm.data.occurrenceRemarks)) || "").trim(); } catch (e) {}
+          if (remark) pt.note = remark; else delete pt.note;
+          droppedTable = true;
+        }
         // A file that says what colour a point should be is obeyed — without this every
         // imported set came out in ONE colour hashed from the list name, whatever the
         // file's own styling said.
         if (pm.color) pt.color = pm.color;
-        if (noteIsHtml && note) pt.noteHtml = true;
+        // …and only flag markup when what SURVIVED is markup. The table we just replaced with
+        // a plain remark is not, and setting the flag from the dialog's checkbox regardless
+        // marked every point as HTML.
+        if (noteIsHtml && pt.note && !droppedTable) pt.noteHtml = true;
         return pt;
       });
       var c = mpCollections.filter(function (x) { return x.name === listName; })[0];
       if (!c) { c = { name: listName, points: [] }; mpCollections.push(c); }
       c.points = c.points.concat(pts);
+      internPoints([c]);   // a fresh import is the other place equal strings arrive unshared
       shownColls[listName] = true;
       return pts.length;
     }
@@ -1520,6 +1695,7 @@ window.AppPoints = (function () {
       // Copy this one record into another list, and delete it. Both act on the point the
       // card belongs to, so they sit on the card rather than behind the action menu.
       '<span class="mp-card-acts">' +
+        '<button type="button" class="mp-card-edit ico-btn" title="' + escapeHtml(t("points.editPoint")) + '" aria-label="' + escapeHtml(t("points.editPoint")) + '">' + ico("edit") + "</button>" +
         '<button type="button" class="mp-card-copy ico-btn" title="' + escapeHtml(t("points.copyTo")) + '" aria-label="' + escapeHtml(t("points.copyTo")) + '">' + ico("copy") + "</button>" +
         '<button type="button" class="mp-card-del" title="' + escapeHtml(t("points.deleteOne")) + '" aria-label="' + escapeHtml(t("points.deleteOne")) + '">\u00d7</button>' +
       "</span></div>";
@@ -1569,6 +1745,17 @@ window.AppPoints = (function () {
           e.stopPropagation();
           var o = items[+this.closest(".mp-stack-it").getAttribute("data-i")];
           if (o) { togglePointTag(o.p, this.getAttribute("data-tag")); redraw(); }
+        });
+      });
+      // The pencil opens the same editor a loose pin has always had — name, tags, colour,
+      // note — now reaching points that live in a LIST too (see applyPointEdit in app.js).
+      el.querySelectorAll(".mp-card-edit").forEach(function (b) {
+        b.addEventListener("click", function (e) {
+          e.stopPropagation();
+          var o = items[+this.closest(".mp-stack-it").getAttribute("data-i")];
+          if (!o || !openPointEditor) return;
+          try { getMap().closePopup(pop); } catch (x) {}   // the editor opens its own popup here
+          openPointEditor(o.p);
         });
       });
       el.querySelectorAll(".mp-card-copy").forEach(function (b) {
@@ -1775,6 +1962,7 @@ window.AppPoints = (function () {
     buildPointsKml: buildPointsKml, buildPointsGeoJson: buildPointsGeoJson, buildKmz: buildKmz,
     exportPointsGeoJson: exportPointsGeoJson, extractKmlFromKmz: extractKmlFromKmz,
     startKmlImport: startKmlImport, startGeoJsonImport: startGeoJsonImport, startMultiImport: startMultiImport,
+    compactStoredPoints: compactStoredPoints,
     sendPointsToGoogle: sendPointsToGoogle,
     // ---- route ----
     loadRoute: loadRoute, addToRoute: addToRoute, renderRoutePoints: renderRoutePoints,

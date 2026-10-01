@@ -1884,6 +1884,10 @@ button.dd-name:hover { text-decoration: underline; }
 .list-mgr .lm-del { background: none; border: none; cursor: pointer; color: var(--brand); font-size: var(--fs-h); line-height: 1; padding: 0 2px; }
 .area-tip .area-tip-sub { display: block; color: var(--ink-muted, #666); font-size: var(--fs-xs); }   /* own line under the bold title */
 .area-tip .area-tip-note { display: block; margin-top: 3px; color: var(--ink-muted, #666); font-size: var(--fs-xs); line-height: 1.35; }
+/* The imported record on a point card: what the dropped <description> table used to show. */
+.area-tip .mp-card-meta { display: block; margin-top: 2px; color: var(--ink-muted, #666); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.area-tip .mp-card-act { display: block; margin-top: 2px; font-size: var(--fs-xs); font-weight: 600; }
+.area-tip .mp-card-by { display: block; margin-top: 2px; color: var(--ink-muted, #888); font-size: var(--fs-xs); opacity: 0.85; }
 .area-tip .area-tip-sep { display: block; height: 5px; }
 .dd-dot-near { background: #22a447; }
 .dd-dot-mid { background: #ef9420; }
@@ -4711,20 +4715,6 @@ tr.sp-flash > td { animation: spFlash 1.6s ease-in-out 1; }
 @keyframes gd-sweep { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
 @media (prefers-reduced-motion: reduce) { .gd-progress.gd-indet > span { animation: none; width: 100%; opacity: .5; } }
 
-/* The always-visible sync indicator: a turning ⟳ in the corner for as long as a sync
-   runs, whatever panel is open. Above the map and the header, clear of the safe area. */
-.sync-spinner {
-  position: fixed; z-index: 9500; top: calc(8px + env(safe-area-inset-top)); left: 50%;
-  transform: translateX(-50%); display: inline-flex; align-items: center; gap: 7px;
-  max-width: min(86vw, 30em); padding: 6px 12px; border-radius: 999px;
-  background: var(--surface, #fff); color: var(--brand-deep, #1d5b43);
-  border: 1px solid var(--border, #cfe0d8); box-shadow: 0 2px 10px rgba(0,0,0,.18);
-  font-size: var(--fs-s); line-height: 1.2; pointer-events: none;
-}
-.sync-spinner-ico { flex: 0 0 auto; animation: sync-spin 1.05s linear infinite; transform-origin: 50% 50%; }
-.sync-spinner-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@keyframes sync-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .sync-spinner-ico { animation: none; } }
 
 /* Per-point tags, edited on the point's own card in the stack popup. */
 .mp-stack-body { cursor: pointer; }
@@ -4775,3 +4765,18 @@ tr.sp-flash > td { animation: spFlash 1.6s ease-in-out 1; }
 .mp-listfilt-obshdr { margin-top: 4px; }
 .mp-listfilt-obs { max-height: 34vh; overflow: auto; }
 .mp-listfilt-go { border-top: 1px solid var(--border, #e3ebe8); margin-top: 4px; font-weight: 600; }
+/* Note popup from a list row: the observer's own remark, on its own. */
+.mp-row-note { flex: 0 0 auto; font-size: var(--fs-s); }
+.mp-note-menu { min-width: 200px; max-width: 340px; }
+.mp-note-body { padding: 4px 10px 8px; font-size: var(--fs-s); line-height: 1.45; white-space: normal;
+  overflow-wrap: break-word; max-height: 50vh; overflow-y: auto; }
+.mp-note-body table { border-collapse: collapse; font-size: var(--fs-xs); }
+.mp-note-body td { padding: 1px 5px 1px 0; vertical-align: top; }
+/* Result line under "Compact imported lists" — the status line above the map is behind
+   the Settings panel, so the outcome has to be readable where the button is. */
+.compact-result { margin-top: 6px; font-weight: 600; opacity: 1; }
+/* Points → Load from link: one URL field + Load, under the button. */
+.mp-link-menu { width: min(96vw, 420px); }
+.mp-link-row { display: flex; gap: 6px; padding: 4px 8px; }
+.mp-link-row input { flex: 1 1 auto; min-width: 0; }
+.mp-link-menu .cu-hint { padding: 0 8px 6px; margin: 0; }

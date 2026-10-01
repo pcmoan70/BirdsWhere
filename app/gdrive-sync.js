@@ -137,6 +137,11 @@ window.GDriveSync = (function () {
     lastDone = done || 0; lastTotal = total || 0;
     emit(lastStatus);
   }
+  function fmtBytes(n) {
+    n = +n || 0;
+    return n >= 1048576 ? (n / 1048576).toFixed(1) + " MB"
+         : n >= 1024 ? Math.round(n / 1024) + " kB" : n + " B";
+  }
   function pullSummary() {
     if (lastPull) return lastPull;
     try { var raw = sessionStorage.getItem(LS_LAST_PULL); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
@@ -377,26 +382,52 @@ window.GDriveSync = (function () {
     return files.length ? files[0] : null;
   }
 
+  // The payload is gzipped on write (see createFile) because it is overwhelmingly one key —
+  // the point lists — and JSON that repetitive compresses ~8-10x. Which form a file is in is
+  // decided by its CONTENT (the gzip magic 1f 8b), not its name or mime: the name is unchanged
+  // so findFile/payloadIn still locate it, every payload written before this still reads, and a
+  // browser without DecompressionStream still reads those too.
+  var GZIP_OK = (typeof CompressionStream !== "undefined" && typeof DecompressionStream !== "undefined");
+  var lastPushBytes = 0;   // what actually went up, so the progress line can show the saving
+  async function gzip(str) {
+    var body = new Blob([str]).stream().pipeThrough(new CompressionStream("gzip"));
+    return new Uint8Array(await new Response(body).arrayBuffer());
+  }
+  async function gunzipToText(buf) {
+    var body = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
+    return await new Response(body).text();
+  }
   async function downloadFile(id) {
     var r = await driveFetch("https://www.googleapis.com/drive/v3/files/" + id + "?alt=media", {});
     if (!r.ok) return null;
-    try { return await r.json(); } catch (e) { return null; }
+    var buf;
+    try { buf = await r.arrayBuffer(); } catch (e) { return null; }
+    var head = new Uint8Array(buf, 0, Math.min(2, buf.byteLength || 0));
+    var txt = null;
+    if (head.length === 2 && head[0] === 0x1f && head[1] === 0x8b) {
+      if (!GZIP_OK) { fail("error", new Error("compressed backup needs a newer browser")); return null; }
+      try { txt = await gunzipToText(buf); } catch (e) { return null; }
+    } else {
+      try { txt = new TextDecoder().decode(new Uint8Array(buf)); } catch (e) { return null; }
+    }
+    try { return JSON.parse(txt); } catch (e) { return null; }
   }
 
   // Resumable upload — handles ANY payload size. Simple multipart/media uploads
   // are capped at 5 MB by Google, so a large detection set (lots of dots) would
   // silently fail to push and never reach the other device. Two steps: start a
   // session (metadata), then PUT the content to the returned session URI.
-  async function resumableUpload(method, url, metadata, payloadStr) {
+  async function resumableUpload(method, url, metadata, payload, contentType) {
+    var ct = contentType || "application/json";
     var start = await driveFetch(url, {
       method: method,
-      headers: { "Content-Type": "application/json; charset=UTF-8", "X-Upload-Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json; charset=UTF-8", "X-Upload-Content-Type": ct },
       body: JSON.stringify(metadata || {})
     });
     if (!start.ok) throw new Error("Drive upload init failed (" + start.status + ")");
     var session = start.headers.get("Location") || start.headers.get("location");
     if (!session) throw new Error("Drive upload: no session URI (header not exposed)");
-    var put = await driveFetch(session, { method: "PUT", headers: { "Content-Type": "application/json" }, body: payloadStr });
+    var put = await driveFetch(session, { method: "PUT", headers: { "Content-Type": ct }, body: payload });
     if (!put.ok) throw new Error("Drive upload failed (" + put.status + ")");
     return await put.json();
   }
@@ -406,15 +437,23 @@ window.GDriveSync = (function () {
   // name side by side, which is what Drive would otherwise happily do.
   async function createFile(payloadStr, parentId) {
     var parent = parentId || await ensureFolder();
+    // Gzip when the browser can — and fall back to the plain string when it cannot, so a device
+    // without the Compression Streams API still syncs (it just uploads more).
+    var body = payloadStr, ct = "application/json";
+    if (GZIP_OK) {
+      try { body = new Blob([await gzip(payloadStr)], { type: "application/gzip" }); ct = "application/gzip"; }
+      catch (e) { body = payloadStr; ct = "application/json"; }
+    }
+    lastPushBytes = (body && body.size) || payloadStr.length;
     var existing = await payloadIn(parent);
     if (existing && existing.id) {
       return resumableUpload("PATCH",
         "https://www.googleapis.com/upload/drive/v3/files/" + existing.id + "?uploadType=resumable&fields=id",
-        {}, payloadStr);
+        {}, body, ct);
     }
     return resumableUpload("POST",
       "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id",
-      { name: FILE_NAME, parents: [parent] }, payloadStr);
+      { name: FILE_NAME, parents: [parent] }, body, ct);
   }
 
 
@@ -449,7 +488,16 @@ window.GDriveSync = (function () {
     for (var i = 0; i < files.length; i++) {
       var f = files[i];
       phase("files", f.name, i + 1, files.length);
-      try { await putNamedFile(f.name, f.mime, f.bytes ? new Blob([f.bytes], { type: f.mime }) : f.text, parentId); }
+      // Build THIS file now and let it go before the next one: driveExtraFiles hands back
+      // builders rather than bytes precisely so a device with many lists never holds them
+      // all at once (that OOM'd the tab).
+      try {
+        var body = f.build ? new Blob([await f.build()], { type: f.mime })
+                           : (f.bytes ? new Blob([f.bytes], { type: f.mime }) : f.text);
+        await putNamedFile(f.name, f.mime, body, parentId);
+        body = null;
+        files[i] = { name: f.name };   // drop the builder's closure once it has been written
+      }
       catch (e) { /* one bad file must not cost the others, or the sync */ }
     }
   }
@@ -466,9 +514,17 @@ window.GDriveSync = (function () {
     var inc = (options && options.cats) || { settings: 1, lists: 1, trips: 1, checklists: 1, fetched: 0 };
     syncing = true; lastPhase = "signin"; lastPhaseName = ""; lastDone = lastTotal = 0; emit("syncing");
     try {
+      // Each step now says WHAT it is doing, not just which step it is: the folder it found,
+      // the size it is pulling, what arrived, how big the upload is. "Reading Drive…" for
+      // twenty seconds with no detail is indistinguishable from a hang.
       phase("read");
       var meta = await findFile();                 // newest payload: latest dated run folder, else legacy
-      var remote = meta ? await downloadFile(meta.id) : null;
+      var remote = null;
+      if (meta) {
+        // Data, not wording: the folder this came from and how big it is.
+        phase("download", (meta.folderName || meta.name || "") + (meta.size ? " \u00b7 " + fmtBytes(+meta.size) : ""));
+        remote = await downloadFile(meta.id);
+      }
       phase("merge");
 
       // Scalar-settings direction (collections always union regardless). Two-way:
@@ -493,6 +549,9 @@ window.GDriveSync = (function () {
       // A pull that wins on settings reloads the page, which would take this with it —
       // and the one moment the user needs to read it is right after that reload.
       try { sessionStorage.setItem(LS_LAST_PULL, JSON.stringify(lastPull)); } catch (e) {}
+      // Re-emit so the UI sees the freshly counted `pull` in the snapshot and can say what
+      // arrived; the counting itself happens just above.
+      if (remote) phase("merge");
       var localState = {}; try { localState = JSON.parse(localStateStr()); } catch (e) {}
       var toApply = remote ? window.AppData.filterIncomingForSync(remote, inc, localState) : null;
       var before = localStateStr();
@@ -513,9 +572,13 @@ window.GDriveSync = (function () {
         var str = JSON.stringify(merged);
         // Each sync gets its own dated folder holding that run's payload AND its readable
         // copies, instead of overwriting one file and leaving loose dated JSONs beside it.
-        phase("write", FILE_NAME);
+        // The saving is the point of compressing, so show it: "39.2 MB \u2192 4.1 MB".
+        phase("write", fmtBytes(str.length));
+        var pushLabel = str.length;
         var runId = await createRunFolder();
         var created = await createFile(str, runId);
+        if (lastPushBytes && lastPushBytes < pushLabel)
+          phase("write", fmtBytes(pushLabel) + " \u2192 " + fmtBytes(lastPushBytes));
         fileId = created.id; try { localStorage.setItem(LS_FILE_ID, fileId); } catch (e) {}
         await writeReadableCopies(runId);   // .kmz / .csv in the same folder, for a human to open
         await pruneRunFolders(SNAP_KEEP);   // keep the newest few runs (never fails the sync)

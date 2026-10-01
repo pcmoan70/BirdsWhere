@@ -21,14 +21,14 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v1919";
+var VERSION = "v1952";
 // The changelog shown under the lit "Reload to update" button in Settings.
 // THIS RELEASE ONLY — replace it wholesale on every version bump, never append.
 // A returning user wants to know what the update they are about to install changes,
 // not a scroll of things they already have; the feature history lives in Settings →
 // What's new, and the full record in CHANGES.md.
 var NOTES = [
-  "\u2022 The loading screen now greets you in your own language instead of always in English, and the page declares that language from the first paint. It follows the same rule the rest of the app does: your own choice if you have made one, otherwise your device\u2019s language, English when that is not one of the 15.",
+  "\u2022 Points \u2192 Load from file now also takes a direct link to a .kmz / .kml / .geojson file (a GitHub raw link, for instance). The separate Load-from-link button and the Google API key field are gone.",
 ].join("\n");
 // RC channel isolation: an RC deployment (SW served from a "…-rc/" path) shares the
 // browser ORIGIN with production, so its caches must be namespaced — and its activate
@@ -48,7 +48,12 @@ var DATA_CACHE = RC_TAG + "data-" + DATA_REV;    // model / labels / taxonomy / 
 // blob live here together, under one byte budget + one LRU. The app writes its
 // range cache into this same cache (see MAP_POOL_CACHE in app.js), so it isn't
 // wiped on a deploy and both compete for the same space.
-var TILE_CACHE = "map-pool";            // map tiles + computed range data
+var TILE_CACHE = "map-pool";            // the app's computed range data (+ tiles cached before v1935)
+// Tiles are SHARDED over 16 caches by URL hash. One big pool broke its own LRU: with tens of
+// thousands of tiles, cache.keys() threw "Operation too large" (2026-10-01), so the trim never
+// ran and the pool only grew. A shard holds at most cap/16 entries, well inside the limit.
+var TILE_SHARDS = 16, TILE_SHARD_PREFIX = "map-pool-s";
+function tileShard(url) { var h = 0; for (var i = 0; i < url.length; i++) h = (h * 31 + url.charCodeAt(i)) | 0; return TILE_SHARD_PREFIX + ((h >>> 0) % TILE_SHARDS); }
 // Species photos (the Images layout's Wikimedia thumbnails): version-independent
 // and cache-first — a photo is downloaded once and then served from the device,
 // surviving app updates; FIFO-capped by count (~40 KB per 500 px thumbnail).
@@ -57,6 +62,11 @@ var IMG_CACHE = "species-images";
 var IMG_CAP = 1500;
 var API_CACHE = RC_TAG + "api-" + VERSION;       // geocode / overpass / species lookups
 var META_CACHE = "meta-config";         // version-independent: holds the user's cache-cap setting
+// Files handed to us by the Android share sheet. The share target is a POST, which cannot be
+// answered by a redirect alone -- the page has no way to read the body -- so the SW parks the
+// files here and the page collects them on the next load. Version-independent, and emptied by
+// the page as soon as it has them.
+var SHARE_CACHE = RC_TAG + "shared-files";
 var DEFAULT_MAX_TILES = 11000;          // fallback LRU tile cap before the app pushes its setting
 var PINNED_PREFIX = "pinned-";          // explicitly downloaded offline areas (never auto-purged)
 // The "Map cache buffer" (Settings) in tiles, set by the app via postMessage and
@@ -112,7 +122,7 @@ self.addEventListener("message", function (event) {
     var tiles = tilesForMB(d.mb);
     tileCap = tiles;
     caches.open(META_CACHE).then(function (c) { c.put("https://config.local/tilecap", new Response(tiles === Infinity ? "-1" : String(tiles))); });
-    caches.open(TILE_CACHE).then(function (c) { trim(c, tiles); });   // shrink now if the new cap is smaller
+    for (var si = 0; si < TILE_SHARDS; si++) (function (name) { caches.open(name).then(function (c) { trim(c, Math.ceil(tiles / TILE_SHARDS)); }); })(TILE_SHARD_PREFIX + si);   // shrink now if the new cap is smaller
   }
 });
 
@@ -138,6 +148,7 @@ var SHELL = [
   "index.html",
   "f/index.html",      // short link (QR poster) → forwards to the full shortcut URL
   "sw-register.js",
+  "splash-lang.js",   // splash text + <html lang> before app.js — must be in the shell or an offline cold start loses it
   "app.js",
   "rarity.js",
   "offline-maps.js",
@@ -327,7 +338,7 @@ function reload(url) {
 }
 
 self.addEventListener("activate", function (event) {
-  var keep = [SHELL_CACHE, DATA_CACHE, TILE_CACHE, API_CACHE, META_CACHE, IMG_CACHE];
+  var keep = [SHELL_CACHE, DATA_CACHE, TILE_CACHE, API_CACHE, META_CACHE, IMG_CACHE, SHARE_CACHE];
   event.waitUntil(
     caches
       .keys()
@@ -335,7 +346,7 @@ self.addEventListener("activate", function (event) {
         return Promise.all(
           names.map(function (n) {
             // Keep current caches and all pinned offline areas (version-independent).
-            if (keep.indexOf(n) !== -1 || n.indexOf(PINNED_PREFIX) === 0) return;
+            if (keep.indexOf(n) !== -1 || n.indexOf(PINNED_PREFIX) === 0 || n.indexOf(TILE_SHARD_PREFIX) === 0) return;
             // Only ever delete OUR OWN channel's caches: RC deletes rc-*; production
             // deletes non-rc names (the channels share one origin-wide cache store).
             var isRc = n.indexOf("rc-") === 0;
@@ -352,6 +363,30 @@ self.addEventListener("activate", function (event) {
 
 self.addEventListener("fetch", function (event) {
   var req = event.request;
+
+  // Android share sheet -> BirdsWhere. Must come before the non-GET bail-out below.
+  if (req.method === "POST" && /\/share-target\/?$/.test(new URL(req.url).pathname)) {
+    event.respondWith((async function () {
+      var to = "./?shared-file=0";
+      try {
+        var fd = await req.formData();
+        var files = fd.getAll("files").filter(function (f) { return f && f.name; });
+        if (files.length) {
+          var c = await caches.open(SHARE_CACHE);
+          var keys = await c.keys();
+          await Promise.all(keys.map(function (k) { return c.delete(k); }));   // no stale carry-over
+          for (var i = 0; i < files.length; i++) {
+            await c.put(new Request("./shared/" + i + "/" + encodeURIComponent(files[i].name)),
+                        new Response(files[i], { headers: { "Content-Type": files[i].type || "application/octet-stream" } }));
+          }
+          to = "./?shared-file=" + files.length;
+        }
+      } catch (e) { /* fall through to the 0-file redirect; the page then says nothing arrived */ }
+      return Response.redirect(to, 303);
+    })());
+    return;
+  }
+
   if (req.method !== "GET") return;
 
   var url = new URL(req.url);
@@ -446,8 +481,11 @@ function shellCacheFirst(req) {
     return cache.match(req).then(function (hit) {
       if (hit) return hit;   // served from cache — not re-downloaded
       // A shell asset that wasn't precached (e.g. added after install): fetch
-      // once and store it so the next load is cache-served too.
-      return fetch(req).then(function (res) {
+      // once and store it so the next load is cache-served too. Bypass the browser's
+      // HTTP cache: a lazy file (a language pack) changed by this version would otherwise
+      // be filled from the 10-minute-old copy the previous version loaded, and the new
+      // strings would read in English until the next update (seen 2026-10-01, v1950).
+      return fetch(reload(req.url)).then(function (res) {
         if (res && res.ok) cache.put(req, res.clone());
         return res;
       }).catch(function () {
@@ -520,7 +558,11 @@ function tileResponse(req) {
     })(0);
   }).then(function (pinnedHit) {
     if (pinnedHit) return pinnedHit;
-    return getTileCap().then(function (cap) { return cacheFirstCapped(req, TILE_CACHE, cap); });
+    // A tile cached before the shards (in the old pool) still serves: match() needs no enumeration.
+    return caches.open(TILE_CACHE).then(function (old) { return old.match(req); }).then(function (hit) {
+      if (hit) return hit;
+      return getTileCap().then(function (cap) { return cacheFirstCapped(req, tileShard(req.url), Math.ceil(cap / TILE_SHARDS)); });
+    });
   });
 }
 
@@ -584,7 +626,9 @@ function queueTrim(cache, max) {
 // but it is NOT a tile and must never be evicted by tile churn — exclude it from
 // both the cap count and deletion.
 function trim(cache, max) {
-  return cache.keys().then(function (keys) {
+  if (!isFinite(max)) return Promise.resolve();
+  return cache.keys().catch(function () { return null; }).then(function (keys) {   // an enumeration the browser refuses → skip this pass, never throw
+    if (!keys) return;
     var tiles = keys.filter(function (k) { return k.url.indexOf("mapcache.local") < 0; });
     if (tiles.length <= max) return;
     var excess = tiles.length - max;

@@ -80,7 +80,7 @@
   var TAX_URL = "taxonomy-base.csv";        // species_code + English name + class (split from taxonomy.csv)
   var TAX_NAMES_BASE = "i18n/names/";       // per-language name packs, line-aligned to taxonomy-base.csv rows
   var CONFUSION_URL = "confusion.csv";      // per-bird look-alike (confusion) partner codes; fetched on first use
-  var CONFUSION_REV = 15;                     // bump when confusion.csv changes — busts the runtime (cache-first) copy
+  var CONFUSION_REV = 18;                     // bump when confusion.csv changes — busts the runtime (cache-first) copy
   var TRAITS_URL = "species-traits.json";   // per-species characteristics (AVONET morphology/ecology + HBW colour)
   var TRAITS_REV = 2;                        // bump when species-traits.json changes
 
@@ -888,6 +888,16 @@
           '<button type="button" class="btn" id="nudge-ok">OK</button></div>';
       m.box.querySelector("#nudge-ok").addEventListener("click", m.close);
     } catch (e) {}
+  }
+  // A status line that goes away by itself after *ms* — unless something else has replaced it.
+  var statusForTimer = null;
+  function setStatusFor(msg, ms) {
+    setStatus(msg);
+    clearTimeout(statusForTimer);
+    statusForTimer = setTimeout(function () {
+      var el = document.getElementById("app-status");
+      if (el && el.textContent === msg) setStatus("");
+    }, ms);
   }
   function setStatus(msg, isErr) {
     if (isErr) appErrLog(msg);
@@ -1781,7 +1791,7 @@
       var lbl = labelsByKey[key], nm = (lbl && speciesName(lbl)) || e.name || key, spCol = e.color || speciesColor(key);
       rows = [];
       e.rows.forEach(function (r) {
-        if (!detRowPasses(r)) return;
+        if (!detRowPasses(r) || !detRowInView(r)) return;   // the same rows the Total counted
         rows.push({ key: key, name: nm, color: spCol, lat: r.lat, lon: r.lon, date: r.date || "", src: r.src || "", origin: r.origin || "",
           url: r.url || "", place: r.place || "", placeCoarse: !!r.placeCoarse, posFuzzM: +r.posFuzzM || 0, count: (r.count != null ? r.count : ""), act: r.act || "", note: r.note || "", flags: r.flags || "", observer: r.observer || "",
           photo: r.photo || "", photoBig: r.photoBig || "", photoBy: r.photoBy || "", photos: r.photos || null, rl: r.rl || "",   // the observer's own pictures + red-list code
@@ -1807,6 +1817,7 @@
   function refreshSpExpansions() {
     var tbody = document.getElementById("sp-tbody"); if (!tbody) return;
     Array.prototype.slice.call(tbody.querySelectorAll(".sp-detail-row")).forEach(function (tr) { if (tr.parentNode) tr.parentNode.removeChild(tr); });
+    if (!Object.keys(spExpanded).length && !tbody.querySelector("tr.sp-open")) return;   // nothing expanded, nothing marked: skip the per-row scan (it ran on every pan)
     // Mark expanded species rows so the row shows it's open (the ▸ caret was removed;
     // the whole row is the expand target now — see the sp-tbody click handler).
     Array.prototype.forEach.call(tbody.querySelectorAll("tr"), function (tr) {
@@ -1889,8 +1900,11 @@
     if (!holder) return;
     var key = holder.getAttribute("data-key"); if (!key) return;
     var color = (typeof detPlot !== "undefined" && detPlot[key] && detPlot[key].color) || speciesColor(key);
+    var html = detSwatch(color, isInteresting(key), !!rare, key);
+    if (holder._sw === html) return;   // unchanged: the swatch was rebuilt as fresh HTML for every row on every pass
+    holder._sw = html;
     holder.className = "sp-dot";
-    holder.innerHTML = detSwatch(color, isInteresting(key), !!rare, key);
+    holder.innerHTML = html;
   }
   // Distance origin for the list views: while automatic updating is ON, your LIVE
   // GPS position (so every distance-sorted surface re-sorts as you move); else the
@@ -2597,6 +2611,7 @@
   // row disappears) WITHOUT rebuilding the list. Normally those filters are applied
   // when the rows are built, so the default (no arg) leaves them alone.
   function applyAgeFilter(withBuild) {
+    captureListView();   // one viewport for every row of this pass
     var tbody = document.getElementById("sp-tbody");
     if (!tbody) return;
     var agg = tbody._sightingsAgg, days = speciesAgeFilterDays;
@@ -2610,6 +2625,9 @@
     // desert), its best MODEL_TOP_N anyway — the answer must never be a blank page. An
     // explicit probability floor set by the user still wins.
     var MODEL_FLOOR = 0.01, MODEL_MIN_ROWS = 10, MODEL_TOP_N = 25, autoCut = 0;
+    var floor = (+document.getElementById("prob-min").value || 0) / 100;   // once per pass (was a DOM read per row)
+    var rareCut = rarePct() / 100, missingOn = spMissingOn();   // once per pass (rarePct read storage per row)
+    var tRows = 0, tDom = 0, tMark = perfOn ? performance.now() : 0;   // ?perf=1: row work vs DOM work
     if (spMissingAuto) {
       var ps = [];
       Array.prototype.forEach.call(tbody.children, function (tr) {
@@ -2623,10 +2641,13 @@
     Array.prototype.forEach.call(tbody.querySelectorAll("tr"), function (tr) {
       if (tr.classList.contains("sp-detail-row")) return;   // handled by refreshSpExpansions below
       var extra = tr.classList.contains("sp-extra");
-      var sl = tr.querySelector(".sp-link"), key = sl && sl.getAttribute("data-key");
+      // The row's cells, looked up once per row for its lifetime (five querySelectors per row per pass before).
+      var C = tr._spCells || (tr._spCells = { sl: tr.querySelector(".sp-link"), dot: tr.querySelector(".sp-dot"), nd: tr.querySelector(".det-nd"),
+                                             ndBtn: tr.querySelector(".det-nd .det-count-btn"), last: tr.querySelector(".sp-last"), ex: tr.querySelector(".det-count-extra[data-sci]") });
+      var sl = C.sl, key = sl && sl.getAttribute("data-key");
       tr.classList.toggle("sp-deleted", !!(key && deletedSpecies[key]));   // grey a species removed from the map
       // Repaint the species dot with its live state (★ / rare-here / year·life need / blocked).
-      if (!extra && key) { var _dot = tr.querySelector(".sp-dot"); if (_dot) paintSpDot(_dot, !!(rareAll && rareAll[key])); }
+      if (!extra && key && C.dot) paintSpDot(C.dot, !!(rareAll && rareAll[key]));
       var entry = (!extra && key && agg) ? agg[key] : null;
       // ◉ rare: species outside the model ("extras") never carry the marker.
       var rareOk = !rareSet || (!extra && !!(key && rareSet[key]));
@@ -2641,24 +2662,28 @@
         // observer + source filters. Total, pairs, the Last cell and row visibility all
         // derive from this subset, so the date-range panel actually narrows the table
         // (and the "N hidden" recency note matches what the Total now leaves out).
-        var winRows = entry.rows.filter(function (r) { return detRowPasses(r); });
-        fc = dedupedSpecimenTotal(winRows);   // total specimens AFTER de-duplication, in-window
-        winRows.forEach(function (r) {
-          var ts = r.date ? Date.parse(r.date + "T00:00:00") : 0; if (ts && ts > flatest) flatest = ts;
-        });
+        if (perfOn) { tDom += performance.now() - tMark; tMark = performance.now(); }
+        var winRows = passRows(key, listViewBounds), latest = "";   // shared with the legend's count for this viewport
+        for (var wi = 0; wi < winRows.length; wi++) { var wd = winRows[wi].date; if (wd && wd > latest) latest = wd; }   // ISO strings order as dates
+        fc = cntMemo((listViewBounds ? "v|" + listViewBounds.toBBoxString() + "|" : "a|") + key, function () { return specimenTotal(winRows); });   // deduped specimens, in-window + in-view
+        flatest = latest ? (Date.parse(String(latest).slice(0, 10) + "T00:00:00") || 0) : 0;
         tr.classList.toggle("sp-has-det", fc > 0);
-        var ndBtn = tr.querySelector(".det-nd .det-count-btn"); if (ndBtn) ndBtn.textContent = fc;
         var pairs = fc > 0 ? distinctObsDatePairs(winRows) : 0;
-        setPairsSuffix(tr.querySelector(".det-nd"), pairs);
-        tr.setAttribute("data-total", fc); tr.setAttribute("data-pairs", pairs);   // Total-panel sort keys
-        var lastTd = tr.querySelector(".sp-last"); if (lastTd) lastCellSet(lastTd, flatest);
-        if (flatest) tr.setAttribute("data-last", flatest); else tr.removeAttribute("data-last");
+        if (perfOn) { tRows += performance.now() - tMark; tMark = performance.now(); }
+        // Write the DOM only when a value changed: the table is re-scoped on every pan.
+        if (C.ndBtn && C.ndBtn.textContent !== String(fc)) C.ndBtn.textContent = fc;
+        if (tr.getAttribute("data-pairs") !== String(pairs)) { setPairsSuffix(C.nd, pairs); tr.setAttribute("data-pairs", pairs); }
+        if (tr.getAttribute("data-total") !== String(fc)) tr.setAttribute("data-total", fc);   // Total-panel sort keys
+        if (String(flatest || "") !== (tr.getAttribute("data-last") || "")) {
+          if (C.last) lastCellSet(C.last, flatest);
+          if (flatest) tr.setAttribute("data-last", flatest); else tr.removeAttribute("data-last");
+        }
         obsFilteredOut = !!(entry.count) && fc === 0;
       } else if (extra) {
         fc = parseInt(tr.getAttribute("data-count"), 10) || 0;
         flatest = parseInt(tr.getAttribute("data-last"), 10) || 0;
         tr.setAttribute("data-total", fc); tr.setAttribute("data-pairs", parseInt(tr.getAttribute("data-pairs"), 10) || 0);
-        var lastTdE = tr.querySelector(".sp-last"); if (lastTdE) lastCellSet(lastTdE, flatest);
+        if (C.last) lastCellSet(C.last, flatest);
       } else {
         // Model row with NO detections (no agg entry → blank Total). fc stays 0; also
         // zero the sort keys so a Total/Observations ≥ N filter (which reads data-total /
@@ -2681,9 +2706,8 @@
       // (it has no dates); the species-flag, rarity and selection filters still apply.
       // Predicted species down to the list's own probability floor; with the floor at 0 %
       // the rare threshold guards instead — else the whole model would pour into the list.
-      var floor = (+document.getElementById("prob-min").value || 0) / 100;
-      var missingCut = spMissingAuto ? Math.max(floor, autoCut) : (floor > 0 ? floor : rarePct() / 100);
-      var missingOk = spMissingOn() && !!agg && !entry && !extra &&
+      var missingCut = spMissingAuto ? Math.max(floor, autoCut) : (floor > 0 ? floor : rareCut);
+      var missingOk = missingOn && !!agg && !entry && !extra &&
         (+tr.getAttribute("data-prob") || 0) >= missingCut;
       // What the list offers BEFORE the species selection narrows it — the pool the
       // lists/groups picker works from when nothing is plotted (see listPool).
@@ -2694,15 +2718,13 @@
       // "x:<scientific name>" key the rest of the app uses, or every extra (which is
       // where the butterflies actually are) would be judged keyless and dropped.
       var bflyKey = key;
-      if (!bflyKey) {
-        var exB = tr.querySelector(".det-count-extra[data-sci]");
-        if (exB) bflyKey = "x:" + String(exB.getAttribute("data-sci") || "").toLowerCase();
-      }
+      if (!bflyKey && C.ex) bflyKey = "x:" + String(C.ex.getAttribute("data-sci") || "").toLowerCase();
       var bflyOk = detPassesBflySp(bflyKey);
       var pooled = (missingOk || (recencyOk && countOk && !obsFilteredOut)) && rareOk && buildOk && bflyOk;
       tr.classList.toggle("sp-pool", pooled);
       tr.style.display = (pooled && selOk && excOk) ? "" : "none";
     });
+    if (perfOn) { tDom += performance.now() - tMark; _perfRows.push({ stage: "    applyAgeFilter: row work", ms: +tRows.toFixed(1) }, { stage: "    applyAgeFilter: DOM + per-row rest", ms: +tDom.toFixed(1) }); }
     refreshSpExpansions();   // keep expanded detail sub-rows under their (visible) species
     repaintDotsOutsideTable(rareAll);   // Images cards / observation rows / the ☰ popover
     updateRecencyNote();
@@ -2736,9 +2758,12 @@
     try { if (mpState && mpState.mpFilterRefresh) mpState.mpFilterRefresh(); } catch (e) {}
     var tb = document.getElementById("sp-tbody"); if (!tb) return;
     var q = spNameQuery.trim();
+    if (!q) {   // no search: only rows still carrying the class need touching (every row was visited before)
+      Array.prototype.forEach.call(tb.querySelectorAll("tr.sp-hide-search"), function (tr) { tr.classList.remove("sp-hide-search"); });
+      return;
+    }
     Array.prototype.forEach.call(tb.querySelectorAll("tr"), function (tr) {
       if (tr.classList.contains("sp-detail-row")) return;   // sub-rows follow their species
-      if (!q) { tr.classList.remove("sp-hide-search"); return; }
       tr.classList.toggle("sp-hide-search", !spRowMatchesName(tr, q));
     });
   }
@@ -5665,9 +5690,17 @@
     var myGen = detPlotGen;      // if the map is cleared while this runs, don't replot the late result
     var mapFetch = spMapFetch;   // this fetch intended to drop dots on the map (map-first point flow)
     hideSourceCounts();   // clear any prior location's "Loaded: …" line before this fetch
-    var onPartial = function (partial) { applySightings(tbody, token, partial, false); };   // live-fill rows as each source returns (recent) / each month batch (historic)
+    // Live-fill as sources return, but at most one re-render per 500 ms: every partial batch
+    // re-ran the table pass, the dots and the legend (up to 3 s per batch on a big set).
+    var partialTimer = null, partialLast = null;
+    var onPartial = function (partial) {
+      partialLast = partial;
+      if (partialTimer) return;   // a render is due; it will take the latest batch
+      partialTimer = setTimeout(function () { partialTimer = null; var pp = partialLast; partialLast = null; if (pp) applySightings(tbody, token, pp, false); }, 500);
+    };
     var fetchP = histRange ? fetchHistoricSightingsAt(lat, lon, histRange, onProg, onPartial) : fetchAllSightingsAt(lat, lon, onPartial);
     return fetchP.then(function (result) {
+      clearTimeout(partialTimer); partialTimer = null; partialLast = null;   // the final result supersedes any pending partial render
       // Superseded by a newer fetch (the user triggered another): don't touch the newer
       // list, but STILL plot this fetch's detections in the background so no queued fetch
       // is lost — the dots accumulate (plotDetections merges) like any other fetch.
@@ -5812,7 +5845,14 @@
     try { if (typeof detSetStore !== "undefined") state.mapDetectionSets = detSetStore.filter(function (s) { return s && s.name; }); } catch (e) {}
     // Named point lists moved to IndexedDB too — re-attach them so the Drive payload
     // shape (and every existing backup) is unchanged.
-    try { if (mpState.mpIdbReady && mpState.mpIdbReady()) state.mapPointSets = mpState.mpCollections().filter(function (c) { return c && c.name; }); } catch (e) {}
+    // A list flagged "don't sync" stays on this device. Safe to omit: mergePointSets starts
+    // from the LOCAL sets and only adds/merges incoming ones, so a list missing from the
+    // payload is never dropped — and reference data you can re-import at will is exactly what
+    // should not travel. The biggest generated list alone is over half the payload.
+    try {
+      if (mpState.mpIdbReady && mpState.mpIdbReady())
+        state.mapPointSets = mpState.mpCollections().filter(function (c) { return c && c.name && !c.noSync; });
+    } catch (e) {}
     // Names the user's own use has accumulated — harvested from iNaturalist, and the
     // extra vernaculars — live in IndexedDB and were never in the payload, so every
     // new device started collecting them again from scratch.
@@ -5878,28 +5918,16 @@
   // the corner for as long as the sync is busy, with the step and the file count beside it.
   // Registered at boot, independent of the Settings wiring, so it works even if that panel
   // is never opened.
+  // The sync used to also raise a floating tile over the page (#sync-spinner). It said
+  // exactly what the Settings sync button already says — the phase, the file being written,
+  // the "3/12" count — next to a progress bar that says the rest, so it was one more thing
+  // covering the map for no information. Removed on request; any leftover tile from a
+  // previous version is cleared on the next status event.
   function wireSyncSpinner() {
     if (!window.GDriveSync || !window.GDriveSync.onStatus) return;
-    var PH = { signin: "sync.phSignin", read: "sync.phRead", merge: "sync.phMerge",
-               write: "sync.phWrite", files: "sync.phFiles" };
-    window.GDriveSync.onStatus(function (st) {
+    window.GDriveSync.onStatus(function () {
       var el = document.getElementById("sync-spinner");
-      if (!st || !st.busy) { if (el) el.remove(); return; }
-      if (!el) {
-        el = document.createElement("div");
-        el.id = "sync-spinner"; el.className = "sync-spinner";
-        el.setAttribute("role", "status"); el.setAttribute("aria-live", "polite");
-        el.innerHTML = '<svg class="sync-spinner-ico" viewBox="0 0 24 24" width="18" height="18" fill="none" ' +
-          'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-          '<path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg><span class="sync-spinner-txt"></span>';
-        document.body.appendChild(el);
-      }
-      var txt = st.phaseName ? t("sync.phWriteFile", { name: st.phaseName })
-                             : (PH[st.phase] ? t(PH[st.phase]) : t("gdrive.syncing"));
-      if (st.total > 1) txt = st.done + "/" + st.total + " " + txt;
-      var sp = el.querySelector(".sync-spinner-txt");
-      if (sp) sp.textContent = txt;
-      el.title = txt;
+      if (el) el.remove();
     });
   }
   function updateBackupNudge() {
@@ -6451,14 +6479,18 @@
   // this go to Drive in the payload as always, just without a .kmz beside them.
   var COPY_MAX_POINTS = 20000;
   function driveExtraFiles() {
-    var out = [], jobs = [], skipped = [];
+    var out = [], skipped = [];
+    // LAZY on purpose. This used to build every list's KML string and its compressed copy
+    // up front and hold them ALL in memory before the first upload — with a dozen imported
+    // lists that is hundreds of megabytes of strings at once, and the tab died with Chrome's
+    // "Aw, Snap!" (a renderer OOM). writeReadableCopies calls build() one file at a time and
+    // releases each before the next, so only ONE list is ever materialised. The closure
+    // holds a reference to the existing points array, not a copy.
     function kmz(name, points) {
       if (!points || !points.length) return;
       if (points.length > COPY_MAX_POINTS) { skipped.push(name + " (" + points.length + ")"); return; }
-      var coll = [{ name: name, points: points }];
-      jobs.push(mpState.buildKmz(mpState.buildPointsKml(coll, [])).then(function (bytes) {
-        out.push({ name: safeFileName(name) + ".kmz", mime: "application/vnd.google-earth.kmz", bytes: bytes });
-      }).catch(function () {}));
+      out.push({ name: safeFileName(name) + ".kmz", mime: "application/vnd.google-earth.kmz",
+        build: function () { return mpState.buildKmz(mpState.buildPointsKml([{ name: name, points: points }], [])); } });
     }
     try { (mpState.mpCollections() || []).forEach(function (c) { kmz("Points - " + c.name, c.points || []); }); } catch (e) {}
     try {
@@ -6483,10 +6515,8 @@
       var fc = window.AppField && window.AppField.fieldChecklistCsv && window.AppField.fieldChecklistCsv();
       if (fc) out.push({ name: "Checklists.csv", mime: "text/csv;charset=utf-8", text: fc });
     } catch (e) {}
-    return Promise.all(jobs).then(function () {
-      if (skipped.length) out._skipped = skipped;   // reported by the sync, not silently dropped
-      return out;
-    });
+    if (skipped.length) out._skipped = skipped;   // reported by the sync, not silently dropped
+    return Promise.resolve(out);
   }
   // Surface the data layer for the Google Drive sync module (gdrive-sync.js),
   // which lives outside this IIFE. It builds the payload and merges remote
@@ -7352,6 +7382,15 @@
                 '<p class="cu-hint" data-i18n="rarity.countryWideTip">For every 🔔 point, fetch rare-bird alerts for its entire country instead of just the radius around it. Points that share a country are fetched once. Uses more of your eBird API budget.</p>' +
               '</div>' +
               '<div class="ctrl-group">' +
+                '<label for="rarity-band-token" data-i18n="rarity.band">BAND groups</label>' +
+                '<div class="ctrl-inline rarity-email-row">' +
+                  '<input id="rarity-band-token" type="password" autocomplete="off" spellcheck="false" data-i18n-ph="rarity.bandToken" placeholder="BAND access token" />' +
+                  '<button type="button" id="rarity-band-load" class="btn btn-light" data-i18n="rarity.bandLoad">Load my groups</button>' +
+                '</div>' +
+                '<div id="rarity-band-list"></div>' +
+                '<p class="cu-hint" data-i18n="rarity.bandHint">Also watch the posts of your birding groups on BAND (band.us). Paste a personal access token (BAND Developers → My Apps → Connect BAND account), load your groups and tick the ones to follow. New posts are searched for species names in the chosen language (scientific names always); a named bird is treated as a sighting at the chosen 🔔 location — a post has no coordinates — and alerts when the model finds it unlikely there, like any other source.</p>' +
+              '</div>' +
+              '<div class="ctrl-group">' +
                 '<label for="rarity-prob-th" data-i18n="rarity.probTh">Rarity threshold (%)</label>' +
                 '<input id="rarity-prob-th" type="number" min="0" max="100" step="1" />' +
                 '<p class="cu-hint" data-i18n="rarity.probThHint">A bird counts as a rarity when the model finds it unlikely at its own spot and week — probability below this %. Applies to both your own fetched observations and eBird notable alerts. Default 15. 0/100 = off.</p>' +
@@ -7424,6 +7463,13 @@
                   '<button type="button" class="clear-cache-btn" data-clear="harvest"><span class="clear-lbl" data-i18n="clear.harvest">Downloaded names</span><span class="clear-cnt"></span></button>' +
                   '<button type="button" class="clear-cache-btn" data-clear="offline"><span class="clear-lbl" data-i18n="clear.offline">Offline areas</span><span class="clear-cnt"></span></button>' +
                   '<button type="button" class="clear-cache-btn" data-clear="images"><span class="clear-lbl" data-i18n="clear.images">Species photos</span><span class="clear-cnt"></span></button>' +
+                '</div>' +
+                // Not a cache clear — it rewrites the lists in place, so it sits under its own
+                // label with what it does spelled out. One press, reports what it freed.
+                '<div class="ctrl-group" id="compact-wrap">' +
+                  '<button type="button" id="compact-lists-btn" class="btn btn-light" data-i18n="storage.compact">Compact imported lists</button>' +
+                  '<p class="cu-hint" data-i18n="storage.compactHint"></p>' +
+                  '<p id="compact-result" class="cu-hint compact-result" style="display:none"></p>' +
                 '</div>' +
               '</div>' +
               '<div class="settings-section" data-i18n="settings.secDisplay">Display &amp; language</div>' +
@@ -8028,12 +8074,18 @@
         hasHere = qp.has("here");
         hasLocParam = !!parseSemiParams().location;
         sharedOpen = qp.has("lat") || qp.has("lon") || qp.has("s") || /[#&]s=/.test(location.hash || "");
+        // An OS-opened file is an explicit intent, like a shared link: go straight to the map.
+        if (qp.has("shared-file") || qp.has("open-file")) sharedOpen = true;
         plainOpen = !(hasHere || sharedOpen || hasLocParam);
       } catch (e) {}
       if (!sharedOpen && !launchGated) showPerfModal();   // a gated launch already showed (and dismissed) it
       initOfflineIndicator();
       maybeShowMovedNotice();
       maybeImportMigrated();   // arriving from the old origin with #migrate=… → merge the carried data
+      // A KML / KMZ / GeoJSON opened from the OS: desktop "Open with" (launchQueue) or the
+      // Android share sheet (?shared-file=N parked by the service worker).
+      consumeLaunchFiles();
+      consumeSharedFiles();
       initInstall();
       initRarityAlerts();
       // Keyless first tap on the rarity bell → the one-time eBird-key nudge
@@ -9887,7 +9939,16 @@
   }
   function setDetTodayFilter(on) { detTodayFilter = !!on; detFiltersRefresh(); }
   // Distinct source labels among the plotted rows (what a source filter can pick from).
-  function detSourcesPresent() {
+  // Observers / locations / sources present depend only on WHAT is plotted, not on the filters:
+  // cache them by the plot signature (the all-filters pane rebuilt all three on every change).
+  var _plotListMemo = { sig: "", obs: null, loc: null, src: null };
+  function plotListMemo(slot, compute) {
+    var sig = detPlotSig();
+    if (_plotListMemo.sig !== sig) _plotListMemo = { sig: sig, obs: null, loc: null, src: null };
+    return _plotListMemo[slot] || (_plotListMemo[slot] = compute());
+  }
+  function detSourcesPresent() { return plotListMemo("src", detSourcesPresentRaw); }
+  function detSourcesPresentRaw() {
     var s = Object.create(null);
     Object.keys(detPlot).forEach(function (k) { (detPlot[k].rows || []).forEach(function (r) { var l = srcLabel(r); if (l) s[l] = 1; }); });
     return Object.keys(s).sort();
@@ -9944,7 +10005,7 @@
     if (detFocusObs) return (r.observer || "").indexOf(detFocusObs) >= 0;   // legend hover isolates one observer
     if (!detObsFilter) return true;
     var obs = (r.observer || "").trim();
-    if (!detObsRealNames(obs).length) return detObsAllowNone;   // empty, or only tags → "no observer" bucket
+    if (!rowMemo(r, "_obsN", function (x) { return detObsRealNames((x.observer || "").trim()); }).length) return detObsAllowNone;   // empty, or only tags → "no observer" bucket
     for (var i = 0; i < detObsNames.length; i++) if (obs.indexOf(detObsNames[i]) >= 0) return true;   // substring match
     return false;
   }
@@ -9956,7 +10017,7 @@
   var detLocFilter = null;              // Set of selected place names (incl "") or null = all
   var detLocNames = [];                 // selected non-empty place names
   var detLocAllowNone = false;          // is "(no location)" selected
-  function detLocKey(r) { return placeAccurate(r) ? String(r.place || "").trim() : ""; }
+  function detLocKey(r) { return rowMemo(r, "_locK", function (x) { return placeAccurate(x) ? String(x.place || "").trim() : ""; }); }
   var detLocRestored = false;           // loaded from storage (not chosen this session) → healable
   function setDetLocFilter(set, restored) {
     // null = all locations; empty Set = "None" (a base to then tick a few); a Set
@@ -10028,20 +10089,10 @@
       saveLegendState(); detFiltersRefresh();
     }, 1000);
   }
-  // Heal a remembered location filter whose selected names aren't among the
-  // currently-plotted locations (else the map silently blanks). Explicit "None"
-  // (empty Set) is left alone. Mirrors reconcileObsFilter.
-  function reconcileLocFilter() {
-    if (!detLocFilter || !detLocFilter.size) return false;
-    if (!Object.keys(detPlot).length) return false;
-    var lo = detAllLocations(), present = detLocAllowNone && lo.hasNone;
-    for (var i = 0; !present && i < detLocNames.length; i++) if (lo.names.indexOf(detLocNames[i]) >= 0) present = true;
-    if (present) return false;
-    setDetLocFilter(null); saveLegendState(); return true;
-  }
   // Distinct accurate place names among the plotted rows (+ a "(no location)" flag)
   // — what the location checklist offers.
-  function detAllLocations() {
+  function detAllLocations() { return plotListMemo("loc", detAllLocationsRaw); }
+  function detAllLocationsRaw() {
     var set = Object.create(null), hasNone = false;
     Object.keys(detPlot).forEach(function (k) {
       (detPlot[k].rows || []).forEach(function (r) {
@@ -10190,8 +10241,17 @@
     for (var i = 0; i < (rows || []).length; i++) { var r = rows[i]; if (detRowPasses(r)) vis.push(r); }
     return specimenTotal(vis);
   }
-  function detSpeciesCount(k) { return dedupedSpecimenTotal((dEntry(k) || {}).rows || []); }
-  function detSpeciesPairs(k) { return distinctObsDatePairs((dEntry(k) || {}).rows || []); }
+  // Per-tick memo for the per-species counts: the same species was dedup-counted by the legend,
+  // the funnel bar, the count gate and the table in one filter change. Cleared by
+  // invalidateFilterMemos() and at the end of the tick (a map move is its own tick).
+  var _cntMemo = Object.create(null), _cntTick = false;
+  function cntMemo(key, compute) {
+    if (!_cntTick) { _cntTick = true; setTimeout(function () { _cntTick = false; _cntMemo = Object.create(null); }, 0); }
+    var v = _cntMemo[key];
+    return v !== undefined ? v : (_cntMemo[key] = compute());
+  }
+  function detSpeciesCount(k) { return countPassing(k, false); }
+  function detSpeciesPairs(k) { return cntMemo("p|" + k, function () { return distinctObsDatePairs((dEntry(k) || {}).rows || []); }); }
   // Number of distinct observations behind the specimen total: distinct observer × date
   // pairs (deduplicated records) over the rows that pass the active filters. Shown in
   // the Total column as "31(3)" — 31 specimens across 3 observation events.
@@ -10200,12 +10260,18 @@
     for (var i = 0; i < (rows || []).length; i++) {
       var r = rows[i];
       if (!detRowPasses(r)) continue;
-      var key = (r.observer || "").toLowerCase().replace(/\s+/g, " ").trim() + "|" + String(r.date || "").slice(0, 10);
+      var key = rowMemo(r, "_pk", function (x) { return (x.observer || "").toLowerCase().replace(/\s+/g, " ").trim() + "|" + String(x.date || "").slice(0, 10); });
       if (!seen[key]) { seen[key] = 1; n++; }
     }
     return n;
   }
-  function detPassesCount(k) { return (spCountMin == null && spCountMax == null) || countInBounds(spCountMetric === "pairs" ? detSpeciesPairs(k) : detSpeciesCount(k)); }
+  // At the default (Total ≥ 1, no max) the count gate cannot hide a species that has a dot to
+  // show — every surface already drops a species with no passing row — so skip the dedup pass
+  // it would otherwise run for every species in every caller of detIsVisible (5+ per change).
+  function detPassesCount(k) {
+    if (spCountMax == null && (spCountMin == null || spCountMin <= 1)) return true;
+    return countInBounds(spCountMetric === "pairs" ? detSpeciesPairs(k) : detSpeciesCount(k));
+  }
   // "Rare here": a species observed at this spot that the HABITAT MODEL says is
   // unlikely to be here — model probability at most rarePct%.
   //
@@ -10315,7 +10381,7 @@
   // a species passes when its best-spot model probability lies inside [lo, hi].
   // Unknown probability (not yet computed / non-model species) never hides.
   function detPassesProb(k) {
-    var lo = +document.getElementById("prob-min").value, hi = +document.getElementById("prob-max").value;
+    var c = dateCfg(), lo = c.plo, hi = c.phi;
     if (!(lo > 0 || hi < 100)) return true;   // default range → no gate
     var p = (k in detProbMax) ? detProbMax[k] : -1;
     if (!isFinite(p) || p < 0) return true;
@@ -10824,12 +10890,45 @@
   function dateCfg() {
     if (_dateCfgMemo) return _dateCfgMemo;
     var days = detRecencyDays();
+    var pmin = document.getElementById("prob-min"), pmax = document.getElementById("prob-max");
     _dateCfgMemo = { days: days, cut: days > 0 ? isoDaysAgo(days) : "",
-                     range: detDateRange(), months: detMonths(), daySel: detDaySelActive() };
+                     range: detDateRange(), months: detMonths(), daySel: detDaySelActive(),
+                     plo: pmin ? +pmin.value : 0, phi: pmax ? +pmax.value : 100 };   // the two sliders, once per tick (were two DOM reads per species)
     setTimeout(function () { _dateCfgMemo = null; }, 0);
     return _dateCfgMemo;
   }
-  function invalidateFilterMemos() { _detRemovedMemo = null; _dateCfgMemo = null; _plotSigMemo = null; }
+  function invalidateFilterMemos() { _detRemovedMemo = null; _dateCfgMemo = null; _plotSigMemo = null; _cntMemo = Object.create(null); }
+  // ?perf=1 — every filter/view stage logs its milliseconds to a console.table, so a speed-up
+  // is measured on real data rather than assumed (tasks/filter-perf_20260930.md, stage 0).
+  var perfOn = /[?&]perf=1(?:&|$)/.test(location.search), _perfRows = [], _perfFlush = null;
+  function perfCaller() { try { return (new Error().stack || "").split("\n").slice(3, 6).map(function (l) { return l.replace(/^\s*at\s+/, "").replace(/\s*\(.*$/, ""); }).join(" < "); } catch (e) { return ""; } }
+  function perfWrap(name, fn, withCaller) {
+    return function () {
+      var t0 = performance.now();
+      if (withCaller) _perfRows.push({ stage: "-> " + name + " called by", ms: 0, from: perfCaller() });
+      try { return fn.apply(this, arguments); }
+      finally {
+        _perfRows.push({ stage: name, ms: +(performance.now() - t0).toFixed(1) });
+        clearTimeout(_perfFlush);
+        _perfFlush = setTimeout(function () {
+          var rows = _perfRows; _perfRows = [];
+          rows.push({ stage: "TOTAL (" + rows.length + " stages)", ms: +rows.reduce(function (a, r) { return a + r.ms; }, 0).toFixed(1) });
+          console.table(rows);
+        }, 80);
+      }
+    };
+  }
+  // A memo that lives on the row itself, non-enumerable so it never serialises into storage
+  // (the `_dk` pattern): the observer split, the source label, the location key and the
+  // 10-char date were recomputed for every row on every filter pass.
+  function rowMemo(r, key, compute) {
+    var v = r[key];
+    if (v !== undefined) return v;
+    v = compute(r);
+    try { Object.defineProperty(r, key, { value: v, enumerable: false, writable: true, configurable: true }); }
+    catch (e) { r[key] = v; }
+    return v;
+  }
   function detDatePasses(dateStr) {
     var c = dateCfg(), d0 = String(dateStr || "").slice(0, 10);
     if (!detDaySuspend) {
@@ -11006,11 +11105,13 @@
   // GBIF aggregates records from other platforms; show the originating platform with a
   // "[GBIF]" tag so it's clear it came via GBIF — e.g. "Observation.org[GBIF]".
   function srcLabel(r) {
-    if (r.src === "GBIF") {
-      var o = r.origin ? shortOrigin(r.origin) : "";
-      return (o && o !== "GBIF") ? o + "[GBIF]" : "GBIF";
-    }
-    return r.src || "";
+    return rowMemo(r, "_srcL", function (x) {
+      if (x.src === "GBIF") {
+        var o = x.origin ? shortOrigin(x.origin) : "";
+        return (o && o !== "GBIF") ? o + "[GBIF]" : "GBIF";
+      }
+      return x.src || "";
+    });
   }
   // Whether the user can actually query a source — used to flag records in a shared
   // map that came from a source the recipient has no access to (a keyed source with
@@ -11633,6 +11734,22 @@
     placeAnchClose(el);
     enableMenuKeys(el, closeAnchoredMenu);
   }
+  // Photo-card popups shrink-wrap to the squarest grid for their card count — 6 cards → 3 × 2,
+  // 7–8 → 4 × 2, 9 → 3 × 3, 10–12 → 4 × 3 — instead of filling 900 px and stranding one or two
+  // cards on a last row (owner, 2026-10-01). Cards are 150 px wide and about 1.73× as tall.
+  var PHOTO_CARDS_MAX = 10;   // photo-card popups show at most this many cards (the bird + 9)
+  function fitCardGrid(el, n) {
+    var cw = 150, gap = 8, pad = 28;                                              // card · strip gap · strip padding 16 + menu padding 8 + border 2 (+2 slack; the menu is border-box)
+    var maxCols = Math.max(1, Math.floor((Math.min(window.innerWidth * 0.97, 900) - pad) / (cw + gap)));
+    var sq = Math.sqrt(n * 1.73), best = null;
+    [Math.floor(sq), Math.ceil(sq)].forEach(function (c) {                        // the two column counts nearest a square…
+      c = Math.max(1, Math.min(maxCols, c));
+      var rows = Math.ceil(n / c), cols = Math.ceil(n / rows);                    // …each tightened to the fewest columns for its rows
+      var waste = cols * rows - n, skew = Math.abs(cols * (cw + gap) - rows * 1.73 * (cw + gap));
+      if (!best || waste < best.waste || (waste === best.waste && skew < best.skew)) best = { cols: cols, waste: waste, skew: skew };
+    });
+    el.style.width = (best.cols * cw + (best.cols - 1) * gap + pad) + "px";       // fewest empty cells first, then the squarer one
+  }
   function centerPhotoPopup(el) {
     el.style.maxHeight = "min(88vh, 900px)";
     el.style.overflow = "auto";
@@ -11759,6 +11876,13 @@
     });
     if (cell) arr.sort(function (a, b) { return b.p - a.p; });
     else arr.sort(function (a, b) { return speciesName(a.m).localeCompare(speciesName(b.m)); });
+    // At most PHOTO_CARDS_MAX cards, like the confusion popup (owner, 2026-10-01): the species
+    // itself plus the best of the rest — by Here when there is a point, else the first by name.
+    var famTotal = arr.length;
+    if (arr.length > PHOTO_CARDS_MAX) {
+      var self = arr.filter(function (w) { return w.m.key === key; });
+      arr = self.concat(arr.filter(function (w) { return w.m.key !== key; }).slice(0, PHOTO_CARDS_MAX - self.length));
+    }
     var L = { here: t("confusion.colHere"), season: t("th.season"), ytop: ytopLabel() };
     var pct = function (p) { var v = p * 100; return v >= 0.5 ? Math.round(v) + "%" : (p > 0 ? "<1%" : "0%"); };
     // Same metric row as the confusion cards, data-hintkey and all: bar behind, label
@@ -11794,7 +11918,8 @@
         '<div class="spg-credit"></div>' +
       "</div>";
     }).join("");
-    el.appendChild(strip);
+    el.appendChild(strip); fitCardGrid(el, strip.children.length);   // shrink-wrap to the squarest grid (6 cards → 3 × 2)
+    if (famTotal > arr.length) { var more = document.createElement("div"); more.className = "conf-legend"; more.textContent = t("family.shownOf", { n: arr.length, m: famTotal }); el.appendChild(more); }
     centerPhotoPopup(el);
     wirePhotoCards(el, strip);
     wireYearProbTips(el);                                    // hold Here / Season / Yr peak → the year curve
@@ -11880,7 +12005,7 @@
           var line = lines[i]; if (!line) continue;
           var c = line.indexOf(","); if (c < 0) continue;
           var parts = line.slice(c + 1).split(" ").filter(Boolean).map(function (pp) {
-            var a = pp.split(":");                             // "code:MATCH:MISID" (MATCH 0-100, MISID = iNat confusion count)
+            var a = pp.split(":");                             // "code:MATCH[:MISID]" (MATCH 0-100; MISID = % share of the species' iNat confusions, absent below the 5 % floor)
             return { c: a[0], w: (+a[1] || 0) / 100, mid: +a[2] || 0 };
           });
           if (parts.length) m[line.slice(0, c)] = parts;
@@ -12312,7 +12437,7 @@
     }
     var strip = document.createElement("div"); strip.className = "cfi-strip";
     strip.innerHTML = card(lbl, null, true) + arr.map(function (w) { return card(w.m, w, false); }).join("");
-    el.appendChild(strip);
+    el.appendChild(strip); fitCardGrid(el, strip.children.length);   // shrink-wrap to the squarest grid (6 cards → 3 × 2)
     var legend = document.createElement("div"); legend.className = "conf-legend";
     legend.textContent = t("confusion.legend", { match: L.match, misid: L.misid, here: L.here, score: L.score });
     el.appendChild(legend);
@@ -12696,6 +12821,27 @@
       try { fn(); } finally { setFunnelBusy(false); }
     }, 30);
   }
+  if (perfOn) {
+    rebuildDetLayers = perfWrap("rebuildDetLayers", rebuildDetLayers);
+    updateDetLegend = perfWrap("updateDetLegend", updateDetLegend);
+    updateHdrHisto = perfWrap("updateHdrHisto", updateHdrHisto);
+    renderDetListModal = perfWrap("renderDetListModal", renderDetListModal);
+    renderSpControls = perfWrap("renderSpControls", renderSpControls);
+    renderAllFiltersPane = perfWrap("renderAllFiltersPane", renderAllFiltersPane);
+    applyAgeFilter = perfWrap("applyAgeFilter", applyAgeFilter, true);
+    restrictListToView = perfWrap("restrictListToView", restrictListToView);
+    renderSpCoordsAreas = perfWrap("renderSpCoordsAreas", renderSpCoordsAreas);
+    computeDotClusters = perfWrap("computeDotClusters", computeDotClusters);
+    ensureDedup = perfWrap("ensureDedup", ensureDedup);
+    detFilteredStats = perfWrap("detFilteredStats", detFilteredStats);
+    collectVisibleDetections = perfWrap("collectVisibleDetections", collectVisibleDetections);
+    saveLegendState = perfWrap("saveLegendState", saveLegendState);
+    detFiltersRefresh = perfWrap("detFiltersRefresh", detFiltersRefresh, true);
+    refreshSpExpansions = perfWrap("  refreshSpExpansions", refreshSpExpansions);
+    repaintDotsOutsideTable = perfWrap("  repaintDotsOutsideTable", repaintDotsOutsideTable);
+    updateRecencyNote = perfWrap("  updateRecencyNote", updateRecencyNote);
+    filterSpRows = perfWrap("  filterSpRows", filterSpRows);
+  }
   function detFiltersRefresh() {
     invalidateFilterMemos();   // a filter just changed — never re-use the previous pass's snapshot
     withFunnelBusy(function () {
@@ -12703,11 +12849,22 @@
       saveLegendState(); rebuildDetLayers(); updateDetLegend();
       var dm = document.getElementById("detlist-modal");
       if (dm && dm.style.display === "flex" && typeof renderDetListModal === "function") renderDetListModal();
-      if (typeof speciesPanelPopulated === "function" && speciesPanelPopulated()) renderSpControls();
+      if (typeof speciesPanelPopulated === "function" && speciesPanelPopulated()) refilterSpTable();
       if (allFiltersPane) renderAllFiltersPane();   // keep the "all filters" pane in sync
     });
     // the pane's filters reach imported list pins too (mpVisible → listPointPasses)
     try { if (mpState && mpState.mpFilterRefresh) mpState.mpFilterRefresh(); } catch (e) {}
+  }
+  // A filter change re-scopes the rows of the EXISTING table (one pass, then the sort when a
+  // column depends on filtered values) — renderSpControls regenerated every row's HTML first
+  // and then filtered it: 130-280 ms of a filter change on the owner's data (2026-10-01).
+  // The Images cards and the observation list are drawn FROM the pass, so they still render.
+  function refilterSpTable() {
+    if (spLayout !== "table") { renderSpBody(); return; }   // the cards / observation rows are drawn from the pass; the filter bar and header stay
+    applyAgeFilter();
+    if (speciesListSort.col) sortSpeciesList();   // Total / pairs / Last / Dist orders change with the filters
+    renderSpFilterBtn(); updateRecencyNote();
+    if (typeof renderSpHeads === "function") renderSpHeads();
   }
   // Re-render just the filter bar on whichever surface currently hosts it (the popup,
   // or the fetch list) — for panel-open toggles that don't change the data.
@@ -13060,7 +13217,8 @@
     // Per-location popup: the records at the clicked spot. Filtering lives on the
     // fetched species list now; here we just show + sort + save/navigate. The global
     // filters (set from the fetch list) still apply through collectVisibleDetections.
-    var rows = collectVisibleDetections(detListNear, true);
+    captureListView();
+    var rows = collectVisibleDetections(detListNear, true).filter(detRowInView);   // list views follow the map view
     // Title = the place name the data SOURCE supplies for this spot: an eBird hotspot
     // / BirdWeather station name where present, else the first record's own place text.
     var titleEl = document.getElementById("detlist-title");
@@ -13467,6 +13625,18 @@
   var detCullBounds = null;
   function detViewBounds() { return map ? map.getBounds().pad(1.0) : null; }
   function inCull(r) { return !detCullBounds || detCullBounds.contains([r.lat, r.lon]); }
+  // Map-view scoping for every LIST surface: the species table (Total / pairs / Last and
+  // row visibility), its expanded record lists and the fetch-list modal show only records
+  // inside the current map view — as the legend already does — and re-filter when the map
+  // moves (listViewKick). The dot layers keep their one-screen culling margin above so
+  // panning shows dots before the rebuild; hence a predicate beside detRowPasses, not in it.
+  var listViewBounds = null, lvS = 0, lvN = 0, lvW = 0, lvE = 0;
+  function captureListView() {
+    listViewBounds = map ? map.getBounds() : null;
+    if (listViewBounds) { lvS = listViewBounds.getSouth(); lvN = listViewBounds.getNorth(); lvW = listViewBounds.getWest(); lvE = listViewBounds.getEast(); }
+  }
+  // Four number compares per row (Leaflet's contains() allocated a LatLng per call, per row per pass).
+  function detRowInView(r) { return !listViewBounds || (r.lat >= lvS && r.lat <= lvN && r.lon >= lvW && r.lon <= lvE); }
   function computeDotClusters(allowed) {
     if (!dotClusterOn() || !map || detFocusKey) return null;
     var D = DOT_CLUSTER_PX, z = map.getZoom();
@@ -13590,7 +13760,6 @@
     ensureDedup();
     reconcileObsFilter();   // drop a stale observer filter that no longer matches any plotted observer
     reconcileLocFilter();   // …and a stale location filter, which would hide every fetched record
-    reconcileLocFilter();   // …and likewise a stale location filter
 
     if (detFocusKey && !detPlot[detFocusKey]) detFocusKey = null;   // focused species gone → don't mute everything
     recolorDetections();
@@ -13790,7 +13959,7 @@
     if (map) {
       var vb = map.getBounds();
       rows = rows.filter(function (r) { return isFinite(+r.lat) && isFinite(+r.lon) && vb.contains([+r.lat, +r.lon]); });
-      try { setStatus(t("sp.inView", { n: rows.length })); } catch (e) {}
+      try { setStatusFor(t("sp.inView", { n: rows.length }), 2000); } catch (e) {}
     }
     rec.style.display = "";
     rec.innerHTML = rows.length ? buildSpObsHtml(rows) : '<div class="dl-empty">' + escapeHtml(t("detlist.empty")) + "</div>";
@@ -13880,15 +14049,9 @@
   function restrictListToView() {
     var tbody = document.getElementById("sp-tbody"); if (!tbody || !map) return;
     syncAlertPlot();   // make sure alert species are current before deciding what stays in view
-    var b = map.getBounds();
-    var inView = Object.create(null);
-    unionDetKeys().forEach(function (k) {   // detPlot ∪ rarity-alert species
-      var e = dEntry(k); if (!e || !e.rows) return;
-      for (var i = 0; i < e.rows.length; i++) {
-        var r = e.rows[i];
-        if (isFinite(+r.lat) && isFinite(+r.lon) && b.contains([+r.lat, +r.lon]) && detDatePasses(r.date) && detPassesNew(r)) { inView[k] = 1; break; }
-      }
-    });
+    // applyAgeFilter() scopes every species row to the map view (detRowInView) and hides a
+    // species whose in-view, filtered count is 0 — the separate in-view scan this function
+    // used to make first (a second walk of every row) decided the same thing with fewer filters.
     applyAgeFilter();   // baseline: the filters (and the [?] predicted rows) decide first
     var shown = 0;
     // Species rows only (direct children): querySelectorAll("tr") would also reach the
@@ -13902,11 +14065,11 @@
       else { var ex = tr.querySelector(".det-count-extra[data-sci]"); if (ex) key = "x:" + String(ex.getAttribute("data-sci") || "").toLowerCase(); }
       // [?] predictions have no detections to be "in view" — keep them (applyAgeFilter let them through).
       var missing = spMissingOn() && !!sl && !tr.classList.contains("sp-has-det") && !tr.classList.contains("sp-extra");
-      var show = missing || !!(key && inView[key]);
-      tr.style.display = show ? "" : "none";
+      var show = missing || tr.classList.contains("sp-has-det") || tr.classList.contains("sp-extra");
+      if ((tr.style.display === "none") === show) tr.style.display = show ? "" : "none";
       if (show) shown++;
     });
-    try { setStatus(t("sp.inView", { n: shown })); } catch (e) {}
+    try { setStatusFor(t("sp.inView", { n: shown }), 2000); } catch (e) {}
   }
   function goToMapView() {
     if (!viewToggleAvail()) return;
@@ -14172,6 +14335,7 @@
     window.GeoState.save({ detRecencyDays: 0, detDateRange: null, detMonths: [] });   // days + range + months → All
     detFiltersRefresh();                                                     // map + legend + open list(s)
     if (typeof renderSpHeads === "function") renderSpHeads();                // refresh column header labels + funnels
+    fitToDetections();                                                       // and show ALL fetched points again (the lists follow the view)
   }
   // The red × clears the WHOLE map of plotted points: fetched dots, plus every
   // shown saved list / detection set (un-ticked so nothing is re-injected — the
@@ -14809,7 +14973,7 @@
     updateDetLegend();
     var dm = document.getElementById("detlist-modal");
     if (dm && dm.style.display === "flex" && typeof renderDetListModal === "function") renderDetListModal();
-    if (typeof speciesPanelPopulated === "function" && speciesPanelPopulated()) renderSpControls();
+    if (typeof speciesPanelPopulated === "function" && speciesPanelPopulated()) refilterSpTable();   // counts only: no rebuild of the table's rows after a pan
     var nl = document.querySelector("#sp-filters-wrap .det-obs-list") || document.querySelector("#detlist-filters-wrap .det-obs-list"); if (nl) nl.scrollTop = st;
   }
   // Small popup (anchored to a clicked observer name) to toggle that observer's
@@ -14922,11 +15086,12 @@
       b.addEventListener("click", function (e) { e.stopPropagation(); observerActionMenu(this.getAttribute("data-obs"), r); });
     });
   }
-  function detAllObservers() {
+  function detAllObservers() { return plotListMemo("obs", detAllObserversRaw); }
+  function detAllObserversRaw() {
     var set = Object.create(null), hasNone = false;
     Object.keys(detPlot).forEach(function (k) {
       (detPlot[k].rows || []).forEach(function (r) {
-        var real = detObsRealNames(r.observer);   // split into single names, drop org/source tags
+        var real = rowMemo(r, "_obsN", function (x) { return detObsRealNames((x.observer || "").trim()); });   // split once per row
         if (real.length) real.forEach(function (n) { set[n] = 1; });
         else hasNone = true;                       // empty or only tags → "(no observer)"
       });
@@ -15146,16 +15311,27 @@
   // Deduped SPECIMENS of a species passing the active date/observer/source filters,
   // optionally restricted to the current map view (legendViewBounds). The counts match
   // the Species-list Total / count filter (specimens, not records).
+  // The rows of a species that pass the filters inside a viewport (null = anywhere): ONE pass per
+  // species per tick, shared by the legend (countPassing), the funnel bar and the species table
+  // (applyAgeFilter), which each walked and dedup-grouped the same rows before.
+  function passRows(k, b) {
+    var key = (b ? "r|" + b.toBBoxString() + "|" : "r|") + k;
+    return cntMemo(key, function () {
+      var e = dEntry(k); if (!e || !e.rows) return [];
+      var vis = [], rows = e.rows;
+      var s = b ? b.getSouth() : 0, n = b ? b.getNorth() : 0, w = b ? b.getWest() : 0, ee = b ? b.getEast() : 0;
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        if (!detRowPasses(r)) continue;
+        if (b && !(r.lat >= s && r.lat <= n && r.lon >= w && r.lon <= ee)) continue;
+        vis.push(r);
+      }
+      return vis;
+    });
+  }
   function countPassing(k, inView) {
-    var e = dEntry(k); if (!e || !e.rows) return 0;
-    var b = inView ? legendViewBounds : null, vis = [];
-    for (var i = 0; i < e.rows.length; i++) {
-      var r = e.rows[i];
-      if (!detRowPasses(r)) continue;
-      if (b && !(isFinite(+r.lat) && isFinite(+r.lon) && b.contains([+r.lat, +r.lon]))) continue;
-      vis.push(r);
-    }
-    return specimenTotal(vis);
+    var b = inView ? legendViewBounds : null;
+    return cntMemo((b ? "v|" + b.toBBoxString() + "|" : "a|") + k, function () { return specimenTotal(passRows(k, b)); });
   }
   // The "n" of the legend's "n/t": specimens IN THE CURRENT VIEW passing the filters —
   // so panning/zooming recomputes it (the legend re-renders on moveend). legendViewBounds
@@ -16844,10 +17020,79 @@
   }
   // Detection sets shown as overlays — one map layer-group per ticked set, kept
   // in sync with shownDetSets. Each set's stored dots are drawn in their colour.
+  // ---- opening a KML / KMZ / GeoJSON from OUTSIDE the app -------------------------------
+  // Two different platform mechanisms, because no single one covers both:
+  //
+  //   * DESKTOP Chromium (installed PWA) supports the File Handling API, so the manifest's
+  //     `file_handlers` puts BirdsWhere in the OS "Open with" list and the file arrives here
+  //     through launchQueue. Chrome/Edge 102+ on Windows, macOS, Linux and ChromeOS.
+  //   * ANDROID Chrome has NO file_handlers, but it does have a share target that accepts
+  //     files, which puts BirdsWhere in the system Share sheet. That is a POST, so the service
+  //     worker parks the files in a cache and redirects to ?shared-file=N, which we collect
+  //     below. Safari/iOS supports neither, so there the file input remains the only way in.
+  //
+  // Both paths end in importPointsFile(), the same reader every in-app button uses.
+  function consumeLaunchFiles() {
+    if (!("launchQueue" in window) || !window.launchQueue.setConsumer) return;
+    try {
+      window.launchQueue.setConsumer(function (params) {
+        if (!params || !params.files || !params.files.length) return;
+        Promise.all(params.files.map(function (h) { return h.getFile(); }))
+          .then(function (files) { if (files.length) importPointsFile(files, false); })
+          .catch(function () { setStatus(t("kml.parseErr")); });
+      });
+    } catch (e) { /* not supported on this platform */ }
+  }
+
+  async function consumeSharedFiles() {
+    var qp;
+    try { qp = new URLSearchParams(location.search); } catch (e) { return; }
+    var n = parseInt(qp.get("shared-file") || "", 10);
+    if (isNaN(n)) return;
+    // Drop the parameter straight away so a reload cannot re-import the same file.
+    try { history.replaceState(null, "", location.pathname); } catch (e) {}
+    if (!n) { setStatus(t("kml.parseErr")); return; }
+    try {
+      var names = await caches.keys();
+      var name = names.filter(function (x) { return /shared-files$/.test(x); })[0];
+      if (!name) return;
+      var c = await caches.open(name);
+      var keys = await c.keys();
+      var files = [];
+      for (var i = 0; i < keys.length; i++) {
+        var res = await c.match(keys[i]);
+        if (!res) continue;
+        var blob = await res.blob();
+        var leaf = decodeURIComponent(keys[i].url.split("/").pop() || ("shared-" + i));
+        files.push(new File([blob], leaf, { type: blob.type || "application/octet-stream" }));
+      }
+      await Promise.all(keys.map(function (k) { return c.delete(k); }));
+      if (files.length) importPointsFile(files, false);
+    } catch (e) { setStatus(t("kml.parseErr")); }
+  }
+
   // One reader behind every "load points from a file" button. Branch on the bytes,
   // not on the button: ZIP magic → KMZ, a leading { or [ → GeoJSON, < → KML, and
   // anything else → a share link (the points panel's original job).
   var importBusy = false;
+  // A point list from a direct LINK — a .kmz / .kml / .geojson the host lets a browser fetch
+  // (GitHub raw links do; Google Drive share links do not: Drive answers every cross-site
+  // browser request with 403, measured 2026-10-01). The bytes take the single-file import path.
+  function importPointsUrl(url) {
+    url = String(url || "").trim(); if (!url) return;
+    var name = "";
+    try { var u = new URL(url); if (!/^https?:$/.test(u.protocol)) throw new Error("scheme"); name = decodeURIComponent(u.pathname.split("/").pop() || ""); }
+    catch (e) { setStatus(t("points.linkFail")); return; }
+    if (importBusy) { setStatus(t("kml.busy")); return; }
+    setStatus(t("points.linkFetching"));
+    fetch(url, { mode: "cors", credentials: "omit" })
+      .then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.blob(); })
+      .then(function (b) {
+        if (/text\/html/i.test(b.type || "")) throw new Error("html");   // a web page, not a list
+        importPointsFile([new File([b], name || "points", { type: b.type || "" })], false);
+      })
+      .catch(function () { setStatus(t("points.linkFail")); });
+  }
   function importPointsFile(files, allowShare) {
     var f = (files && files.length != null) ? files[0] : files;
     if (!f) return;
@@ -16985,6 +17230,20 @@
     // Right-aligned under the arrow that opened it.
     positionAnchoredMenu(el, br.right - el.offsetWidth, br.bottom + 4);
   }
+  // The note on its own, from a list row. Anchored like the other row menus — and the
+  // anchor is measured BEFORE opening, because openAnchoredMenu closes the dropdowns and a
+  // hidden panel's button has a zero rect.
+  function openNotePopup(anchor, p) {
+    var br = anchor.getBoundingClientRect();
+    var el = openAnchoredMenu("detrow-menu mp-note-menu", anchor);
+    var txt = String(p.note || "").trim();
+    var body = p.noteHtml
+      ? sanitizeHtml(txt)
+      : escapeHtml(txt).replace(/\n/g, "<br>");
+    el.innerHTML = '<div class="dd-head">' + escapeHtml(p.name || t("points.note")) + "</div>" +
+      '<div class="mp-note-body">' + body + "</div>";
+    positionAnchoredMenu(el, br.right - el.offsetWidth, br.bottom + 4);
+  }
   function mpTipHtml(p) {
     var name = escapeHtml(p.name || "(point)");
     // A pin saved from a detection hovers exactly like the live plotted dot: the
@@ -17002,9 +17261,32 @@
       return head + (subL.length ? '<span class="area-tip-note">' + subL.map(escapeHtml).join("<br>") + "</span>" : "");
     }
     // Don't repeat a tag that just duplicates the name (detection pins tag the
-    // species, which is also the name) — otherwise the species shows twice.
-    var tagList = (p.tags || []).filter(function (tg) { return tg && tg !== p.name; });
+    // species, which is also the name) — nor the activity, which now has its own line.
+    var actTxt = p.act ? tagDisplay(p.act) : "";
+    var tagList = (p.tags || []).filter(function (tg) {
+      return tg && tg !== p.name && !(actTxt && tagDisplay(tg) === actTxt);
+    });
     var tags = tagList.length ? '<span class="area-tip-sub">' + escapeHtml(tagList.map(tagDisplay).join(" · ")) + "</span>" : "";
+    // The record itself. Until v1927 these fields were held on the point and shown NOWHERE:
+    // the card rendered name + tags + note only, and the values were visible purely as the
+    // imported <description> table. Dropping that table (on import since v1923, and in
+    // Compact) therefore emptied the card — for the 32–57 % of records whose file carries no
+    // remark it left nothing but the species name. Rendered as values, not labels, so the
+    // card stays compact and needs no new translated strings.
+    var metaBits = [];
+    if (p.date) metaBits.push(p.date);
+    if (p.count != null && p.count !== "") metaBits.push("×" + p.count);
+    if (p.place) metaBits.push(p.place);
+    if (p.country) metaBits.push(p.country);
+    var meta = metaBits.length ? '<span class="mp-card-meta">' + escapeHtml(metaBits.join(" · ")) + "</span>" : "";
+    var actBits = [];
+    if (actTxt) actBits.push(actTxt);
+    if (p.stage) actBits.push(p.stage);
+    var actLine = actBits.length ? '<span class="mp-card-act">' + escapeHtml(actBits.join(" · ")) + "</span>" : "";
+    var byBits = [];
+    if (p.observer) byBits.push(p.observer);
+    if (p.dset) byBits.push(p.dset);
+    var by = byBits.length ? '<span class="mp-card-by">' + escapeHtml(byBits.join(" · ")) + "</span>" : "";
     // Notes flagged as HTML (imported KML descriptions) render as sanitised markup;
     // plain notes show their text lines (date / activity / remark), dropping any
     // source URL line — so a saved detection reveals when & what behaviour was
@@ -17017,7 +17299,7 @@
         .filter(function (s) { return s && !/^https?:\/\//i.test(s); });
       note = noteLines.length ? '<span class="area-tip-note">' + noteLines.map(escapeHtml).join("<br>") + "</span>" : "";
     }
-    return "<b>" + name + "</b>" + tags + note;
+    return "<b>" + name + "</b>" + tags + meta + actLine + note + by;
   }
   function updateMpBadge() {
     // Badge = number of saved point-lists (not the count of loose working pins).
@@ -17046,7 +17328,9 @@
     // New points get a "Save to list" picker; the choice (the active list) is
     // remembered, so subsequent points drop straight into the same list. A LOOSE
     // point being edited (no active list) gets it too, so it can be filed later.
-    var showListSel = !isEdit || !mpState.mpActiveName();
+    // A point that already belongs to a saved list is not looking for one — offering the
+    // picker there invites moving it by accident. Copy-to-list is the deliberate way.
+    var showListSel = (!isEdit || !mpState.mpActiveName()) && !(isEdit && ownerListOf(p));
     var listSel = !showListSel ? "" :
       '<label>' + esc(t("points.saveToList")) +
         '<select id="mp-listsel">' +
@@ -17123,7 +17407,21 @@
       var sel = document.getElementById("mp-listsel");
       var target = sel ? sel.value : "";
       if (isEdit) {
-        updateMapPoint(p.id, { name: name, tags: tags, note: note, color: color });
+        var patch = { name: name, tags: tags, note: note, color: color };
+        var ownerName = ownerListOf(p);
+        if (ownerName) {
+          // A point inside a saved list: patch it in place and persist the list, the same way
+          // removeListPoint does. updateMapPoint searches only the loose set and would have
+          // silently done nothing here.
+          if (!p.id) p.id = mpState.mpUid();
+          Object.assign(p, patch);
+          if (!patch.note) delete p.note;
+          delete p.noteHtml;                     // edited by hand → plain text from now on
+          saveMapPoints(); renderMapPoints(); refreshMpPanel();
+          setStatus(t("points.edited", { name: name || p.name || "" }));
+          map.closePopup(); return;
+        }
+        updateMapPoint(p.id, patch);
         // A loose pin can be filed into a list from its editor: move the (updated)
         // point into the chosen collection and drop the loose pin.
         if (target && !mpState.mpActiveName()) {
@@ -17397,6 +17695,7 @@
   }
   // ---- Points dropdown panel ----
   var MP_LIST_MAX = 300;   // rows drawn in the Points panel's merged point list
+  var mpRowsShown = [];    // the rows as last drawn, so a row button can reach its point
   function refreshMpPanel() {
     var panel = document.getElementById("mp-panel"); if (!panel) return;
     // The whole panel is rebuilt from innerHTML below, which resets its scroll — so
@@ -17443,6 +17742,8 @@
       var actNoTag = mpState.mpFilter().indexOf("") >= 0;
       chipsHtml += '<button type="button" class="mp-chip' + (actNoTag ? " is-active" : "") + '" data-tag="">' + escapeHtml(t("points.notag")) + "</button>";
     }
+    unionPts.forEach(function (u, i) { u.i = i; });   // the note button's handle back to its point
+    mpRowsShown = unionPts;
     var listHtml = unionPts.length ? unionPts.map(function (u) {
       var p = u.p;
       var dist = center ? haversineKm(center.lat, center.lng, p.lat, p.lon) : null;
@@ -17450,9 +17751,15 @@
       var meta = u.list
         ? '<span class="mp-row-list">' + escapeHtml(u.list) + "</span>"
         : (p.tags || []).slice(0, 3).map(function (x) { return '<span class="mp-row-tag" style="--mp-c:' + mpHashColor(x) + '">' + escapeHtml(tagDisplay(x)) + "</span>"; }).join("");
+      // A row with a note gets a 🗒 that opens it. The note is the one piece of free text a
+      // record carries (the observer's own remark), and the list showed no sign it was there.
+      var noteBtn = String(p.note || "").trim()
+        ? '<button type="button" class="mp-row-note ico-btn" data-i="' + u.i + '" title="' + escapeHtml(t("points.showNote")) +
+          '" aria-label="' + escapeHtml(t("points.showNote")) + '">' + ico("info") + "</button>"
+        : "";
       return '<div class="dd-row mp-row">' +
         '<button type="button" class="dd-name mp-fly" data-id="' + escapeHtml(u.editable ? p.id : "") + '" data-lat="' + p.lat + '" data-lon="' + p.lon + '"><span class="mp-sw" style="background:' + u.color + '"></span>' + escapeHtml(p.name || "(point)") + "</button>" +
-        '<span class="mp-row-meta">' + meta + '<span class="mp-dist">' + escapeHtml(dt) + "</span></span>" +
+        '<span class="mp-row-meta">' + meta + '<span class="mp-dist">' + escapeHtml(dt) + "</span></span>" + noteBtn +
         (u.editable ? '<button type="button" class="dd-del mp-del" data-id="' + escapeHtml(p.id) + '" aria-label="remove">×</button>' : '<span class="mp-row-ro" title="' + escapeHtml(t("points.show")) + '"></span>') +
         "</div>";
     }).join("") : '<p class="dd-empty">' + escapeHtml(t("points.empty")) + "</p>";
@@ -17537,10 +17844,24 @@
     // Wire interactions
     var importShareBtn = panel.querySelector("#mp-import-share"), shareFileInput = panel.querySelector("#share-file-input");
     if (importShareBtn && shareFileInput) {
+      // One popover for both ways in: the file picker, or a direct link to a .kmz / .kml /
+      // .geojson (a GitHub raw link, say) — the bytes take the same import path either way.
       importShareBtn.addEventListener("click", function (e) {
         e.stopPropagation();
-        shareFileInput.click();
+        var r = importShareBtn.getBoundingClientRect();
         closeDropdowns();   // the import's progress goes to the status line this panel covers
+        var el = openAnchoredMenu("detrow-menu mp-link-menu");
+        el.innerHTML = '<div class="detrow-menu-hdr detrow-menu-name">' + escapeHtml(t("points.loadFile")) + "</div>" +
+          '<button type="button" id="mp-pick-file" class="detrow-menu-item">' + escapeHtml(t("points.chooseFile")) + "</button>" +
+          '<div class="mp-link-row"><input type="url" id="mp-link-url" autocomplete="off" spellcheck="false" placeholder="' + escapeHtml(t("points.linkPh")) + '" />' +
+          '<button type="button" id="mp-link-go" class="btn">' + escapeHtml(t("points.load").replace(/^\S+\s*/, "")) + "</button></div>" +
+          '<p class="cu-hint">' + escapeHtml(t("points.linkHint")) + "</p>";
+        var inp = el.querySelector("#mp-link-url");
+        function go() { var u = inp.value.trim(); if (!u) return; closeAnchoredMenu(); importPointsUrl(u); }
+        el.querySelector("#mp-pick-file").addEventListener("click", function (ev) { ev.stopPropagation(); closeAnchoredMenu(); shareFileInput.click(); });
+        el.querySelector("#mp-link-go").addEventListener("click", function (ev) { ev.stopPropagation(); go(); });
+        inp.addEventListener("keydown", function (ev) { if (ev.key === "Enter") { ev.preventDefault(); go(); } });
+        positionAnchoredMenu(el, Math.round(r.left), Math.round(r.bottom + 4));
       });
       shareFileInput.addEventListener("change", function (e) {
         importPointsFile(e.target.files, true);
@@ -17638,6 +17959,13 @@
         mpState.mpFilterRefresh(this);
       });
     });
+    panel.querySelectorAll(".mp-row-note").forEach(function (b) {
+      b.addEventListener("click", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        var u = mpRowsShown[+this.getAttribute("data-i")];
+        if (u && u.p) openNotePopup(this, u.p);
+      });
+    });
     panel.querySelectorAll(".mp-fly").forEach(function (b) {
       b.addEventListener("click", function () {
         var lat = parseFloat(this.getAttribute("data-lat")), lon = parseFloat(this.getAttribute("data-lon"));
@@ -17729,7 +18057,20 @@
         });
       });
     });
-      root.querySelectorAll(".mp-coll-more").forEach(function (b) {
+      root.querySelectorAll(".mp-coll-nosync").forEach(function (b) {
+      b.addEventListener("click", function (e) {
+        e.preventDefault();
+        var name = this.getAttribute("data-name");
+        var c = mpState.mpCollections().filter(function (x) { return x.name === name; })[0];
+        closeAnchoredMenu();
+        if (!c) return;
+        if (c.noSync) delete c.noSync; else c.noSync = true;
+        saveMapPoints();
+        setStatus(t(c.noSync ? "points.syncOffMsg" : "points.syncOnMsg", { name: name }));
+        refreshMpPanel();
+      });
+    });
+    root.querySelectorAll(".mp-coll-more").forEach(function (b) {
         b.addEventListener("click", function (e) {
           e.preventDefault(); e.stopPropagation();
           openCollMoreMenu(this);
@@ -17761,6 +18102,13 @@
       if (type === "p") html += row("mp-coll-edit", ico("edit"), t("points.editList"), t("points.editDesc"),
                                     'data-name="' + escapeHtml(name) + '"');
       if (count) html += row("mp-coll-dl", ico("download"), t("points.download"), t("points.downloadDesc"));
+      if (type === "p") {
+        var noSync = !!(mpState.mpCollections().filter(function (x) { return x.name === name; })[0] || {}).noSync;
+        html += row("mp-coll-nosync", ico(noSync ? "block" : "cloud"),
+                    t(noSync ? "points.syncOff" : "points.syncOn"),
+                    t(noSync ? "points.syncOffDesc" : "points.syncOnDesc"),
+                    'data-name="' + escapeHtml(name) + '"');
+      }
       html += isProt
         ? row("mp-more-locked", ico("lock"), t("lists.protect"), t("points.protectedDesc"), 'disabled')
         : row("mp-coll-del", "\u00D7", t(type === "d" ? "dset.delete" : "points.deleteColl"), t("points.deleteDesc"));
@@ -18490,6 +18838,32 @@
       dotClusterTimer = setTimeout(function () { try { rebuildDetLayers(); } catch (e) {} }, 150);
     }
     map.on("zoomend moveend", dotViewKick);
+    // The list surfaces follow the map view: one second after the last pan/zoom movement,
+    // re-scope the species table (and its "In map view: n" status, shown for 2 s) and the
+    // fetch-list modal to the new bounds. A full second, not the dots' 150 ms: the re-scope
+    // walks every plotted row, and running it on every pause made panning feel sticky.
+    var listViewTimer = null, listViewAt = null;   // centre + zoom of the last re-scope
+    function listViewKick() {
+      if (!hasPlottedDetections()) return;
+      clearTimeout(listViewTimer);
+      listViewTimer = setTimeout(function () {
+        // A layout refit — the status line collapsing when its 2-s "In map view" note clears,
+        // a panel opening — makes Leaflet fire moveend without the view having moved (the map
+        // just got taller). Re-scoping on it re-posted the note, which cleared, which refitted…
+        // a loop every 3 s. Only a real change of centre (> 2 px) or zoom counts as movement.
+        var c = map.getCenter(), z = map.getZoom();
+        if (listViewAt && listViewAt.z === z && map.project(c, z).distanceTo(map.project(listViewAt.c, z)) < 2) return;
+        listViewAt = { c: c, z: z };
+        try {
+          if (typeof speciesPanelPopulated === "function" && speciesPanelPopulated()) restrictListToView();
+          var lc = lastSpCoords;   // the header's area descriptions follow the view too
+          if (lc && lc.el && lc.el.isConnected) renderSpCoordsAreas(lc.el, lc.lat, lc.lon, lc.summary);
+          var dm = document.getElementById("detlist-modal");
+          if (dm && dm.style.display === "flex") renderDetListModal();
+        } catch (e) {}
+      }, 1000);
+    }
+    map.on("zoomend moveend", listViewKick);
     map.on("moveend", function () { if (legendStackCtrl) scheduleClcQuery(); });   // re-limit the CORINE legend to the new view
     map.on("moveend", function () {   // "far migrant HERE" depends on the viewing region — re-filter when it changes
       if (detRegionMode !== "far") return;
@@ -19096,7 +19470,9 @@
         });
       }
       var p;
-      if (what === "tiles") p = window.caches ? caches.delete("map-pool") : Promise.resolve();   // LRU tile pool (NOT the pinned offline areas)
+      if (what === "tiles") p = window.caches ? caches.keys().then(function (names) {   // the old pool + every tile shard (NOT the pinned offline areas)
+        return Promise.all(names.filter(function (n) { return n === "map-pool" || n.indexOf("map-pool-s") === 0; }).map(function (n) { return caches.delete(n); }));
+      }) : Promise.resolve();
       else if (what === "range") {   // computed Species-Range / Richness H3 cells (in-memory Map + its blob in the shared pool)
         h3RangeCache.clear();
         if (h3SaveTimer) { clearTimeout(h3SaveTimer); h3SaveTimer = null; }   // don't let a pending save re-persist the just-cleared data
@@ -19216,7 +19592,10 @@
         setCnt("birds", Object.keys(bs).length, jsonBytes(bs));
       }
       if (window.caches) {
-        caches.open("map-pool").then(function (c) { return c.keys(); }).then(function (k) { setCnt("tiles", k.length, k.length * 22000, true); }).catch(function () {});
+        caches.keys().then(function (names) {   // sum the tile shards (+ whatever the old pool still lists; a refused enumeration counts as 0)
+          var pools = names.filter(function (n) { return n === "map-pool" || n.indexOf("map-pool-s") === 0; });
+          return Promise.all(pools.map(function (n) { return caches.open(n).then(function (c) { return c.keys(); }).then(function (k) { return k.length; }).catch(function () { return 0; }); }));
+        }).then(function (ns) { var n = ns.reduce(function (a, b) { return a + b; }, 0); setCnt("tiles", n, n * 22000, true); }).catch(function () {});
         caches.open("species-images").then(function (c) { return c.matchAll(); }).then(function (rs) {   // photos are CORS responses → real sizes
           var by = 0; rs.forEach(function (r) { by += (+r.headers.get("content-length") || 0); });
           setCnt("images", rs.length, by);
@@ -19352,6 +19731,31 @@
     }
     function relayerDet() { rebuildDetLayers(); updateDetLegend(); }
     wireNumSetting("rare-pct", rarePct, 1, 100, 10, function (v) { window.GeoState.save({ rarePct: v }); }, relayerDet);
+    var compactBtn = document.getElementById("compact-lists-btn");
+    if (compactBtn) compactBtn.addEventListener("click", function () {
+      var btn = this, label = btn.textContent;
+      // Report IN THE PANEL. The funnels the busy pulse animates and the status line above the
+      // map are both behind the open Settings panel — measured: 0 of 4 funnels on screen and the
+      // status line at zero height — so a press looked like it did nothing whether it worked or
+      // not. The button says it is working and the line under it says what happened.
+      var out = document.getElementById("compact-result");
+      function say(msg) { if (out) { out.textContent = msg; out.style.display = ""; } setStatus(msg); }
+      btn.disabled = true; btn.textContent = t("storage.compacting");
+      if (out) { out.textContent = ""; out.style.display = "none"; }
+      // A frame first, so the button's new label paints before the walk blocks the thread.
+      setTimeout(function () {
+        Promise.resolve(mpState.compactStoredPoints()).then(function (r) {
+          btn.disabled = false; btn.textContent = label;
+          var freed = (r.before || 0) - (r.after || 0);
+          if (!r.stripped || freed <= 0) { say(t("storage.compactNone")); return; }
+          say(t("storage.compacted", { freed: fmtBytes(freed), n: r.stripped, lists: mpState.mpCollections().length }));
+        }, function (e) {
+          // Say what actually failed instead of blaming storage for every rejection.
+          btn.disabled = false; btn.textContent = label;
+          say(t("storage.compactFailed", { err: (e && e.message) ? String(e.message).slice(0, 80) : "error" }));
+        });
+      }, 30);
+    });
     var rtCb = document.getElementById("rarity-ticker-toggle");
     if (rtCb) {
       rtCb.checked = rarityTickerOn();
@@ -19441,6 +19845,51 @@
       rCw.checked = !!rarityCfg().countryWide;
       rCw.addEventListener("change", function () { raritySave({ countryWide: !!this.checked }); scheduleRarityPoll(); });   // takes effect on the next poll
     }
+    // BAND groups: token + the list of groups (tick · names-in language · alert location).
+    var rBt = document.getElementById("rarity-band-token"), rBl = document.getElementById("rarity-band-load"), rBL = document.getElementById("rarity-band-list");
+    function renderBandList(bands) {
+      if (!rBL) return;
+      var locs = window.AppRarity.rarityLocs(), langs = (window.GeoI18N.LANGS || []);
+      rBL.innerHTML = (bands || []).map(function (b) {
+        var k = escapeHtml(b.key);
+        return '<div class="ctrl-inline rarity-band-row" data-k="' + k + '">' +
+          '<label class="ctrl-check"><input type="checkbox" class="rb-on"' + (b.on ? " checked" : "") + "> " + escapeHtml(b.name || b.key) +
+            (b.members ? ' <span class="cu-hint">(' + b.members + ")</span>" : "") + "</label>" +
+          '<select class="rb-lang" title="' + escapeHtml(t("rarity.bandLang")) + '">' + langs.map(function (L) {
+            return '<option value="' + L.code + '"' + ((b.lang || lang) === L.code ? " selected" : "") + ">" + escapeHtml(L.name) + "</option>"; }).join("") + "</select>" +
+          '<select class="rb-loc" title="' + escapeHtml(t("rarity.bandLoc")) + '">' + locs.map(function (l) {
+            var lk = window.AppRarity.rarityLocKey(l);
+            return '<option value="' + escapeHtml(lk) + '"' + (b.loc === lk ? " selected" : "") + ">" + escapeHtml(l.name || lk) + "</option>"; }).join("") + "</select>" +
+          "</div>";
+      }).join("");
+    }
+    function saveBandList() {
+      var out = [];
+      Array.prototype.forEach.call(rBL.querySelectorAll(".rarity-band-row"), function (row) {
+        var k = row.getAttribute("data-k"), old = (rarityCfg().bands || []).filter(function (b) { return b.key === k; })[0] || {};
+        out.push({ key: k, name: old.name || k, members: old.members || 0, on: !!row.querySelector(".rb-on").checked,
+          lang: row.querySelector(".rb-lang").value, loc: row.querySelector(".rb-loc").value });
+      });
+      raritySave({ bands: out }); rarityAlertsChanged();
+    }
+    if (rBt) {
+      rBt.value = rarityCfg().bandToken || "";
+      rBt.addEventListener("change", function () { raritySave({ bandToken: this.value.trim() }); rarityAlertsChanged(); });
+    }
+    if (rBL) { renderBandList(rarityCfg().bands); rBL.addEventListener("change", saveBandList); }
+    if (rBl) rBl.addEventListener("click", function () {
+      var tok = rBt ? rBt.value.trim() : "";
+      if (!tok) { if (rBL) rBL.textContent = t("rarity.bandNone"); return; }
+      raritySave({ bandToken: tok });
+      var btn = this; btn.disabled = true; if (rBL) rBL.textContent = t("rarity.bandLoading");
+      window.AppRarity.bandListBands(tok).then(function (bs) {
+        var old = {}; (rarityCfg().bands || []).forEach(function (b) { old[b.key] = b; });
+        var merged = (bs || []).map(function (b) { var o = old[b.band_key] || {}; return { key: b.band_key, name: b.name || b.band_key, members: b.member_count || 0, on: !!o.on, lang: o.lang || lang, loc: o.loc || "" }; });
+        raritySave({ bands: merged }); renderBandList(merged);
+        if (!merged.length && rBL) rBL.textContent = t("rarity.bandNone");
+        rarityAlertsChanged();
+      }, function () { if (rBL) rBL.textContent = t("rarity.bandNone"); }).then(function () { btn.disabled = false; });
+    });
     var rNtf = document.getElementById("rarity-notif-toggle");
     if (rNtf) {
       rNtf.checked = rarityCfg().sysNotif && ("Notification" in window) && Notification.permission === "granted";
@@ -19703,14 +20152,23 @@
         gdSync.disabled = !!st.busy;
         // The button says what it is doing, not just that it is disabled: its label
         // becomes the current step and the ⟳ spins while a sync is running.
-        var PH = { signin: "sync.phSignin", read: "sync.phRead", merge: "sync.phMerge",
-                   write: "sync.phWrite", files: "sync.phFiles" };
+        var PH = { signin: "sync.phSignin", read: "sync.phRead", download: "sync.phDownload",
+                   merge: "sync.phMerge", write: "sync.phWrite", files: "sync.phFiles" };
         // While files go up the button names the one being written, rather than a
         // generic "writing files" — a sync writes a .kmz per list and two CSVs, and
         // seeing which is in flight is the difference between "stuck" and "working".
+        // "Writing <file>" keeps its own wording while the readable copies go up; every other
+        // step shows "<step> · <detail>" so the detail the sync now reports is actually seen.
         var phTxt = "";
-        if (st.busy && st.phaseName) phTxt = t("sync.phWriteFile", { name: st.phaseName });
-        else if (st.busy && PH[st.phase]) phTxt = t(PH[st.phase]);
+        if (st.busy && st.phase === "files" && st.phaseName) phTxt = t("sync.phWriteFile", { name: st.phaseName });
+        else if (st.busy && PH[st.phase]) {
+          var detail = st.phaseName || "";
+          // The merge step's detail is the count the module already put in the snapshot.
+          if (!detail && st.phase === "merge" && st.pull)
+            detail = t("sync.phMerged", { lists: st.pull.lists || 0, trips: st.pull.trips || 0 });
+          phTxt = t(PH[st.phase]) + (detail ? " \u00b7 " + detail : "");
+        }
+        else if (st.busy && st.phaseName) phTxt = st.phaseName;
         // A count while the files go up ("3/12"), so a long sync visibly advances.
         if (st.busy && st.total > 1) phTxt = st.done + "/" + st.total + " " + phTxt;
         var lbl = gdSync.querySelector(".ico-label");
@@ -20915,6 +21373,61 @@
     a.unshift(text);
     window.GeoState.save({ placeRecent: a.slice(0, 5) });
   }
+  // Coordinates typed or pasted into the place box → {lat, lon}, or null when the text
+  // is not a coordinate pair. Accepts decimal degrees ("59.9139, 10.7522" · "59,9139 10,7522"
+  // · "N59.91 E10.75" · "59.91N 10.75E"), degrees-minutes(-seconds) in any symbol style
+  // ("59°54'50\"N 10°45'08\"E" · "59 54.83 N, 10 45.13 E" · "59 54 50 10 45 08") and pasted
+  // links (…@59.91,10.75… · ?lat=59.91&lon=10.75 · geo:59.91,10.75). Latitude is taken first
+  // unless N/S/E/W letters say otherwise, or only the swapped order is in range.
+  function parseCoordText(s) {
+    s = (s || "").trim();
+    if (!s) return null;
+    var m = /[?&#](?:lat|latitude)=(-?\d+(?:\.\d+)?)(?:[^\d-]|-(?!\d))*?(?:lon|lng|longitude)=(-?\d+(?:\.\d+)?)/i.exec(s) ||
+            /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/.exec(s) || /^geo:(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/i.exec(s);
+    if (m) return coordPair([+m[1]], null, [+m[2]], null);
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) return null;   // some other link — not coordinates
+    // Decimal commas ("59,9139 10,7522"): commas only between digits, no dots, another separator present.
+    if (s.indexOf(".") < 0 && /^[^,]*\d,\d[^,]*[;\s][^,]*\d,\d[^,]*$/.test(s)) s = s.replace(/(\d),(\d)/g, "$1.$2");
+    s = s.toUpperCase().replace(/[′’´]/g, "'").replace(/[″”]/g, '"').replace(/º|DEG/g, "°");
+    var tokRe = /[NSEW](?![A-Z])|-?\d+(?:\.\d+)?\s*[°'"]?/g;
+    if (s.replace(tokRe, "").replace(/[,;\s°'"]/g, "") !== "") return null;   // leftover text → a place name
+    if (!/[.°'"NSEW]/.test(s)) return null;   // "12 34": bare integers read as text, not a coordinate
+    var comps = [], cur = { n: [], h: null }, toks = s.match(tokRe) || [];
+    for (var i = 0; i < toks.length; i++) {
+      var tk = toks[i];
+      if (/^[NSEW]$/.test(tk)) {
+        if (cur.n.length) { cur.h = cur.h || tk; comps.push(cur); cur = { n: [], h: null }; }
+        else if (comps.length && !comps[comps.length - 1].h) comps[comps.length - 1].h = tk;   // trailing letter after 3 numbers
+        else cur.h = tk;   // leading letter: "N59.91"
+      } else {
+        cur.n.push(parseFloat(tk));
+        if (cur.n.length === 3) { comps.push(cur); cur = { n: [], h: null }; }
+      }
+    }
+    if (cur.n.length) comps.push(cur);
+    if (comps.length === 1 && !comps[0].h && comps[0].n.length % 2 === 0) {   // "59.91 10.75" / "59 54 10 45"
+      var half = comps[0].n.length / 2;
+      comps = [{ n: comps[0].n.slice(0, half), h: null }, { n: comps[0].n.slice(half), h: null }];
+    }
+    if (comps.length !== 2) return null;
+    return coordPair(comps[0].n, comps[0].h, comps[1].n, comps[1].h);
+  }
+  function coordPair(n1, h1, n2, h2) {
+    function val(n, h) {
+      if (!n.length || n.length > 3) return NaN;
+      for (var i = 1; i < n.length; i++) if (n[i] < 0 || n[i] >= 60) return NaN;
+      var v = Math.abs(n[0]) + (n[1] || 0) / 60 + (n[2] || 0) / 3600;
+      if (n[0] < 0 || (1 / n[0]) < 0 || h === "S" || h === "W") v = -v;
+      return v;
+    }
+    var a = val(n1, h1), b = val(n2, h2);
+    if (isNaN(a) || isNaN(b)) return null;
+    var lat = a, lon = b;
+    if ((h1 === "E" || h1 === "W") || (h2 === "N" || h2 === "S")) { lat = b; lon = a; }   // letters fix the order
+    else if (!h1 && !h2 && Math.abs(a) > 90 && Math.abs(b) <= 90) { lat = b; lon = a; }  // "10.75 59.91" → only this order fits
+    if (!(Math.abs(lat) <= 90 && Math.abs(lon) <= 180)) return null;
+    return { lat: lat, lon: lon };
+  }
   function wirePlaceSearch() {
     var inp = document.getElementById("place-search");
     var res = document.getElementById("place-results");
@@ -20933,6 +21446,8 @@
     var run = function () {
       var q = inp.value.trim();
       if (q.length < 2) { showRecent(); return; }   // empty/short → offer the recent searches
+      var xy = parseCoordText(q);   // "59.9139, 10.7522" / DMS / a pasted map link → one direct result, no geocoder
+      if (xy) { selIdx = -1; renderPlaceResults(res, [{ lat: xy.lat, lon: xy.lon, display_name: "📍 " + fmtCoordPair(xy) }]); return; }
       var b = map.getBounds();
       var vb = [b.getWest(), b.getNorth(), b.getEast(), b.getSouth()].map(function (n) { return n.toFixed(6); }).join(",");
       // bounded=0: the viewbox only BIASES ranking toward the current area — matches
@@ -20956,13 +21471,20 @@
       var items = res.querySelectorAll(".sr-item");
       if (e.key === "ArrowDown") { e.preventDefault(); selIdx = Math.min(selIdx + 1, items.length - 1); highlightItem(items, selIdx); }
       else if (e.key === "ArrowUp") { e.preventDefault(); selIdx = Math.max(selIdx - 1, 0); highlightItem(items, selIdx); }
-      else if (e.key === "Enter") { e.preventDefault(); if (selIdx >= 0 && items[selIdx]) items[selIdx].click(); else { clearTimeout(timer); run(); } }
+      else if (e.key === "Enter") {
+        e.preventDefault();
+        var xy = parseCoordText(inp.value);
+        if (selIdx >= 0 && items[selIdx]) items[selIdx].click();
+        else if (xy) { pushRecentPlace(inp.value); gotoPlace(xy.lat, xy.lon); res.style.display = "none"; }   // coordinates: Enter goes straight there
+        else { clearTimeout(timer); run(); }
+      }
       else if (e.key === "Escape") { res.style.display = "none"; }
     });
     document.addEventListener("click", function (e) {
       if (!res.contains(e.target) && e.target !== inp) res.style.display = "none";
     });
   }
+  function fmtCoordPair(xy) { return xy.lat.toFixed(5) + "°, " + xy.lon.toFixed(5) + "°"; }
   function renderPlaceResults(res, list) {
     if (!list.length) { res.innerHTML = '<div class="sr-empty">' + escapeHtml(t("place.none")) + "</div>"; res.style.display = "block"; return; }
     res.innerHTML = list.map(function (r) {
@@ -22519,6 +23041,7 @@
     getShowSci: function () { return showSci; },
     getDetPlot: function () { return detPlot; },
     getLabelsByKey: function () { return labelsByKey; },
+    ensureLangNames: ensureLangNames, getTaxByCode: function () { return taxByCode; },
   });
 
 
@@ -22861,7 +23384,14 @@
     // squares fetched earlier somewhere else would answer a question nobody asked (a pin in
     // Iceland under a header reading "Åfjord"), so that list gets its own point's place.
     if (spMissingAuto && isFinite(lat) && isFinite(lon)) { setCoordsWithPlace(el, lat, lon, summary); return; }
-    var raw = (fetchedAreas || []).map(function (a) {
+    // Only the fetched squares that touch the current map view are described — the header
+    // names what the list below shows (the list itself is scoped to the view), and re-renders
+    // when the map settles (listViewKick). A square entirely off screen is not a filter target
+    // here; its observations are not in the list either.
+    var vb = map ? map.getBounds() : null;
+    var raw = (fetchedAreas || []).filter(function (a) {
+      return !vb || !(a.bounds && a.bounds.intersects) || vb.intersects(a.bounds);
+    }).map(function (a) {
       var c = a.bounds && a.bounds.getCenter ? a.bounds.getCenter() : null;
       return { id: a.id, name: a.name || "", clat: c ? c.lat : NaN, clon: c ? c.lng : NaN };
     }).filter(function (a) { return isFinite(a.clat) && isFinite(a.clon); });

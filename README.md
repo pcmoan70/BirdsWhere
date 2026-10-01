@@ -18,7 +18,7 @@ layered on top are the real sightings.
 > Model outputs are estimates, not ground truth; BirdWeather detections are AI acoustic
 > identifications, not human-verified.
 
-*Documentation last updated 2026-09-08 (app version ~v1597).*
+*Documentation last updated 2026-09-29 (app version ~v1928).*
 
 ---
 
@@ -132,6 +132,12 @@ with several on, the legends stack as separate cards you can individually **mini
 </p>
 
 *Best Sites coverage by country — green is live, amber is queued to download. [Interactive version.](app/coverage.html)*
+
+**Place search (🔍)** — type two or more letters to find a place name (OpenStreetMap's Nominatim,
+biased to the current view; recent searches are listed under the empty box). The box also takes
+**coordinates** in any common form — decimal `59.9139, 10.7522` (decimal commas too), degrees-minutes-seconds
+`59°54'50"N 10°45'08"E`, `N59.91 E10.75`, or a pasted Google Maps / BirdsWhere `?lat=&lon=` / `geo:` link —
+shown as one **📍** result; **Enter** flies straight there and drops the pin.
 
 **Press-and-hold shortcuts** (also right-click on a mouse) — the app hides quick actions behind
 holding a button:
@@ -446,6 +452,14 @@ not just eBird* (Settings → Rarity alerts). These background checks stay out o
 they never touch the loading line or the status text, they are **skipped while a fetch of yours is
 running**, and they **abort themselves** if you start one — the next check picks up where it left off.
 
+**BAND groups** (Settings → Rarity alerts → *BAND groups*): the posts of your birding groups on
+[BAND](https://band.us) are watched too. Paste a personal access token (BAND Developers → My Apps →
+*Connect BAND account*), load your groups and tick the ones to follow, each with the language its
+members write in and the 🔔 location it belongs to. New posts are searched for whole-word species
+names in that language (scientific names always); a named bird counts as a sighting at that 🔔 spot
+(a post carries no coordinates) and alerts when the model finds it unlikely there — the same gate,
+list, map ★ and notifications as every other source, with the source shown as *BAND post*.
+
 When a **never-seen-before** rarity arrives it:
 
 - lands on the map as a **pulsing red ★** (its own layer: it ignores the legend filters, but it is
@@ -597,6 +611,12 @@ view**.
 
 ## Detections list
 
+Every list of observations — the species table (its Total, pairs and Last cells and which rows
+show), each species' expanded records, the ☰ detections list, and the header's **fetched-area
+descriptions** (only squares touching the view are named) — is **scoped to the current map view**
+and re-filters as you pan or zoom, the same way the legend counts only what is on screen.
+**Clear filters** (the funnel-×) also zooms the map back out to every fetched point.
+
 - **☰ Detections list** — a large-text list sorted **By date** (grouped by date, then
   observer/station) or **By species**, with a narrow **Filter species** box and the day / rarity+year-list
   / observer filters beside it. Each row's **🎯** flies the map to the record; tapping the row opens its
@@ -624,10 +644,21 @@ view**.
   right-click** that button for the **Edit & protect lists** admin: rename a list, set its
   colour/tags for every point, **protect** it from deletion (🔒), delete it, or expand it to
   edit/remove individual points.
+- **Opening a file from the OS** — a `.kml`, `.kmz` or `.geojson` can be opened **from outside the
+  app**, landing in the same import dialog. On **desktop Chromium** (Chrome/Edge 102+, Windows ·
+  macOS · Linux · ChromeOS) install BirdsWhere and it registers as a file handler, so the file lists
+  it under *Open with*. On **Android Chrome** there is no file-handler API, but BirdsWhere registers
+  as a **share target that accepts files**, so *Share → BirdsWhere* from a file manager does the same
+  job. **iOS/Safari supports neither**, so there the *Load from file* button remains the only route.
 - **Import / export** — points import and export as **KML, KMZ and GeoJSON**. Export everything from
   Settings → *Map points*; download a **single list or trip** from the ↓ beside its × — in the Points
   menu and in the lists window (press-and-hold or right-click the Points button) — choosing the format
-  there. Import from either the Settings *Import* button or *Load from file* in the Points menu — both
+  there. *Load from file* also takes a **direct link** to a .kmz / .kml / .geojson the host lets a
+  browser fetch (a GitHub raw link, say) — the popover has the file picker and a link field; the
+  bytes then take the same import path. Google Drive share links cannot be fetched by a web page
+  (Drive refuses cross-site browser requests), so download such a file and choose it instead.
+  Import from either the Settings
+  *Import* button or *Load from file* in the Points menu — both
   read all three formats (and share links), and both take **several files at once**: each file becomes
   its own list, named after the file, and the field mapping is asked once and applied to all of them.
   A single file pre-fills the new list's name from its own file name too. A name already in use gets
@@ -635,8 +666,13 @@ view**.
   *several* fields — its picker is a checkbox dropdown — and when more than one is chosen each line is
   labelled with the field it came from.
 - **Clicking a point** opens its record in a popup that stays open until you press its × or interact
-  elsewhere; where several records share a coordinate they are listed together, newest first. Clicking
-  a card opens that point's actions (source, navigate, add to route or list).
+  elsewhere; where several records share a coordinate they are listed together, newest first. The card
+  shows the whole imported record — tags, then **date · ×count · place · country**, the **activity /
+  breeding evidence** and life stage, the observer's remark, and who recorded it (with the dataset) —
+  reading it from the point's own fields, so it survives *Compact imported lists*. Clicking
+  a card opens that point's actions (source, navigate, add to route or list). Each card carries a
+  **✎ edit** (name, tags, colour, note — for points inside a saved list as well as loose pins), a
+  **copy to another list** and a **delete**.
   Import reports the placemarks found and lets you map each placemark field (name / description /
   folder / ExtendedData) to the point's name, tags and note, with a *Note contains HTML* option.
 - **Observer lists & nicknames** — build named sets of observers, filter the map/list to them
@@ -888,24 +924,41 @@ habitat model puts above 0 % at your point/week and ranks them by local likeliho
 - **Family** — every model species in the same family, ranked by the model's probability at your
   point. Also opens by clicking a scientific name anywhere. Two views, switched by the **Text /
   Images** button top right (the choice is remembered): a compact *table* (common name only,
-  **scientific name on hover**) or *picture cards*, which carry the photo with its credit, both
+  **scientific name on hover**, every member) or *picture cards* capped at **10** — the species plus
+  the 9 most likely here, in the same compact grid as the confusion popup, with a line saying how
+  many the family has. The cards carry the photo with its credit, both
   names and three small bars — **Here** (the probability this week), **Season** (this week as a
   share of the species' own yearly peak, with ↑ arriving · ● peak · ↓ leaving · · off-season) and
   **Yr peak** (how likely the species' best week of the year gets at this point). The same numbers
   as the species table's Probability, Season and Yr-peak columns, so the family reads like a
   seasonal cross-section of its members. Photos for the whole family are looked up in a few batched
   requests and cached on the device.
-- **Confusion species** — the species you're most likely to *actually mistake this bird for*. Each
-  candidate carries a precomputed *confusability* weight (**Match**), and the popup shows, per row:
-  **Match**, **misID** (each partner's share of this bird's real human confusions, summing to ~100 %),
-  **Here** (the model's probability at your location) and **Score** = `(0.25·Match + 0.75·misID) ×
-  Here` — so the look-alikes people genuinely confuse *and* that occur where you are rank first.
+- **Confusion species** — the species you're most likely to *actually mistake this bird for*. The
+  popup shows, per row: **Match**, **misID**, **Here** (the model's probability at your location) and
+  **Score** = `(0.25·Match + 0.75·misID) × Here` — so the look-alikes people genuinely confuse *and*
+  that occur where you are rank first. Match and misID are both **location-free**; geography enters
+  exactly once, as Here.
+  - **Match** is the **misID model**'s probability (0–100) that birders would confuse the two at equal
+    exposure. It is a gradient-boosted model (`tools/misid-model.py`) trained on ~20,000 real
+    iNaturalist confusions, with monotone inputs: the birds' names as BioCLIP 2's text tower embeds
+    them (cosine and rank, the strongest signal), AVONET shape and size, ecological niche, genus /
+    family and HBW plumage-colour similarity. It has **no range, season or co-occurrence input**, and
+    its training target is the confusion share *corrected for co-occurrence* (below), so it cannot
+    learn "these two get confused because they live together". Held-out families: recall@10 0.62
+    against the raw iNat lists, 0.92 among candidates that actually co-occur, and it keeps 60 % of
+    the look-alikes that never meet in the top 10 (a geography-aware model keeps 44 %).
+  - **misID** is each partner's share of this bird's real iNaturalist misidentifications, **divided by
+    how often the two are in the same place at the same time of year** (the app's own geomodel, 2°
+    grid × 12 weeks: `tools/gen-cooccurrence.py`; share ∝ co-occurrence^0.16 was the fitted
+    elasticity). It reads "how often they are confused when both are around". Shares are
+    renormalised over the listed partners (sum ≈ 100 %).
+  - The app ships only each species' **9 best partners** by the location-free score; the full
+    ranked lists stay on the data disk (`confusion_full.csv`).
   Each input must be **significant** before it counts: a **Match below 10 %** or a **misID below
   5 %** contributes nothing, so a species cannot earn a place in the ranking on a 3 % resemblance
   or a single stray misidentification. A look-alike under both floors scores **0 and is not listed
   at all** — alongside the existing rule that drops anything the model puts at 0 % for your point.
-  (Barn Owl in Sydney went from 15 look-alikes to 10: the Tawny Frogmouth and the Laughing
-  Kookaburra are gone, the owls all stayed.) If nothing survives, the popup says so.
+  If nothing survives, the popup says so.
   Clicking a row opens a **compare card** (focal bird vs look-alike): a **plumage-colour deviation chart**
   (one diverging strip per sex, ♂ above ♀ — collapsing to a single ♂♀ strip when the sexes match; each colour scored `200·(base − look-alike)/(base + look-alike)`
   so the bar rises when the base bird has relatively more of that colour and drops when the look-alike does —
@@ -914,7 +967,8 @@ habitat model puts above 0 % at your point/week and ranks them by local likeliho
   (habitat, trophic niche, lifestyle, migration) — matching traits tinted green, differing ones amber — and
   both birds' 48-week presence curves on **one shared-scale chart** so
   their seasons line up directly.
-- **Photo cards by default** — the Confusion species entry shows the same ranked look-alikes as **photo
+- **Photo cards by default** — the popup shrink-wraps to the squarest grid for its cards (6 → 3 × 2,
+  9 → 3 × 3) so it covers as little of the map as possible; the Confusion species entry shows the same ranked look-alikes as **photo
   cards**: the species itself first (marked by a thicker green frame), then left to right by Score, wrapping
   onto further rows (two per row on narrow phones). Each card carries the Wikipedia/Commons lead photo
   with its credit, the name, the scientific name and **Match · misID · Here · Score** as small bars;
@@ -927,44 +981,46 @@ habitat model puts above 0 % at your point/week and ranks them by local likeliho
 
 ### How the look-alike model works
 
-`tools/gen-confusion.py` builds the lists offline. The **Match** weight fuses complementary signals:
+`tools/gen-confusion.py` builds the lists offline from three ingredients, all **location-free**:
 
-1. **iNaturalist misID** (0.40 of the morphology block) — how often two species are *actually*
-   confused by observers, from iNaturalist's `similar_species` aggregation. This is real human
-   ground truth, and it also **adds cross-family look-alikes** that measurements never would (e.g. a
-   vireo mistaken for a flycatcher). Fetched per species with `tools/fetch-inat-misid.py` (rate-limited,
-   resumable) and mapped to model codes by `tools/build-misid-bycode.py`.
-2. **Shape** (0.24) — AVONET size-normalized log-shape ratios (bill, wing, tail, tarsus…), 10 % slack
-   per axis, so jizz matters more than absolute size.
-3. **Size** (0.12) — body mass + wing length.
-4. **Ecological niche** (0.09) — matching habitat / trophic niche / primary lifestyle.
-5. **Genus** (0.15) — a same-genus boost.
+1. **The misID model → Match.** `tools/misid-model.py` trains a gradient-boosted classifier
+   (HistGradientBoosting, monotone constraints, 5-fold validation on held-out *families*) on
+   ~803,000 ordered species pairs — every same-family pair, every iNaturalist confusion partner, the
+   40 nearest names in BioCLIP 2's text space and a few random negatives for the 4,446 species with
+   ≥ 20 recorded confusions. Inputs per pair: BioCLIP 2 **name-embedding** cosine and mutual ranks
+   (the text tower of a model trained on 200 M organism photos — the strongest signal), AVONET
+   **shape** distance and similarity, linear-size and mass gaps with the size gate, **niche** and
+   lifestyle match, convergence, same genus / family / order, and HBW **plumage-colour** overlap
+   (♂ and ♀). The target is "this partner holds ≥ 5 % of the species' confusions **at equal
+   exposure**" (see 3). No range, season, co-occurrence or popularity input, so the model can only
+   learn appearance. Held-out families: recall@10 0.62 on the raw iNat lists, 0.92 among candidates
+   that actually co-occur, and 60 % of look-alikes that never meet kept in the top 10 (a model given
+   co-occurrence keeps 44 %). The final model scores **1.68 M candidate pairs for all 10,049
+   species** (`bird_databases/confusion/misid-match-scores.csv`); its probability × 100 is the
+   stored Match. Species without a score (none in practice) fall back to the older fused
+   shape/size/niche/genus/colour heuristic with its size and taxon gates.
+2. **iNaturalist misID → misID.** How often two species are *actually* confused by observers, from
+   iNaturalist's `similar_species` aggregation (fetched per species with `tools/fetch-inat-misid.py`,
+   mapped to model codes by `tools/build-misid-bycode.py`; 8,309 species). Real human ground truth,
+   and the source of cross-family look-alikes measurements never find (a vireo for a flycatcher).
+3. **Co-occurrence correction.** A confusion needs both birds in front of the same photographer,
+   so raw counts are appearance × exposure. `tools/gen-cooccurrence.py` runs the app's own geomodel
+   over a 2° grid × 12 weeks and gives `cooc(A→B)`, the chance B is around where and when A is seen;
+   every count is divided by `(cooc + 1e-4)^0.16` (the fitted elasticity) before the ranking, the
+   keep rules and the stored share use it. misID therefore reads "confused when both are around",
+   and geography enters the app's Score exactly once, as Here. Measured on the raw data: co-occurrence
+   alone predicts a ≥ 5 % confusion partner with AUC 0.85, and 29 % of confusions are between birds
+   that hardly co-occur.
 
-Two **gates** then scale everything inferred from morphology, colour and taxonomy: a **major size
-difference** (about 1.4× in linear size or 3× in body mass halves it; 2× / 9× cuts it to a fifth) and
-**taxonomic distance** (same family 1, same order ~0.6, unrelated ~0.35). Real iNaturalist confusions are
-never gated, so a Sparrowhawk still lists the Goshawk (Match 55, misID 75 %).
+Per species the candidates are the family ∪ the iNat partners; strong real confusions survive the
+cut by the keep rules (share ≥ 8 %, mutual for middling Match, no 8× mass gap), a few cross-family
+slots go to convergent birds (same lifestyle and niche, shared shape — swifts and martins, plovers
+and sandpipers), and the app's file keeps each species' **9 best partners** by `0.25·Match +
+0.75·misID`; the full lists stay on the data disk (`bird_databases/confusion/confusion_full.csv`).
+Species that AVONET (2022 taxonomy) predates — recent splits such as the Hudsonian Whimbrel — borrow
+the measurements of their strongest same-genus iNaturalist confusion partner (266 species).
 
-**Convergence relaxes both gates.** Birds that make their living the same way — same AVONET foraging
-lifestyle and trophic niche — and genuinely share a shape are confused across taxonomy: swifts, swiftlets
-and martins are aerial invertivores with one silhouette, plovers and sandpipers share a wader build. The
-taxonomic gate is lifted toward 1 in proportion to that convergence, and for two **aerial** species the
-size step is doubled, because size is the first cue you lose against the sky. Because a crowd of
-congeners otherwise fills every slot, up to six extra slots hold the best few (max 3) partners from each
-family the list doesn't already cover. A Common Swift now lists Barn Swallow, Crag Martin and House
-Martin, a Barn Swallow lists the Common Swift, a Dunlin lists the Ringed Plover, and Goldcrest ↔
-Chiffchaff rose from 18 to 47 — while same-family pairs and unrelated ones (Swift ↔ Blackbird) are
-unchanged. Cost: 1.7 % more entries.
-
-A **plumage-colour** score is then averaged in (≈ half the final Match): per-sex RGB histograms
-(6×6×6 = 216 bins) from the HBW-RGB illustration dataset, matched separately for male and female so a
-look-alike must resemble the bird in both plumages. Pairs iNaturalist has no confusion data for fall
-back to the morphology + colour axes alone; pairs with no colour data keep the morphology score.
-Species that AVONET (2022 taxonomy) predates — recent splits such as the Hudsonian Whimbrel — borrow the
-measurements of their strongest same-genus iNaturalist confusion partner (the split sister), so they get a
-list too (266 species, e.g. the barn owls and warbling vireos) instead of none at all.
-
-Data files: `app/confusion.csv` (per-bird partner list, `code:Match:misID`), `app/species-traits.json`
+Data files: `app/confusion.csv` (per-bird partner list, `code:Match[:misID]`, misID stored only ≥ 5 %), `app/species-traits.json`
 (per-species colour / size / ecology for the compare card, built by `tools/gen-species-traits.py`), and
 `tools/inat-misid-*.json` (the fetched human-confusion map). The look-alike list is **location-agnostic**
 — all the "where" comes from the on-device habitat model at runtime.
