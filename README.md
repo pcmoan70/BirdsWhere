@@ -135,7 +135,7 @@ with several on, the legends stack as separate cards you can individually **mini
 
 **Place search (🔍)** — type two or more letters to find a place name (OpenStreetMap's Nominatim,
 biased to the current view; recent searches are listed under the empty box). The box also takes
-**coordinates** in any common form — decimal `59.9139, 10.7522` (decimal commas too), degrees-minutes-seconds UTM with the zone band is accepted as well (33V 357344 6731644).
+**coordinates** in any common form — decimal `59.9139, 10.7522` (decimal commas too), degrees-minutes-seconds UTM with the zone band is accepted as well (33V 357344 6731644, a plus code such as 9F7V2JX8+QF or a short one with its place, 2JX8+QF Elverum).
 `59°54'50"N 10°45'08"E`, `N59.91 E10.75`, or a pasted Google Maps / BirdsWhere `?lat=&lon=` / `geo:` link —
 shown as one **📍** result; **Enter** flies straight there and drops the pin.
 
@@ -150,6 +150,7 @@ holding a button:
 | the **Settings ⚙** gear | the full **Settings** panel (a *tap* gives the quick panel instead) |
 | the **⤓ offline-maps** button | the offline-areas manager |
 | the **Points** button | the point-lists admin |
+| any **species photo** (confusion / family cards, the Images layout) | the picture **full screen** with its credit (right-click on a desktop, long press on a phone) |
 | the **funnel / ×** | the all-filters pane |
 | the **collapsed legend pill** | pan/zoom to frame **all fetched points** |
 | the **rarity bell 🔔** | poll eBird's notable sightings at all 🔔 locations right now |
@@ -639,10 +640,16 @@ and re-filters as you pan or zoom, the same way the legend counts only what is o
   rendered as HTML), a copyable-coordinates pill, and a *Save to list* picker. The **Points**
   header button (badge = number of lists) opens a panel of tick-to-show lists, per-tag filter
   chips — ordered counts · months and season · mention categories · other words · species names,
-  each with the number of shown points carrying it, plus an **All** chip that selects every tag or
-  clears them all; the filter is applied one second after the last tap — a one-button Distance ⇄ Name sort toggle, and the merged points sorted by distance. Each saved
+  each with the number of shown points carrying it. A chip cycles through three states: no say →
+  **included** (coloured; only tagged points show) → **excluded** (coloured, crossed out; its points
+  are hidden whatever else is ticked) → no say. An **All** chip selects every tag or clears them all,
+  exclusions included; the filter is applied one second after the last tap and remembered on the
+  device — a one-button Distance ⇄ Name sort toggle, and the merged points sorted by distance. Each saved
   list is one row — **tick · name · funnel · ⋯** — and the **⋯** opens a menu where every action is a
-  labelled row that says what it does: navigate, share link, edit list, download, delete (a protected
+  labelled row that says what it does: navigate, share link, edit list, download, **Move up / Move
+  down** (your own order), **Move to folder…** (lists can be grouped in folders; a folder header folds
+  away and its tick shows or hides every list in it), — ⋯, right-click or press-and-hold the folder header for rename, download the
+  folder, remove it keeping the lists, or delete it with them — delete (a protected
   list shows the lock there instead of delete). **Press-and-hold or
   right-click** that button for the **Edit & protect lists** admin: rename a list, set its
   colour/tags for every point and tick **Protect from deletion** there (a protected list then shows a
@@ -658,9 +665,20 @@ and re-filters as you pan or zoom, the same way the legend counts only what is o
   Settings → *Map points*; download a **single list or trip** from the ↓ beside its × — in the Points
   menu and in the lists window (press-and-hold or right-click the Points button) — choosing the format
   there. *Load from file* also takes a **direct link** to a .kmz / .kml / .geojson — or a BirdsWhere
-  **.share** file (an observation list: it opens as plotted detections, like fetched observations) —
-  that the host lets a browser fetch (a GitHub raw link, say) — the popover has the file picker and
-  a link field; the bytes then take the same import path. Google Drive share links cannot be fetched by a web page
+  **.share** file — that the host lets a browser fetch (a GitHub raw link, say) — the popover has the
+  file picker and a link field; the bytes then take the same import path. A **.share observation
+  list** loaded this way (a person's records, say) is **saved as a point list** like a KMZ: it appears
+  in the Points menu with its tick, year tag chips and ⋯ menu, survives reloads, and while ticked its
+  records are plotted exactly like fetched observations (date · observer · place groups, count, note,
+  source link, ⓘ) with each record's habitat probability for its date and place, computed once
+  and stored on the list. Loading the same list again replaces it; several files chosen at once (.share or
+  placemark files) each become their own list, saved but not shown — tick the ones you want. Any
+  imported record that names a species (KMZ/KML/GeoJSON from GBIF, Artsobservasjoner or the
+  builders) is plotted the same way: legend row, translated name, species menu, source badge and
+  link to the original record, in the list's colour halo. A shared *link* (`?s=`) still plots once
+  without saving. Fetched observations you **Save** from the Points menu become the same kind of
+  list, with the whole record kept; saved "trips" from earlier versions are converted into such
+  lists on the first start. Google Drive share links cannot be fetched by a web page
   (Drive refuses cross-site browser requests), so download such a file and choose it instead.
   Import from either the Settings
   *Import* button or *Load from file* in the Points menu — both

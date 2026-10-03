@@ -24,7 +24,7 @@ window.AppPoints = (function () {
   var clearSpider, detRenderer, detStarMarker, downloadCsv, escapeHtml, haversineKm, ico,
       copyPointToList, deleteListPoint, listPointPasses, looksLikeHtml, makePopupBtn, modalPrompt, mpTipHtml, openExternal, openPointEditor,
       refreshMpPanel, renderMpAdmin, setStatus, showDetRowMenu, syncListDetections,
-      pulseFunnels, tagDisplay, updateDetSetOverlays, updateMpBadge, updateSpDistances, t;
+      pulseFunnels, tagDisplay, labelForSci, updateDetSetOverlays, updateMpBadge, updateSpDistances, t;
   // … and accessors for app state that is replaced at runtime (the map and the
   // clicked-spot marker are built later; the spider layer is app.js's).
   var getMap, getMarker, getSpiderHidden, setSpiderLayer;
@@ -40,6 +40,7 @@ window.AppPoints = (function () {
     syncListDetections = ctx.syncListDetections; updateDetSetOverlays = ctx.updateDetSetOverlays;
     pulseFunnels = ctx.pulseFunnels || function () {};
     tagDisplay = ctx.tagDisplay || function (x) { return x; };
+    labelForSci = ctx.labelForSci || function () { return null; };   // scientific name → model label (app.js owns the index)
     updateMpBadge = ctx.updateMpBadge; updateSpDistances = ctx.updateSpDistances; t = ctx.t;
     getMap = ctx.getMap; getMarker = ctx.getMarker;
     getSpiderHidden = ctx.getSpiderHidden; setSpiderLayer = ctx.setSpiderLayer;
@@ -52,6 +53,7 @@ window.AppPoints = (function () {
   // cheaply on edit/filter changes without touching the rest of the map.
   var mapPoints = [];
   var mpFilter = [];
+  var mpExclude = [];   // tags whose points are HIDDEN (the chip's third state: coloured, crossed out) — owner 2026-10-02
   var mpShown = true;   // master visibility toggle — hides all markers but keeps the data
   var mpLayer = null;
   // Named collections — saveable/retrievable point lists (e.g. "Owl nests",
@@ -221,7 +223,7 @@ window.AppPoints = (function () {
   // and only the shared strings the points still hold survive.
   var INTERN_FIELDS = ["name", "sci", "date", "observer", "count", "place", "source",
                        "createdAt", "color", "spColor", "src", "act", "list",
-                       "stage", "country", "dset"];
+                       "stage", "country", "dset", "note", "flags", "origin", "spKey", "spCls"];
   function internPoints(colls) {
     var pool = Object.create(null), tagPool = Object.create(null), n = 0;
     function sh(v) {
@@ -335,6 +337,7 @@ window.AppPoints = (function () {
     loadListFilters();   // also when IndexedDB never hydrated (initMpSetStore bailed)
     mapPoints = (window.GeoState.get("mapPoints", []) || []).filter(function (p) { return p && isFinite(p.lat) && isFinite(p.lon); });
     mpFilter = (window.GeoState.get("mapPointsFilter", []) || []).map(normTag).filter(function (t, i, a) { return a.indexOf(t) === i; });
+    mpExclude = (window.GeoState.get("mapPointsExclude", []) || []).map(normTag).filter(function (t, i, a) { return a.indexOf(t) === i; });
     // With IndexedDB as the store the lists are already hydrated (initMpSetStore) and
     // the blob no longer carries them — reading it here would wipe them.
     if (!mpIdbReady) mpCollections = (window.GeoState.get("mapPointSets", []) || []).filter(function (c) { return c && c.name; });
@@ -779,13 +782,23 @@ window.AppPoints = (function () {
     }
   }
   async function startMultiImport(files) {
-    var items = [], failed = [];
+    var items = [], failed = [], shares = [];
     var taken = mpCollections.map(function (c) { return c.name; });
     for (var i = 0; i < files.length; i++) {
       var f = files[i];
       loadStatus(t("kml.readingN", { i: i + 1, n: files.length, name: f.name }));
       try {
-        var parsed = await parsePointsBuf(await readFileBuf(f));
+        var buf = await readFileBuf(f);
+        // A BirdsWhere .share observation list among the files (several person lists at
+        // once, owner 2026-10-02): it is not a placemark file — "No place markers with
+        // coordinates found" was the whole batch's answer. It goes through the share
+        // import, saved as a point list like a single .share, without a prompt per file.
+        var h = new Uint8Array(buf, 0, Math.min(2, buf.byteLength || 0)), c0 = h.length ? String.fromCharCode(h[0]) : "";
+        if ((c0 === "0" || c0 === "1") && !(h.length > 1 && h[1] === 0x4B)) {
+          shares.push({ name: f.name, txt: new TextDecoder().decode(new Uint8Array(buf)).replace(/^\uFEFF/, "").trim() });
+          continue;
+        }
+        var parsed = await parsePointsBuf(buf);
         if (parsed.marks.length) {
           var nm = uniqueListName(listNameFromFile(f.name) || f.name, taken);
           taken.push(nm);
@@ -794,7 +807,16 @@ window.AppPoints = (function () {
         else failed.push(f.name);
       } catch (e) { failed.push(f.name); }
     }
-    if (!items.length) { mpLoading(null); setStatus(t("kml.none")); return; }
+    for (var si = 0; si < shares.length; si++) {
+      loadStatus(t("kml.readingN", { i: si + 1, n: shares.length, name: shares[si].name }));
+      try { await window.AppShare.importShared(shares[si].txt, { asList: true, fileName: shares[si].name, quiet: true }); }
+      catch (e) { failed.push(shares[si].name); }
+    }
+    if (!items.length) {
+      mpLoading(null);
+      setStatus(shares.length && failed.length < shares.length ? t("share.importedLists", { n: shares.length - failed.length }) : t("kml.none"));
+      return;
+    }
     // One staged import holding every file: the union of fields/folders drives the
     // pickers (so a field present in only one file is still offerable), and the union
     // of marks drives the count and the "note looks like HTML" default.
@@ -1030,6 +1052,19 @@ window.AppPoints = (function () {
     renderMapPoints();
     return { points: npts, stripped: stripped, before: before, after: after, recovered: recovered };
   }
+  // The key a list point plots under: its stored model key, else the model species its
+  // scientific name resolves to, else an "x:<sci>" extra — the same keys fetched data uses.
+  // So EVERY record with a species, model or not, goes through the detection pipeline:
+  // legend row, translated name, species menu, source link, ⓘ (owner, 2026-10-02: "the popup
+  // windows for imported lists … should look the same as fetched data").
+  function detKeyOf(p) {
+    if (!p) return "";
+    if (p.spKey) return p.spKey;
+    var sci = String(p.sci || "").trim(); if (!sci) return "";
+    var l = labelForSci(sci);
+    return l ? l.key : "x:" + sci;
+  }
+  var SRC_OF = { ao: "Artsobs", gbif_sql: "GBIF", gbif_api: "GBIF", parquet: "GBIF", artsobservasjoner: "Artsobs", artportalen: "Artportalen" };
   function applyKmlFields(pt, data) {
     if (!data) return;
     Object.keys(FIELD_ALIASES).forEach(function (field) {
@@ -1049,8 +1084,21 @@ window.AppPoints = (function () {
     if (!pt.url) {
       var u = data.url || data.link || data.references || data.occurrenceURL;
       if (!u && data.gbifID) u = "https://www.gbif.org/occurrence/" + String(data.gbifID).trim();
+      // The builders' `id`: a GBIF occurrence id, or "AO<n>" = an Artsobservasjoner sighting.
+      var rid = String(data.id || "").trim();
+      if (!u && /^AO\d+$/.test(rid)) u = "https://mobil.artsobservasjoner.no/sighting/" + rid.slice(2);
+      else if (!u && /^\d{5,}$/.test(rid)) u = "https://www.gbif.org/occurrence/" + rid;
       if (u) pt.url = String(u).trim();
     }
+    // Source badge + class, so the injected record reads like a fetch (Artsobs / GBIF, Aves …).
+    if (!pt.src) {
+      var sk = String(data.src || "").trim().toLowerCase(), ds = String(data.dataset || data.datasetName || "").trim().toLowerCase();
+      pt.src = SRC_OF[sk] || SRC_OF[ds] || (/artsobs/.test(ds) ? "Artsobs" : (data.gbifID || /^\d{5,}$/.test(String(data.id || "")) ? "GBIF" : ""));
+      if (!pt.src) delete pt.src;
+    }
+    var cl = String(data["class"] || data.klass || data.taxonClass || "").trim();
+    if (cl && !pt.spCls) pt.spCls = cl;
+    if (!pt.spKey && pt.sci) { var lk = labelForSci(pt.sci); if (lk) pt.spKey = lk.key; }
     // Tags may travel as a field too ("a; b" or "a, b"), alongside whatever the dialog mapped.
     var tg = data.tags || data.tag;
     if (tg) {
@@ -1075,7 +1123,7 @@ window.AppPoints = (function () {
     var noteToks = noteTokens();
     var noteHtmlBox = document.getElementById("kml-note-html");
     var noteIsHtml = !!(noteHtmlBox && noteHtmlBox.checked);
-    function finish(listName, marks) {
+    function finish(listName, marks, show) {
       var pts = (marks || p.marks).map(function (pm) {
         var tag = normTag(kmlFieldValue(pm, tagTok));
         // One field → exactly what it always was. Several → each line labelled, because
@@ -1120,7 +1168,7 @@ window.AppPoints = (function () {
       if (!c) { c = { name: listName, points: [] }; mpCollections.push(c); }
       c.points = c.points.concat(pts);
       internPoints([c]);   // a fresh import is the other place equal strings arrive unshared
-      shownColls[listName] = true;
+      if (show !== false) shownColls[listName] = true;   // a batch of files is saved UNTICKED (owner, 2026-10-02): tick what you want to see
       return pts.length;
     }
     // Commit once for the whole batch: one saveMapPoints / renderMapPoints for N lists
@@ -1131,7 +1179,7 @@ window.AppPoints = (function () {
     }
     if (p.files && p.files.length) {
       var total = 0;
-      p.files.forEach(function (b) { total += finish(b.name, b.marks); });
+      p.files.forEach(function (b) { total += finish(b.name, b.marks, p.files.length === 1); });
       commit();
       setStatus(p.files.length > 1 ? t("kml.importedN", { n: total, lists: p.files.length })
                                    : t("kml.imported", { n: total, name: p.files[0].name }));
@@ -1501,8 +1549,19 @@ window.AppPoints = (function () {
     // listPointPasses in app.js. A pin is judged only on the fields it HAS, so a list
     // imported before those fields existed is never hidden by them.
     if (listPointPasses && !listPointPasses(p)) return false;
-    if (!mpFilter.length) return true;
+    return mpTagPasses(p);
+  }
+  // The tag-chip part alone (include / exclude), for the species records a list injects
+  // into the map: THEIR date / observer filters are applied where fetched rows get them
+  // (detRowPasses at draw time), so a pane filter change never re-injects a list.
+  function mpTagPasses(p) {
     var tags = p.tags || [];
+    // An EXCLUDED tag hides its points whatever else is ticked ("" = the untagged ones).
+    if (mpExclude.length) {
+      if (!tags.length) { if (mpExclude.indexOf("") >= 0) return false; }
+      else for (var x = 0; x < tags.length; x++) if (mpExclude.indexOf(tags[x]) >= 0) return false;
+    }
+    if (!mpFilter.length) return true;
     if (!tags.length) return mpFilter.indexOf("") >= 0;
     for (var i = 0; i < tags.length; i++) if (mpFilter.indexOf(tags[i]) >= 0) return true;
     return false;
@@ -1552,12 +1611,16 @@ window.AppPoints = (function () {
     if (key && mpBusyKeys.indexOf(key) < 0) mpBusyKeys.push(key);
     var since = Date.now();
     if (mpRendering || mpFilterT) return;
-    mpFilterT = (window.requestAnimationFrame || setTimeout)(function () {
+    // requestAnimationFrame must be CALLED ON window: `(window.requestAnimationFrame || setTimeout)(fn)`
+    // throws "Illegal invocation" in Chrome, which left the tag chips blinking and the map
+    // unchanged (owner, 2026-10-01: "the map points are not filtered like for fetched data").
+    var later = window.requestAnimationFrame ? function (fn) { return window.requestAnimationFrame(fn); } : function (fn) { return setTimeout(fn, 16); };
+    mpFilterT = later(function () {
       mpFilterT = null;
       if (mpRendering) { mpFilterBusyDone(since); return; }
       mpRendering = true;
-      try { renderMapPoints(); mpBusyReapply(); } catch (e) {} finally { mpRendering = false; mpFilterBusyDone(since); }
-    }, 16);
+      try { renderMapPoints(); mpBusyReapply(); } catch (e) { console.error("renderMapPoints failed", e); } finally { mpRendering = false; mpFilterBusyDone(since); }
+    });
   }
   function mpFilterBusyDone(since) {
     if (!mpBusyEls.length) { mpBusyKeys = []; return; }
@@ -1934,7 +1997,7 @@ window.AppPoints = (function () {
     shownLists.forEach(function (c) {
       var want = nLeft > 0 ? Math.max(1, Math.floor(left / nLeft)) : 0;
       var have = 0;
-      (c.points || []).forEach(function (p) { if (p && !p.spKey && isFinite(p.lat) && isFinite(p.lon)) have++; });
+      (c.points || []).forEach(function (p) { if (p && !detKeyOf(p) && isFinite(p.lat) && isFinite(p.lon)) have++; });
       var give = Math.min(want, have);
       share[c.name] = (budget === Infinity) ? Infinity : give;
       left -= give; nLeft--;
@@ -1946,7 +2009,7 @@ window.AppPoints = (function () {
       var quota = share[c.name], used = 0;
       (c.points || []).forEach(function (p) {
         if (!p || !isFinite(p.lat) || !isFinite(p.lon)) return;
-        if (p.spKey) return;   // detection point → detPlot pipeline (handled below)
+        if (detKeyOf(p)) return;   // a record with a species → detPlot pipeline (handled below)
         // The view test goes FIRST because it is the cheapest by far: four number
         // comparisons against the filters' string folding and date arithmetic.
         if (bb && (p.lat < bb[0] || p.lat > bb[2] || p.lon < bb[1] || p.lon > bb[3])) return;
@@ -1973,7 +2036,7 @@ window.AppPoints = (function () {
   return {
     init: init,
     initMpSetStore: initMpSetStore, persistMpSets: persistMpSets, mpFilterRefresh: mpFilterRefresh,
-    listFilter: listFilter, setListFilter: setListFilter, listFilterActive: listFilterActive,
+    listFilter: listFilter, setListFilter: setListFilter, listFilterActive: listFilterActive, listOwnFilterPasses: listOwnFilterPasses,
     listObservers: listObservers, listDateSpan: listDateSpan,
     // ---- points, lists, collections ----
     loadMapPoints: loadMapPoints, saveMapPoints: saveMapPoints, saveChecked: saveChecked,
@@ -2004,7 +2067,8 @@ window.AppPoints = (function () {
     mapPoints: function () { return mapPoints; },
     setMapPoints: function (v) { mapPoints = v; },
     mpFilter: function () { return mpFilter; }, normTag: normTag,
-    setMpFilter: function (v) { mpFilter = v; },
+    setMpFilter: function (v) { mpFilter = v; }, detKeyOf: detKeyOf, mpTagPasses: mpTagPasses,
+    mpExclude: function () { return mpExclude; }, setMpExclude: function (v) { mpExclude = v; },
     mpShown: function () { return mpShown; },
     setMpShown: function (v) { mpShown = v; },
     mpLayer: function () { return mpLayer; },

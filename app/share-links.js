@@ -464,6 +464,31 @@ window.AppShare = (function () {
     mpState.shownColls()[name] = true;
     return { name: name, updated: false, ll: pts.map(function (p) { return [+p.lat, +p.lon]; }) };
   }
+  // A detection set loaded from a FILE becomes a saved point list (owner, 2026-10-01: "when
+  // loading observation lists from file they should be stored like other lists"): kept on the
+  // device like a KMZ list, ticked on/off and deleted from the Points menu. Each point carries
+  // the whole record — observer, count, note, place, source, link, flags — so the rows the list
+  // injects into the map read exactly like fetched observations.
+  function detSetToPoints(detections) {
+    var pts = [], i = 0, stamp = Date.now().toString(36), now = new Date().toISOString();
+    Object.keys(detections || {}).forEach(function (k) {
+      var e = detections[k]; if (!e || !e.rows) return;
+      var key = e.key || k, isX = key.indexOf("x:") === 0, lbl = !isX && getLabelsByKey()[key];
+      var sci = lbl ? lbl.sci : (isX ? key.slice(2) : ""), nm = lbl ? (lbl.common || sci) : (e.name || sci || key);   // labels not loaded yet (boot migration): the key alone still plots
+      e.rows.forEach(function (r) {
+        if (!isFinite(+r.lat) || !isFinite(+r.lon)) return;
+        var p = { id: "s" + stamp + (++i).toString(36), lat: +r.lat, lon: +r.lon, name: nm, sci: sci, spKey: key, spColor: e.color || "", createdAt: now };
+        if (e.cls) p.spCls = e.cls;
+        ["date", "observer", "count", "note", "place", "src", "url", "act", "flags", "origin"].forEach(function (f) { if (r[f] != null && r[f] !== "") p[f] = r[f]; });
+        if (r.placeCoarse) p.placeCoarse = 1;
+        if (+r.posFuzzM > 0) p.posFuzzM = +r.posFuzzM;
+        var tags = []; if (r.date) tags.push(String(r.date).slice(0, 4)); if (r.flags) tags.push(String(r.flags));
+        if (tags.length) p.tags = tags;
+        pts.push(p);
+      });
+    });
+    return pts;
+  }
   function detRowCount(detections) {
     var n = 0; Object.keys(detections || {}).forEach(function (k) { n += ((detections[k] || {}).rows || []).length; }); return n;
   }
@@ -562,8 +587,11 @@ window.AppShare = (function () {
       clearDetections();
     });
   }
-  function importShared(str) {
-    decodeShare(str).then(function (raw) {
+  // `opts.asList`: the payload came from a FILE (Points → Load from file, by picker or link) —
+  // a detection set is then saved as a point list rather than plotted once (see detSetToPoints).
+  function importShared(str, opts) {
+    opts = opts || {};
+    return decodeShare(str).then(function (raw) {
       // Whole-map share: detections + user points in one payload.
       if (raw && raw.t === "m") {
         var detObj = raw.d ? expandShared(raw.d) : null;
@@ -615,6 +643,20 @@ window.AppShare = (function () {
       if (obj.type === "det") {
         var n = detRowCount(obj.detections);
         if (!n) { setStatus(t("share.badLink")); return; }
+        if (opts.asList) {
+          var lnm = String(obj.name || String(opts.fileName || "").replace(/\.[^.]+$/, "") || t("share.defaultName"));
+          var updL = !!sharedCollByName(lnm);   // the same list again → replace its points in place
+          var doList = function () {
+            applySharedContext(obj.detections, obj.group);   // the sender's species group + family colours
+            var r = importPointsColl(lnm, detSetToPoints(obj.detections));
+            if (opts.quiet) delete mpState.shownColls()[r.name];   // several files at once: saved, not shown (owner, 2026-10-02)
+            saveMapPoints(); saveShownState(); renderMapPoints();
+            if (!opts.quiet) fitSharedLatLngs(r.ll);
+            setStatus(t(r.updated ? "share.updated" : "share.imported", { name: r.name }));
+          };
+          if (opts.quiet) { doList(); return; }   // a batch of files: the picker was the confirmation
+          return modalConfirm(t(updL ? "share.updatePrompt" : "share.importPrompt", { name: lnm, n: n })).then(function (ok) { if (ok) doList(); });
+        }
         modalConfirm(t("share.importPrompt", { name: nm, n: n })).then(function (ok) {
           if (!ok) return;
           maybeClearBeforeShare().then(function () {
@@ -680,6 +722,7 @@ window.AppShare = (function () {
     pointShareUrl: pointShareUrl,
     offerShareUrl: offerShareUrl,
     importShared: importShared,
+    detSetToPoints: detSetToPoints,
     maybeImportShared: maybeImportShared,
     maybeOpenSharedPoint: maybeOpenSharedPoint,
     detRowCount: detRowCount,

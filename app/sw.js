@@ -21,15 +21,14 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v1974";
+var VERSION = "v1998";
 // The changelog shown under the lit "Reload to update" button in Settings.
 // THIS RELEASE ONLY — replace it wholesale on every version bump, never append.
 // A returning user wants to know what the update they are about to install changes,
 // not a scroll of things they already have; the feature history lives in Settings →
 // What's new, and the full record in CHANGES.md.
 var NOTES = [
-  "\u2022 /owl_network (the Finnskogen owl-observer network) now opens without a trailing slash too \u2014 the app's service worker used to answer that address with the app itself.",
-  "\u2022 Observer lists can be imported from a .csv / .txt file (Lists \u2192 Observer lists \u2192 Import\u2026)."
+  "\u2022 The place search takes plus codes: a full one (9F7V2JX8+QF) goes straight to the spot; a short one with its place (2JX8+QF Elverum) or on its own (near the map centre) is resolved too."
 ].join("\n");
 // RC channel isolation: an RC deployment (SW served from a "…-rc/" path) shares the
 // browser ORIGIN with production, so its caches must be namespaced — and its activate
@@ -322,6 +321,15 @@ self.addEventListener("install", function (event) {
         return caches.open(SHELL_CACHE).then(function (c) {
           return c.put(DL_KEY, new Response(String(tally.n)));
         });
+      }).then(function () {
+        // RESCUE (2026-10-02): a device whose cached shell is one that cannot boot (v1985,
+        // whose points module threw "labelForSci is not defined") can never press the
+        // Settings update button, and a plain reload re-serves that shell. For THOSE caches
+        // only, this version activates at once so the next load gets working code. Every
+        // other device keeps the normal wait-for-the-user rule below.
+        return caches.keys().then(function (ks) {
+          if (ks.some(function (k) { return /shell-v198[56]$/.test(k); })) return self.skipWaiting();
+        }).catch(function () {});
       });
     })
     // NOTE: deliberately NO self.skipWaiting() here. A newly deployed version
