@@ -640,7 +640,8 @@ and re-filters as you pan or zoom, the same way the legend counts only what is o
 
 - **Map points** — right-click (desktop) or long-press (touch) the map to drop a pin and open
   the **point editor**: name, tags, a per-point colour (or automatic), a note (optionally
-  rendered as HTML), a copyable-coordinates pill, and a *Save to list* picker. The **Points**
+  rendered as HTML), a copyable-coordinates pill, a *Save to list* picker and a ＋➤ button that
+  adds the point to the route. The **Points**
   header button (badge = number of lists) opens a panel of tick-to-show lists, per-tag filter
   chips — ordered counts · months and season · mention categories · other words · species names,
   each with the number of shown points carrying it. A chip cycles through three states: no say →
@@ -1215,8 +1216,10 @@ the one thing left out by default — they are much the largest thing the app ho
   drive the same controls that live in Settings, so a change made either way is saved the same way.
 - **Persistence** — settings, view, species/year/life lists, checklists, points and plotted
   detections survive across visits. Small settings live in **localStorage**; bulky per-list data
-  (saved sets, detections) lives in **IndexedDB** to avoid the ~5 MB cap, hydrated into memory once
-  at boot.
+  (saved sets, detections) lives in **IndexedDB** to avoid the ~5 MB cap. Saved point lists load **lazily**: at start only
+  the ticked lists are read; the others follow in the background (or at once when ticked or
+  opened), so many large lists no longer slow the start. Long lists (species table, observation
+  list, legend) show their first rows at once and fill in the rest in the background.
 - **Languages** — the **UI is fully translated into 15 languages** (en, sv, de, es, fr, nl, it, pt,
   pl, cs, no, da, fi, et, lt); other languages fall back to English UI text while still showing
   localised species names. **Species common names are available in ~45 languages**, loaded as

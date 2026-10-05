@@ -1905,9 +1905,10 @@ button.dd-name:hover { text-decoration: underline; }
 
 /* In-page prompt/confirm modal (full-screen-safe, unlike window.prompt) */
 .ui-modal-overlay {
-  /* Above the modals (5000) and floating menus (6000): a blocking confirm/prompt
-     must sit on top of whatever window spawned it (offline-maps, Saved sets, …). */
-  position: fixed; inset: 0; z-index: 7000; display: flex; align-items: center; justify-content: center;
+  /* Above the modals (5000), the floating menus (6000) AND the anchored menus (8000): a
+     blocking confirm/prompt must sit on top of whatever spawned it — a list's ⋯ menu
+     covered the delete confirm on a phone (2026-10-04). */
+  position: fixed; inset: 0; z-index: 8500; display: flex; align-items: center; justify-content: center;
   background: rgba(0,0,0,.45); padding: 16px;
 }
 .ui-modal {
@@ -3558,6 +3559,8 @@ tr.row-list-only .prob-na { color: var(--ink-muted, #999); }
 /* Rows filtered out by the name search — !important so it wins over applyAgeFilter's
    inline display, letting the two filters compose (a row shows only if it passes both). */
 tr.sp-hide-search { display: none !important; }
+/* Row windowing (clipSpRows): rows past the laid-out batch, revealed as the list scrolls. */
+tr.sp-clip, tbody.sp-clip { display: none !important; }
 #sp-filters-wrap { margin: 0 0 8px; }
 #sp-filters-wrap:empty { margin: 0; }
 #sp-records .dl-row-menu { width: 100%; box-sizing: border-box; }
@@ -4778,8 +4781,9 @@ tr.sp-flash > td { animation: spFlash 1.6s ease-in-out 1; }
 /* Copy-to-list and delete, on the point's own card. Pushed to the right of the tag row so
    they read as acting on the record, not on a tag. */
 .mp-card-acts { margin-left: auto; display: inline-flex; gap: 4px; flex: 0 0 auto; }
-.mp-card-copy, .mp-card-del { box-sizing: border-box; width: 22px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border, #cfe0d8); border-radius: 4px; background: var(--surface, #fff); cursor: pointer; color: var(--brand-deep, #1d5b43); line-height: 1; }
-.mp-card-copy .btn-ico { width: 13px; height: 13px; }
+.mp-card-copy, .mp-card-route, .mp-card-del { box-sizing: border-box; width: 22px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border, #cfe0d8); border-radius: 4px; background: var(--surface, #fff); cursor: pointer; color: var(--brand-deep, #1d5b43); line-height: 1; }
+.mp-card-copy .btn-ico, .mp-card-route .btn-ico { width: 13px; height: 13px; }
+.mp-card-route:hover { color: var(--brand, #2f6f4f); border-color: var(--brand, #2f6f4f); }
 .mp-card-copy:hover { color: var(--brand, #2f6f4f); border-color: var(--brand, #2f6f4f); }
 .mp-card-del { color: var(--muted, #999); font-size: var(--fs-h); }
 .mp-card-del:hover { color: #c0392b; border-color: #c0392b; }
@@ -4835,3 +4839,6 @@ tr.sp-flash > td { animation: spFlash 1.6s ease-in-out 1; }
 
 /* Drag-and-drop target for point files */
 #drop-overlay { position: fixed; inset: 0; z-index: 99998; display: flex; align-items: center; justify-content: center; background: rgba(46,139,116,.28); border: 4px dashed var(--brand, #2e8b74); color: #fff; font: 600 20px/1.3 system-ui, sans-serif; text-shadow: 0 1px 4px rgba(0,0,0,.5); pointer-events: none; }
+
+.mp-actions .mp-route-btn { margin-left: auto; padding: 4px 8px; display: inline-flex; align-items: center; }
+.mp-actions .mp-route-btn .btn-ico { width: var(--ico-m); height: var(--ico-m); }

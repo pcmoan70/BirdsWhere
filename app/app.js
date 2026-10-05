@@ -2090,7 +2090,10 @@
   }
   // "Per observation": ONE columns table with the records grouped by date × observer ×
   // location (a spanning group-separator row per triple); columns sort WITHIN each group.
-  function buildSpObsHtml(rows) {
+  // The observation list as a PLAN: the table's opening HTML and one part per date × observer
+  // × place group, each able to produce its rows when asked (n = how many). Grouping and
+  // ordering are cheap; the HTML is the cost, and buildSpObs below makes it on demand.
+  function spObsPlan(rows) {
     var name2On = !!secondLang, ncols = 7 + (name2On ? 1 : 0);   // count name [name2] prob season peak 📷 ⓘ — dist/src moved to the group subheading
     var hdr = "<thead><tr>" + spObsHeadCell("count", t("th.count"), true) +
       spObsHeadCell("name", t("th.species")) +
@@ -2103,7 +2106,8 @@
     var byDate = {}, dates = [];
     rows.forEach(function (d) { var k = d.date || ""; if (!byDate[k]) { byDate[k] = []; dates.push(k); } byDate[k].push(d); });
     dates.sort(function (a, b) { return b.localeCompare(a); });
-    var body = dates.map(function (dt) {
+    var parts = [];
+    dates.forEach(function (dt) {
       var byG = {}, gkeys = [];
       byDate[dt].forEach(function (d) {
         var obsv = (d.src === "BirdWeather" ? "" : (d.observer || "")).trim(), rawLoc = (d.place || "").trim();
@@ -2119,8 +2123,7 @@
       gkeys.sort(function (a, b) { var A = byG[a], B = byG[b]; if (!A.obs !== !B.obs) return A.obs ? -1 : 1; return (A.obs || "").localeCompare(B.obs || "") || (A.loc || "").localeCompare(B.loc || ""); });
       var dateLbl = escapeHtml(fmtDate(dt) || t("detlist.noDate"));
       var datePart = dt ? '<span class="dl-date-click" role="button" data-date="' + escapeHtml(dt) + '" title="' + escapeHtml(t("detlist.dateFilterHint")) + '">' + dateLbl + "</span>" : dateLbl;
-      return gkeys.map(function (gk) {
-        var g = byG[gk];
+      gkeys.forEach(function (gk) { var g = byG[gk]; parts.push({ n: g.items.length + 1, html: function () {
         var obsSpan = g.obs ? " · " + obsNamesHtml(g.obs) : "";   // same two-names-then-"…" rule as the record rows
         // The place-name opens the same location menu as the "Species" list's expanded
         // records (find on map · add point · route). Needs coordinates, so use the first
@@ -2152,9 +2155,68 @@
         var srcSpan = srcParts.length ? ' · <span class="dl-gsrc">' + srcParts.join(", ") + "</span>" : "";
         var headRow = '<tr class="sp-obs-grp"><td colspan="' + ncols + '">' + datePart + obsSpan + locSpan + distSpan + srcSpan + '<span class="dl-ct">' + g.items.length + "</span></td></tr>";
         return headRow + g.items.slice().sort(spObsCmp).map(function (d) { return spRecRowHtml(d, { name2: name2On, date: false, src: false, dist: false, info: true, obs: false, season: true }); }).join("");
-      }).join("");
-    }).join("");
-    return '<table class="sp-detail-tbl sp-obs-tbl' + (name2On ? " has-n2" : "") + '">' + hdr + "<tbody>" + body + "</tbody></table>";
+      } }); });
+    });
+    return { open: '<table class="sp-detail-tbl sp-obs-tbl' + (name2On ? " has-n2" : "") + '">' + hdr, parts: parts };
+  }
+  // Lazy build of the observation list (owner, 2026-10-04: "all scrolling lists … showing
+  // asap the first few observations before computing the rest in the background, starting
+  // with those most likely to be displayed first"). A person list is 10,000+ rows; building
+  // them all took seconds on every render, and the page re-renders several times while
+  // probabilities and seasons arrive. Now: the first screenful is built at once, the rest
+  // top-down in background slices (each slice its own <tbody>, wired when it lands), and
+  // only SPOBS_STEP rows are laid out until the list is scrolled towards its end. A newer
+  // render (container._obsGen) stops an older fill. A render made while scrolled down
+  // rebuilds down to the depth already reached, so the view does not jump.
+  var SPOBS_FIRST = 60, SPOBS_SLICE = 120, SPOBS_STEP = 300, spObsIO = null;
+  function spLater(fn) {
+    if (window.requestIdleCallback) window.requestIdleCallback(fn, { timeout: 250 }); else setTimeout(fn, 30);
+  }
+  function spObsReveal(container) {
+    var tbl = container.querySelector("table.sp-obs-tbl"); if (!tbl) return;
+    Array.prototype.forEach.call(tbl.tBodies, function (tb) {
+      if (tb.classList.contains("sp-clip") && (tb._rows0 || 0) < container._obsAllow) tb.classList.remove("sp-clip");
+    });
+  }
+  function buildSpObs(container, rows) {
+    var plan = spObsPlan(rows), parts = plan.parts, gen = container._obsGen = (container._obsGen || 0) + 1;
+    var scroller = document.getElementById("species-panel");
+    var deep = !!(scroller && scroller.contains(container) && scroller.scrollTop > 0);
+    container._obsAllow = deep ? Math.max(SPOBS_STEP, container._obsAllow || 0) : SPOBS_STEP;
+    var i = 0, n = 0, html = "", need = deep ? container._obsAllow : SPOBS_FIRST;
+    while (i < parts.length && n < need) { html += parts[i].html(); n += parts[i].n; i++; }
+    container.innerHTML = plan.open + "<tbody>" + html + '</tbody></table><div class="sp-obs-more" style="height:1px"></div>';
+    wireSpDetail(container);
+    var tbl = container.querySelector("table.sp-obs-tbl");
+    container._obsRows = n;
+    if (i >= parts.length) return;
+    (function next() {
+      spLater(function () {
+        if (container._obsGen !== gen || !document.body.contains(tbl)) return;   // re-rendered meanwhile
+        var h = "", m = 0;
+        while (i < parts.length && m < SPOBS_SLICE) { h += parts[i].html(); m += parts[i].n; i++; }
+        var tb = document.createElement("tbody");
+        tb._rows0 = container._obsRows;
+        if (tb._rows0 >= container._obsAllow) tb.className = "sp-clip";   // built, not laid out until scrolled near
+        tb.innerHTML = h;
+        container._obsRows += m;
+        tbl.appendChild(tb);
+        wireSpDetail(tb); paintObsSeason(tb);
+        if (i < parts.length) next();
+      });
+    })();
+    if (typeof IntersectionObserver !== "function") { container._obsAllow = Infinity; return; }
+    if (!spObsIO) spObsIO = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        var c = e.target.parentNode; if (!c) return;
+        c._obsAllow += SPOBS_STEP;
+        spObsReveal(c);
+        spObsIO.unobserve(e.target);
+        if (c._obsAllow < c._obsRows) spObsIO.observe(e.target);   // more built rows still hidden → re-armed, so a sentinel that stays in reach keeps revealing
+      });
+    }, { rootMargin: "1500px" });
+    spObsIO.observe(container.querySelector(".sp-obs-more"));
   }
   // Coordinates behind a place-name span: the "Per observation" group headers
   // carry their own data-lat/lon; the "Species" list's record spans fall back
@@ -2474,7 +2536,7 @@
     Array.prototype.forEach.call(container.querySelectorAll(".dl-src-click"), function (s) {
       s.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); showSrcFilterMenu(this.getAttribute("data-src"), e.clientX, e.clientY); });
     });
-    var isPerObs = container.id === "sp-records";
+    var isPerObs = inRecords;   // also true for a lazily added <tbody> of the observation list
     Array.prototype.forEach.call(container.querySelectorAll(".sp-d-row"), function (r) {
       r.addEventListener("click", function (e) {
         // A click on the species name (or another active cell) is handled by that
@@ -2500,6 +2562,37 @@
   function toggleSpExpand(key) {
     if (spExpanded[key]) delete spExpanded[key]; else spExpanded[key] = 1;
     refreshSpExpansions();
+  }
+  // Row windowing for the species table (owner, 2026-10-04: "clicking the list view button
+  // seems to hang the app"). The browser lays out a table as a whole, and a model-only list
+  // runs to 1,000+ rows: every forced layout during a build cost about a second on a phone,
+  // several times per open. Only the first spClipN rows that PASS the filters are laid out
+  // (the rest carry .sp-clip = display:none); a sentinel under the table reveals the next
+  // batch as it scrolls into reach. Counted over visible rows, so a filter or sort that
+  // leaves few rows always shows them. Row state the rest of the code reads (inline
+  // display, classes, data-*) is untouched.
+  var SP_CLIP_STEP = 150, spClipN = SP_CLIP_STEP, spClipIO = null;
+  function clipSpRows() {
+    var tbody = document.getElementById("sp-tbody"); if (!tbody) return;
+    var ch = tbody.children, seen = 0, hide = false;
+    for (var i = 0; i < ch.length; i++) {
+      var tr = ch[i], cl = tr.classList;
+      if (!cl.contains("sp-detail-row")) {   // a sub-row follows its species
+        if (tr.style.display !== "none" && !cl.contains("sp-hide-search")) seen++;
+        hide = seen > spClipN;
+      }
+      if (hide !== cl.contains("sp-clip")) cl.toggle("sp-clip", hide);
+    }
+    if (seen <= spClipN || typeof IntersectionObserver !== "function") return;
+    var tbl = document.getElementById("species-list-table"); if (!tbl || !tbl.parentNode) return;
+    var s = document.getElementById("sp-clip-more");
+    if (!s) { s = document.createElement("div"); s.id = "sp-clip-more"; s.style.height = "1px"; tbl.parentNode.insertBefore(s, tbl.nextSibling); }
+    if (!spClipIO) spClipIO = new IntersectionObserver(function (es) {
+      if (!es.some(function (e) { return e.isIntersecting; })) return;
+      spClipN += SP_CLIP_STEP * 2;
+      clipSpRows();
+    }, { rootMargin: "1200px" });
+    spClipIO.unobserve(s); spClipIO.observe(s);   // re-armed: still in reach after a batch → the next one follows
   }
   function sortSpeciesList() {
     var tbody = document.getElementById("sp-tbody");
@@ -2585,6 +2678,7 @@
     extras.forEach(function (tr) { frag.appendChild(tr); });   // uncovered species stay at the bottom
     tbody.appendChild(frag);
     refreshSpExpansions();   // re-insert expanded species' detail sub-rows, freshly sorted
+    clipSpRows();
   }
   function cycleSpeciesListSort(col) {
     if (!currentSpView || (currentSpView.mode !== "point" && currentSpView.mode !== "historic")) return;
@@ -2767,12 +2861,14 @@
     var q = spNameQuery.trim();
     if (!q) {   // no search: only rows still carrying the class need touching (every row was visited before)
       Array.prototype.forEach.call(tb.querySelectorAll("tr.sp-hide-search"), function (tr) { tr.classList.remove("sp-hide-search"); });
+      clipSpRows();
       return;
     }
     Array.prototype.forEach.call(tb.querySelectorAll("tr"), function (tr) {
       if (tr.classList.contains("sp-detail-row")) return;   // sub-rows follow their species
       tr.classList.toggle("sp-hide-search", !spRowMatchesName(tr, q));
     });
+    clipSpRows();
   }
   // When the date/recency window is hiding some fetched detections, spell that out
   // (what window is active + how many detections it's dropping) so a "short" list is
@@ -4521,7 +4617,7 @@
     if (!mpState.mpCollections().length) { el.innerHTML = '<p class="dd-empty">' + escapeHtml(t("points.empty")) + "</p>"; return; }
     var rows = [];
     mpState.mpCollections().slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (c) {
-      var prot = isCollProtected(c.name), n = (c.points && c.points.length) || 0;
+      var prot = isCollProtected(c.name), n = mpState.collCount(c);
       var cid = "coll:" + c.name, open = !!listsExpanded[cid] && n > 0;
       rows.push('<tr class="lists-row"><td class="dset-name">' +
         '<button type="button" class="lists-toggle" data-id="' + escapeHtml(cid) + '"' + (n ? "" : " disabled") + ">" +
@@ -5894,7 +5990,7 @@
   // fetched observations are not points at all.
   function storedPointCount() {
     var n = 0;
-    try { (mpState.mpCollections() || []).forEach(function (c) { n += ((c && c.points) || []).length; }); } catch (e) {}
+    try { (mpState.mpCollections() || []).forEach(function (c) { n += mpState.collCount(c); }); } catch (e) {}
     return n;
   }
   // Called by the sync transport when a push (or a restore) has put this device and
@@ -5955,7 +6051,10 @@
     }
   }
   function exportAppData() {
-    downloadCsv("BirdsWhere_backup_" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify(buildPayload(), null, 2), "application/json;charset=utf-8;");
+    mpState.whenAllLoaded().then(function () {   // lists load lazily: a backup must hold them whole
+      if (mpState.anyLazy()) return;
+      downloadCsv("BirdsWhere_backup_" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify(buildPayload(), null, 2), "application/json;charset=utf-8;");
+    });
   }
   function mergeChecklists(local, incoming) {
     var out = {}; Object.keys(local || {}).forEach(function (k) { out[k] = local[k]; });
@@ -6407,6 +6506,7 @@
   }
   function importAppData(jsonText) {
     var data; try { data = JSON.parse(jsonText); } catch (e) { throw new Error("Invalid JSON"); }
+    if (mpState.anyLazy && mpState.anyLazy()) throw new Error("lists still loading");   // never merge into half-loaded lists
     return applyRemote(data, { incomingWins: true, interactive: true });
   }
 
@@ -8192,11 +8292,13 @@
   // export snapshot (buildPayload) rides in the URL fragment — compressed, never sent
   // to any server — and the new origin merges it after a confirmation (below).
   function moveToNewHome() {
+    mpState.whenAllLoaded().then(function () {
     var payload; try { payload = window.AppData.buildPayload(); } catch (e) { location.href = NEW_HOME; return; }
-    window.AppShare.encodeShare(payload).then(function (enc) {
+    return window.AppShare.encodeShare(payload).then(function (enc) {
       if (enc.length > MIGRATE_MAX) { modalAlert(t("moved.tooBig")).then(function () { location.href = NEW_HOME; }); return; }
       location.href = NEW_HOME + "#migrate=" + enc;
     }, function () { location.href = NEW_HOME; });
+    });
   }
   function maybeImportMigrated() {
     var m = /^#migrate=(.+)$/.exec(location.hash || ""); if (!m) return;
@@ -8204,9 +8306,12 @@
     window.AppShare.decodeShare(m[1]).then(function (obj) {
       return modalConfirm(t("moved.confirm")).then(function (ok) {
         if (!ok) return;
+        return mpState.whenAllLoaded().then(function () {
+        if (mpState.anyLazy()) return;
         applyRemote(obj, { incomingWins: true, interactive: true });
         setStatus(t("moved.done"));
         setTimeout(function () { location.reload(); }, 1000);
+        });
       });
     }).catch(function (err) { setStatus(t("sync.importFailed", { msg: (err && err.message) || "" })); });
   }
@@ -14061,8 +14166,9 @@
       announceInView(Object.keys(nSp).length);   // SPECIES in view (rows.length is records — it read "1 species" for one species' many records)
     }
     rec.style.display = "";
-    rec.innerHTML = rows.length ? buildSpObsHtml(rows) : '<div class="dl-empty">' + escapeHtml(t("detlist.empty")) + "</div>";
-    wireSpDetail(rec); fillObsSeasonCells(rec, rows);
+    if (rows.length) buildSpObs(rec, rows);
+    else { rec._obsGen = (rec._obsGen || 0) + 1; rec.innerHTML = '<div class="dl-empty">' + escapeHtml(t("detlist.empty")) + "</div>"; wireSpDetail(rec); }
+    fillObsSeasonCells(rec, rows);
     renderObsPageControls();   // after the body: the funnel reads its stats off the current set
   }
   // Re-render whichever list page is currently open, so live changes (e.g. a new rarity
@@ -14168,6 +14274,7 @@
       if ((tr.style.display === "none") === show) tr.style.display = show ? "" : "none";
       if (show) shown++;
     });
+    clipSpRows();
     // Not while a per-point fetch is still landing (the table then holds the prediction
     // list with one or two observed rows — "1 species" flashed up mid-way); the count is
     // announced once the pass has settled.
@@ -14563,8 +14670,10 @@
         for (var i = 0; i < blobSets.length; i++) { var s = blobSets[i]; if (s && s.name) await window.AppIDB.put("set:" + s.name, s); }
         window.GeoState.save({ mapDetectionSets: undefined });   // confirmed in IDB → free the blob
       }
-      var all = await window.AppIDB.getAll();
-      detSetStore = Object.keys(all).filter(function (k) { return k.indexOf("set:") === 0; }).map(function (k) { return all[k]; }).filter(function (s) { return s && s.name; });
+      // Only the "set:" records — getAll() read every point list too (megabytes each), a
+      // second full read of the store at every start (2026-10-04).
+      var setKeys = (await window.AppIDB.keys()).filter(function (k) { return String(k).indexOf("set:") === 0; });
+      detSetStore = (await Promise.all(setKeys.map(function (k) { return window.AppIDB.get(k); }))).filter(function (s) { return s && s.name; });
       detSetsIdbReady = true;
     } catch (e) {
       detSetStore = (window.GeoState.get("mapDetectionSets", []) || []).filter(function (s) { return s && s.name; });
@@ -15735,6 +15844,7 @@
       // Reveal only — the row itself is the expand target, so tapping it opens the
       // records. (Auto-expanding here could mark the row open with nothing under it
       // when the active filters leave no records to show.)
+      if (tr.classList.contains("sp-clip")) { spClipN = Array.prototype.indexOf.call(tbody.children, tr) + SP_CLIP_STEP; clipSpRows(); }   // beyond the laid-out batch → lay out down to it
       try { tr.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (e) { try { tr.scrollIntoView(); } catch (e2) {} }
       tr.classList.add("sp-flash");
       setTimeout(function () { tr.classList.remove("sp-flash"); }, 1600);
@@ -16043,6 +16153,11 @@
     for (var di = span - 1; di >= 0; di--) days.push(localDay(new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() - di)));
     var max = 0; days.forEach(function (dt) { if ((byDay[dt] || 0) > max) max = byDay[dt]; });
     if (!max) { if (barsEl) barsEl.innerHTML = ""; if (axisEl) axisEl.innerHTML = ""; return; }
+    // Same days, counts and selection as the bars already on screen → nothing to rebuild
+    // (this runs on every legend refresh; 3,660 bars + their labels each time).
+    var hsSig = lang + "|" + todayStr + "|" + obsDays.map(function (d) { return d + ":" + byDay[d] + (detDaySel[d] ? "s" : ""); }).join(",") + "|" + Object.keys(detDaySel).length;
+    if (wasShown && strip._hsSig === hsSig && barsEl && barsEl.firstChild) return;
+    strip._hsSig = hsSig;
     var SLOT = 13;   // 12px bar + 1px gap (wide bars = easy clicking)
     var atRight = !scr || !wasShown || (scr.scrollLeft + scr.clientWidth >= scr.scrollWidth - 6);
     var prevLeft = scr ? scr.scrollLeft : 0;
@@ -16251,6 +16366,21 @@
     if (sumTsig !== detSumTsig) { detSumT = 0; allKeys.forEach(function (k) { detSumT += detTotalCount(k); }); detSumTsig = sumTsig; }
     var sumT = detSumT;
     var sumCt = (sumN === sumT) ? String(sumN) : (sumN + "/" + sumT);
+    // Lazy rows (2026-10-04): a person list is 500+ species and the legend is redrawn on every
+    // filter step. The first LEG_FIRST rows are written and wired now, the rest in the
+    // background before the .det-more marker — unless the legend is scrolled, where a short
+    // list would make the view jump (then everything is built at once, as before).
+    var LEG_FIRST = 60, LEG_SLICE = 150;
+    var legGen = el._legGen = (el._legGen || 0) + 1;
+    var legNow = (el.scrollTop > 0 || keys.length <= LEG_FIRST + 20) ? keys.length : LEG_FIRST;
+    var legRowHtml = function (k) {
+        var e = dEntry(k), nm = escapeHtml(detName(e));
+        var sel = !!detSelected[k];
+        var off = hasSel && !sel;   // a selection is active and this species isn't in it → its dots are hidden (grey the row, still tappable to turn back on)
+        var ct = String(legendN(k));   // per-species: n = its deduped specimens on screen
+        var rowCls = "det-row det-row-click" + (sel ? " det-row-on" : "") + (off ? " det-row-off" : "");
+        return '<div class="' + rowCls + '" data-key="' + escapeHtml(k) + '">' + detSwatch(e.color, isInteresting(e.key), detIsRare(k), e.key) + (isAlertSpecies(k) ? '<span class="det-rar">!</span> ' : "") + '<span class="det-nm" title="' + nm + '">' + nm + '</span><span class="det-ct">' + ct + '</span><button type="button" class="det-del" data-key="' + escapeHtml(k) + '" aria-label="remove">×</button></div>';
+    };
     el.innerHTML = '<div class="det-legend-head" data-help="maphelp.legend">' +
         '<button type="button" class="det-min" title="' + escapeHtml(t("det.minimise")) + '" aria-label="' + escapeHtml(t("det.minimise")) + '">−</button>' +
         (function () {   // legend funnel: orange only when the filters actually REMOVE observations
@@ -16272,14 +16402,7 @@
           '<span class="det-nm det-total-toggle" role="button" tabindex="0" title="' + escapeHtml(t("det.rowsHint")) + '">' + escapeHtml(detRowsLabel()) + '</span>' +
           '<span class="det-legend-sort" role="button" tabindex="0" title="' + escapeHtml(detSortTip()) + '" aria-label="' + escapeHtml(detSortTip()) + '">' + detSortSymHtml() + '</span>' +
           '<span class="det-ct">' + sumCt + "</span></div>" : "") +
-      (keys.length ? keys.map(function (k) {   // already narrowed to the "Total" row-set (detPassesRows) above
-        var e = dEntry(k), nm = escapeHtml(detName(e));
-        var sel = !!detSelected[k];
-        var off = hasSel && !sel;   // a selection is active and this species isn't in it → its dots are hidden (grey the row, still tappable to turn back on)
-        var ct = String(legendN(k));   // per-species: n = its deduped specimens on screen
-        var rowCls = "det-row det-row-click" + (sel ? " det-row-on" : "") + (off ? " det-row-off" : "");
-        return '<div class="' + rowCls + '" data-key="' + escapeHtml(k) + '">' + detSwatch(e.color, isInteresting(e.key), detIsRare(k), e.key) + (isAlertSpecies(k) ? '<span class="det-rar">!</span> ' : "") + '<span class="det-nm" title="' + nm + '">' + nm + '</span><span class="det-ct">' + ct + '</span><button type="button" class="det-del" data-key="' + escapeHtml(k) + '" aria-label="remove">×</button></div>';
-      }).join("")
+      (keys.length ? keys.slice(0, legNow).map(legRowHtml).join("") + (legNow < keys.length ? '<span class="det-more" hidden></span>' : "")   // already narrowed to the "Total" row-set (detPassesRows) above
         : (allKeys.length ? '<div class="det-empty">' + escapeHtml(detLegendRows !== "all" ? t("det.rowsNone", { sel: detRowsLabel() }) : t("det.noMatch", { n: sumT })) + "</div>" : "")) +
       // Deleted species leave a grey tombstone row: name only, no colour dot and no ×
       // (already deleted). Tapping it restores the species (re-plots on the next fetch).
@@ -16321,7 +16444,10 @@
       detFiltersRefresh();
     });
     el.querySelector(".det-min").addEventListener("click", function () { mapClickGuardUntil = Date.now() + 250; detLegendMini = true; saveLegendState(); updateDetLegend(); });
-    el.querySelectorAll(".det-del").forEach(function (b) { b.addEventListener("click", function (e) { e.stopPropagation(); removeDetection(this.getAttribute("data-key")); }); });
+    var wireLegendRows = function (root) {
+    root.querySelectorAll(".det-del").forEach(function (b) { b.addEventListener("click", function (e) { e.stopPropagation(); removeDetection(this.getAttribute("data-key")); }); });
+    root.querySelectorAll(".det-row-click").forEach(wireLegendRow);
+    };
     // Tap a grey tombstone row → forget the deletion (its row clears; the species can
     // re-appear on the next fetch).
     el.querySelectorAll(".det-row-deleted").forEach(function (r) {
@@ -16344,7 +16470,7 @@
     // explicit PRESS-AND-HOLD: hold a row to isolate its species while held, lift
     // to restore. A quick tap stays a multi-select toggle.
     var canHover = !window.matchMedia || window.matchMedia("(hover: hover)").matches;
-    el.querySelectorAll(".det-row-click").forEach(function (row) {
+    var wireLegendRow = function (row) {
       if (canHover) {
         // Hover previews a species by isolating it on the map (transiently) — the same
         // whether or not a selection is active; leaving restores the selection view.
@@ -16406,7 +16532,22 @@
         rebuildDetLayers();
         updateDetLegend();
       });
-    });
+    };
+    wireLegendRows(el);
+    if (legNow < keys.length) {
+      var legI = legNow, legMark = el.querySelector(".det-more");
+      (function legFill() {
+        spLater(function () {
+          if (el._legGen !== legGen || !legMark || !el.contains(legMark)) return;   // the legend was redrawn meanwhile
+          var tmp = document.createElement("div");
+          tmp.innerHTML = keys.slice(legI, legI + LEG_SLICE).map(legRowHtml).join("");
+          legI += LEG_SLICE;
+          wireLegendRows(tmp);
+          while (tmp.firstChild) el.insertBefore(tmp.firstChild, legMark);
+          if (legI < keys.length) legFill(); else el.removeChild(legMark);
+        });
+      })();
+    }
   }
   // The filter bar (time / species-mode / observer) shown at the top of the
   // detections-list popup, plus whichever subwindow is open. Reuses the same panel
@@ -17056,7 +17197,7 @@
     hdr.textContent = title || t("detlist.saveTitle");
     el.appendChild(hdr);
     lists.forEach(function (c) {
-      var cn = (c.points && c.points.length) || 0;
+      var cn = mpState.collCount(c);
       el.appendChild(drmBtn(c.name + " (" + cn + ")", function () { closeAnchoredMenu(); then(c.name); }, "pin"));
     });
     el.appendChild(drmBtn(t("detmenu.newList"), function () {
@@ -17541,7 +17682,8 @@
         var pts = pointsForRow(type, name), fmt = this.getAttribute("data-fmt");
         closeAnchoredMenu();
         if (!pts.length) { setStatus(t("points.exportEmpty")); return; }
-        exportPointsAs(fmt, name, [{ name: name, points: pts }], []);
+        var rc0 = mpState.mpCollections().filter(function (x) { return x.name === name; })[0];
+        exportPointsAs(fmt, name, [{ name: name, points: pts, route: !!(rc0 && mpState.isRouteColl(rc0)) }], []);
         setStatus(t("points.downloaded", { n: pts.length, name: name }));
       });
     });
@@ -17671,6 +17813,8 @@
       '<div class="mp-actions">' +
         '<button type="button" id="mp-save" class="btn">' + esc(t("points.save")) + '</button>' +
         (isEdit ? '<button type="button" id="mp-del" class="btn btn-light">' + esc(t("btn.delete")) + '</button>' : "") +
+        // ＋➤ straight from a user point's own popup (owner, 2026-10-04): the stop takes the name as typed
+        '<button type="button" id="mp-route" class="btn btn-light ico-btn mp-route-btn" title="' + esc(t("route.add")) + '" aria-label="' + esc(t("route.add")) + '">' + ico("navplus") + '</button>' +
       '</div>' +
     '</div>';
   }
@@ -17717,6 +17861,11 @@
     if (map) map.once("popupclose", function () { document.removeEventListener("keydown", editorKey, true); });
     var cc = document.querySelector(".mp-coords-copy");
     if (cc) cc.addEventListener("click", function () { copyCoords(this.getAttribute("data-lat"), this.getAttribute("data-lon")); });
+    var rb = document.getElementById("mp-route");
+    if (rb) rb.addEventListener("click", function () {
+      var nm = ((document.getElementById("mp-name") || {}).value || p.name || "").trim();
+      addToRoute(+p.lat, +p.lon, nm); if (map) map.closePopup();
+    });
     var save = document.getElementById("mp-save"); if (!save) return;
     save.addEventListener("click", function () {
       var name = (document.getElementById("mp-name").value || "").trim();
@@ -18018,6 +18167,10 @@
   var mpRowsShown = [];    // the rows as last drawn, so a row button can reach its point
   function refreshMpPanel() {
     var panel = document.getElementById("mp-panel"); if (!panel) return;
+    // Closed → nothing to draw. Every map-point redraw came through here and rebuilt the whole
+    // (invisible) panel — seconds per list render with a big list ticked. Every way of opening
+    // it shows the panel first and then calls this.
+    if (panel.style.display === "none") return;
     // The whole panel is rebuilt from innerHTML below, which resets its scroll — so
     // ticking a list halfway down jumped the view back to the top. Remember where the
     // panel (and its two inner scrollers) were and put them back after the rebuild.
@@ -18226,7 +18379,7 @@
     mpSortedColls().forEach(function (c) {
       var f = String(c.folder || "");
       if (!(f in groups)) { groups[f] = []; groupNames.push(f); }
-      groups[f].push({ c: c, html: mpCollRowHtml("p", c.name, (c.points && c.points.length) || 0, "", !!mpState.shownColls()[c.name], t("points.deleteColl"), isCollProtected(c.name), isRouteColl(c)) });
+      groups[f].push({ c: c, html: mpCollRowHtml("p", c.name, mpState.collCount(c), "", !!mpState.shownColls()[c.name], t("points.deleteColl"), isCollProtected(c.name), isRouteColl(c)) });
     });
     var collItems = [];
     groupNames.filter(Boolean).sort(function (a, b) { return a.localeCompare(b); }).forEach(function (f) {
@@ -18361,7 +18514,7 @@
       hdr.textContent = t("detlist.saveTitle");
       el.appendChild(hdr);
       lists.forEach(function (c) {
-        var n = (c.points && c.points.length) || 0;
+        var n = mpState.collCount(c);
         el.appendChild(drmBtn(c.name + " (" + n + ")", function () { closeAnchoredMenu(); then(c.name); }, "pin"));
       });
       el.appendChild(drmBtn(t("detmenu.newList"), function () {
@@ -18496,6 +18649,7 @@
       root.querySelectorAll(".mp-coll-del").forEach(function (b) {
       b.addEventListener("click", function (e) {
         e.preventDefault();
+        closeAnchoredMenu();   // the ⋯ menu (z 8000) sat on top of the confirm on a phone (owner, 2026-10-04)
         var type = this.getAttribute("data-type"), name = this.getAttribute("data-name");
         if (type === "p" && isCollProtected(name)) { setStatus(t("lists.protectedMsg", { name: name })); return; }
         modalConfirm(t(type === "d" ? "dset.deletePrompt" : "points.deleteCollPrompt", { name: name })).then(function (ok) {
@@ -20567,8 +20721,23 @@
     var detlistSave = document.getElementById("detlist-save");
     if (detlistSave) detlistSave.addEventListener("click", function (e) {
       e.stopPropagation();
-      var r = this.getBoundingClientRect();
-      showDetSaveMenu(r.left, r.bottom + 4, detListLastRows);
+      var r = this.getBoundingClientRect(), rows = detListLastRows || [];
+      // Several species in the popup → choose WHICH one to save first (owner, 2026-10-04:
+      // "currently all the species are stored. One should save only one … at a time").
+      // "All" stays available as the last row, for the checklist-as-a-whole case.
+      var bySp = Object.create(null), order = [];
+      rows.forEach(function (d) { if (!bySp[d.key]) { bySp[d.key] = []; order.push(d.key); } bySp[d.key].push(d); });
+      if (order.length <= 1) { showDetSaveMenu(r.left, r.bottom + 4, rows); return; }
+      closeAnchoredMenu();
+      var el = openAnchoredMenu("detrow-menu");
+      var hdr = document.createElement("div"); hdr.className = "detrow-menu-hdr"; hdr.textContent = t("detlist.saveWhich"); el.appendChild(hdr);
+      order.map(function (k) { return { k: k, nm: detListName(k, bySp[k][0].name) }; })
+        .sort(function (a, b) { return a.nm.localeCompare(b.nm); })
+        .forEach(function (o) {
+          el.appendChild(drmBtn(o.nm + (bySp[o.k].length > 1 ? " (" + bySp[o.k].length + ")" : ""), function () { showDetSaveMenu(r.left, r.bottom + 4, bySp[o.k]); }, "pin"));
+        });
+      el.appendChild(drmBtn(t("detlist.saveAll", { n: rows.length }), function () { showDetSaveMenu(r.left, r.bottom + 4, rows); }, "save"));
+      positionAnchoredMenu(el, r.left, r.bottom + 4);
     });
     var detlistNav = document.getElementById("detlist-nav");
     if (detlistNav) detlistNav.addEventListener("click", function (e) {
@@ -20650,7 +20819,7 @@
     syncFile.addEventListener("change", function (e) {
       var f = e.target.files && e.target.files[0]; if (!f) return;
       var rd = new FileReader();
-      rd.onload = function () {
+      rd.onload = function () { mpState.whenAllLoaded().then(function () {
         try {
           var s = importAppData(rd.result);
           setStatus(t("sync.imported", { n: s.checklistsIncoming, total: s.checklistsTotal }));
@@ -20659,7 +20828,7 @@
           flushWrites().then(function () { setTimeout(function () { location.reload(); }, 800); });
         } catch (err) { setStatus(t("sync.importFailed", { msg: err.message || "" })); }
         e.target.value = "";
-      };
+      }); };
       rd.readAsText(f);
     });
 
@@ -22422,14 +22591,21 @@
       Object.keys(detPlot).forEach(function (k) { var idx = idxMap[k]; if (idx != null) byKey[k] = classifySeason(cell, idx, week); });
       obsSeasonCache = { sig: sig, byKey: byKey };   // now the Season/Yr-peak sort has data
       // Re-render (re-sort) only if the values were just computed AND the list is ordered by Season / Yr-peak.
-      if (rows && wasStale && (spObsSort.col === "season" || spObsSort.col === "ytop")) { container.innerHTML = buildSpObsHtml(rows); wireSpDetail(container); }
-      Array.prototype.forEach.call(container.querySelectorAll("td.sp-season[data-key]"), function (td) {
-        var s = byKey[td.getAttribute("data-key")]; if (!s) return;
-        td.innerHTML = seasonCellHtml(s);
-        var yt = td.parentNode && td.parentNode.querySelector("td.sp-ytop");
-        if (yt) yt.innerHTML = ytopCellHtml(s);
-      });
+      if (rows && rows.length && wasStale && (spObsSort.col === "season" || spObsSort.col === "ytop")) buildSpObs(container, rows);
+      paintObsSeason(container);
     }).catch(function () {});
+  }
+  // Season / Yr-peak cells of whatever rows `scope` holds, from the cache (a lazily added
+  // slice of the observation list paints its own; nothing happens until the cache is current).
+  function paintObsSeason(scope) {
+    if (!currentSpView || obsSeasonCache.sig !== curObsSeasonSig()) return;
+    var byKey = obsSeasonCache.byKey || {};
+    Array.prototype.forEach.call(scope.querySelectorAll("td.sp-season[data-key]"), function (td) {
+      var s = byKey[td.getAttribute("data-key")]; if (!s) return;
+      td.innerHTML = seasonCellHtml(s);
+      var yt = td.parentNode && td.parentNode.querySelector("td.sp-ytop");
+      if (yt) yt.innerHTML = ytopCellHtml(s);
+    });
   }
 
   // Progress bar inside the computing overlay (0..1).
@@ -24699,9 +24875,12 @@
   // Build the 12 month toggles (localized short names) under the date range.
   // Selecting some restricts the fetch to those months across ALL years in the
   // range (GBIF's &month filter); selecting none = every month.
+  var _histMonthMemo = { lang: null, names: {} };   // building an Intl formatter per call cost 1.6 s of a list open (730 axis labels)
   function histMonthShort(m) {
+    if (_histMonthMemo.lang !== lang) _histMonthMemo = { lang: lang, names: {} };
+    if (_histMonthMemo.names[m]) return _histMonthMemo.names[m];
     var fmt; try { fmt = new Intl.DateTimeFormat(lang, { month: "short" }); } catch (e) { fmt = null; }   // `lang` = the resolved UI language
-    return fmt ? fmt.format(new Date(2021, m - 1, 15)) : String(m);
+    return (_histMonthMemo.names[m] = fmt ? fmt.format(new Date(2021, m - 1, 15)) : String(m));
   }
   // Reflect the current selection in the collapsed dropdown's summary so the user
   // sees which months are active without opening it (blank → all months).
@@ -24935,9 +25114,9 @@
     } else {
       tbl.style.display = "none"; rec.style.display = "";
       var rows = collectVisibleDetections(null, false);   // honour the species selection / applied list (show filtered species only)
-      rec.innerHTML = rows.length ? buildSpObsHtml(rows)
-        : '<div class="dl-empty">' + escapeHtml(t("detlist.empty")) + "</div>";
-      wireSpDetail(rec); fillObsSeasonCells(rec, rows);
+      if (rows.length) buildSpObs(rec, rows);
+      else { rec._obsGen = (rec._obsGen || 0) + 1; rec.innerHTML = '<div class="dl-empty">' + escapeHtml(t("detlist.empty")) + "</div>"; wireSpDetail(rec); }
+      fillObsSeasonCells(rec, rows);
     }
   }
   // ---- Species gallery ("Images" layout) ------------------------------------
@@ -26369,7 +26548,7 @@
           (hist.months && hist.months.length ? " · " + t("hist.months") + " " + hist.months.slice().sort(function (a, b) { return a - b; }).map(histMonthShort).join(", ") : "") : ""));
       var tb0 = document.getElementById("sp-tbody");
       tb0._sightingsAgg = null; tb0._fetchAgg = null;   // a fresh list: no sightings yet (the previous point's must not leak in until this fetch lands)
-      tb0.innerHTML = results.map(function (r) {
+      var rowHtml = function (r) {
         var cmpCell = !hasCompare ? "<td></td>" : cmpAllPositive ? cmpBarCell(kind, r.cmpVal) : deltaCell(r.cmpVal);
         var name2Cell = '<td class="name2">' + (secondLang ? escapeHtml(secondName(r.label)) : "") + '</td>';
         var dKey = escapeHtml(r.label.key);
@@ -26384,7 +26563,20 @@
                '<td class="num sp-dist" data-key="' + dKey + '"></td>' +
                probBarCell(pct + "%", pct, probHueColor(pRange > 0 ? (r.prob - pLo) / pRange : 1)) +
                '<td class="season-cell sp-season" data-key="' + dKey + '"></td>' + cmpCell + '</tr>';
-      }).join("");
+      };
+      // The table can run to 1,000+ rows; building and parsing them in one go froze a phone
+      // for seconds on the first open (owner, 2026-10-04: "clicking the list view button
+      // seems to hang the app"). The first screenful goes in at once, the rest in slices
+      // with a breath in between, so the page shows and scrolls while the tail arrives.
+      var ROWS_FIRST = 60, ROWS_SLICE = 150;
+      if (!keepScroll) spClipN = SP_CLIP_STEP;   // a fresh list starts with one batch laid out (a rebuild in place keeps its depth)
+      tb0.innerHTML = results.slice(0, ROWS_FIRST).map(rowHtml).join("");
+      for (var ri = ROWS_FIRST; ri < results.length; ri += ROWS_SLICE) {
+        await new Promise(function (res) { setTimeout(res, 0); });
+        if (myGen !== spListGen) { releaseDot(); return; }   // a newer list took over
+        tb0.insertAdjacentHTML("beforeend", results.slice(ri, ri + ROWS_SLICE).map(rowHtml).join(""));
+        clipSpRows();
+      }
       obsProgress();   // animate the loading placeholders until counts arrive
       fillSeasonCells(lat, lon, myGen);   // async: fill the Season column from the 48-week cache
       if (speciesListSort.col) sortSpeciesList();   // apply name/prob/stat sort now (count sort re-applies once data loads)
@@ -26463,6 +26655,10 @@
         // Restored on app open — do NOT re-run the observation fetch (its dots are already
         // back on the map from saveDetections). Populate the list's counts locally from the
         // restored detections: applySightings merges detPlot even with an empty result.
+        // A breath between the table build and this second pass over every row, so the two
+        // halves are separate tasks and the page can paint / scroll in between.
+        await new Promise(function (res) { setTimeout(res, 0); });
+        if (myGen !== spListGen) { releaseDot(); return; }
         var tbNF = document.getElementById("sp-tbody");
         if (tbNF) {
           var tokNF = lat.toFixed(4) + "," + lon.toFixed(4);
