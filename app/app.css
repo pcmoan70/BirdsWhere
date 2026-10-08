@@ -1857,7 +1857,7 @@ button.dd-name:hover { text-decoration: underline; }
 .bird-spot-mk svg { width: var(--ico-s); height: var(--ico-s); display: block; }
 
 /* Tickable list dropdowns (species + observer filter panes) + list manager. */
-.sp-splist-head .sp-lists-manage { background: none; border: none; cursor: pointer; color: var(--brand); font-size: var(--fs-b); margin-left: 4px; padding: 0 2px; }
+.sp-splist-head .sp-lists-manage, .sp-list-sub .sp-lists-manage { background: none; border: none; cursor: pointer; color: var(--brand); font-size: var(--fs-b); margin-left: 4px; padding: 0 2px; }
 .sp-lists-dd, .det-obslists-dd { margin: 2px 0 4px; }
 .sp-lists-dd > summary, .det-obslists-dd > summary { cursor: pointer; font-size: var(--fs-b); padding: 3px 6px; border: 1px solid var(--border); border-radius: 5px; list-style: none; display: inline-flex; align-items: center; gap: 4px; user-select: none; }
 .sp-lists-dd > summary::after, .det-obslists-dd > summary::after { content: "▾"; color: var(--ink-muted); }
@@ -1941,6 +1941,10 @@ button.dd-name:hover { text-decoration: underline; }
 .aff-sec.on .aff-sec-sum { color: var(--brand); font-weight: 600; }
 .aff-sec-clear { display: inline-flex; align-items: center; background: none; border: none; cursor: pointer; color: var(--brand); padding: 0; }
 .aff-sec-body { margin-top: 7px; }
+.aff-sec-head { cursor: pointer; user-select: none; }
+.aff-sec-chev { flex: 0 0 auto; width: 1em; font-size: 12px; color: var(--ink-muted); transition: transform .15s; }
+.aff-sec.folded .aff-sec-chev { transform: rotate(-90deg); }
+.aff-sec.folded .aff-sec-body { display: none; }
 /* Standalone Hidden checkbox at the very bottom of the filter pane. */
 .aff-sel-names { font-size: var(--fs-b); color: var(--ink); line-height: 1.4; max-height: 84px; overflow-y: auto; }
 .aff-src-list { display: flex; flex-direction: column; gap: 2px; }
@@ -2885,11 +2889,34 @@ button.dd-name:hover { text-decoration: underline; }
 .sp-prob-vals { font-size: var(--fs-s); color: var(--ink-muted); font-variant-numeric: tabular-nums; }
 .aff-name-cnt { display: block; margin-top: 4px; font-size: var(--fs-s); color: var(--ink-muted); font-variant-numeric: tabular-nums; }
 .aff-name-cnt:empty { display: none; }
+.aff-sel-list { margin-top: 8px; }
+.aff-sel-list .aff-nm-rows, .aff-name-list .aff-nm-rows { margin-top: 6px; max-height: 32vh; overflow-y: auto; }
+.aff-nm-tri.sp-tri-include, .aff-nm-tri.sp-tri-exclude { color: #fff; font-weight: 700; line-height: 1; }
+/* Words in notes (detPassesText): word box + Include / Exclude, then the chips */
+.aff-text-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.aff-text-row .aff-text-in { flex: 1 1 10ch; min-width: 0; }
+.aff-words { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.aff-word { display: inline-flex; align-items: center; gap: 2px; padding: 1px 4px 1px 8px; border-radius: 12px; font-size: var(--fs-s);
+  background: color-mix(in srgb, #2e7d32 14%, transparent); color: var(--ink, #222); border: 1px solid color-mix(in srgb, #2e7d32 45%, transparent); }
+.aff-word.exc { background: color-mix(in srgb, #c62828 12%, transparent); border-color: color-mix(in srgb, #c62828 45%, transparent); text-decoration: line-through; }
+.aff-word-x { border: 0; background: none; color: inherit; cursor: pointer; font-size: 14px; line-height: 1; padding: 0 3px; text-decoration: none; }
+.aff-tl-count { margin-top: 6px; font-size: var(--fs-s); color: var(--ink-muted, #666); font-variant-numeric: tabular-nums; }
+.aff-tl-list { margin-top: 4px; max-height: 40vh; overflow-y: auto; border: 1px solid var(--border, #ddd); border-radius: 6px; background: var(--surface, #fff); }
+.aff-tl-row { display: block; padding: 5px 8px; border-bottom: 1px solid var(--border, #eee); cursor: pointer; font-size: var(--fs-s); line-height: 1.35; }
+.aff-tl-row:last-child { border-bottom: 0; }
+.aff-tl-row:hover { background: var(--surface-2, #f4f4f4); }
+.aff-tl-meta { display: block; font-size: var(--fs-xs, 11px); color: var(--ink-muted, #777); }
+.aff-tl-txt { display: block; overflow-wrap: anywhere; }
+.aff-tl-txt mark { background: #ffe58a; color: #222; padding: 0 1px; border-radius: 2px; }
+.aff-hint { margin-top: 4px; font-size: var(--fs-xs, 11px); color: var(--ink-muted, #777); }
 /* Sync-options dialog (which categories + direction). */
 .sync-opts-box { max-width: 360px; }
 .sync-opts-box .so-sec { margin: 12px 0 4px; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; color: var(--ink-faint); }
 .sync-opts-box .so-dir, .sync-opts-box .so-cat { display: flex; align-items: center; gap: 8px; padding: 5px 2px; cursor: pointer; }
 .sync-opts-box .so-dir input, .sync-opts-box .so-cat input { flex: 0 0 auto; }
+.sync-opts-box .so-down { margin: 4px 0 6px 24px; padding: 6px 8px; border-left: 2px solid var(--border, #ccc); }
+.sync-opts-box .so-folder-row { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.sync-opts-box .so-folder { max-width: 16em; }
 .sync-opts-box .so-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 /* Dated backups in Drive's app-data folder — Drive's own UI cannot list them, so
    this is the only way to reach the history. */
@@ -4842,3 +4869,7 @@ tr.sp-flash > td { animation: spFlash 1.6s ease-in-out 1; }
 
 .mp-actions .mp-route-btn { margin-left: auto; padding: 4px 8px; display: inline-flex; align-items: center; }
 .mp-actions .mp-route-btn .btn-ico { width: var(--ico-m); height: var(--ico-m); }
+
+/* The list a point was last saved to: first in every list picker, marked (rememberSaveList). */
+.detrow-menu-item.drm-last { font-weight: 700; }
+.detrow-menu-item.drm-last::after { content: "\2713"; margin-left: auto; padding-left: 8px; color: var(--accent, #1f8a3b); font-weight: 700; }

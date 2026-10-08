@@ -1093,7 +1093,10 @@ window.AppPoints = (function () {
           "breedingEvidence", "breeding_evidence", "category"],
     stage: ["lifeStage", "life_stage", "lifestage", "age"],
     country: ["country", "countryCode", "country_code"],
-    dset: ["dataset", "datasetName", "dataset_name", "collectionCode"]
+    dset: ["dataset", "datasetName", "dataset_name", "collectionCode"],
+    // How far off the position may be, in metres — drawn as a transparent circle round the pin
+    // (owner, 2026-10-07: "make a point list with radius of transparent dots reflecting uncertainty")
+    radius: ["uncertainty_m", "radius_m", "radius", "coordinateUncertaintyInMeters", "uncertainty", "accuracy"]
   };
   // Our own point builders write the whole record as an HTML <table> into <description>:
   // species, date, place, country, evidence, count, notes, observer, dataset, a GBIF link.
@@ -1197,11 +1200,19 @@ window.AppPoints = (function () {
   // So EVERY record with a species, model or not, goes through the detection pipeline:
   // legend row, translated name, species menu, source link, ⓘ (owner, 2026-10-02: "the popup
   // windows for imported lists … should look the same as fetched data").
+  // A stored "x:<sci>" key (a name the model did not know as written — an old genus, say) is
+  // looked up again, so lists imported before the resolver existed show the model species too.
+  var _xKeyOf = Object.create(null);
   function detKeyOf(p) {
     if (!p) return "";
-    if (p.spKey) return p.spKey;
+    if (p.spKey) {
+      if (p.spKey.indexOf("x:") !== 0) return p.spKey;
+      var xk = p.spKey + "|" + (p.cls || "");
+      if (!(xk in _xKeyOf)) { var lx = labelForSci(p.spKey.slice(2), p.cls); _xKeyOf[xk] = lx ? lx.key : p.spKey; }
+      return _xKeyOf[xk];
+    }
     var sci = String(p.sci || "").trim(); if (!sci) return "";
-    var l = labelForSci(sci);
+    var l = labelForSci(sci, p.cls);
     return l ? l.key : "x:" + sci;
   }
   var SRC_OF = { ao: "Artsobs", gbif_sql: "GBIF", gbif_api: "GBIF", parquet: "GBIF", artsobservasjoner: "Artsobs", artportalen: "Artportalen" };
@@ -1215,6 +1226,7 @@ window.AppPoints = (function () {
         if (v == null || String(v).trim() === "") continue;
         v = String(v).trim();
         if (field === "date") { var m = /\d{4}-\d{2}-\d{2}/.exec(v); v = m ? m[0] : v.slice(0, 10); }
+        if (field === "radius") { v = parseFloat(v); if (!(v > 0)) continue; }
         pt[field] = v;
         return;
       }
@@ -1864,6 +1876,10 @@ window.AppPoints = (function () {
     return L.divIcon({ className: "mp-tri-icon", html: svg, iconSize: [20, 18], iconAnchor: [10, 11] });
   }
   function renderMpPin(p, editable, color) {
+    if (+p.radius > 0) {   // the position's uncertainty: a transparent circle in metres, under the pin
+      var rc = p.color || color || mpColorFor(p);
+      mpLayer.addLayer(L.circle([p.lat, p.lon], { radius: +p.radius, color: rc, weight: 1, opacity: 0.55, fillColor: rc, fillOpacity: 0.12, interactive: false }));
+    }
     // A detection-saved pin (read-only, carries the species' colour) is drawn
     // like the plotted detection — species colour + ★ for interesting + a black
     // centre dot for rare — sitting on a slightly larger list-coloured disc, so

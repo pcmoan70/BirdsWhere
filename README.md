@@ -335,9 +335,27 @@ so the list is useful before you have fetched anything. **When a spot has no obs
 the list fills with the model's own expectation for that place instead of coming back empty — **likeliest first**, everything it puts
 at 1 % or better (and, where even that is empty, its best 25 anyway), with a line saying so. The
 **[!]** button switches back to observed-only; your own **[?]** setting is left as you had it. **Filtering** lives in the **filter pane** (funnel button next to the layout
-selector; it keeps its scroll position as you tick things). The **name search** there matches
-fuzzily against the displayed, English and scientific names, shows a live **match count**, and
-narrows the table, the legend *and* the map dots together. Active funnels turn **orange only when
+selector; it keeps its scroll position as you tick things). Every section **folds** — tap its
+heading (▾ / ▸); which sections are folded is remembered. (The count section is called **Counts**.) **Species lists** shows the lists straight
+away — *Your lists* with the ✎ (manage / edit) beside them, then the premade *Groups*. The **name search** — in the
+**Species** section — matches
+fuzzily against the displayed, English and scientific names and runs **half a second after the
+last key press**; it shows **how many species match** (the number listed under it), narrows the table, the legend *and* the map dots
+together, and lists the **matching species** under the box, each with a three-state box — tap for
+**include** (green +), again for **exclude** (red −), again for neither — on the same selection the
+legend and the species lists use. Below it the section lists **every species currently included or
+excluded** — however it was chosen (legend tap, a species list, the search) — with the same box, so a
+legend selection can be changed or cleared from the pane. **Words in notes** searches the records'
+own text — note, place, activity, observer (and a plain pin's name, tags and note) — for fetched data
+and imported lists alike: type a word and press **Include** (or Enter) or **Exclude**; each becomes a
+chip (+ green, − red, × removes it). A record shows when it holds **any** include word and **none** of
+the exclude words. Matching ignores case and accents and finds the word inside longer ones ("ugle" finds
+"slaguglekasse"); from five letters it also forgives a typo (two from eight letters) as long as the
+first letter is right. While you type, the section shows **how many observations** contain the word
+— counted over what the **other** filters and the map view keep, never narrowed by the words already
+chosen — and a **scrollable list of their
+notes** with the hit marked (newest first, up to 300; tap one to go to it on the map) — the list
+appears only while a word is in the box. Remembered across visits; the black × clears it with the rest. Active funnels turn **orange only when
 the filters actually remove observations**, with a tiny green/red bar underneath showing the
 kept-vs-removed fraction. The **? button** beside the funnel (orange when on, remembered) also
 lists the species the model *predicts* here that have **no observations yet** — down to the list's
@@ -668,9 +686,8 @@ and re-filters as you pan or zoom, the same way the legend counts only what is o
 - **Import / export** — points import and export as **KML, KMZ and GeoJSON**. Export everything from
   Settings → *Map points*; download a **single list or trip** from the ↓ beside its × — in the Points
   menu and in the lists window (press-and-hold or right-click the Points button) — choosing the format
-  there. *Load from file* also takes a **direct link** to a .kmz / .kml / .geojson — or a BirdsWhere
-  **.share** file — that the host lets a browser fetch (a GitHub raw link, say) — the popover has the
-  file picker and a link field; the bytes then take the same import path. A **.share observation
+  there. *Load from file* opens one box: paste a **direct link** and press Load, or leave it **empty and press Load to choose a file**. The link can point to a .kmz / .kml / .geojson — or a BirdsWhere
+  **.share** file — that the host lets a browser fetch (a GitHub raw link, say); the bytes then take the same import path as a picked file. A **.share observation
   list** loaded this way (a person's records, say) is **saved as a point list** like a KMZ: it appears
   in the Points menu with its tick, year tag chips and ⋯ menu, survives reloads, and while ticked its
   records are plotted exactly like fetched observations (date · observer · place groups, count, note,
@@ -938,10 +955,17 @@ Right-click / long-press / tap any species name for a menu **led by the species 
   **NBN Atlas (UK)** link.
 - **Lists & actions** — **Show only this species** (when it has observations plotted: isolates that
   species on the map + detections list, like a legend selection; tap again on the same species to show
-  everything), then state-showing **toggles**: **Interesting** (★), **Year list** and **Life
-  list** (each coloured when the species is in that set, greyed when not). Also **＋ Add to route**.
+  everything), **＋ Add to species list…** with **Add point to list…** directly under it (for a
+  record), then state-showing **toggles**: **Interesting** (★), **Year list** and **Life
+  list** (each coloured when the species is in that set, greyed when not).
 - **This observation** (bottom, when opened from a record with a location) — **Show on map**,
-  **Navigate here**, **Add to route** and **Add point to list…**.
+  **Navigate here** and **Add to route**.
+- **Uncertainty circles** — a point whose file carries `uncertainty_m` (also `radius_m`, `radius`,
+  `coordinateUncertaintyInMeters`, `accuracy`) is drawn with a transparent circle of that radius in
+  metres around it, in the list's colour.
+- **Last list remembered** — whichever list you last saved a point to comes **first, marked ✓**, in
+  every "save to list" picker (observation menu, Save in the detections list, copy / file points),
+  and the point editor preselects it. Remembered across visits.
 
 ---
 
@@ -1152,12 +1176,27 @@ only; no background sync). Collections always merge, so no direction can delete 
 device.
 
 Everything lands in a folder called **BirdsWhere** in your Drive, which you can open like any
-other. Alongside the sync file (`migration_calendar.json`, plus the ten most recent dated copies)
-each push writes **readable exports** of the same data: a `.kmz` for every point list and every
-saved trip, `Species lists.csv` (life, year, custom and starred lists) and `Checklists.csv`. Those
-are one-way — nothing reads them back, they are there so the data is usable in Google Earth, a
-spreadsheet or anywhere else. Backups written before v1875 live in Drive's hidden app-data area
-and are still read; the next push brings them into the folder.
+other; each sync that changes something writes a dated subfolder (the ten newest are kept).
+**Point lists are standalone files** (since v2013): every synced list is its own
+`Points - <name>.kmz` — an ordinary KML that opens in Google Earth / My Maps and also carries the
+exact list (species, date, observer, count, note, source link, ids) for the app to read back. The
+sync file `migration_calendar.json` holds settings and the small collections, and for each list
+only its name, folder, file name, point count and a signature. A sync downloads only the lists
+that differ from the device's own, uploads only the lists that changed, and copies the unchanged
+ones inside Drive; a sync with nothing to change writes nothing. Beside them are **readable
+exports**: a `.kmz` per saved trip, `Species lists.csv` and `Checklists.csv` — those are one-way.
+**Directions** (since v2021): **Upload** writes a **new dated folder holding only this device's
+data** — nothing from Drive is read into the device or carried into the folder (an unchanged list
+file is copied server-side instead of uploaded again). **Download** reads the folder you pick
+(*List folders…*, default the newest) and either **merges** it in — an outer join: the folder's
+lists and points are added, nothing on this device is deleted — or **replaces**: each list in the
+folder replaces this device's copy of it (asks first). Lists that are not in the folder are always
+kept; delete them by hand if you want them gone. **Two-way** merges both
+ways (union), as before.
+Backups written by earlier versions (lists inside the JSON, or in Drive's hidden app-data area)
+are still read; the next push rewrites them in the new layout. Update every device before
+syncing between them: an older version reads the new files' lists as empty until it updates
+(nothing is deleted). Settings → Export still writes one self-contained JSON.
 
 The sync carries your settings, lists, trips, checklists, starred/life/year lists, the species
 names harvested from iNaturalist and your own Drive client ID. The **fetched observations** are
