@@ -599,7 +599,8 @@ The control line opens three mutually-exclusive **filter subwindows**:
   the point popup's mode buttons — **Historic** (switch to Historic with that spot placed, pick the
   range, Fetch) and **Migration** (the Location analysis for that spot; ‹ returns to the list).
 - **👤 Observers** — a checklist of observers with a scope button that cycles **All → None →
-  each saved observer list**, plus an editor (**✎**).
+  each saved observer list**, plus an editor (**✎**). Observers on an exclude list show struck
+  through: their records are hidden (see *Observer lists* below).
 
 **Region / "Far migrants" filter** (the funnel's all-filters pane → *Region*). Every species
 carries a geographic **"belonging" fingerprint** computed offline from the model — how much of
@@ -615,10 +616,19 @@ lists** together.
 Plus **−** minimise (to a corner pill), a black **× Clear filters** (keeps the dots), and a
 red **×** that clears all detections — or, when fetched-area outlines exist, first arms
 **per-area delete** (a red × on each area removes just that area's detections; a second click
-clears everything). A **⚠** appears when the *Max points on map* draw cap is hiding dots.
+clears every fetched detection). Shown saved point lists and detection sets are **not** removed —
+they stay ticked and on the map. A **⚠** appears when the *Max points on map* draw cap is hiding dots.
+
+**Opening the app starts clean**: no species selection and no filters (only display preferences —
+the minimised legend, sort order — and deleted species are kept), and the observations fetched last
+time are **not** put back unless Settings → Fetching & detections → **Show the last session's
+observations on open** is on (off by default). Shown point lists still appear; "Fetch on open" is the
+only start-up fetch.
 
 There's also a standalone red **×** on the **right of the map** (near the offline-download button),
-shown only while observations are plotted: one tap clears them all off the map and the × disappears.
+shown while observations or lists are on the map: the first tap clears the fetched observations
+(saved point lists stay shown); a second tap — once nothing fetched is left — takes the shown lists
+and trips off the map too (un-ticked; the lists themselves are kept).
 
 A **✓ Update** button (also on the right of the map, shown only when you have fetched areas) brings
 **every area you've already fetched up to today's latest observations** in one tap: each area is
@@ -662,11 +672,12 @@ and re-filters as you pan or zoom, the same way the legend counts only what is o
   adds the point to the route. The **Points**
   header button (badge = number of lists) opens a panel of tick-to-show lists, per-tag filter
   chips — ordered counts · months and season · mention categories · other words · species names,
-  each with the number of shown points carrying it. A chip cycles through three states: no say →
-  **included** (coloured; only tagged points show) → **excluded** (coloured, crossed out; its points
-  are hidden whatever else is ticked) → no say. An **All** chip selects every tag or clears them all,
-  exclusions included; the filter is applied one second after the last tap and remembered on the
-  device — a one-button Distance ⇄ Name sort toggle, and the merged points sorted by distance. Each saved
+  each with the number of shown points carrying it. **A lit chip means its points are shown.** At first
+  everything shows and every chip is lit; a tap hides that tag's points (the chip is crossed out) and the
+  next tap shows them again. **All** switches everything off; then tapping chips shows only the tags picked
+  (a point with several tags shows when any of them is picked), and **All** again shows everything. A list's
+  areas with tags of their own (e.g. uncertainty circles, cliffs) follow the chips like its pins; untagged
+  areas always show. The filter is applied one second after the last tap and remembered on the device — a one-button Distance ⇄ Name sort toggle, and the merged points sorted by distance. Each saved
   list is one row — **tick · name · funnel · ⋯** — and the **⋯** opens a menu where every action is a
   labelled row that says what it does: navigate, share link, edit list, download, **Move up / Move
   down** (your own order), **Move to folder…** (lists can be grouped in folders; a folder header folds
@@ -699,8 +710,26 @@ and re-filters as you pan or zoom, the same way the legend counts only what is o
   link to the original record, in the list's colour halo. A shared *link* (`?s=`) still plots once
   without saving. Fetched observations you **Save** from the Points menu become the same kind of
   list, with the whole record kept; saved "trips" from earlier versions are converted into such
-  lists on the first start. Google Drive share links cannot be fetched by a web page
-  (Drive refuses cross-site browser requests), so download such a file and choose it instead.
+  lists on the first start. **Google Drive share links** work too, for a file or a folder of
+  .kmz / .kml / .geojson / .share files: Drive refuses a plain cross-site fetch, so the app asks you
+  to **sign in with the Google account the file is shared with** (read-only Drive access, a separate
+  token from Sync, dropped right after) and reads it through the Drive API; each file then imports
+  like a picked one. To share a KMZ with someone: put it on Drive, share it with their Google account,
+  paste the share link into *Load from file* and press **🔗 App link** — it copies a BirdsWhere link
+  (`…/?drive=<share link>`) that opens the file for them after they sign in. Opening the app with
+  `?drive=<share link>` asks once (Sign in & open / Cancel) and drops the parameter.
+- **Saved and shared lists keep everything.** A downloaded KML / KMZ carries each list exactly (a `birdswhere-list` JSON block per list folder — every point field: colour, uncertainty radius, ring marker, circle edge, species, observer, count, place, link, notes, tags — plus the list's areas, tracks, colour and route flag) and, for other apps, each point's colour as an icon style and its fields as ExtendedData (`uncertainty_m`, `unc_edge`, `marker`, …). A GeoJSON download carries the same lists as a `birdswhere-lists` member. Loading such a file (Load from file, drag and drop, several at once, a link, or a Drive share) restores the lists **exactly as saved** — no field-mapping dialog. A share link carries every point field plus the list's areas and tracks on screen.
+  **Someone else's file opens view-only:** a file you own (or may edit) on Drive imports as your own
+  list; any other — a file shared *with* you — becomes a **read-only shared list**: on the map, in the
+  legend and the record popups, and **never** written to the device's store, synced, exported
+  (downloads, KML/KMZ/GeoJSON, backups, map shares) or copied — no copy / edit / route on its points,
+  it is not a target in any list picker, its records cannot be saved into a list, and search skips it.
+  The device keeps only a **reference** (the list's name and the Drive file id, never the points).
+  **Every time the list is shown** (its tick), the app asks Google Drive whether the file is still
+  shared with your account and reads it fresh; if the owner has **withdrawn** it (Drive answers
+  403 / 404) the app refuses to show it and **removes the list**; if Drive cannot be reached it is not
+  shown. After a reload it is there unticked, with no points, until shown (and checked) again. Its
+  ⋯ menu offers only "Remove the shared list".
   Import from either the Settings
   *Import* button or *Load from file* in the Points menu — or simply **drag the file onto the page**
   (one file is shown; several at once are saved as lists without being shown) — both
@@ -725,6 +754,11 @@ and re-filters as you pan or zoom, the same way the legend counts only what is o
   legend or the detections list) to add them to a list. *Lists → Observer lists… → Import…* loads a
   list from a .csv / .txt file (one observer per line: the first column, or an "observer" column);
   the list is named after the file, and importing the same file again replaces its members.
+  **Hide an observer:** tap their name → *Hide observer* puts them on an **exclude list**
+  (created as "Hidden observers" the first time): records with them among the observers disappear
+  everywhere — map, legend, lists and counts — whatever the observer filter says (*Show observer again*
+  brings them back). Any observer list can be made an exclude list with its *Exclude list* switch in
+  *✎ Observer lists*, and switched off there again; exclude lists are not offered as filters.
 - **Stored locations** — from a point's *Location ▸ → 📍 Save location*, name a spot and give it
   a radius. Press-and-hold the **🔍** search button to recall them: while the
   popup is open each ticked location previews on the map as a dashed square with a **📍 pin** at
@@ -961,8 +995,44 @@ Right-click / long-press / tap any species name for a menu **led by the species 
 - **This observation** (bottom, when opened from a record with a location) — **Show on map**,
   **Navigate here** and **Add to route**.
 - **Uncertainty circles** — a point whose file carries `uncertainty_m` (also `radius_m`, `radius`,
-  `coordinateUncertaintyInMeters`, `accuracy`) is drawn with a transparent circle of that radius in
-  metres around it, in the list's colour.
+  `coordinateUncertaintyInMeters`, `accuracy`) is drawn with a see-through circle of that
+  radius in metres around it: a thin black edge and a faint fill in the list's colour. A point with
+  `unc_edge` (px) draws its edge that much thicker — the map-dot lists use it for their best-estimate sites.
+- **Hide / Show lists** — the toggle at the end of the Points panel's top row: **Hide lists** takes every
+  ticked list and trip off the map but remembers them — their checkboxes stay ticked, greyed out and
+  locked — and **Show lists** puts exactly those back. The hidden state survives a reopen.
+- **Search all lists** — the box at the top of the Points panel searches every saved list and trip by
+  **notes** and **species via the model's labels** — exact words (no typo-guessing), but case- and
+  accent-insensitive and blind to spaces / hyphens, so "Slagugle-kasse" finds "slaguglekasse" and
+  "kasse" finds it too — matched against the
+  localised, English and scientific name, so "hubro", "eagle owl" and "Bubo bubo" find the same
+  points even where a file spelled the bird differently. List names, point names, tags, observers and
+  places are not searched. The search starts 1 s after the last letter (a flashing ⌛ shows it is
+  working); lists still loading are loaded first. The results list the lists with matches and how many
+  records matched. A row's **checkbox shows or hides the complete list** (as the panel's own does —
+  the search ticks nothing itself); **tapping a list's name strikes it through**, leaving its records
+  out of the transfer (tap again to include). **Put the N matched points on the map** copies only the
+  matching records of the lists not struck through into the map points (the working pins); the lists
+  and their shown / hidden state stay as they were. Each record goes on once — the same observation in
+  several lists (same spot to ~1 m, date and species, else name) counts and is added once, and a
+  record already on the map is not added again. Save
+  the pins into a list to keep them.
+  A search's points are drawn as plain circles in that search's own colour (25 % fill); those with a
+  species — read from the point's stored species or scientific name through the model labels — also
+  join the legend and its filters like a shown list's records.
+  The top of the Points panel — **On the map** — has a row for everything on the map that is not a
+  shown list, each with how many points and a red **×** that removes them (the lists are not touched):
+  one row per search that put points on the map (its words), **earlier search** (copies of list points
+  from searches before the words were recorded), **Other map points** (every other pin, also ones you
+  placed yourself) and **Fetched observations** (as the map's red ×; shown lists stay).
+- **Ring markers** — a point whose file carries `marker` = `ring` (also `symbol`) is drawn as an
+  unfilled circle in its colour instead of a filled dot (used for the map-dot lists' DTM points).
+- **Areas (polygons)** — a KML/KMZ placemark with a `Polygon` is kept as one of the list's **areas**
+  (outer ring) instead of becoming a point: drawn under the list's pins when the list is ticked,
+  with a faint fill in the area's `color` (ExtendedData) or style colour, else the list's; `fill` = `0`
+  draws only the outline. Areas travel with the list through Drive sync and KML export. With many areas
+  shown (over 1 500, e.g. the eagle-owl habitat file) only those in view are drawn, from street-level zoom
+  (12) — a note says so when zoomed further out.
 - **Last list remembered** — whichever list you last saved a point to comes **first, marked ✓**, in
   every "save to list" picker (observation menu, Save in the detections list, copy / file points),
   and the point editor preselects it. Remembered across visits.
@@ -1028,7 +1098,9 @@ habitat model puts above 0 % at your point/week and ranks them by local likeliho
   cards**: the species itself first (marked by a thicker green frame), then left to right by Score, wrapping
   onto further rows (two per row on narrow phones). Each card carries the Wikipedia/Commons lead photo
   with its credit, the name, the scientific name and **Match · misID · Here · Score** as small bars;
-  tapping a look-alike opens the same compare card. **Settings → Confusion species** switches between
+  tapping a look-alike (card or table row) offers **⇆ Compare … side by side** (the compare card) or that bird's own
+  **☰ Species menu**. The footer explains the columns, including how Match compares the names (the cosine of their
+  BioCLIP 2 embedding vectors). **Settings → Confusion species** switches between
   *Photo cards* (default) and the *Table*; offline the table is used automatically, and each popup has a
   single **Text / Images** button (top right, next to ×) that switches to the other view on the spot. Photos are shared
   with the Images list layout through the on-device photo cache, so a bird seen there needs no new
@@ -1121,10 +1193,17 @@ an **eBird Record Format CSV** ready for [ebird.org/import](https://ebird.org/im
 ## Navigation & GPS
 
 - **Locate me** (crosshair, top-left): **tap** = locate once (blinks blue while finding you,
-  then the map jumps to your position); **hold** (or right-click) = continuous **GPS-follow /
-  tracking** — the button **pulses blue** and the map re-centres (keeping your zoom) as you move,
+  then the map jumps to your position and opens the **map-point popup** there for a quick fetch —
+  even when a saved point or plotted dot sits at that spot); **hold** (or right-click) = continuous **GPS-follow /
+  tracking** — the button **pulses blue**, the blue cross at your position **blinks once a second**, and the map re-centres (keeping your zoom) as you move,
   live-updating distance sorts; hold again for the **red read cursor** (a fixed centre cursor: pan
   a plotted dot, map point or eBird hotspot under it to open it); a tap in either state turns it off.
+- **GPS track** — Settings → Lists & sharing → **Record a track while GPS tracking**: while GPS-follow is
+  on, your route is drawn on the map (a fix counts when it is within 50 m accuracy and 5 m from the
+  last). The track so far survives a reload and continues on the next tracking. When tracking stops a
+  dialog offers **Save track** (named "Track <date time>" by default) or **Discard**; the × keeps it for
+  later. A saved track is a point list holding the line plus its start and end points; lists can hold
+  lines (KML `LineString`) the way they hold areas — imported, drawn, exported and synced with the list.
   **Stored locations** are recalled by holding the **🔍 search button** — the list always starts
   with a built-in **Here** row (your GPS position: same tick columns and an editable radius,
   not deletable; its coordinates resolve when used, so 🔔 rarity alerts can follow you).
@@ -1390,7 +1469,46 @@ app/
   taxonomy.csv          Source for the two above (not loaded by the app — tools/split-taxonomy.mjs)
   countries-lite.json   Simplified country borders (source gating)
   vendor/               ORT wasm, Leaflet, h3-js (vendored for offline)
+  terrain3d/            Stand-alone 3-D terrain viewer (see below); scenes/ = folders it offers
 ```
+
+### Terrain 3D viewer (`/terrain3d/`)
+
+A general viewer for 1 m terrain models (DTM) of Norway — any Kartverket DTM tiles, any place.
+
+A stand-alone page (not part of the app shell; the service worker leaves it to the network) that
+draws a 1 m terrain model in 3-D from a **folder** (radius up to 5 km: beyond 1.5 km the grid coarsens to ⌈2R / 3000⌉ m so it stays ≤ 3000 × 3000 — a 3 km view is a 2 m grid): 1 m DTM GeoTIFF tiles (one UTM zone, EPSG 258xx /
+326xx, Float32 or integer) plus any `.geojson` / `.kml` / `.kmz` overlays (polygons draped on the
+terrain, points as needles; a point with `role` = `steepest` is the red ring; without one the viewer takes the steepest cell within 500 m, never within 25 m of the data's edge) and an optional
+`scene.json` (`title`, `lat`, `lon`, `radius`, `sigma` — the suggested smoothing in m, 0 = off; older folders' `smoothed_sigma` 0 = already smoothed).
+- **Open** a folder or files from the device, a folder on the same site from the picker
+  (`scenes/index.json` = `[{name, title, path}]`), or any folder URL (`?folder=<url>` too). A web
+  server cannot list a directory, so a folder served over HTTP needs an `index.json` =
+  `{"files": ["dtm.tif", "habitat.geojson", …]}` (or a plain array).
+- **Google Drive:** paste a shared Drive folder (or file) link → **Sign in & open** (or open the
+  viewer with `?drive=<link>`: a "Sign in with Google to open" button comes up — the popup needs a tap). Signs in with
+  Google (the BirdsWhere OAuth client, read-only Drive access; token in memory only), lists the folder
+  through the Drive API (sub-folders two levels down; no `index.json` needed) and reads the files with
+  the token — so the data stays private to the accounts it is shared with. Needs the page opened from
+  its web address (not a downloaded copy).
+- **Sharing a terrain between two users:** **Share…** makes a link (`?drive=<folder link>` or
+  `?folder=<url>`, plus the date and time). For a Drive folder, share the folder in Drive with the
+  other person's Google account (Viewer); they open the link and sign in with their own account.
+- **Base map** (selector): *Slope tint*, *Kartverket topo*, *Kartverket greyscale*, *OpenStreetMap* (OSM data drawn by OpenTopoMap — tile.openstreetmap.org blocks an app that fetches a view's ~100 tiles at once, its usage policy), *Paths & cycling (CyclOSM — footpaths, tracks, cycle routes and lanes)*, *Streets (Esri)*, *Aerial (Esri)* or *Aerial, earlier photos (Esri Wayback)* — the newest photo at once, then a *Photo* choice of every distinct earlier photo of the spot (capture date · sensor · resolution; Esri's ~200 archive releases bisected at the view's centre, releases re-serving the same photo merged) — XYZ tiles for the view's box at the zoom whose pixel is about one grid cell, resampled onto the UTM grid (exact UTM → lat/lon on a lattice, interpolated) so roads, streams and the map's own contours sit on the terrain; attribution shown along the bottom. A packaged folder can carry a map already draped for its view (`basemap_<id>.jpg`, `scene.json` `basemap`: {id, file}) — the standalone files carry Kartverket topo, so it works offline; the others need the network. *contours & habitat* switches the overlay (contours, habitat areas, labels) on or off.
+- **Shape:** always a *block with side walls* (the whole square, four walls along the grid axes down to a base below the lowest point, closed underneath; one smooth colour function of position — an earth gradient with height, graded along x and y, faint lines every 25 m — so the colour runs on round the corners; lit by the sun). There is no shape choice.
+- **Layers** (each on / off): *Contours* (5 m, labelled every 25 m), the overlay files outside the Birds group, *Centre, circles & steepest point* and *Bold markers*; the **Birds** section (everything in it starts switched off): *Slope* in NVE's steepness classes (27–30 · 30–35 · 35–40 · 40–45 · ≥ 45°, the avalanche-terrain map's colours); *Facing* — the way slopes ≥ 15° face, eight true directions, one distinct colour each (N blue · NE cyan · E green · SE yellow · **S red** · SW pink · W violet · NW slate); while *Slope* is on too, slopes ≥ 27° show their steepness class instead; *Sun: average direct radiation* (its switch and month slider sit in the **Sun** section, with the date and time; while it is on, the sun at a date and time is switched off — fixed light, the date / time controls greyed out — and comes back when it is turned off) — clear-sky direct sun on the ground in kWh/m² per day, averaged hourly over two days of each month (NOAA sun position, beam × cos incidence on the slope, 0 below the cell's own horizon — 32 directions marched over the terrain in view), for a **month range** set with a two-handle slider (default the whole year; a start after the end wraps the new year, e.g. Dec – Jan) — twelve monthly maps on a ≤ 250 × 250 grid, computed once, combined day-weighted at once; one layer **per loaded overlay file** (its polygons and needles; `scene.json` `layers`: {file: {title, legend: [[colour, label] …], group: "birds"}} names and explains it — `group: "birds"` puts it in the Birds group, as the eagle-owl nesting habitat is); *Centre, circles & steepest point*. The compass (true north) is always shown. Hovering shows the height, slope, facing and — with the sun layer — that point's average. **Tapping the terrain** opens a small popup with the point's coordinates and height. The **🛰** map control (right) opens norgeskart.no centred where the view looks (UTM 33 / EUREF89), zoomed to about what is on screen, with Kartverket's Norge i bilder orthophoto, the best aerial photo of Norway (it cannot be draped here: its tile service needs a Norge digitalt token).
+- **Missing DTM** (tiles that do not exist, or a folder without them): filled with the smoothest surface that meets the known ground — every missing cell the mean of its neighbours, i.e. the least-squares minimum of the height steps, solved coarse to fine — so there is no jump where real data stops; the area is **greyed and hatched** (map and overlays), the panel gives its share and hovering says "No DTM data here".
+- **Shown:** contours every 5 m (25 m labelled), slope tint, the overlays, a centre pin with 500 m /
+  radius circles, the steepest point, a compass to true north (UTM grid convergence corrected) 250 m
+  south of it, a height slider (×1–3), map-style controls like the app (drag moves the map; rotate by twisting two fingers, right-drag / Shift+drag, the ✋ → ⟳ drag-mode button, or the ⟲ ⟳ ▲ ▼ buttons, N = north up; wheel / pinch / +− zoom, arrow keys pan), top view; a **📏 measuring tool** (tap two points: horizontal distance, height difference with both heights, distance along the line, slope in ° and %, true bearing; a line and two markers on the terrain; × closes); **optional smoothing** (☑ Smooth terrain, σ m — on at 1.5 m by default; off shows the raw 1 m model; re-renders in place); it opens looking down at the area, in daylight (at night: today's solar noon), with needles sized to the radius.
+- **Sun:** date and time sliders (Norway time CET/CEST or UTC), the NOAA solar-position equations →
+  directional light with cast terrain shadows; sun elevation / azimuth, sunrise / solar noon /
+  sunset; hovering shows the clear-sky direct irradiance on the surface (W/m², incidence on the
+  1 m slope, terrain shadow) and the day's direct total (kWh/m²). "▶ Day" animates the day.
+- **Panels:** one column down the left side — height, smoothing and the view buttons on top, then the collapsible sections **Map** (base map, Wayback photo), **Layers**, **Birds**, **Sun** (open at start; the others start closed) and **Data** — as tall as its content (at most the window), scrolling inside and keeping its scroll position across reloads; **‹** tucks the whole column away (**›** brings it back). Its **Data** section (open folder / files / URL / Drive, centre and radius, Render, Share) folds away; it starts closed when the view already has its data. The map controls on the right (measure, drag mode, rotate, tilt, north, 🛰 aerial photo, zoom) are one column too, tucked away with **›** and brought back with **‹**. The info panel also minimises.
+- **Pins:** hovering a point's or an area's pin shows its name and description; tapping it opens the popup with that text, the coordinates and the height. **Bold markers** (Layers) makes the pins, balls and rings twice the size and draws them over the terrain, never hidden behind a ridge, and outlines the areas in white.
+- The demo folder is Preikestolen. Sites with sensitive data (e.g. eagle-owl nests) are never put on
+  the public site — they are built locally (private `viz3d.py`) as stand-alone files.
 
 ## Attribution & licensing
 

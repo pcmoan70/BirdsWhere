@@ -503,12 +503,13 @@
     var hasFilt = typeof detHasFilter === "function" && detHasFilter();
     var a = clearGroupEl.querySelector(".clearpts-btn");
     if (a) {
-      a.style.display = hasPts ? "" : "none";
+      var listsOn = mpState && (Object.keys(mpState.shownColls()).length || Object.keys(mpState.shownDetSets()).length);
+      a.style.display = (hasPts || listsOn) ? "" : "none";
       // Reflect the shared arm-and-delete state: armed → "click again to clear"; else
       // "arm per-area delete" when there are areas, plain "clear all" otherwise.
       var armed = !!detAreaDeleteMode;
       a.classList.toggle("armed", armed);
-      var title = armed ? t("det.delAreaHint") : (fetchedAreas.length ? t("det.delAreaArm") : t("ctrl.clearPoints"));
+      var title = armed ? t("det.delAreaHint") : (fetchedAreas.length ? t("det.delAreaArm") : (detFetchedCount() ? t("ctrl.clearPoints") : t("ctrl.clearLists")));
       a.title = title; a.setAttribute("aria-label", title);
     }
     var f = clearGroupEl.querySelector(".filterclear-btn");
@@ -607,7 +608,13 @@
       var btns = document.createElement("div");
       btns.className = "ui-modal-btns";
       var cancel = document.createElement("button");
-      cancel.type = "button"; cancel.className = "btn btn-light"; cancel.textContent = t("btn.cancel");
+      cancel.type = "button"; cancel.className = "btn btn-light"; cancel.textContent = opts.cancelLabel || t("btn.cancel");
+      // Every popup has a × top-right (owner, 2026-10-10). It closes like Cancel, but resolves to
+      // `undefined` so a caller can tell "decide later" (×) from an explicit Cancel.
+      var xb = document.createElement("button");
+      xb.type = "button"; xb.className = "ui-modal-x"; xb.textContent = "\u00d7";
+      xb.setAttribute("aria-label", t("btn.close")); xb.title = t("btn.close");
+      box.insertBefore(xb, box.firstChild); box.classList.add("has-modal-x");
       var ok = document.createElement("button");
       ok.type = "button"; ok.className = "btn"; ok.textContent = opts.okLabel || t("popup.ok");
       if (colorInput) btns.appendChild(colorInput);   // swatch at the LEFT of the action row (popup opens below it, clear of the buttons)
@@ -629,6 +636,7 @@
         else if (e.key === "Enter") { e.preventDefault(); close(result(true)); }
       }
       cancel.addEventListener("click", function () { close(result(false)); });
+      xb.addEventListener("click", function () { close(opts.xLater ? undefined : result(false)); });
       ok.addEventListener("click", function () { close(result(true)); });
       ov.addEventListener("click", function (e) { if (e.target === ov) close(result(false)); });
       document.addEventListener("keydown", onKey, true);
@@ -1390,8 +1398,68 @@
       if (posFixedMarker) { map.removeLayer(posFixedMarker); }
       posFixedMarker = L.marker(ll, { icon: livePosIcon("red"), interactive: false, keyboard: false, zIndexOffset: 1000 }).addTo(map);
       map.setView(ll, Math.max(map.getZoom() || 0, 14));
-      if (["list", "barchart", "range"].indexOf(currentMode) >= 0) onMapClick({ latlng: ll });
+      // Open the map-point popup AT THE FIX directly (owner, 2026-10-10: a quick GPS tap must give
+      // the popup for a quick fetch even when a stored point lies there). onMapClick's tap guards —
+      // a dot / saved pin within 16 px swallows the tap, an open popup only gets dismissed, the
+      // touch delay is cancelled by the setView pan — are meant for finger taps, not a GPS fix.
+      if (["list", "barchart", "range"].indexOf(currentMode) >= 0) {
+        dismissTransientUI();
+        selectMapPoint(Math.max(-90, Math.min(90, ll.lat)), wrapLon(ll.lng));
+      }
     }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 });
+  }
+  // ---- GPS track (owner, 2026-10-10): "an option in settings, which when on traces out the route in
+  // track gps mode. When tracking is turned off user is given option to save track". A fix is kept
+  // when it is good enough (≤ 50 m accuracy) and ≥ 5 m from the last one; the track so far is saved
+  // as it grows (a reload mid-walk does not lose it) and continues on the next tracking.
+  var TRACK_MIN_M = 5, TRACK_MAX_ACC = 50;
+  var trackPts = null, trackLine = null, trackSavedN = 0;
+  function trackRecordOn() { return window.GeoState.get("trackRecord", false) === true; }
+  function trackLoad() { if (!trackPts) { trackPts = (window.GeoState.get("trackInProgress", []) || []).filter(function (q) { return q && isFinite(q[0]) && isFinite(q[1]); }); trackSavedN = trackPts.length; } return trackPts; }
+  function trackStore(force) { if (trackPts && (force || trackPts.length - trackSavedN >= 5)) { window.GeoState.save({ trackInProgress: trackPts }); trackSavedN = trackPts.length; } }
+  function drawTrackLine() {
+    if (!map) return;
+    var ll = trackLoad().map(function (q) { return [q[0], q[1]]; });
+    if (!trackLine) trackLine = L.polyline(ll, { color: "#d81b60", weight: 4, opacity: 0.85, interactive: false }).addTo(map);
+    else trackLine.setLatLngs(ll);
+  }
+  function clearTrackLine() { if (trackLine && map) { try { map.removeLayer(trackLine); } catch (e) {} } trackLine = null; }
+  function recordTrackFix(e) {
+    if (!trackRecordOn() || !e || !e.latlng) return;
+    if (e.accuracy != null && e.accuracy > TRACK_MAX_ACC) return;
+    var pts = trackLoad(), q = [Math.round(e.latlng.lat * 1e6) / 1e6, Math.round(e.latlng.lng * 1e6) / 1e6, Date.now()];
+    var last = pts[pts.length - 1];
+    if (last && haversineKm(last[0], last[1], q[0], q[1]) * 1000 < TRACK_MIN_M) return;
+    pts.push(q); trackStore(false); drawTrackLine();
+  }
+  function trackKm(pts) { var d = 0; for (var i = 1; i < pts.length; i++) d += haversineKm(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]); return d; }
+  function endTrack() {
+    var pts = trackLoad();
+    clearTrackLine();
+    if (pts.length < 2) { trackPts = []; window.GeoState.save({ trackInProgress: [] }); trackSavedN = 0; return; }
+    trackStore(true);
+    var km = trackKm(pts), d0 = new Date(pts[0][2] || Date.now());
+    var pad = function (n) { return (n < 10 ? "0" : "") + n; };
+    var def = t("track.defaultName", { date: d0.getFullYear() + "-" + pad(d0.getMonth() + 1) + "-" + pad(d0.getDate()) + " " + pad(d0.getHours()) + ":" + pad(d0.getMinutes()) });
+    uiDialog({ message: t("track.savePrompt", { km: km.toFixed(2), n: pts.length }), input: true, value: def, okLabel: t("track.save"), cancelLabel: t("track.discard"), xLater: true })
+      .then(function (name) {
+        if (name === undefined) { trackPts = null; setStatus(t("track.kept")); return; }     // × → decide later: stays, continues on the next tracking
+        if (name === null || !String(name).trim()) { trackPts = []; trackSavedN = 0; window.GeoState.save({ trackInProgress: [] }); setStatus(t("track.discarded")); return; }
+        name = String(name).trim();
+        var taken = mpState.mpCollections().map(function (c) { return c.name; }), nm = name, k = 2;
+        while (taken.indexOf(nm) >= 0) nm = name + " #" + (k++);
+        var iso = function (ms) { return new Date(ms).toISOString(); };
+        var first = pts[0], lastP = pts[pts.length - 1];
+        var c = { name: nm, color: "#d81b60", track: true,
+          points: [{ id: mpState.mpUid(), lat: first[0], lon: first[1], name: t("track.start"), tags: [], date: iso(first[2]).slice(0, 10), note: iso(first[2]), source: "track", createdAt: iso(Date.now()) },
+                   { id: mpState.mpUid(), lat: lastP[0], lon: lastP[1], name: t("track.end"), tags: [], date: iso(lastP[2]).slice(0, 10), note: iso(lastP[2]) + " · " + km.toFixed(2) + " km", source: "track", createdAt: iso(Date.now()) }],
+          lines: [{ r: pts.map(function (q) { return [q[0], q[1]]; }), c: "#d81b60", n: nm }] };
+        mpState.mpCollections().push(c);
+        mpState.shownColls()[nm] = true;
+        trackPts = []; trackSavedN = 0; window.GeoState.save({ trackInProgress: [] });
+        saveMapPoints(); saveShownState(); renderMapPoints(); if (typeof refreshMpPanel === "function") refreshMpPanel();
+        setStatus(t("track.saved", { name: nm, km: km.toFixed(2) }));
+      });
   }
   function crossTap() {
     if (crossState !== 0) { setCrosshairState(0); return; }   // follow/read → off
@@ -1408,6 +1476,7 @@
   }
   function startFollow() {
     posWatching = true; posCentered = false;
+    if (trackRecordOn() && trackLoad().length) drawTrackLine();   // a track left from before continues
     map.locate({ watch: true, enableHighAccuracy: true, maximumAge: 3000, timeout: 20000 });
   }
   function stopReticle() {
@@ -1421,7 +1490,9 @@
     reticleTarget();
   }
   function setCrosshairState(s) {
+    var wasFollow = crossState === 1;
     crossState = s;
+    if (wasFollow && s !== 1) endTrack();
     oneShotBusy = false;
     stopFollow(); stopReticle();
     var btn = document.querySelector(".geo-locate-btn");
@@ -4609,7 +4680,7 @@
     var el = document.getElementById("mp-admin-list"); if (!el) return;
     if (!mpState.mpCollections().length) { el.innerHTML = '<p class="dd-empty">' + escapeHtml(t("points.empty")) + "</p>"; return; }
     var rows = [];
-    mpState.mpCollections().slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (c) {
+    mpState.mpCollections().filter(function (c) { return !c.viewOnly; }).sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (c) {   // the admin manages the user's own lists
       var prot = isCollProtected(c.name), n = mpState.collCount(c);
       var cid = "coll:" + c.name, open = !!listsExpanded[cid] && n > 0;
       rows.push('<tr class="lists-row"><td class="dset-name">' +
@@ -5946,7 +6017,7 @@
     // should not travel. The biggest generated list alone is over half the payload.
     try {
       if (mpState.mpIdbReady && mpState.mpIdbReady())
-        state.mapPointSets = mpState.mpCollections().filter(function (c) { return c && c.name && !c.noSync; });
+        state.mapPointSets = mpState.mpCollections().filter(function (c) { return c && c.name && !c.noSync && !c.viewOnly; });   // a view-only (received) list never leaves the device
     } catch (e) {}
     // Names the user's own use has accumulated — harvested from iNaturalist, and the
     // extra vernaculars — live in IndexedDB and were never in the payload, so every
@@ -6261,6 +6332,9 @@
   function applyRemote(data, opts) {
     opts = opts || {};
     if (!data || data.app !== "migration_calendar") throw new Error(t("sync.notBackup"));
+    // The list store not readable yet (IndexedDB blocked): the merge would see NO local lists and
+    // the result would stand in for them — never merge then (owner, 2026-10-10: lists must never go).
+    if (window.AppIDB && window.AppIDB.available() && mpState.mpIdbReady && !mpState.mpIdbReady()) throw new Error("lists still loading");
     // A list that is only a file reference (a Drive payload opened without its .kmz files)
     // has no points to merge — and merging it would stamp its file fields onto a local list.
     if (data.state && Array.isArray(data.state.mapPointSets) && data.state.mapPointSets.some(isListRef)) {
@@ -6276,7 +6350,8 @@
     try { if (typeof detSetStore !== "undefined") local.mapDetectionSets = detSetStore.filter(function (s) { return s && s.name; }); } catch (e) {}
     // Named point lists too: without this the merge would see NO local lists (the blob
     // no longer carries them) and "merge" would mean "replace with the other device's".
-    try { if (mpState.mpIdbReady && mpState.mpIdbReady()) local.mapPointSets = mpState.mpCollections().filter(function (c) { return c && c.name; }); } catch (e) {}
+    try { if (mpState.mpIdbReady && mpState.mpIdbReady()) local.mapPointSets = mpState.mpCollections().filter(function (c) { return c && c.name && !c.viewOnly; }); } catch (e) {}
+    var viewOnlyKept = mpState.mpCollections().filter(function (c) { return c && c.viewOnly; });   // session-only received lists: kept on screen, never merged or stored
     var incoming = data.state || {};
     var mergedCl = mergeChecklists(local.fieldChecklists, incoming.fieldChecklists);
     // Map points: merge rather than overwrite. Loose pins from both sides are
@@ -6385,7 +6460,7 @@
     // Merged lists go to IndexedDB (and out of the blob) when that is the store — the
     // union of two devices' lists is exactly the write that used to break the sync.
     if (mpState.mpIdbReady && mpState.mpIdbReady()) {
-      mpState.setMpCollections(mergedSets);
+      mpState.setMpCollections(mergedSets.concat(viewOnlyKept));
       // Collected, not fired and forgotten: a caller about to reload (or a user about to
       // close the app) waits on these through AppData.flushWrites(), or the synced lists
       // are lost with the transaction.
@@ -6675,7 +6750,10 @@
   async function listKmzBytes(c) {
     var xml = function (x) { return String(x == null ? "" : x).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); };
     var pts = c.points || [], kml;
-    var data = "<ExtendedData>" + LIST_DATA_OPEN + JSON.stringify({ v: 1, name: c.name, points: pts }, function (k, val) { return k.charAt(0) === "_" ? undefined : val; }).replace(/]]>/g, "]]]]><![CDATA[>") + LIST_DATA_CLOSE + "</ExtendedData>";
+    var body = { v: 1, name: c.name, points: pts };
+    if (c.polys && c.polys.length) body.polys = c.polys;
+    if (c.lines && c.lines.length) body.lines = c.lines;   // a recorded GPS track
+    var data = "<ExtendedData>" + LIST_DATA_OPEN + JSON.stringify(body, function (k, val) { return k.charAt(0) === "_" ? undefined : val; }).replace(/]]>/g, "]]]]><![CDATA[>") + LIST_DATA_CLOSE + "</ExtendedData>";
     if (pts.length > COPY_MAX_POINTS) {
       // A very large list: bare placemarks (name + position) — the full KML with descriptions
       // is hundreds of megabytes of string. The data block is complete either way.
@@ -6684,7 +6762,7 @@
       parts.push("</Folder>", "</Document>", "</kml>");
       kml = parts.join("\n");
     } else {
-      kml = mpState.buildPointsKml([{ name: c.name, points: pts }], []);
+      kml = mpState.buildPointsKml([{ name: c.name, points: pts, polys: c.polys, lines: c.lines }], [], { noBlock: true });   // the block is added once, below
       var at = kml.indexOf("<Document>");
       kml = kml.slice(0, at + 10) + "\n" + data + kml.slice(at + 10);
     }
@@ -6698,6 +6776,8 @@
     var b = kml.indexOf(LIST_DATA_CLOSE, a); if (b < 0) throw new Error("list file is cut short");
     var obj = JSON.parse(kml.slice(a, b).split("]]]]><![CDATA[>").join("]]>"));
     if (!obj || !Array.isArray(obj.points)) throw new Error("list file has no points");
+    if (Array.isArray(obj.polys)) obj.points.polys = obj.polys;   // the list's areas ride along (the caller moves them onto the list)
+    if (Array.isArray(obj.lines)) obj.points.lines = obj.lines;   // … and its lines (a GPS track)
     return obj.points;
   }
   function isListRef(e) { return !!(e && e.file && !Array.isArray(e.points)); }
@@ -6720,7 +6800,7 @@
       else while (taken[fname]) fname = base + " (" + (k++) + ").kmz";
       taken[fname] = 1;
       var stub = {};
-      Object.keys(c).sort().forEach(function (key) { if (key !== "points" && key !== "file" && key !== "n" && key !== "psig") stub[key] = c[key]; });
+      Object.keys(c).sort().forEach(function (key) { if (key !== "points" && key !== "polys" && key !== "lines" && key !== "file" && key !== "n" && key !== "psig") stub[key] = c[key]; });   // areas live in the list's .kmz, not the JSON
       stub.file = fname; stub.n = (c.points || []).length; stub.psig = psig;
       files.push({ name: fname, list: c.name, copy: (ref && ref.psig === psig) ? ref.file : null, build: function () { return listKmzBytes(c); } });
       return stub;
@@ -7531,6 +7611,10 @@
                 '</div>' +
               '</div>' +
               '<div class="ctrl-group">' +
+                '<label class="ctrl-check"><input type="checkbox" id="restore-det-toggle"> <span data-i18n="ctrl.restoreDet">Show the last session’s observations on open</span></label>' +
+                '<p class="cu-hint" data-i18n="ctrl.restoreDetHint">Off: the app opens with no fetched observations, no selection and no filters — only your shown lists. On: the observations fetched last time come back on the map.</p>' +
+              '</div>' +
+              '<div class="ctrl-group">' +
                 '<label for="max-points" data-i18n="ctrl.maxpoints">Max points on map</label>' +
                 '<input id="max-points" type="number" min="50" max="100000" step="50" />' +
                 '<p class="cu-hint" data-i18n="ctrl.maxpointshint">Caps how many detection dots are drawn at once for speed. When more are plotted, only the newest this-many are shown on the map (the rest stay in the Detections list).</p>' +
@@ -7609,6 +7693,10 @@
                 '<p class="cu-hint" data-i18n="rarity.probThHint">A bird counts as a rarity when the model finds it unlikely at its own spot and week — probability below this %. Applies to both your own fetched observations and eBird notable alerts. Default 15. 0/100 = off.</p>' +
               '</div>' +
               '<div class="settings-section" data-i18n="settings.secListsShare">Lists &amp; sharing</div>' +
+              '<div class="ctrl-group">' +
+                '<label class="ctrl-check"><input type="checkbox" id="track-record-toggle"> <span data-i18n="settings.trackRecord">Record a track while GPS tracking</span></label>' +
+                '<p class="cu-hint" data-i18n="settings.trackRecordHint">While automatic GPS updating is on (hold the locate button), your route is drawn on the map. When you turn tracking off you can save it as a point list (the line, plus start and end).</p>' +
+              '</div>' +
               '<div class="ctrl-group">' +
                 '<label class="ctrl-check"><input type="checkbox" id="share-tiny-toggle"> <span data-i18n="ctrl.shareTiny">Shorten share links (TinyURL)</span></label>' +
                 '<p class="cu-hint" data-i18n="ctrl.shareTinyHint">Turns share links into short tinyurl.com links (easier to paste / QR), for links under 14 kB. On by default. ⚠ The shared data is sent to TinyURL — a third party — so it may be exposed to unknown parties. Turn off for a plain link + .share file, so nothing leaves via a shortener.</p>' +
@@ -7928,7 +8016,8 @@
           '<h3 data-i18n="about.title">About the model &amp; how values are computed</h3>' +
           '<div id="about-body"></div>' +
         '</div></div>' +
-        '<div id="perf-modal" style="display:none"><div id="perf-modal-box">' +
+        '<div id="perf-modal" style="display:none"><div id="perf-modal-box" class="has-modal-x">' +
+          '<button type="button" id="perf-modal-x" class="ui-modal-x" data-i18n-title="btn.close" title="Close" aria-label="Close">\u00d7</button>' +
           '<h2 class="perf-title" data-i18n="popup.title">Species — distributions &amp; observations</h2>' +
           '<p class="perf-desc" data-i18n="popup.desc">See where birds live, migrate, and are being seen right now — live observations from eBird, GBIF, iNaturalist and national databases, plus range and timing estimates worked out on your device. Everything runs in your browser.</p>' +
           '<p class="perf-privacy" data-i18n="popup.privacy">Private by design: there is no account and no server of ours. Your searches, saved lists and settings stay on this device — nothing is sent anywhere except the direct requests to the observation sources you query.</p>' +
@@ -8193,6 +8282,10 @@
           var wrap = p.parentElement, btn = wrap ? wrap.querySelector("button, select") : null;
           var r = (btn || wrap || p).getBoundingClientRect();
           var w = p.offsetWidth || 260;
+          // The Points and Checklists panels open in the MIDDLE of the screen (owner, 2026-10-11) —
+          // anchored at the button they were measured before their content filled them in, and a
+          // 320 px list ran off a 360 px phone. Their width is fixed in CSS, so it is right here.
+          if (p.id === "mp-panel" || p.id === "checklists-panel") { p.style.left = Math.max(8, Math.round((window.innerWidth - w) / 2)) + "px"; return; }
           p.style.left = Math.max(6, Math.min(r.left, window.innerWidth - w - 6)) + "px";
         }
         var mo = new MutationObserver(function (muts) {
@@ -8302,6 +8395,7 @@
       consumeLaunchFiles();
       wireFileDrop();
       consumeSharedFiles();
+      consumeDriveParam();
       initInstall();
       initRarityAlerts();
       // Keyless first tap on the rarity bell → the one-time eBird-key nudge
@@ -9453,8 +9547,7 @@
           // Same two-stage arm-and-delete as the legend's red ×: the first click arms
           // per-area delete (a red × appears on each fetched area) when there are areas
           // to pick from; the next click (or when there are none) clears everything.
-          if (!detAreaDeleteMode && fetchedAreas.length) { enterAreaDeleteMode(); updateDetLegend(); }
-          else clearDetections();
+          clearStep();
           updateClearGroup();
         });
         var f = L.DomUtil.create("a", "filterclear-btn", c);   // below the × (same bar)
@@ -9476,6 +9569,7 @@
     // to push it back inside. So the central 80% of the screen is a hold-still zone.
     map.on("locationfound", function (e) {
       if (!posWatching) return;
+      recordTrackFix(e);
       // Blue plus follows the live position.
       if (posMarker) posMarker.setLatLng(e.latlng);
       else posMarker = L.marker(e.latlng, { icon: livePosIcon("blue"), interactive: false, keyboard: false, zIndexOffset: 1100 }).addTo(map);
@@ -9514,7 +9608,7 @@
     // just added ABOVE the clear-× (added earlier). Re-append the × so it sits BELOW
     // both the download and overlay-toggle icons, not between them.
     if (clearGroupEl && clearGroupEl.parentNode) clearGroupEl.parentNode.appendChild(clearGroupEl);
-    loadDetections();      // restore any "Show in map" detection points
+    loadDetections(true);  // restore any "Show in map" detection points — at START: no selection, no filters
     restoreFetchedAreas(); // ...and their fetched-area outlines (per-area red × needs them)
     loadMapPoints();       // user-added pins + saved named lists (IndexedDB, hydrated above)
     try { migrateDetSetsToLists(); } catch (e) {}   // old "trips" (detection sets) → ordinary saved lists, once
@@ -10363,8 +10457,29 @@
     if (present) { detObsRestored = false; return false; }   // it fits the plotted data → treat as confirmed
     setDetObsFilter(null); saveLegendState(); return true;
   }
+  // Observers hidden everywhere (owner, 2026-10-13: "when clicking an observer, give possibility to add
+  // to exclude list (filter out members). this list is managed in lists"): the members of every observer
+  // list flagged `exclude`. A record with any of them among its observers never shows, whatever the
+  // observer filter says. Rebuilt whenever the stored lists change (save, sync, import).
+  var detObsExcl = null, detObsExclSrc = null;
+  function obsExclSet() {
+    var lists = getObserverLists();
+    if (lists !== detObsExclSrc) {
+      detObsExclSrc = lists; var s = new Set();
+      lists.forEach(function (L) { if (L.exclude) (L.observers || []).forEach(function (n) { s.add(n); }); });
+      detObsExcl = s.size ? s : null;
+    }
+    return detObsExcl;
+  }
+  function detObsExcluded(r) {
+    var ex = obsExclSet(); if (!ex) return false;
+    var nm = rowMemo(r, "_obsN", function (x) { return detObsRealNames((x.observer || "").trim()); });
+    for (var i = 0; i < nm.length; i++) if (ex.has(nm[i])) return true;
+    return false;
+  }
   function detObsPasses(r) {
     if (detDupHidden.has(r)) return false;   // hidden cross-database duplicate (dedup setting)
+    if (detObsExcluded(r)) return false;     // an observer on an exclude list
     if (detFocusObs) return (r.observer || "").indexOf(detFocusObs) >= 0;   // legend hover isolates one observer
     if (!detObsFilter) return true;
     var obs = (r.observer || "").trim();
@@ -12866,7 +12981,25 @@
       var pk = c.getAttribute("data-key"), w = null;
       for (var i = 0; i < arr.length; i++) if (arr[i].m.key === pk) { w = arr[i]; break; }
       if (!w) return;
-      openTraitCompare(key, pk, speciesName(lbl), speciesName(w.m), x, y, { match: w.w, mid: w.mid, here: out ? w.p : null, score: out ? confScore(w) : null });
+      confPick(key, lbl, w, out, e.clientX, e.clientY);
+    });
+  }
+  // A look-alike tapped in the confusion window (owner, 2026-10-14: "when user clicks the name of a confusor:
+  // give choice of comparing side by side in addition to the normal species name popup"): compare the two
+  // side by side, or that bird's own species menu.
+  function confPick(key, lbl, w, out, x, y) {
+    var nm = speciesName(w.m), menu = openAnchoredMenu("obs-addmenu");
+    menu.innerHTML = '<div class="obs-addmenu-head">' + escapeHtml(nm) + "</div>" +
+      '<button type="button" class="obs-addmenu-item cp-cmp">' + escapeHtml(t("confusion.cmpSide", { a: speciesName(lbl), b: nm })) + "</button>" +
+      '<button type="button" class="obs-addmenu-item cp-sp">' + escapeHtml(t("confusion.spMenu")) + "</button>";
+    positionAnchoredMenu(menu, x, y);
+    menu.querySelector(".cp-cmp").addEventListener("click", function (e) {
+      e.stopPropagation(); closeAnchoredMenu();
+      openTraitCompare(key, w.m.key, speciesName(lbl), nm, x, y, { match: w.w, mid: w.mid, here: out ? w.p : null, score: out ? confScore(w) : null });
+    });
+    menu.querySelector(".cp-sp").addEventListener("click", function (e) {
+      e.stopPropagation(); closeAnchoredMenu();
+      showDetRowMenu({ key: w.m.key, name: nm, sci: w.m.sci || "" }, x, y, function () {});
     });
   }
   async function openConfusionMenu(key, x, y) {
@@ -12931,7 +13064,7 @@
         probBarCell(mv, mv, "", "conf-match") +
         midCell +
         probCell + scoreCell;
-      (function (w2) { tr.addEventListener("click", function () { openTraitCompare(key, m.key, speciesName(lbl), nm, x, y, { match: w2.w, mid: w2.mid, here: out ? w2.p : null, score: out ? confScore(w2) : null }); }); })(w);
+      (function (w2) { tr.addEventListener("click", function (ev) { confPick(key, lbl, w2, out, ev.clientX, ev.clientY); }); })(w);
       tbl.appendChild(tr);
     });
     el.appendChild(tbl);
@@ -12946,8 +13079,20 @@
   // observation (record-specific, only when opened from a dot/pin) · Lists &
   // actions (your data). `d` = { key, name, sci?, and for a record lat/lon/url/
   // date/listName/mpId }.
+  // Is this menu's record one of a view-only (received) list's? Flagged rows say so; otherwise the
+  // record is matched by its list name, or by its spot (and date) among the view-only lists' points.
+  function isViewOnlyRecord(d) {
+    if (!d) return false;
+    if (d._vo || d.viewOnly) return true;
+    var vos = mpState.mpCollections().filter(function (c) { return c && c.viewOnly; });
+    if (!vos.length) return false;
+    if (d.listName && vos.some(function (c) { return c.name === d.listName; })) return true;
+    var la = +d.lat, lo = +d.lon; if (!isFinite(la) || !isFinite(lo)) return false;
+    return vos.some(function (c) { return (c.points || []).some(function (p) { return p && Math.abs(+p.lat - la) < 1e-6 && Math.abs(+p.lon - lo) < 1e-6 && (!d.date || !p.date || p.date === d.date); }); });
+  }
   function drmRenderMain(el, d, refresh) {
     el.innerHTML = "";
+    var vo = isViewOnlyRecord(d);   // a record of a view-only (received) list: look, don't copy
     var redraw = refresh || renderDetListModal;   // detection-list / stored-pin refresh
     var key = d.key, lbl = key && labelsByKey[key];
     var isExtra = key && key.indexOf("x:") === 0;   // non-model species (plants/fungi/other) keyed "x:<sci>"
@@ -13085,7 +13230,7 @@
       // counterpart to the transient selection filter above. Works for any keyed species.
       el.appendChild(drmBtn(tLabel("spmenu.addList"), function () { drmRenderSpLists(el, d); }, "dotsplus"));
       // "Add point to list" sits right under it (owner, 2026-10-05) — the two list actions together.
-      if (hasObs) { el.appendChild(drmBtn(tLabel("detmenu.addList"), function () { drmRenderLists(el, d); }, "dotsplus")); addPtPlaced = true; }
+      if (hasObs && !vo) { el.appendChild(drmBtn(tLabel("detmenu.addList"), function () { drmRenderLists(el, d); }, "dotsplus")); addPtPlaced = true; }
       // Each row is a toggle drawn with the app's own monochrome line icons (not the
       // colour emoji the list columns use); the active state reads via the icon's
       // full-strength (vs dimmed) rendering — see .drm-toggle .drm-ico-svg.
@@ -13103,16 +13248,16 @@
       if (hasLoc) {
         if (!d.fromPin) el.appendChild(drmBtn(tLabel("detmenu.focusMap"), function () { focusPointOnMap(+d.lat, +d.lon); }, "pin"));   // green pin icon only (strip the 🎯 emoji); a map pin is already on the map
         el.appendChild(drmBtn(t("nav.here"), function () { closeDetRowMenu(); navigatePoints([{ lat: +d.lat, lon: +d.lon }]); }, "nav"));
-        el.appendChild(drmBtn(tLabel("route.add"), function () { closeDetRowMenu(); addToRoute(+d.lat, +d.lon, name); }, "navplus"));
+        if (!vo) el.appendChild(drmBtn(tLabel("route.add"), function () { closeDetRowMenu(); addToRoute(+d.lat, +d.lon, name); }, "navplus"));
       }
-      if (!addPtPlaced) el.appendChild(drmBtn(tLabel("detmenu.addList"), function () { drmRenderLists(el, d); }, "dotsplus"));   // green dots+ icon only (strip the 📍 emoji)
+      if (!addPtPlaced && !vo) el.appendChild(drmBtn(tLabel("detmenu.addList"), function () { drmRenderLists(el, d); }, "dotsplus"));   // green dots+ icon only (strip the 📍 emoji)
     }
   }
   function drmRenderLists(el, d) {
     var rect = el.getBoundingClientRect();
     el.innerHTML = "";
     var hdr = document.createElement("div"); hdr.className = "detrow-menu-hdr"; hdr.textContent = t("detmenu.addList"); el.appendChild(hdr);
-    lastListFirst(mpState.mpCollections().slice()).forEach(function (c) { el.appendChild(drmBtn(c.name, function () { addDetPoint(d, c.name); }, "pin", lastListCls(c.name))); });
+    lastListFirst(mpState.mpCollections().filter(function (c) { return !c.viewOnly; })).forEach(function (c) { el.appendChild(drmBtn(c.name, function () { addDetPoint(d, c.name); }, "pin", lastListCls(c.name))); });
     el.appendChild(drmBtn(t("detmenu.newList"), function () {
       closeDetRowMenu();
       modalPrompt(t("detmenu.newListPrompt"), "").then(function (n) { if (n && n.trim()) addDetPoint(d, n.trim()); });
@@ -13154,6 +13299,7 @@
   // Batched into a single save (unlike per-point addPointToCollection).
   function saveDetRowsToCollection(name, rows, color) {
     name = String(name || "").trim(); if (!name) return 0;
+    rows = (rows || []).filter(function (r) { return !(r && r._vo); });   // a view-only (received) list's records are not copied
     rememberSaveList(name);
     var c = mpState.mpCollections().filter(function (x) { return x.name === name; })[0];
     if (!c) { c = { name: name, points: [] }; mpState.mpCollections().push(c); }
@@ -13871,7 +14017,7 @@
       // Rows that came from a shown saved list carry that list's colour — draw it
       // as a slightly larger disc BEHIND the species symbol (added first → behind
       // in the shared SVG), so the marker reads as "<species symbol> on <list> disc".
-      if (r.listColor) {
+      if (r.listColor && !r._search) {
         g.addLayer(L.circleMarker([r.lat, r.lon], { radius: starred ? 11 : (rare ? 9 : 8), color: r.listColor, weight: 1.5, opacity: strokeOp, fillColor: r.listColor, fillOpacity: 0.5, interactive: false, bubblingMouseEvents: false, renderer: detRenderer() }));
       }
       // A starred species missing from the year/life list: draw a larger star in
@@ -13879,12 +14025,15 @@
       // species-coloured star centred on top — so the rim follows the star's
       // edges. Uses detNeedWeight (same condition as the legend swatch), so the
       // map always matches the legend regardless of the edge toggle.
-      var nw = starred ? detNeedWeight(key) : 0;
+      var nw = (starred && !r._search) ? detNeedWeight(key) : 0;
       if (nw) {
         g.addLayer(detStarMarker([r.lat, r.lon], { radius: 9 + nw, fill: true, fillColor: detNeedColor(key) || NEED_LIFE_COLOR, fillOpacity: 1, stroke: false, interactive: false, bubblingMouseEvents: false, renderer: detRenderer() }));
       }
       var base = { color: edge.color, weight: edge.weight, opacity: strokeOp, fillColor: fill, fillOpacity: fillOp, bubblingMouseEvents: false, renderer: detRenderer() };
-      var m = starred
+      // a search's points: one plain circle in the search's colour, 25 % fill (owner, 2026-10-11)
+      var m = r._search
+        ? L.circleMarker([r.lat, r.lon], { radius: 7, color: r.listColor, weight: 1.5, opacity: strokeOp, fillColor: r.listColor, fillOpacity: 0.25, bubblingMouseEvents: false, renderer: detRenderer() })
+        : starred
         ? detStarMarker([r.lat, r.lon], { radius: 9, fill: true, fillColor: fill, fillOpacity: fillOp, color: "#1a1a1a", weight: 1, opacity: strokeOp, bubblingMouseEvents: false, renderer: detRenderer() })
         : L.circleMarker([r.lat, r.lon], L.extend({ radius: rare ? 6 : 5 }, base));
       // Metadata kept for hover/identify and any future reconstruction; the true
@@ -14793,6 +14942,21 @@
   // shown saved list / detection set (un-ticked so nothing is re-injected — the
   // lists/sets themselves are kept in storage, just hidden). Loose working map
   // pins and the saved lists survive.
+  // Fetched observation rows on the map (not a shown list's, not a rarity alert's).
+  function detFetchedCount() { var n = 0; Object.keys(detPlot || {}).forEach(function (k) { (detPlot[k].rows || []).forEach(function (r) { if (!r._list && !r._alert) n++; }); }); return n; }
+  // The red × (map and legend), step by step (owner, 2026-10-11: "when clicked twice also delete list
+  // points"): per-area delete when there are fetched areas → the fetched observations → then, once none
+  // are left, the shown lists and trips come off the map (un-ticked; the lists themselves are kept).
+  function clearStep() {
+    if (!detAreaDeleteMode && fetchedAreas.length) { enterAreaDeleteMode(); updateDetLegend(); return; }
+    if (detAreaDeleteMode || detFetchedCount()) { clearDetections(); return; }
+    if (Object.keys(mpState.shownColls()).length || Object.keys(mpState.shownDetSets()).length) {
+      mpState.setShownColls({}); mpState.setShownDetSets({});
+      saveShownState(); updateDetSetOverlays(); renderMapPoints();
+      if (typeof refreshMpPanel === "function") refreshMpPanel();
+      setStatus(t("ctrl.listsCleared"));
+    }
+  }
   function clearDetections() {
     detPlotGen++;   // invalidate in-flight fetches' late plotting (they finish, but won't repopulate a cleared map)
     cancelPendingFetches();   // actually stop pending detection fetches (network + loops), not just their plotting
@@ -14805,12 +14969,11 @@
     // Filters are DELIBERATELY kept (they persist until the black × / toggled off) —
     // only the transient subwindow-open flags and the minimise state reset here.
     detObsPanelOpen = false; detDaysPanelOpen = false; detModePanelOpen = false; detLegendMini = false;
-    var hadShown = Object.keys(mpState.shownColls()).length || Object.keys(mpState.shownDetSets()).length;
-    mpState.setShownColls({}); mpState.setShownDetSets({});
-    updateDetSetOverlays();     // remove detection-set overlays
-    saveShownState();
-    if (hadShown && typeof renderMapPoints === "function") renderMapPoints();   // drop shown-list pins
-    syncListDetections();       // nothing shown now → no re-injection
+    // Only FETCHED observations go (owner, 2026-10-10: "only remove fetched points, do not remove
+    // the point list points"): shown saved lists and detection sets stay ticked, their pins stay, and
+    // their rows — dropped with detPlot above — are re-injected (forced: the signature is reset).
+    _listSyncSig = "";
+    syncListDetections();
     if (typeof clearLocalRarities === "function") clearLocalRarities();   // fetch-derived rarities go with the fetch (eBird notable alerts stay)
     syncAlertDetections();      // re-inject the surviving (eBird) rarity alerts into the cleared pipeline
     // The per-point species list belonged to a fetch that's now gone — drop that context so
@@ -14822,8 +14985,9 @@
     currentSpView = null;
     if (marker) { try { map.removeLayer(marker); } catch (e) {} marker = null; }
     if (onListView() && typeof renderPlottedObsPage === "function") { try { renderPlottedObsPage(); } catch (e) {} updateViewToggle(); }
+    detRestoreSkipped = false;   // the red × clears the stored observations too, not only those on the map
     updateDetLegend(); saveDetections(); saveLegendState();
-    if (typeof refreshMpPanel === "function") refreshMpPanel();   // reflect the un-ticked state
+    if (typeof refreshMpPanel === "function") refreshMpPanel();
   }
   // Re-render plotted points + legend in the current language (called on lang change).
   function refreshDetections() {
@@ -14843,7 +15007,12 @@
     });
     return out;
   }
-  function saveDetections() { window.GeoState.save({ mapDetections: capDetections(serializeDetPlot(), DET_CAP) }); }
+  var detRestoreSkipped;   // true: the last session's observations were left in storage at start (no initialiser — the start may run first)
+  function saveDetections() {
+    var out = serializeDetPlot();
+    if (detRestoreSkipped) { if (!Object.keys(out).length) return; detRestoreSkipped = false; }   // nothing fetched yet → keep the stored ones
+    window.GeoState.save({ mapDetections: capDetections(out, DET_CAP) });
+  }
   // Like serializeDetPlot, but ONLY the dots showing on the SCREEN: passing the active
   // recency / date-range, species (★/◉/🟠/🟡) and observer filters and any legend
   // selection (collectVisibleDetections = the exact set of drawn dots) AND inside the
@@ -14988,7 +15157,7 @@
   function saveLegendStateNow() {
     window.GeoState.save({ mapLegend: { mini: detLegendMini, bflyFilter: detBflyFilter, starFilter: detStarFilter, rareFilter: detRareFilter, yearFilter: detYearFilter, lifeFilter: detLifeFilter, alertFilter: detAlertFilter, selected: Object.keys(detSelected), excluded: Object.keys(detExcluded), selBase: { sel: Object.keys(detSelBase.sel), exc: Object.keys(detSelBase.exc) }, obsFilter: detObsFilter ? Array.from(detObsFilter) : null, locFilter: detLocFilter ? Array.from(detLocFilter) : null, srcFilter: detSrcFilter ? Array.from(detSrcFilter) : null, areaExcl: detAreaExcl ? Array.from(detAreaExcl) : null, deleted: deletedSpecies, countMin: spCountMin, countMax: spCountMax, countMetric: spCountMetric, ageDays: speciesAgeFilterDays, newFilter: detNewFilter, newSince: detNewSince, todayFilter: detTodayFilter, textInc: detTextInc, textExc: detTextExc, daySel: Object.keys(detDaySel), rows: detLegendRows, sort: detLegendSort, regionMode: detRegionMode, regionPick: detRegionPick } });
   }
-  function loadDetections() {
+  function loadDetections(atStart) {
     // Self-heal a store left over-quota by an older build: cap the stored
     // detections (oldest dropped) and rewrite, so settings / points / lists can
     // be saved again and a sync isn't blocked. No-op once already within cap.
@@ -14996,7 +15165,11 @@
       var raw = JSON.parse(localStorage.getItem(window.GeoState.storageKey) || "{}");
       if (detRowCount(raw.mapDetections) > DET_CAP) writeStateCapped(raw);
     } catch (e) {}
-    var saved = window.GeoState.get("mapDetections", {}) || {};
+    // Owner, 2026-10-11: "No implicit running of load Detections unless specified in settings" — at
+    // START the last session's observations come back only with Settings → "Show the last session's
+    // observations on open". Skipped, they stay in storage untouched until a new fetch replaces them.
+    var saved = (atStart && window.GeoState.get("restoreDetOnOpen", false) !== true) ? {} : (window.GeoState.get("mapDetections", {}) || {});
+    if (atStart && window.GeoState.get("restoreDetOnOpen", false) !== true) detRestoreSkipped = true;
     Object.keys(saved).forEach(function (sk) {
       var d = saved[sk]; if (!d || !d.rows || !d.rows.length) return;
       var key = d.key || sk;   // older builds keyed by display name and had no .key
@@ -15008,6 +15181,21 @@
     foldDetPlotSubspecies();   // saved dots keep the keys they were plotted with
     // Restore the saved legend state, then render the layers honouring it.
     var ls = window.GeoState.get("mapLegend", {}) || {};
+    // Opening the app starts CLEAN (owner, 2026-10-11: "When opening the app the legend shows 0/nnnnnn
+    // and filtering is blinking … when opening no selecting and fetching should be done"): no legend
+    // selection, no filters — a filter left on last time hid every restored record. Only display
+    // preferences (minimised legend, sort order) and deleted species are kept.
+    // A reload after a sync (reloadPlottedFromStore) still restores the live state as it was.
+    if (atStart) {
+      ls = { mini: ls.mini, sort: ls.sort, deleted: ls.deleted, countMetric: ls.countMetric };   // row set, age window, every filter → defaults
+      // The filters kept outside the legend state too — the same ones the black × resets (without
+      // its map fit or species-list re-render: opening the app must not move or fetch anything).
+      window.GeoState.save({ detRecencyDays: 0, detDateRange: null, detMonths: [], probMin: 0, probMax: 100 });
+      var pmn = document.getElementById("prob-min"), pmx = document.getElementById("prob-max");
+      if (pmn) pmn.value = 0; if (pmx) pmx.value = 100;
+      var pmv = document.getElementById("prob-min-val"), pxv = document.getElementById("prob-max-val");
+      if (pmv) pmv.textContent = "0%"; if (pxv) pxv.textContent = "100%";
+    }
     detLegendMini = !!ls.mini;
     detBflyFilter = !!ls.bflyFilter;   // butterflies-only
     if (detBflyFilter) ensureButterflyGenera().then(function () { try { rebuildDetLayers(); updateDetLegend(); applyAgeFilter(); } catch (e) {} });
@@ -15127,7 +15315,7 @@
   // ---- Observer lists -------------------------------------------------------
   // Saved sets of observer names (to filter by).
   function getObserverLists() { return window.GeoState.get("observerLists", []) || []; }
-  function saveObserverLists(a) { window.GeoState.save({ observerLists: a }); }
+  function saveObserverLists(a) { window.GeoState.save({ observerLists: a }); detObsExclSrc = null; }   // (the lists are edited in place: rebuild the exclude set)
   var obsListsDdOpen = false;   // keep the observer-lists dropdown open across re-renders
   // The location checklist is as long as the fetch has distinct place names — hundreds
   // after a wide fetch, which buried every other filter under it. It is a dropdown now,
@@ -15376,7 +15564,13 @@
     return out;
   }
   function openObserverEditor() {
-    var m = createModal({ boxClass: "obs-editor", onClose: function () { if (document.getElementById("det-legend")) updateDetLegend(); } });
+    // who is hidden when the editor opens: if that changed, every surface is re-filtered on close
+    function exclSig() { var x = obsExclSet(); return x ? Array.from(x).sort().join("\n") : ""; }
+    var excl0 = exclSig();
+    var m = createModal({ boxClass: "obs-editor", onClose: function () {
+      if (exclSig() !== excl0) detFiltersRefresh();
+      else if (document.getElementById("det-legend")) updateDetLegend();
+    } });
     var box = m.box, close = m.close;
     var selLi = 0;                         // which list is currently being edited
     function esc(s) { return escapeHtml(s); }
@@ -15433,6 +15627,7 @@
         html += '<div class="obs-ed-list">' +
           '<div class="obs-ed-lhead"><input type="text" class="obs-ed-lname" value="' + esc(L.name) + '" />' +
             '<button type="button" class="obs-ed-ldel" aria-label="' + esc(t("btn.delete")) + '" title="' + esc(t("btn.delete")) + '">🗑</button></div>' +
+          '<label class="obs-ed-excl" title="' + esc(t("obs.excludeToggleHint")) + '"><input type="checkbox" class="obs-ed-exclcb"' + (L.exclude ? " checked" : "") + " /> " + esc(t("obs.excludeToggle")) + "</label>" +
           '<div class="obs-ed-mwrap"></div>' +
           '<div class="obs-ed-search"><input type="text" class="obs-ed-sinput" placeholder="' + esc(t("obs.searchPh")) + '" />' +
             '<div class="obs-ed-sresults"></div></div>' +
@@ -15476,6 +15671,8 @@
       }
       var nameInp = box.querySelector(".obs-ed-lname");
       if (nameInp) nameInp.addEventListener("change", function () { var a = getObserverLists(); if (a[selLi]) { a[selLi].name = this.value.trim() || a[selLi].name; saveObserverLists(a); } });
+      var exclCb = box.querySelector(".obs-ed-exclcb");
+      if (exclCb) exclCb.addEventListener("change", function () { var a = getObserverLists(); if (a[selLi]) { if (this.checked) a[selLi].exclude = true; else delete a[selLi].exclude; saveObserverLists(a); render(); } });
       var del = box.querySelector(".obs-ed-ldel");
       if (del) del.addEventListener("click", function () { var a = getObserverLists(); a.splice(selLi, 1); saveObserverLists(a); render(); });
       var sinput = box.querySelector(".obs-ed-sinput");
@@ -15539,10 +15736,23 @@
                 : '<button type="button" class="obs-addmenu-item obs-act-filter">' + escapeHtml(t("obs.filterOnly")) + "</button>" +
                   (detObsFilter ? '<button type="button" class="obs-addmenu-item obs-act-addfilter">' + escapeHtml(t("obs.addToFilter")) + "</button>" : "")) +
       (detObsFilter ? '<button type="button" class="obs-addmenu-item obs-act-all">' + escapeHtml(t("obs.removeAll")) + "</button>" : "") +
-      (getObserverLists().length ? '<button type="button" class="obs-addmenu-item obs-act-bylist">' + escapeHtml(t("obs.filterByList")) + " ▸</button>" : "") +
+      (getObserverLists().some(function (l) { return !l.exclude; }) ? '<button type="button" class="obs-addmenu-item obs-act-bylist">' + escapeHtml(t("obs.filterByList")) + " ▸</button>" : "") +
       '<button type="button" class="obs-addmenu-item obs-act-add">' + escapeHtml(t("obs.addToListAct")) + "</button>" +
+      '<button type="button" class="obs-addmenu-item obs-act-excl">' + escapeHtml(t((obsExclSet() && obsExclSet().has(name)) ? "obs.unexclude" : "obs.exclude")) + "</button>" +
       '<button type="button" class="obs-addmenu-item obs-act-editlists">' + escapeHtml(t("obs.editLists")) + "</button>";
     positionAnchoredMenu(menu, r.left, r.bottom + 2);
+    menu.querySelector(".obs-act-excl").addEventListener("click", function (e) {
+      e.stopPropagation(); closeAnchoredMenu();
+      var a = getObserverLists(), was = !!(obsExclSet() && obsExclSet().has(name));
+      if (was) a.forEach(function (L) { if (L.exclude) L.observers = (L.observers || []).filter(function (n) { return n !== name; }); });
+      else {
+        var L = null; a.forEach(function (x) { if (!L && x.exclude) L = x; });
+        if (!L) { L = { name: t("obs.excludeListName"), observers: [], exclude: true }; a.push(L); }   // the first time: the exclude list itself
+        if (L.observers.indexOf(name) < 0) L.observers.push(name);
+      }
+      saveObserverLists(a); detFiltersRefresh();
+      setStatus(t(was ? "obs.unexcluded" : "obs.excluded", { name: name }));
+    });
     var unBtn = menu.querySelector(".obs-act-unfilter");
     if (unBtn) unBtn.addEventListener("click", function (e) {
       e.stopPropagation(); closeAnchoredMenu();
@@ -15570,7 +15780,7 @@
       e.stopPropagation();
       var lists = getObserverLists();
       menu.innerHTML = '<div class="obs-addmenu-head">' + escapeHtml(t("obs.filterByList")) + "</div>" +
-        lists.map(function (l, i) { return '<button type="button" class="obs-addmenu-item obs-bylist-item" data-i="' + i + '">' + escapeHtml(l.name) + " (" + ((l.observers || []).length) + ")</button>"; }).join("");
+        lists.map(function (l, i) { return l.exclude ? "" : '<button type="button" class="obs-addmenu-item obs-bylist-item" data-i="' + i + '">' + escapeHtml(l.name) + " (" + ((l.observers || []).length) + ")</button>"; }).join("");
       positionAnchoredMenu(menu, r.left, r.bottom + 2);
       menu.querySelectorAll(".obs-bylist-item").forEach(function (b) {
         b.addEventListener("click", function (ev) {
@@ -15627,8 +15837,9 @@
       // target that opens the usual observer popup (Show only / Add / Remove / lists) —
       // so tapping the name doesn't just toggle the checkbox. The "(no observer)" row
       // has no popup, so its name is inert.
+      var hid = !!key && !!obsExclSet() && obsExclSet().has(key);   // on an exclude list: its records never show
       var span = key
-        ? '<span class="det-obs-name det-obs-addable" data-obs="' + escapeHtml(key) + '" title="' + escapeHtml(t("obs.addToList")) + '">' + escapeHtml(label) + "</span>"
+        ? '<span class="det-obs-name det-obs-addable' + (hid ? " det-obs-excl" : "") + '" data-obs="' + escapeHtml(key) + '" title="' + escapeHtml(t(hid ? "obs.excludedTip" : "obs.addToList")) + '">' + escapeHtml(label) + "</span>"
         : '<span class="det-obs-name">' + escapeHtml(label) + "</span>";
       return '<div class="det-obs-row"><input type="checkbox" class="det-obs-cb" data-obs="' + escapeHtml(key) + '"' + (on ? " checked" : "") + ' aria-label="' + escapeHtml(label) + '">' + span + "</div>";
     }
@@ -15642,6 +15853,7 @@
     if (oLists.length) {
       head = '<details class="det-obslists-dd"' + (obsListsDdOpen ? " open" : "") + '><summary>' + escapeHtml(t("obs.lists") + ": " + obsFilterLabel()) + "</summary>" +
         '<div class="det-obslists-menu">' + oLists.map(function (L, i) {
+          if (L.exclude) return "";   // an exclude list hides its members; it is not a filter to tick
           return '<label class="sp-list-row"><input type="checkbox" class="det-obslist-tick" data-i="' + i + '"' + (obsListTicked(L) ? " checked" : "") + " /> <span class=\"sp-list-nm\">" + escapeHtml(L.name) + '</span> <span class="sp-list-n">(' + ((L.observers || []).length) + ")</span></label>";
         }).join("") + "</div></details>";
     } else {
@@ -16650,8 +16862,7 @@
     // everything (a 2nd click while armed, or when there are no areas to pick from).
     el.querySelector(".det-clear").addEventListener("click", function (e) {
       e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
-      if (!detAreaDeleteMode && fetchedAreas.length) { enterAreaDeleteMode(); updateDetLegend(); }
-      else clearDetections();
+      clearStep(); updateClearGroup();
     });
     wireClearFilterBtn(el.querySelector(".det-clear-sel"));   // click = clear all; long-press/right-click = all-filters pane
     // "Total" cycles the listed row-set: All → Selected → Starred → Rare → New for {year} → All, skipping the sets that would be empty (see detRowsStates).
@@ -17567,7 +17778,7 @@
   function chooseListThen(anchor, then, title, skip) {
     var br = anchor.getBoundingClientRect();
     var lists = lastListFirst(mpState.mpCollections().slice()
-      .filter(function (c) { return c.name !== skip; })
+      .filter(function (c) { return c.name !== skip && !c.viewOnly; })
       .sort(function (a, b) { return a.name.localeCompare(b.name); }));
     var then0 = then; then = function (nm) { rememberSaveList(nm); then0(nm); };
     var el = openAnchoredMenu("detrow-menu mp-saveinto-menu", anchor);
@@ -17596,6 +17807,7 @@
   // a ringing site); a move is a copy followed by a delete, both of which are here.
   function copyPointToList(anchor, p) {
     if (!p) return;
+    if (p.viewOnly) { setStatus(t("drive.noCopy")); return; }
     chooseListThen(anchor, function (name) {
       var c = mpState.mpCollections().filter(function (x) { return x.name === name; })[0];
       if (!c) { c = { name: name, points: [] }; mpState.mpCollections().push(c); }
@@ -17747,12 +17959,13 @@
   // species' array — dedup only against FETCHED rows of the same species.
   var _listSyncSig = "", _listSyncN = 0, _listRowOf = (typeof WeakMap === "function") ? new WeakMap() : null;
   function listSyncSig() {
-    var parts = [mpState.mpFilter().join("\u0001"), mpState.mpExclude().join("\u0001")];
+    var parts = [mpState.mpFilter().join("\u0001"), mpState.mpExclude().join("\u0001"), mpState.mpNone() ? "none" : ""];
     mpState.mpCollections().forEach(function (c) {
       if (!mpState.shownColls()[c.name]) return;
       var lf = mpState.listFilter(c.name);
       parts.push(c.name + "#" + ((c.points || []).length) + "#" + (lf ? JSON.stringify(lf) : ""));
     });
+    parts.push("search#" + mpSearchPins().length);
     return parts.join("\u0002");
   }
   function countListRows() {
@@ -17793,7 +18006,7 @@
         if (!row) {
           row = { lat: +p.lat, lon: +p.lon, date: p.date || "", url: p.url || "", count: p.count, act: p.act || "", src: p.src || "list",
             observer: p.observer || "", note: p.note || "", place: p.place || "", flags: p.flags || "", origin: p.origin || "",
-            placeCoarse: !!p.placeCoarse, posFuzzM: +p.posFuzzM || 0, _list: true, listColor: col, _listName: c.name, _mpId: p.id };
+            placeCoarse: !!p.placeCoarse, posFuzzM: +p.posFuzzM || 0, _list: true, listColor: col, _listName: c.name, _mpId: p.id, _vo: !!c.viewOnly };
           if (p.prob != null && +p.prob >= 0) { row._prob = +p.prob; seedObsProb(key, row); }   // probability stored on the list point → no inference again
           if (_listRowOf) _listRowOf.set(p, row);
         } else { row.listColor = col; row._listName = c.name; }
@@ -17809,6 +18022,27 @@
         e.rows.push(row);
         changed = true; injected++;
       }
+    });
+    // Map points put there by a search, with a species (owner, 2026-10-11: "the species names should be
+    // parsed correctly and added to legend"): they join the legend like a shown list's records, drawn as
+    // one circle per point in their SEARCH's colour (see the _search branch of the dot drawing).
+    mpSearchPins().forEach(function (p) {
+      var key = mpState.detKeyOf(p); if (!key) return;
+      var col = mpSearchColor(p.fromSearch);
+      var row = _listRowOf && _listRowOf.get(p);
+      if (!row) {
+        row = { lat: +p.lat, lon: +p.lon, date: p.date || "", url: p.url || "", count: p.count, act: p.act || "", src: p.src || "list",
+          observer: p.observer || "", note: p.note || "", place: p.place || "", flags: p.flags || "", _list: true, _search: true,
+          listColor: col, _listName: "\u201c" + p.fromSearch + "\u201d", _mpId: p.id };
+        if (_listRowOf) _listRowOf.set(p, row);
+      }
+      var e = detPlot[key];
+      if (!e) e = detPlot[key] = { key: key, name: (key.indexOf("x:") === 0 ? (p.sci || p.name) : p.name) || key, color: p.spColor || "#888", rows: [], group: null, cls: p.spCls || (taxByCode[key] && taxByCode[key].class_name) || "" };
+      // the same record already there (a shown list's, a fetched one): not counted twice
+      var sk = (+row.lat).toFixed(5) + "," + (+row.lon).toFixed(5) + "|" + String(row.date || "").slice(0, 10);
+      if (e.rows.some(function (r0) { return (+r0.lat).toFixed(5) + "," + (+r0.lon).toFixed(5) + "|" + String(r0.date || "").slice(0, 10) === sk; })) { skipped++; return; }
+      if (row._ts == null) row._ts = Date.now();
+      e.rows.push(row); changed = true; injected++;
     });
     _listSyncSig = sig; _listSyncN = injected;
     if (perfOn) console.log("SYNC list rows: dropped " + dropped + ", injected " + injected + ", skipped by list filters " + skipped + ", changed " + changed);
@@ -17918,6 +18152,7 @@
   // browser request with 403, measured 2026-10-01). The bytes take the single-file import path.
   function importPointsUrl(url) {
     url = String(url || "").trim(); if (!url) return;
+    if (window.GDriveSync && window.GDriveSync.driveLinkId(url)) { importPointsDrive(url); return; }
     var name = "";
     try { var u = new URL(url); if (!/^https?:$/.test(u.protocol)) throw new Error("scheme"); name = decodeURIComponent(u.pathname.split("/").pop() || ""); }
     catch (e) { setStatus(t("points.linkFail")); return; }
@@ -17957,6 +18192,10 @@
       var h = new Uint8Array(buf, 0, Math.min(4, buf.byteLength || 0));
       var isZip = h.length >= 4 && h[0] === 0x50 && h[1] === 0x4B && h[2] === 0x03 && h[3] === 0x04;
       var doneKml = function (kml) {
+        // a file saved by this app (a list block inside) loads exactly as it was saved — colours,
+        // uncertainty, markers, areas, tracks, every field (owner, 2026-10-13)
+        var exact = window.AppPoints.exactListsOfText(kml);
+        if (exact) { var rx = window.AppPoints.importListsExact(exact); done(); mpState.mpLoading(null); setStatus(t("kml.exactImported", { n: rx.points, lists: rx.lists.length })); return; }
         Promise.resolve(startKmlImport(kml, f.name)).then(done, function () { done(); mpState.mpLoading(null); setStatus(t("kml.parseErr")); });
       };
       if (isZip) {
@@ -17966,12 +18205,88 @@
       }
       var txt = new TextDecoder().decode(new Uint8Array(buf)).replace(/^\uFEFF/, "").trim();
       var c0 = txt.charAt(0);
-      if (c0 === "{" || c0 === "[") { startGeoJsonImport(txt, f.name); mpState.mpLoading(null); done(); }
+      if (c0 === "{" || c0 === "[") {
+        var exG = window.AppPoints.exactListsOfText(txt);
+        if (exG) { var rg = window.AppPoints.importListsExact(exG); setStatus(t("kml.exactImported", { n: rg.points, lists: rg.lists.length })); }
+        else startGeoJsonImport(txt, f.name);
+        mpState.mpLoading(null); done();
+      }
       else if (c0 === "<") doneKml(txt);
       else if (allowShare) { importShared(txt, { asList: true, fileName: f.name }); done(); }   // a .share file → a saved point list (the overlay is its job now: decode → prompt → import)
       else doneKml(txt);
     };
     rd.readAsArrayBuffer(f);
+  }
+  // A KMZ / KML / GeoJSON (or a folder of them) shared on Google Drive (owner, 2026-10-12): Drive
+  // refuses a plain fetch of a share link, so it is read through the Drive API after the user signs
+  // in with the Google account it is shared with (read-only, token dropped after). The dialog's
+  // button is the user gesture the Google popup needs. A file the user owns (or may edit) takes the
+  // normal import path; someone else's opens view-only (session only, never stored or copied).
+  function importPointsDrive(link) {
+    if (importBusy) { setStatus(t("kml.busy")); return; }
+    uiDialog({ message: t("drive.openBody"), okLabel: t("drive.openBtn"), xLater: true }).then(function (ok) {
+      if (!ok) return;
+      setStatus(t("drive.fetching")); mpState.mpLoading(t("drive.fetching"));
+      window.GDriveSync.readShared(link).then(function (res) {
+        mpState.mpLoading(null);
+        if (!res.files.length) { setStatus(t("drive.noFiles")); return; }
+        var asFile = function (f) { return new File([f.blob], f.name, { type: f.blob.type || "" }); };
+        var mine = res.files.filter(function (f) { return f.owned; }), theirs = res.files.filter(function (f) { return !f.owned; });
+        // Someone else's file opens VIEW-ONLY (owner, 2026-10-12: "block copying of the points to
+        // receiving users point lists"): shown this session, never saved, synced, exported or copied.
+        // The user's own files (owner or editor on Drive) import like a picked file.
+        if (theirs.length) {
+          importBusy = true;
+          mpState.mpLoading(t("kml.reading", { name: theirs[0].name }));
+          Promise.all(theirs.map(function (f) { return f.blob.arrayBuffer().then(function (buf) { return { file: f.name, buf: buf, id: f.id }; }); }))
+            .then(function (items) { return window.AppPoints.openViewOnly(items); })
+            .then(function (r) {
+              importBusy = false; mpState.mpLoading(null);
+              try { refreshMpPanel(); } catch (e) {}
+              setStatus(t("drive.openedViewOnly", { n: r.n }));
+              if (mine.length) importPointsFile(mine.map(asFile), true);
+            }, function () { importBusy = false; mpState.mpLoading(null); setStatus(t("kml.parseErr")); });
+          return;
+        }
+        importPointsFile(mine.map(asFile), true);
+      }).catch(function (e) {
+        mpState.mpLoading(null);
+        setStatus(e && e.code ? t("drive.notShared") : t("drive.failed", { msg: (e && e.message) || "" }));
+      });
+    });
+  }
+  // Show a shared (view-only) list: EVERY time, ask Drive first whether it is still shared with this
+  // Google account and read it fresh (owner, 2026-10-12: "verify the sharing permissions every time the
+  // list viewed and if the permissions are withdrawn by originating user the app should refuse to load
+  // the list and remove it"). Withdrawn (403 / 404) → the list and its reference are removed; Drive
+  // unreachable → not shown. Runs from the tick (a user gesture, for the Google popup if one is needed).
+  function showViewOnly(c, cb) {
+    if (!window.GDriveSync || !c.driveRef) return;
+    var name = c.name;
+    setStatus(t("drive.verifying", { name: name })); mpState.mpLoading(t("drive.verifying", { name: name }));
+    window.GDriveSync.readSharedFile(c.driveRef.id).then(function (r) {
+      return r.blob.arrayBuffer().then(function (buf) { return window.AppPoints.fillViewOnly(c, buf); });
+    }).then(function () {
+      mpState.mpLoading(null);
+      mpState.shownColls()[name] = true; saveShownState(); renderMapPoints();
+      if (cb && cb.isConnected) cb.checked = true;
+      try { refreshMpPanel(); } catch (e) {}
+      setStatus("");
+    }).catch(function (e) {
+      mpState.mpLoading(null);
+      if (e && e.code) { window.AppPoints.forgetViewOnly(name); try { refreshMpPanel(); } catch (x) {} setStatus(t("drive.withdrawn", { name: name })); }
+      else setStatus(t("drive.verifyFail", { name: name, msg: (e && e.message) || "" }));
+    });
+  }
+  // ?drive=<share link> on the app's address: the same import, offered once at start (a link
+  // someone sent is the user's own request; the parameter is dropped so a reload asks nothing).
+  function consumeDriveParam() {
+    var link = "";
+    try { link = new URLSearchParams(location.search).get("drive") || ""; } catch (e) { return; }
+    if (!link) return;
+    try { var u = new URL(location.href); u.searchParams.delete("drive"); history.replaceState(null, "", u.pathname + u.search + u.hash); } catch (e) {}
+    if (!window.GDriveSync || !window.GDriveSync.driveLinkId(link)) { setStatus(t("drive.badLink")); return; }
+    importPointsDrive(link);
   }
   function renderDetSetOverlay(set) {
     var g = L.layerGroup();
@@ -18152,14 +18467,16 @@
   // NOT just by it being non-null — a fresh add still passes {lat,lon,...} so
   // truthiness would mis-detect it as an edit and silently no-op the save.
   function openPointEditor(existing) {
+    if (existing && existing.viewOnly) { setStatus(t("drive.noCopy")); return; }
     var p = existing || { lat: null, lon: null, name: "", tags: [], note: "" };
     var isEdit = !!(existing && existing.id);
     // Re-use a single working popup; close any other detail popups first.
     if (mpEditPopup) map.closePopup(mpEditPopup);
     var html = mpEditorHtml(p, isEdit);
-    var pop = L.popup({ closeButton: true, autoClose: true, maxWidth: 280, className: "mp-popup" })
+    var pop = L.popup({ closeButton: true, autoClose: true, maxWidth: 280, className: "mp-popup", autoPan: false })
       .setLatLng([p.lat, p.lon]).setContent(html);
     mpEditPopup = pop; pop.openOn(map);
+    window.AppPoints.centerPopup(pop);   // in the middle of the screen, once it has its final size
     setTimeout(function () { wireEditorPopup(p, isEdit); }, 0);
   }
   var mpEditPopup = null;
@@ -18175,7 +18492,7 @@
       '<label>' + esc(t("points.saveToList")) +
         '<select id="mp-listsel">' +
           '<option value=""' + ((mpState.mpActiveName() || lastSaveList()) ? "" : " selected") + ">" + esc(t("points.listNone")) + "</option>" +
-          mpState.mpCollections().slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (c) {
+          mpState.mpCollections().filter(function (c) { return !c.viewOnly; }).sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (c) {
             return '<option value="' + esc(c.name) + '"' + (c.name === (mpState.mpActiveName() || lastSaveList()) ? " selected" : "") + ">" + esc(c.name) + "</option>";
           }).join("") +
           '<option value="__new__">' + esc(t("points.listNew")) + "</option>" +
@@ -18207,7 +18524,7 @@
           var ex = mpState.mpCollections().filter(function (x) { return x.name === name; })[0];
           mpState.setMapPoints(ex ? (ex.points || []).map(function (q) { return Object.assign({}, q); }) : []);
           if (!ex) mpState.mpCollections().push({ name: name, points: [] });
-          mpState.setMpActiveName(name); mpState.setMpFilter([]);
+          mpState.setMpActiveName(name); mpState.setMpFilter([]); mpState.setMpNone(false);
         }
         saveMapPoints(); renderMapPoints(); resolve(true);
       };
@@ -18544,6 +18861,213 @@
   // ---- Points dropdown panel ----
   var MP_LIST_MAX = 300;   // rows drawn in the Points panel's merged point list
   var mpRowsShown = [];    // the rows as last drawn, so a row button can reach its point
+  // ---- Search across all lists (owner, 2026-10-11): "add a fuzzy string search for all the elements
+  // (for species name search make sure to go via label files). The search should show which lists the
+  // searched word matches, giving user chance to select those." Then: "Do not match on list name,
+  // match only on notes and species names." A record matches when every word is in its NOTE
+  // (exact, case- and concatenation-insensitive — see mpSquash) OR its species matches: the query is matched against the
+  // MODEL LABELS (localised, English and scientific name), never against what a file happened to call
+  // the bird. Trips (detection sets) are searched the same way. Only matching records are counted.
+  var mpSearchQ = "", mpSearchT = null, mpSearchRes = null, mpSearchGen = 0, mpSearchBusyOn = false;
+  // A flashing ⌛ in the box from the first key until the results are painted (owner, 2026-10-11).
+  function mpSearchBusy(on) { mpSearchBusyOn = !!on; var b = document.getElementById("mp-search-busy"); if (b) b.hidden = !on; }
+  // Exact, not fuzzy (owner, 2026-10-11: "non-fuzzy, but insensitive to case and concatenations"):
+  // case- and accent-folded, and blind to spaces / hyphens / punctuation — so "Slagugle-kasse" finds
+  // "slaguglekasse" and back, and a word inside a compound still counts. Every query word must appear.
+  function mpSquash(x) { return textFold(x).replace(/[^a-z0-9]+/g, ""); }
+  function mpSearchWords(q) { return textFold(q).split(/[\s,;]+/).map(function (w) { return w.replace(/[^a-z0-9]+/g, ""); }).filter(Boolean); }
+  function mpAllIn(words, hay) { for (var i = 0; i < words.length; i++) if (hay.indexOf(words[i]) < 0) return false; return true; }
+  function mpSearchSpecies(q) {
+    var out = Object.create(null), n = 0, words = mpSearchWords(q);
+    if (words.join("").length < 3) return out;
+    Object.keys(labelsByKey).forEach(function (k) {
+      var lbl = labelsByKey[k];
+      if (mpAllIn(words, mpSquash(speciesName(lbl)) + "|" + mpSquash(lbl.common || "") + "|" + mpSquash(lbl.sci || ""))) { out[k] = 1; n++; }
+    });
+    return n > 400 ? Object.create(null) : out;   // a query that hits half the model is not a species search
+  }
+  // Owner, 2026-10-11: "Do not match on list name, match only on notes and species names." — a point's
+  // own text that counts is its NOTE; species go through the model labels (mpSearchSpecies).
+  function mpPointText(p) { return mpSquash(p.note || ""); }
+  function mpSearchRun(q) {
+    var gen = ++mpSearchGen, res = document.getElementById("mp-search-res");
+    q = String(q || "").trim();
+    if (q.length < 2) { mpSearchRes = null; if (res) res.innerHTML = ""; mpSearchBusy(false); return; }
+    if (res) res.innerHTML = '<p class="dd-empty">' + escapeHtml(t("points.searchBusy")) + "</p>";
+    mpSearchBusy(true);
+    mpState.whenAllLoaded().then(function () { return new Promise(function (r) { setTimeout(r, 30); }); }).then(function () {   // let the ⌛ paint before the work
+      if (gen !== mpSearchGen) return;
+      var words = mpSearchWords(q), sp = mpSearchSpecies(q), spN = Object.keys(sp).length;
+      var hits = function (hay) { return mpAllIn(words, hay); };
+      var out = [];
+      mpState.mpCollections().forEach(function (c) {
+        if (!c || !c.name || c.viewOnly) return;   // received view-only lists are not searched (search → map → own list would copy them)
+        var pts = c.points || [], n = 0, got = [];
+        for (var i = 0; i < pts.length; i++) { var pt = pts[i]; if (!pt) continue; var key = mpState.detKeyOf(pt); if ((key && sp[key]) || hits(mpPointText(pt))) { n++; got.push(pt); } }
+        if (n) out.push({ type: "p", name: c.name, n: n, total: pts.length, pts: got });
+      });
+      detSets().forEach(function (st) {
+        var n = 0, total = 0, got = [];
+        Object.keys(st.detections || {}).forEach(function (k) {
+          var e = st.detections[k];
+          (e.rows || []).forEach(function (r) {
+            total++;
+            if (sp[k] || hits(mpSquash(r.note || ""))) {
+              n++; got.push({ lat: +r.lat, lon: +r.lon, name: detName({ key: k, name: e.name }) || e.name || "", date: r.date || "", observer: r.observer || "", place: r.place || "", note: r.note || "", spKey: k, tags: [] });
+            }
+          });
+        });
+        if (n) out.push({ type: "d", name: st.name, n: n, total: total, pts: got });
+      });
+      out.sort(function (a, b) { return (b.n - a.n) || a.name.localeCompare(b.name); });
+      out.forEach(function (r) { r.sel = true; });   // every matching list starts selected (owner, 2026-10-11) — untick to leave one out
+      mpSearchRes = { q: q, list: out, species: spN };
+      mpSearchPaint(); mpSearchBusy(false);
+    });
+  }
+  function mpSearchPaint() {
+    var res = document.getElementById("mp-search-res"); if (!res || !mpSearchRes) return;
+    var R = mpSearchRes;
+    if (!R.list.length) { res.innerHTML = '<p class="dd-empty">' + escapeHtml(t("points.searchNone", { q: R.q })) + "</p>"; return; }
+    var nPts = (function () {   // UNIQUE records — the count the transfer will really add (the same record in two lists counts once)
+      var u = Object.create(null), n = 0;
+      R.list.forEach(function (r) { if (r.sel) (r.pts || []).forEach(function (q) { var k = mpRecKey(q); if (!u[k]) { u[k] = 1; n++; } }); });
+      return n;
+    })();
+    var keepScroll = R.scroll || 0;
+    res.innerHTML = '<div class="mp-search-head"><span>' + escapeHtml(t("points.searchLists", { n: R.list.length })) + "</span></div>" +
+        (nPts ? '<button type="button" class="btn mp-search-tomap">' + escapeHtml(t("points.searchToMap", { n: nPts })) + "</button>" : "") +
+      R.list.map(function (r) {
+        var what = t("points.searchHits", { n: r.n, total: r.total });
+        var hs = mpHiddenStash();   // lists hidden with the panel's Hide toggle: ticked, greyed out, not changeable
+        var shown = hs ? hs[r.type].indexOf(r.name) >= 0 : !!(r.type === "d" ? mpState.shownDetSets() : mpState.shownColls())[r.name];
+        // The checkbox shows / hides the COMPLETE list (as the panel's own does); the name, tapped,
+        // strikes the list through = its records are left out of the transfer (owner, 2026-10-11).
+        return '<div class="mp-search-row' + (r.sel ? "" : " off") + (hs ? " mp-hidden" : "") + '"><input type="checkbox" class="mp-search-cb" data-i="' + R.list.indexOf(r) + '"' + (shown ? " checked" : "") + (hs ? " disabled" : "") + ' title="' + escapeHtml(t("points.searchShowList")) + '">' +
+          '<button type="button" class="mp-search-name" data-i="' + R.list.indexOf(r) + '" title="' + escapeHtml(t("points.searchStrike")) + '">' + escapeHtml(r.name) + '</button><span class="mp-search-n">' + escapeHtml(what) + "</span></div>";
+      }).join("");
+    res.scrollTop = keepScroll;
+    res.onscroll = function () { R.scroll = res.scrollTop; };   // kept across repaints and panel rebuilds
+    // The checkbox SELECTS the list for the actions below (owner, 2026-10-11) — it no longer
+    // shows / hides it, so ticking does not rebuild the panel (and nothing jumps).
+    res.querySelectorAll(".mp-search-cb").forEach(function (cb) {   // show / hide the complete list
+      cb.addEventListener("change", function () {
+        var r = R.list[+this.getAttribute("data-i")]; if (!r) return;
+        var set = r.type === "d" ? mpState.shownDetSets() : mpState.shownColls();
+        if (this.checked) set[r.name] = true; else delete set[r.name];
+        var main = document.querySelector('#mp-panel .mp-coll-cb[data-type="' + r.type + '"][data-name="' + (window.CSS && CSS.escape ? CSS.escape(r.name) : r.name) + '"]');
+        if (main) main.checked = this.checked;
+        saveShownState(); if (r.type === "d" && typeof updateDetSetOverlays === "function") updateDetSetOverlays();
+        mpState.mpFilterRefresh(this.closest(".mp-search-row") || this);
+      });
+    });
+    res.querySelectorAll(".mp-search-name").forEach(function (b) {   // strike through = leave out of the transfer
+      b.addEventListener("click", function (e) { e.preventDefault(); var r = R.list[+this.getAttribute("data-i")]; if (r) { r.sel = !r.sel; mpSearchPaint(); } });
+    });
+    // The matched records themselves → map points (the working pins), as COPIES: the lists stay as they
+    // are (owner, 2026-10-11: "a button for selecting the matched records/points and transfer them to
+    // map points"). A spot + name already among the pins is not added twice.
+    var tm = res.querySelector(".mp-search-tomap");
+    if (tm) tm.addEventListener("click", function () {
+      // One record = one pin (owner, 2026-10-11: "several points have at least 2x"): the same observation
+      // sits in several lists (person lists overlap) with a different name or a rounded position — so a
+      // record is its spot to ~1 m, its date and its species (else its name), not its exact text.
+      var recKey = mpRecKey;
+      var have = Object.create(null), mp = mpState.mapPoints();
+      mp.forEach(function (q) { have[recKey(q)] = 1; });
+      var added = 0;
+      R.list.forEach(function (r) {
+        if (!r.sel) return;   // a list the user unticked keeps its points out
+        (r.pts || []).forEach(function (q) {
+          if (!isFinite(+q.lat) || !isFinite(+q.lon)) return;
+          var k = recKey(q);
+          if (have[k]) return; have[k] = 1;
+          var cp = Object.assign({}, q); cp.id = mpState.mpUid(); cp.tags = (q.tags || []).slice(); cp.source = cp.source || "search";
+          cp.fromSearch = R.q;   // which search put it here — its row at the top of the panel removes them again
+          mp.push(cp); added++;
+        });
+      });
+      // The lists keep exactly the shown / hidden state they had before (owner, 2026-10-11).
+      saveMapPoints(); renderMapPoints(); refreshMpPanel();
+      setStatus(t("points.searchToMapDone", { n: added }));
+    });
+  }
+  function wireMpSearch(panel) {
+    var inp = panel.querySelector("#mp-search-in"); if (!inp) return;
+    if (mpSearchRes && mpSearchRes.q === mpSearchQ.trim()) mpSearchPaint();          // the panel was rebuilt: put the results back
+    if (wireMpSearch._focus) { try { inp.focus({ preventScroll: true }); } catch (e) { inp.focus(); } try { inp.setSelectionRange(inp.value.length, inp.value.length); } catch (e) {} }   // preventScroll: refocusing must not throw the panel back to the top
+    inp.addEventListener("focus", function () { wireMpSearch._focus = true; });
+    inp.addEventListener("blur", function () { setTimeout(function () { if (document.activeElement !== inp) wireMpSearch._focus = false; }, 0); });
+    inp.addEventListener("click", function (e) { e.stopPropagation(); });
+    inp.addEventListener("input", function () {
+      mpSearchQ = inp.value;
+      mpSearchBusy(mpSearchQ.trim().length >= 2);
+      clearTimeout(mpSearchT); mpSearchT = setTimeout(function () { mpSearchRun(mpSearchQ); }, 1000);   // 1 s after the last key (owner, 2026-10-11)
+    });
+  }
+  // Map points put there by a search, grouped by its words (owner, 2026-10-11: "the dots moved to map
+  // are unremovable. Add a section on top of point list with a list of all the search-words without
+  // checkbox but with an X to remove those points"). Pins from before the words were recorded group as
+  // "earlier search"; a hand-placed pin is in no group.
+  // Pins copied by a search before v2064 carry neither `fromSearch` nor (usually) source "search" —
+  // copying a list point kept its own source ("kml" …). They are recognised as an exact copy (same
+  // spot to 1e-6°, same name) of a point in a saved list, and join the "earlier search" group.
+  var MP_EARLIER = "#earlier-search#";   // the group key for pins without their search words (plain text: the HTML parser rewrites a NUL)
+  var _mpListPtIdx = null, _mpListPtSig = "";
+  function mpListPointIndex() {
+    var cs = mpState.mpCollections(), sig = cs.map(function (c) { return c._lazy ? "L" : (c.points || []).length; }).join(",");   // a list that loads later changes it
+    if (_mpListPtIdx && sig === _mpListPtSig) return _mpListPtIdx;
+    var idx = Object.create(null);
+    cs.forEach(function (c) { (c.points || []).forEach(function (q) { if (q && isFinite(+q.lat) && isFinite(+q.lon)) idx[(+q.lat).toFixed(6) + "," + (+q.lon).toFixed(6) + "|" + (q.name || "")] = 1; }); });
+    _mpListPtIdx = idx; _mpListPtSig = sig; return idx;
+  }
+  function mpSearchKey(q) {
+    if (!q) return null;
+    if (q.fromSearch) return q.fromSearch;
+    if (q.source === "search") return MP_EARLIER;
+    return mpListPointIndex()[(+q.lat).toFixed(6) + "," + (+q.lon).toFixed(6) + "|" + (q.name || "")] ? MP_EARLIER : null;
+  }
+  var MP_OTHER = "#other-map-points#";
+  // The map points a search put there, and that search's colour (stable per search words).
+  function mpSearchPins() { return mpState.mapPoints().filter(function (p) { return p && p.fromSearch; }); }
+  function mpSearchColor(q) { return mpState.mpHashColor("search:" + q); }
+  // One record's identity for de-duplication: its spot to ~1 m, its date, its species (else its name).
+  function mpRecKey(q) { var k = mpState.detKeyOf(q); return (+q.lat).toFixed(5) + "," + (+q.lon).toFixed(5) + "|" + (q.date || "").slice(0, 10) + "|" + (k || textFold(q.name || "")); }
+  // Search copies already on the map twice (made before records were matched by spot / date / species)
+  // are merged: a copy that repeats an earlier copy of the same record goes. Hand-placed pins are kept.
+  function mpDedupeSearchPins() {
+    var seen = Object.create(null), out = [], gone = 0;
+    mpState.mapPoints().forEach(function (q) {
+      var g = mpSearchKey(q);
+      if (g == null) { out.push(q); return; }
+      var k = mpRecKey(q);
+      if (seen[k]) { gone++; return; }
+      seen[k] = 1; out.push(q);
+    });
+    if (gone) { mpState.setMapPoints(out); saveMapPoints(); renderMapPoints(); }
+    return gone;
+  }
+  function mpFromSearchHtml() {
+    mpDedupeSearchPins();
+    // a list still loading cannot be matched yet → redraw once they all are
+    if (mpState.anyLazy && mpState.anyLazy() && !mpFromSearchHtml._wait) { mpFromSearchHtml._wait = true; mpState.whenAllLoaded().then(function () { mpFromSearchHtml._wait = false; refreshMpPanel(); }); }
+    var groups = Object.create(null), order = [];
+    mpState.mapPoints().forEach(function (q) { var k = mpSearchKey(q); if (k == null) k = MP_OTHER; if (!groups[k]) { groups[k] = 0; order.push(k); } groups[k]++; });
+    order.sort(function (a, b) { return (a === MP_OTHER) - (b === MP_OTHER); });   // "other map points" last
+    // Fetched observations get a row too (owner, 2026-10-11: "Points from earlier fetch still show w no
+    // red x in list popup"): its × clears them like the map's red × (shown lists stay).
+    var nFetched = 0; Object.keys(detPlot || {}).forEach(function (k) { (detPlot[k].rows || []).forEach(function (r) { if (!r._list && !r._alert) nFetched++; }); });
+    if (!order.length && !nFetched) return "";
+    var row = function (key, label, n) {
+      return '<div class="mp-fs-row"><span class="mp-fs-q">' + escapeHtml(label) + '</span><span class="mp-fs-n">' + escapeHtml(t("points.searchPins", { n: n })) + "</span>" +
+        '<button type="button" class="mp-fs-del" data-q="' + escapeHtml(key) + '" title="' + escapeHtml(t("points.removeSearchPts")) + '" aria-label="' + escapeHtml(t("points.removeSearchPts")) + '">' + X_MARK_SVG + "</button></div>";
+    };
+    return '<div class="mp-fs"><div class="mp-fs-head">' + escapeHtml(t("points.fromSearches")) + "</div>" +
+      order.map(function (k) { return row(k, k === MP_EARLIER ? t("points.searchEarlier") : k === MP_OTHER ? t("points.otherMapPts") : "\u201c" + k + "\u201d", groups[k]); }).join("") +
+      (nFetched ? row("#fetched#", t("points.fetchedObs"), nFetched) : "") + "</div>";
+  }
+  // The lists hidden with the panel's Hide toggle: { p: [list names], d: [trip names] }, or null.
+  function mpHiddenStash() { var st = window.GeoState.get("mpHiddenStash", null); return (st && Array.isArray(st.p) && Array.isArray(st.d)) ? st : null; }
   function refreshMpPanel() {
     var panel = document.getElementById("mp-panel"); if (!panel) return;
     // Closed → nothing to draw. Every map-point redraw came through here and rebuilt the whole
@@ -18558,6 +19082,7 @@
     [".mp-coll-list", ".mp-list"].forEach(function (sel) {
       var el = panel.querySelector(sel); if (el) innerTop[sel] = el.scrollTop;
     });
+    var hidStash = mpHiddenStash();   // lists hidden with the Hide toggle → their boxes show ticked, greyed out
     var allTags = mpAllTags();
     var hasUntagged = mpState.mapPoints().some(function (p) { return !p.tags || !p.tags.length; });
     var center = mpState.mpDistOrigin() || (map && map.getCenter());   // measure from the last selected point, else map centre
@@ -18599,10 +19124,14 @@
       if (ra[1] !== rb[1]) return ra[1] - rb[1];
       return tagDisplay(a).localeCompare(tagDisplay(b));
     });
-    // Three states per chip (owner, 2026-10-02): plain = no say, coloured = included,
-    // coloured and crossed out = EXCLUDED (its points hidden whatever else is ticked).
+    // A lit chip = its points are shown (owner, 2026-10-14: "make them work logically" — all chips dark
+    // showed everything, and picking one changed nothing on a list whose areas ignored the chips).
+    // Two modes: SHOW ALL (nothing included, not switched off): every chip lit, a tap hides its points
+    // (crossed out); PICK (some included, or all switched off with "All"): only the included are lit,
+    // a tap includes / leaves out.
+    var pickMode = mpState.mpFilter().length > 0 || mpState.mpNone();
     var chipCls = function (tag) {
-      if (mpState.mpExclude().indexOf(tag) >= 0) return " is-excluded";
+      if (!pickMode) return mpState.mpExclude().indexOf(tag) >= 0 ? " is-excluded" : " is-active";
       return mpState.mpFilter().indexOf(tag) >= 0 ? " is-active" : "";
     };
     var chipsHtml = allTags.map(function (tag) {
@@ -18615,7 +19144,7 @@
     // clears them all (owner, 2026-10-01). Only worth showing with two or more chips.
     var allChips = allTags.concat(hasUntagged ? [""] : []);
     if (allChips.length > 1) {
-      var allOn = allChips.every(function (tg) { return mpState.mpFilter().indexOf(tg) >= 0; });
+      var allOn = !pickMode && !mpState.mpExclude().length;   // lit = everything shown
       chipsHtml = '<button type="button" class="mp-chip mp-chip-all' + (allOn ? " is-active" : "") + '" data-all="1" title="' + escapeHtml(t("points.tagsAllHint")) + '">' + escapeHtml(t("points.tagsAll")) + "</button>" + chipsHtml;
     }
     unionPts.forEach(function (u, i) { u.i = i; });   // the note button's handle back to its point
@@ -18745,7 +19274,7 @@
         '" data-count="' + count + '" data-prot="' + (isProt ? "1" : "") + '" data-route="' + (isRoute ? "1" : "") +
         '" title="' + escapeHtml(t("points.more")) + '" aria-label="' + escapeHtml(t("points.more")) + '">\u22EF</button>';
       return '<div class="mp-coll-row' + (isRoute ? " is-route" : "") + '">' +
-        '<label class="mp-coll-lbl"><input type="checkbox" class="mp-coll-cb" data-type="' + type + '" data-name="' + escapeHtml(name) + '"' + (checked ? " checked" : "") + ">" +
+        '<label class="mp-coll-lbl' + (hidStash ? " mp-hidden" : "") + '"><input type="checkbox" class="mp-coll-cb" data-type="' + type + '" data-name="' + escapeHtml(name) + '"' + ((hidStash ? hidStash[type].indexOf(name) >= 0 : checked) ? " checked" : "") + (hidStash ? " disabled" : "") + ">" +
           swIcon + '<span class="mp-coll-name">' + escapeHtml(name) + ' <span class="mp-coll-n">(' + count + ")</span></span></label>" +
         filtBtn + moreBtn +
         "</div>";
@@ -18790,8 +19319,16 @@
           (mpHasUnsaved() ? " mp-save-unsaved" : "") + '">' + escapeHtml(t("points.save")) + "</button>" : "") +
         '<button type="button" id="mp-import-share" class="btn btn-light" title="' + escapeHtml(tLabel("share.importFile")) + '" data-i18n="points.loadFile">' + escapeHtml(t("points.loadFile")) + "</button>" +
         '<input type="file" id="share-file-input" accept=".kmz,.kml,.geojson,.json,.share,.mcshare,.txt" multiple style="display:none" />' +
+        // Hide / Show toggle (owner, 2026-10-11, instead of a red ×): Hide takes every ticked list and trip
+        // off the map but remembers them (their boxes stay ticked, greyed out); Show puts them back.
+        ((hidStash || Object.keys(mpState.shownColls()).length || Object.keys(mpState.shownDetSets()).length)
+          ? '<button type="button" id="mp-hide-toggle" class="btn btn-light mp-hide-toggle' + (hidStash ? " on" : "") + '">' + escapeHtml(t(hidStash ? "points.showLists" : "points.hideLists")) + "</button>" : "") +
       "</div>" +
       '<div id="mp-backup-line" class="mp-backup-line"></div>' +
+      mpFromSearchHtml() +
+      '<div class="mp-search"><div class="mp-search-box"><input type="search" id="mp-search-in" autocomplete="off" spellcheck="false" placeholder="' + escapeHtml(t("points.search")) + '" value="' + escapeHtml(mpSearchQ) + '" />' +
+        '<span id="mp-search-busy" class="mp-search-busy" aria-hidden="true"' + (mpSearchBusyOn ? "" : " hidden") + '>\u231B</span></div>' +
+        '<div id="mp-search-res" class="mp-search-res"></div></div>' +
       collSection +
       (chipsHtml ? '<div class="mp-chips">' + chipsHtml + "</div>" : "") +
       (unionPts.length > 1 ?
@@ -18803,6 +19340,32 @@
           ? '<p class="dd-empty">' + escapeHtml(t("points.listTrimmed", { n: unionPts.length, total: unionTotal })) + "</p>"
           : "") + "</div>";
     // Wire interactions
+    wireMpSearch(panel);
+    panel.querySelectorAll(".mp-fs-del").forEach(function (b) {
+      b.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var key = this.getAttribute("data-q");
+        if (key === "#fetched#") { clearDetections(); updateClearGroup(); refreshMpPanel(); keepMpPanelOpen(); return; }   // the fetched observations (lists stay)
+        mpState.setMapPoints(mpState.mapPoints().filter(function (q) { var k = mpSearchKey(q); if (k == null) k = MP_OTHER; return k !== key; }));
+        saveMapPoints(); renderMapPoints(); refreshMpPanel(); keepMpPanelOpen();
+      });
+    });
+    var hideTg = panel.querySelector("#mp-hide-toggle");
+    if (hideTg) hideTg.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var st = mpHiddenStash();
+      if (st) {   // Show: exactly the lists that were hidden come back
+        var sc = {}, sd = {};
+        var vo = {}; mpState.mpCollections().forEach(function (c) { if (c.viewOnly) vo[c.name] = 1; });
+        st.p.forEach(function (n) { if (!vo[n]) sc[n] = true; }); st.d.forEach(function (n) { sd[n] = true; });   // a shared list returns only via its tick (which checks Drive)
+        mpState.setShownColls(sc); mpState.setShownDetSets(sd);
+        window.GeoState.save({ mpHiddenStash: null });
+      } else {    // Hide: remember the ticked ones, take them off the map
+        window.GeoState.save({ mpHiddenStash: { p: Object.keys(mpState.shownColls()), d: Object.keys(mpState.shownDetSets()) } });
+        mpState.setShownColls({}); mpState.setShownDetSets({});
+      }
+      saveShownState(); updateDetSetOverlays(); renderMapPoints(); refreshMpPanel(); keepMpPanelOpen();
+    });
     var importShareBtn = panel.querySelector("#mp-import-share"), shareFileInput = panel.querySelector("#share-file-input");
     if (importShareBtn && shareFileInput) {
       // One popover for both ways in: the file picker, or a direct link to a .kmz / .kml /
@@ -18814,13 +19377,27 @@
         var el = openAnchoredMenu("detrow-menu mp-link-menu");
         el.innerHTML = '<div class="detrow-menu-hdr detrow-menu-name">' + escapeHtml(t("points.loadFile")) + "</div>" +
           '<div class="mp-link-row"><input type="url" id="mp-link-url" autocomplete="off" spellcheck="false" placeholder="' + escapeHtml(t("points.linkPh")) + '" />' +
-          '<button type="button" id="mp-link-go" class="btn">' + escapeHtml(t("points.load").replace(/^\S+\s*/, "")) + "</button></div>" +
+          '<button type="button" id="mp-link-go" class="btn">' + escapeHtml(t("points.load").replace(/^\S+\s*/, "")) + "</button>" +
+          '<button type="button" id="mp-link-app" class="btn btn-light" title="' + escapeHtml(t("drive.linkCopied")) + '">' + escapeHtml(t("drive.makeLink")) + "</button></div>" +
           '<p class="cu-hint">' + escapeHtml(t("points.linkHint")) + "</p>";
         var inp = el.querySelector("#mp-link-url");
         // A link loads that link; no link opens the file chooser (owner, 2026-10-07: one way in,
         // no separate "Choose file…" row).
         function go() { var u = inp.value.trim(); closeAnchoredMenu(); if (u) importPointsUrl(u); else shareFileInput.click(); }
         el.querySelector("#mp-link-go").addEventListener("click", function (ev) { ev.stopPropagation(); go(); });
+        // A Drive share link → a BirdsWhere link that opens it for someone else (they sign in
+        // with the Google account the file is shared with): …/?drive=<link>
+        el.querySelector("#mp-link-app").addEventListener("click", function (ev) {
+          ev.stopPropagation();
+          var u = inp.value.trim();
+          if (!window.GDriveSync || !window.GDriveSync.driveLinkId(u)) { setStatus(t("drive.linkNeedsDrive")); inp.focus(); return; }
+          var app = location.origin + location.pathname + "?drive=" + encodeURIComponent(u);
+          closeAnchoredMenu();
+          var copied = function () { setStatus(t("drive.linkCopied")); };
+          if (navigator.share) navigator.share({ title: "BirdsWhere", url: app }).catch(function () {});
+          else if (navigator.clipboard) navigator.clipboard.writeText(app).then(copied, function () { modalPrompt(t("drive.linkCopied"), app); });
+          else modalPrompt(t("drive.linkCopied"), app);
+        });
         inp.addEventListener("keydown", function (ev) { if (ev.key === "Enter") { ev.preventDefault(); go(); } });
         positionAnchoredMenu(el, Math.round(r.left), Math.round(r.bottom + 4));
       });
@@ -18883,7 +19460,7 @@
     // The list chooser, drawn exactly like "add this observation to a list".
     function chooseListThen(anchor, then) {
       var br = anchor.getBoundingClientRect();
-      var lists = lastListFirst(mpState.mpCollections().slice().sort(function (a, b) { return a.name.localeCompare(b.name); }));
+      var lists = lastListFirst(mpState.mpCollections().filter(function (c) { return !c.viewOnly; }).sort(function (a, b) { return a.name.localeCompare(b.name); }));
       var then1 = then; then = function (nm) { rememberSaveList(nm); then1(nm); };
       // Built exactly like the "add this observation to a list" menu (drmRenderLists):
       // the same .detrow-menu-hdr heading and the same drmBtn rows with the pin icon, so
@@ -18916,26 +19493,31 @@
     panel.querySelectorAll(".mp-chip").forEach(function (b) {
       b.addEventListener("click", function () {
         var chips = panel.querySelectorAll(".mp-chip");
-        if (this.getAttribute("data-all")) {   // every tag ↔ none (and no exclusions either way)
-          var every = mpAllTags().concat(mpState.mapPoints().some(function (p) { return !p.tags || !p.tags.length; }) ? [""] : []);
-          var on = every.every(function (tg) { return mpState.mpFilter().indexOf(tg) >= 0; });
-          mpState.setMpFilter(on ? [] : every); mpState.setMpExclude([]);
-          chips.forEach(function (c) { c.classList.toggle("is-active", !on); c.classList.remove("is-excluded"); });
+        var pick = mpState.mpFilter().length > 0 || mpState.mpNone();
+        if (this.getAttribute("data-all")) {   // everything shown ↔ everything switched off
+          var allShown = !pick && !mpState.mpExclude().length;
+          mpState.setMpFilter([]); mpState.setMpExclude([]); mpState.setMpNone(allShown);
+          chips.forEach(function (c) { c.classList.toggle("is-active", !allShown); c.classList.remove("is-excluded"); });
         } else {
-          // The cycle: no say → included → excluded → no say.
           var tag = this.getAttribute("data-tag");
-          var fi = mpState.mpFilter().indexOf(tag), xi = mpState.mpExclude().indexOf(tag);
-          if (xi >= 0) { mpState.mpExclude().splice(xi, 1); this.classList.remove("is-excluded"); }
-          else if (fi >= 0) { mpState.mpFilter().splice(fi, 1); mpState.mpExclude().push(tag); this.classList.remove("is-active"); this.classList.add("is-excluded"); }
-          else { mpState.mpFilter().push(tag); this.classList.add("is-active"); }
+          if (!pick) {   // showing all: the tap hides this tag's points (and shows them again)
+            var xi = mpState.mpExclude().indexOf(tag);
+            if (xi >= 0) { mpState.mpExclude().splice(xi, 1); this.classList.remove("is-excluded"); this.classList.add("is-active"); }
+            else { mpState.mpExclude().push(tag); this.classList.remove("is-active"); this.classList.add("is-excluded"); }
+          } else {        // picking: the tap includes this tag's points (or leaves them out again)
+            var fi = mpState.mpFilter().indexOf(tag);
+            if (fi >= 0) { mpState.mpFilter().splice(fi, 1); this.classList.remove("is-active"); }
+            else { mpState.mpFilter().push(tag); this.classList.add("is-active"); }
+            mpState.setMpNone(!mpState.mpFilter().length);   // the last one left out: nothing shown (not "all")
+          }
           var allC = panel.querySelector(".mp-chip-all");
-          if (allC) allC.classList.toggle("is-active", Array.prototype.every.call(chips, function (c) { return c.getAttribute("data-all") || c.classList.contains("is-active"); }));
+          if (allC) allC.classList.toggle("is-active", !(mpState.mpFilter().length || mpState.mpNone()) && !mpState.mpExclude().length);
         }
         // The selection is remembered on this device at once — a tiny write of the tag array
         // alone (owner, 2026-10-01); it is not part of the Drive sync. NOTHING heavy on the
         // click itself: the full save serialises every stored point (the lag felt with 35k
         // points), so the redraw waits for the timer. The chip blinks until the map caught up.
-        window.GeoState.save({ mapPointsFilter: mpState.mpFilter().slice(), mapPointsExclude: mpState.mpExclude().slice() });
+        window.GeoState.save({ mapPointsFilter: mpState.mpFilter().slice(), mapPointsExclude: mpState.mpExclude().slice(), mapPointsNone: mpState.mpNone() });
         clearTimeout(mpChipTimer);
         var el = this;
         mpChipTimer = setTimeout(function () { mpChipTimer = null; mpState.mpFilterRefresh(el); }, 1000);
@@ -18968,6 +19550,8 @@
       cb.addEventListener("change", function () {
         var type = this.getAttribute("data-type"), name = this.getAttribute("data-name");
         var set = type === "d" ? mpState.shownDetSets() : mpState.shownColls();
+        var voc = type === "p" && this.checked && mpState.mpCollections().filter(function (c) { return c.viewOnly && c.name === name; })[0];
+        if (voc) { this.checked = false; showViewOnly(voc, this); return; }   // shown only after Drive confirms it is still shared
         if (this.checked) set[name] = true; else delete set[name];
         saveShownState();
         // Blink the list's own row while its points are drawn or removed.
@@ -19137,6 +19721,17 @@
             (desc ? '<span class="mp-more-desc">' + escapeHtml(desc) + "</span>" : "") + "</span></button>";
       }
       var html = '<div class="dd-head">' + escapeHtml(name) + "</div>";
+      // A view-only list (someone else's, from a Drive share link): no navigate / share / edit /
+      // download / move / sync — only "remove from the map" (owner, 2026-10-12: block copying).
+      var voC = type === "p" && mpState.mpCollections().filter(function (x) { return x.name === name && x.viewOnly; })[0];
+      if (voC) {
+        html += row("mp-more-locked", ico("lock"), t("drive.viewOnly"), t("drive.viewOnlyDesc"), 'disabled');
+        html += row("mp-coll-del", "\u00D7", t("drive.removeView"), t("drive.removeViewDesc"));
+        var elV = openAnchoredMenu("detrow-menu mp-more-menu", anchor);
+        elV.innerHTML = html; wireCollActions(elV);
+        positionAnchoredMenu(elV, br.right - elV.offsetWidth, br.bottom + 4);
+        return;
+      }
       html += row("mp-coll-nav", ico("nav"), isRoute ? t("nav.title") : t("nav.send"),
                   t(isRoute ? "points.navDescRoute" : "points.navDesc"));
       html += row("mp-coll-share", ico("share"), t("share.link"), t("points.shareDesc"));
@@ -20213,6 +20808,8 @@
       }
       ok.addEventListener("click", function () { finish(true); });
       if (cancel) cancel.addEventListener("click", function () { finish(false); });
+      var gx = document.getElementById("perf-modal-x");   // the gate runs before the app's own wiring: × = Cancel here
+      if (gx) gx.addEventListener("click", function () { finish(false); });
     });
   }
   // Cancel on the gate: nothing was loaded or asked for; say so and offer to load after all
@@ -20980,6 +21577,11 @@
       });
     }
     wireNumSetting("sight-ttl", sightTtlMin, 0, 10080, 0, function (v) { window.GeoState.save({ sightTtlMin: v }); }, null);
+    var rdEl = document.getElementById("restore-det-toggle");
+    if (rdEl) {
+      rdEl.checked = window.GeoState.get("restoreDetOnOpen", false) === true;
+      rdEl.addEventListener("change", function () { window.GeoState.save({ restoreDetOnOpen: !!this.checked }); });
+    }
     var fooEl = document.getElementById("fetchonopen-toggle");
     var fooDaysWrap = document.getElementById("fetchonopen-days-wrap");
     function syncFooDays() { if (fooDaysWrap) fooDaysWrap.style.display = (fooEl && fooEl.checked) ? "" : "none"; }
@@ -21171,6 +21773,11 @@
       var f = pointsFmt();
       if (f === "kmz") exportPointsKmz(); else if (f === "geojson") exportPointsGeoJson(); else exportPointsKml();
     });
+    var trackCb = document.getElementById("track-record-toggle");
+    if (trackCb) {
+      trackCb.checked = trackRecordOn();
+      trackCb.addEventListener("change", function () { window.GeoState.save({ trackRecord: !!this.checked }); if (!this.checked) clearTrackLine(); });
+    }
     var shareTinyCb = document.getElementById("share-tiny-toggle");
     if (shareTinyCb) {
       shareTinyCb.checked = window.GeoState.get("shareTinyUrl", true) !== false;
@@ -21440,6 +22047,11 @@
     updateBasemapOptions();
 
     document.getElementById("perf-modal-ok").addEventListener("click", hidePerfModal);
+    // × top-right (every popup has one): Cancel while it is the launch gate, else just close
+    document.getElementById("perf-modal-x").addEventListener("click", function () {
+      var c = document.getElementById("perf-modal-cancel");
+      if (c && !c.hidden) c.click(); else hidePerfModal();
+    });
     document.getElementById("perf-modal").addEventListener("click", function (e) {
       if (e.target === this) hidePerfModal();   // click outside the box
     });

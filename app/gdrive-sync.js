@@ -464,6 +464,8 @@ window.GDriveSync = (function () {
         var r = await driveFetch("https://www.googleapis.com/drive/v3/files/" + id + "?alt=media", {});
         if (!r.ok) throw new Error("list file could not be read: " + e.file + " (" + r.status + ")");
         e.points = await window.AppData.listFromKmz(await r.arrayBuffer());
+        if (e.points.polys) { e.polys = e.points.polys; delete e.points.polys; }   // the list's areas (steep-terrain polygons …)
+        if (e.points.lines) { e.lines = e.points.lines; delete e.points.lines; }   // … and lines (a GPS track)
       }
       delete e.file; delete e.psig; delete e.n;   // a merged list must not carry the reference fields
     }
@@ -763,8 +765,83 @@ window.GDriveSync = (function () {
     try { localStorage.removeItem(LS_TOKEN); localStorage.removeItem(LS_TOKEN_EXP); localStorage.removeItem(LS_CONNECTED); localStorage.removeItem(LS_FILE_ID); } catch (e) {}
   }
 
+  // ---- shared files (owner, 2026-10-12: "gdrive share links on the main app … for sharing kmz
+  // files"): a file or folder someone shared on Drive, read with a SEPARATE read-only token —
+  // the sync's own token and scopes are untouched. Drive refuses a plain browser fetch of a
+  // share link (403), so the file comes through the Drive API with the token (memory only).
+  // The first sign-in must start from a user gesture (the Google popup).
+  var RO_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
+  var SHARED_EXT = /\.(kmz|kml|geojson|json|share)$/i;
+  function driveLinkId(link) {
+    link = String(link || "").trim();
+    if (!/^https:\/\/(drive|docs)\.google\.com\//.test(link)) return null;
+    var m = /\/folders\/([\w-]{10,})/.exec(link) || /\/(?:file|document|spreadsheets)\/d\/([\w-]{10,})/.exec(link) || /[?&]id=([\w-]{10,})/.exec(link);
+    return m ? m[1] : null;
+  }
+  // The read-only token lives in memory for its hour (never persisted), so showing a shared list
+  // again re-checks Drive without a popup each time; it is separate from Sync's token.
+  var roTok = null, roExp = 0;
+  function roToken() {
+    if (roTok && Date.now() < roExp) return Promise.resolve(roTok);
+    return waitForGis().then(function () {
+      return new Promise(function (resolve, reject) {
+        if (!clientId()) return reject(new Error("no client id"));
+        var tc = google.accounts.oauth2.initTokenClient({
+          client_id: clientId(), scope: RO_SCOPE,
+          callback: function (r) {
+            if (r && r.access_token) { roTok = r.access_token; roExp = Date.now() + ((+r.expires_in || 3600) * 1000) - 60000; resolve(roTok); }
+            else reject(new Error((r && r.error) || "no access token"));
+          },
+          error_callback: function (e) { reject(new Error((e && (e.message || e.type)) || "auth failed")); }
+        });
+        tc.requestAccessToken({ prompt: "" });
+      });
+    });
+  }
+  var DRIVE_API = "https://www.googleapis.com/drive/v3/files";
+  // ownedByMe / canEdit: a file the signed-in account owns (or may edit) imports as its own list;
+  // anything else is someone else's share and opens view-only (owner, 2026-10-12)
+  var FIELDS = "id,name,mimeType,ownedByMe,capabilities(canEdit)";
+  async function driveGet(url) {
+    var r = await fetch(url, { headers: { Authorization: "Bearer " + (await roToken()) } });
+    if (r.status === 401) { roTok = null; roExp = 0; r = await fetch(url, { headers: { Authorization: "Bearer " + (await roToken()) } }); }
+    // 403 / 404: not (or no longer) shared with this account — the caller treats it as withdrawn
+    if (r.status === 404 || r.status === 403) { var e = new Error("not shared"); e.code = r.status; throw e; }
+    if (!r.ok) throw new Error("http " + r.status);
+    return r;
+  }
+  function ownedOf(f) { return !!(f.ownedByMe || (f.capabilities && f.capabilities.canEdit)); }
+  async function readShared(link) {
+    var id = driveLinkId(link);
+    if (!id) throw new Error("not a drive link");
+    var meta = await (await driveGet(DRIVE_API + "/" + id + "?fields=" + FIELDS + "&supportsAllDrives=true")).json();
+    var files = [meta];
+    if (meta.mimeType === "application/vnd.google-apps.folder") {
+      var q = encodeURIComponent("'" + id + "' in parents and trashed = false");
+      files = ((await (await driveGet(DRIVE_API + "?q=" + q + "&fields=files(" + FIELDS + ")&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true")).json()).files || [])
+        .filter(function (f) { return SHARED_EXT.test(f.name || ""); });
+    }
+    var out = [];
+    for (var i = 0; i < files.length; i++) {
+      var b = await (await driveGet(DRIVE_API + "/" + files[i].id + "?alt=media&supportsAllDrives=true")).blob();
+      out.push({ id: files[i].id, name: files[i].name || ("drive-" + i), blob: b, owned: ownedOf(files[i]) });
+    }
+    return { name: meta.name || "", folder: meta.mimeType === "application/vnd.google-apps.folder", files: out };
+  }
+  // One shared file again, by its Drive id: the check made every time a shared list is shown
+  // (owner, 2026-10-12: "verify the sharing permissions every time the list viewed"). Rejects with
+  // .code 403/404 when the owner has withdrawn it.
+  async function readSharedFile(id) {
+    var meta = await (await driveGet(DRIVE_API + "/" + encodeURIComponent(id) + "?fields=" + FIELDS + "&supportsAllDrives=true")).json();
+    var b = await (await driveGet(DRIVE_API + "/" + encodeURIComponent(id) + "?alt=media&supportsAllDrives=true")).blob();
+    return { id: meta.id, name: meta.name || "", blob: b, owned: ownedOf(meta) };
+  }
+
   // ---- public API -----------------------------------------------------------
   return {
+    driveLinkId: driveLinkId,
+    readShared: readShared,
+    readSharedFile: readSharedFile,
     // Called once by app.js at the end of init. Sync is MANUAL + one-shot —
     // nothing here reaches out to Google or runs a sync; we just track whether
     // the user changed anything this session (so the sync lets local win) and

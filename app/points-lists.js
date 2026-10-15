@@ -54,6 +54,9 @@ window.AppPoints = (function () {
   var mapPoints = [];
   var mpFilter = [];
   var mpExclude = [];   // tags whose points are HIDDEN (the chip's third state: coloured, crossed out) — owner 2026-10-02
+  // Everything switched off with "All" (owner, 2026-10-14: "when all tags are off all the dots show") — an
+  // empty include list alone means "no filter, show all", so "none" needs its own flag.
+  var mpNone = false;
   var mpShown = true;   // master visibility toggle — hides all markers but keeps the data
   var mpLayer = null;
   // Named collections — saveable/retrievable point lists (e.g. "Owl nests",
@@ -298,8 +301,9 @@ window.AppPoints = (function () {
       c.points = ((rec && rec.points) || []).concat(added);
       hide(c, "_lazy", false); hide(c, "_loading", null);
       adopt(c);
-      // Renamed / moved / reordered / added to while a stub → the next save writes it.
-      if (added.length || cheapSig(c) !== c._cheap0) mpCheap[c.name] = "";
+      // Renamed / moved / reordered / added to while a stub → written now: waiting for "the next
+      // save" lost points added to a big list that took longer to load than the 4 s verify.
+      if (added.length || cheapSig(c) !== c._cheap0) { mpCheap[c.name] = ""; writeIfChanged(c, false); }
       if (shownColls[c.name]) { try { renderMapPoints(); } catch (e) {} }
       settleLoaded();
     }, function () { hide(c, "_loading", null); hide(c, "_fails", (c._fails || 0) + 1); });
@@ -334,6 +338,7 @@ window.AppPoints = (function () {
   }
   async function initMpSetStore() {
     if (!(window.AppIDB && window.AppIDB.available())) return;   // no IDB → the blob stays the store
+    var wasReady = mpIdbReady;   // a re-run over an already-read store has no in-memory-only lists
     try {
       var blobSets = window.GeoState.get("mapPointSets", null);
       if (Array.isArray(blobSets) && blobSets.length) {
@@ -362,8 +367,23 @@ window.AppPoints = (function () {
         if (meta && meta.sig) mpSetSig[full.name] = meta.sig; else needMeta.push(full);
         out.push(full);
       }
+      // A list made while the store could not be read (IndexedDB blocked at start → the app ran on
+      // an empty mirror, and saves skipped the store) exists only in memory: keep it, under a new
+      // name if a stored list already has its name, and write it once the store is ready — the
+      // reload must never quietly drop it (owner, 2026-10-10: "make sure user created lists are
+      // never deleted").
+      var fromBlob = Object.create(null); (Array.isArray(blobSets) ? blobSets : []).forEach(function (c) { if (c && c.name) fromBlob[c.name] = 1; });
+      var orphans = wasReady ? [] : (mpCollections || []).filter(function (c) { return c && c.name && !c._lazy && !c.viewOnly && (c.points || []).length && !fromBlob[c.name]; });   // blob lists were just moved into the store — the same data, not orphans
+      var names = Object.create(null); out.forEach(function (c) { names[c.name] = 1; });
+      orphans.forEach(function (c) {
+        if (out.indexOf(c) >= 0) return;
+        if (names[c.name]) { var base = c.name + " (unsaved)", nm2 = base, k2 = 2; while (names[nm2]) nm2 = base + " " + (k2++); c.name = nm2; }
+        names[c.name] = 1; out.push(c);
+      });
+      (mpCollections || []).forEach(function (c) { if (c && c.viewOnly && !out.some(function (o) { return o.name === c.name; })) out.push(c); });   // a shared list shown this session stays (a late store open)
       mpCollections = out;
-      mpCollections.forEach(function (c) { if (!c._lazy) adopt(c); });
+      mpCollections.forEach(function (c) { if (!c._lazy && !c.viewOnly) adopt(c); });
+      addViewOnlyStubs();   // the shared lists' references (no points until shown and checked)
       // First start with this version (or a list written by an older one): one meta each,
       // signed AFTER adopt() so it matches what a later save would serialise.
       needMeta.forEach(function (c) {
@@ -373,6 +393,8 @@ window.AppPoints = (function () {
       });
       loadListFilters();
       mpIdbReady = true;
+      if (ptsKeys.length) askPersist();
+      orphans.forEach(function (c) { writeIfChanged(c, false); });   // the kept in-memory lists, now stored
       if (anyLazy()) setTimeout(hydrateRest, 1500);   // after the app is up
     } catch (e) {
       mpIdbReady = false;
@@ -430,7 +452,20 @@ window.AppPoints = (function () {
       (function step() { var c = todo.shift(); if (!c) return; if (mpCollections.indexOf(c) >= 0) writeIfChanged(c, false); setTimeout(step, 30); })();
     }, 4000);
   }
+  // Ask the browser to keep this site's storage (owner, 2026-10-10: all lists gone on an Android
+  // phone). Without it Chrome treats IndexedDB as "best effort" and may evict it silently under
+  // storage pressure; until now only saving an offline map area asked. Chrome grants or refuses
+  // without a prompt; asked once per session, as soon as there is a saved list.
+  var persistAsked = false;
+  function askPersist() {
+    if (persistAsked) return; persistAsked = true;
+    try {
+      if (!(navigator.storage && navigator.storage.persist && navigator.storage.persisted)) return;
+      navigator.storage.persisted().then(function (y) { if (!y) return navigator.storage.persist(); }).catch(function () {});
+    } catch (e) {}
+  }
   function writeIfChanged(c, fast) {
+    if (isViewOnly(c)) return null;   // never stored
     if (fast && !shownColls[c.name] && mpCheap[c.name] === cheapSig(c)) return null;
     var sig;
     try { sig = fullSig(c); } catch (e) { sig = null; }
@@ -439,10 +474,11 @@ window.AppPoints = (function () {
     var meta = metaOf(c); meta.n = (c.points || []).length; meta.sig = sig || "";
     // Both requests are issued now (not one after the other), so a page closing right after
     // a save cannot leave the data written and its meta stale.
+    askPersist();
     var pm = window.AppIDB.put("ptm:" + c.name, meta).catch(function () {});
     return window.AppIDB.put("pts:" + c.name, c)
-      .then(function () { if (sig) mpSetSig[c.name] = sig; return pm; },
-            function () { setStatus(t("err.storageFull")); });
+      .then(function () { if (sig) mpSetSig[c.name] = sig; return pm.then(function () { return true; }); },
+            function () { setStatus(t("err.storageFull")); return false; });   // false: this list did NOT reach the store
   }
   function persistMpSets(list, opts) {
     if (!mpIdbReady || !window.AppIDB) return Promise.resolve();
@@ -463,20 +499,25 @@ window.AppPoints = (function () {
     // before a save) must not take every saved list with it. Deleting the last list
     // still works — it just leaves its record for the next real save to retire.
     if (!Object.keys(keep).length) return Promise.all(writes);
-    writes.push(window.AppIDB.keys().then(function (ks) {
-      var dels = [];
-      ks.map(String).forEach(function (k) {
-        if ((k.indexOf("pts:") === 0 || k.indexOf("ptm:") === 0) && !keep[k.slice(4)]) dels.push(window.AppIDB.del(k).catch(function () {}));
-      });
-      return Promise.all(dels);
-    }).catch(function () {}));
-    return Promise.all(writes);
+    // Retire old records only once EVERY write has committed: a rename whose new record failed to
+    // write (storage full) must not take the old one with it.
+    return Promise.all(writes).then(function (res) {
+      if (res.some(function (r) { return r === false; })) return res;
+      return window.AppIDB.keys().then(function (ks) {
+        var dels = [];
+        ks.map(String).forEach(function (k) {
+          if ((k.indexOf("pts:") === 0 || k.indexOf("ptm:") === 0) && !keep[k.slice(4)]) dels.push(window.AppIDB.del(k).catch(function () {}));
+        });
+        return Promise.all(dels).then(function () { return res; });
+      }).catch(function () { return res; });
+    });
   }
   function loadMapPoints() {
     loadListFilters();   // also when IndexedDB never hydrated (initMpSetStore bailed)
     mapPoints = (window.GeoState.get("mapPoints", []) || []).filter(function (p) { return p && isFinite(p.lat) && isFinite(p.lon); });
     mpFilter = (window.GeoState.get("mapPointsFilter", []) || []).map(normTag).filter(function (t, i, a) { return a.indexOf(t) === i; });
     mpExclude = (window.GeoState.get("mapPointsExclude", []) || []).map(normTag).filter(function (t, i, a) { return a.indexOf(t) === i; });
+    mpNone = !!window.GeoState.get("mapPointsNone", false);
     // With IndexedDB as the store the lists are already hydrated (initMpSetStore) and
     // the blob no longer carries them — reading it here would wipe them.
     if (!mpIdbReady) mpCollections = (window.GeoState.get("mapPointSets", []) || []).filter(function (c) { return c && c.name; });
@@ -496,6 +537,7 @@ window.AppPoints = (function () {
       mapPoints = []; mpActiveName = "";
       saveChecked({ mapPoints: [], mapPointSetActive: "", mapPointSets: mpCollections, mapPointsShownColls: Object.keys(shownColls) });
     }
+    if (!(window.AppIDB && window.AppIDB.available())) addViewOnlyStubs();   // no store: the shared lists' references come in here (else initMpSetStore adds them)
   }
   // Persist a patch and, if the write hit the localStorage quota (lastSaveOk false),
   // surface a storage-full toast — otherwise these bulky collections (map points /
@@ -513,6 +555,8 @@ window.AppPoints = (function () {
         // empty MIRROR, not the truth — writing it into the blob would record "no lists"
         // over the top of lists that are sitting safely in IndexedDB.
         patch.mapPointSets = undefined;
+      } else if (Array.isArray(patch.mapPointSets)) {
+        patch.mapPointSets = patch.mapPointSets.filter(function (c) { return !isViewOnly(c); });   // no store: the blob, without view-only lists
       }
     }
     window.GeoState.save(patch);
@@ -520,7 +564,10 @@ window.AppPoints = (function () {
     return true;
   }
   function saveShownState() {
-    saveChecked({ mapPointsShownColls: Object.keys(shownColls), mapDetSetsShown: Object.keys(shownDetSets) });
+    // a shared (view-only) list is never remembered as shown: after a reload it shows only via its tick,
+    // which checks with Google Drive first
+    var vo = {}; mpCollections.forEach(function (c) { if (c && c.viewOnly) vo[c.name] = 1; });
+    saveChecked({ mapPointsShownColls: Object.keys(shownColls).filter(function (n) { return !vo[n]; }), mapDetSetsShown: Object.keys(shownDetSets) });
   }
   function saveMapPoints() {
     // Keep the loaded collection in lock-step with the working set so a list
@@ -534,8 +581,9 @@ window.AppPoints = (function () {
   // Replace the working set with a named list and make it the active list.
   function loadCollection(name) {
     var c = mpCollections.filter(function (x) { return x.name === name; })[0]; if (!c) return;
+    if (c.viewOnly) return;   // making it the working set would copy its points into the user's own pins
     mapPoints = (c.points || []).map(function (p) { return Object.assign({}, p); });
-    mpActiveName = name; mpFilter = [];
+    mpActiveName = name; mpFilter = []; mpNone = false;
     saveMapPoints(); renderMapPoints();
     var pts = mapPoints.filter(function (p) { return isFinite(p.lat) && isFinite(p.lon); });
     if (pts.length && getMap()) { try { getMap().fitBounds(L.latLngBounds(pts.map(function (p) { return [p.lat, p.lon]; })).pad(0.2)); } catch (e) {} }
@@ -543,6 +591,80 @@ window.AppPoints = (function () {
   // Point-lists flagged "protected" can't be deleted (a guard against losing a
   // curated list to a stray ×). Stored as a name list in GeoState.
   function protectedColls() { return window.GeoState.get("mapPointsProtected", []) || []; }
+  // A VIEW-ONLY list (owner, 2026-10-12): someone else's file opened from a Google Drive share link.
+  // It is shown for this session only — never written to the store, synced, exported, shared, or
+  // copied into the user's own lists — and gone after a reload (open the link again to see it).
+  function isViewOnly(c) { return !!(c && c.viewOnly); }
+  function ownColls() { return mpCollections.filter(function (c) { return !c.viewOnly; }); }
+  // What IS kept on the device: a reference per shared list (its name and the Drive file id) — never
+  // its points. Each time the list is shown, app.js re-reads the file from Drive with the user's own
+  // Google sign-in (the sharing is checked every time); a refusal removes the list (owner, 2026-10-12:
+  // "if the permissions are withdrawn by originating user the app should refuse to load the list and remove it").
+  var VO_KEY = "driveSharedLists";
+  function saveViewOnlyRefs() {
+    window.GeoState.save({ driveSharedLists: mpCollections.filter(function (c) { return c.viewOnly && c.driveRef; })
+      .map(function (c) { return { name: c.name, id: c.driveRef.id, file: c.driveRef.file || "" }; }) });
+  }
+  // After a reload a shared list is an empty, unticked stub until it is shown (and checked) again.
+  function addViewOnlyStubs() {
+    var refs = window.GeoState.get(VO_KEY, []) || [];
+    refs.forEach(function (r) {
+      if (!r || !r.name || !r.id || mpCollections.some(function (c) { return c.name === r.name; })) return;
+      mpCollections.push({ name: r.name, viewOnly: true, driveRef: { id: r.id, file: r.file || "" }, points: [], _voStub: true });
+      delete shownColls[r.name];   // never shown unchecked
+    });
+  }
+  // A shared file's bytes → the list's points (memory only), read with the default mapping:
+  // the placemark's name, its own ExtendedData fields, its note / description, its colour.
+  async function fillViewOnly(c, buf) {
+    // a file saved by this app carries its lists exactly (colours, uncertainty, areas, every field)
+    var ex = await exactListsOfBuf(buf);
+    if (ex && ex.length) {
+      var all = [], polys = [], lines = [];
+      ex.forEach(function (o) { (o.points || []).forEach(function (p) { var q = Object.assign({}, p); q.id = mpUid(); q.viewOnly = true; delete q.shared; all.push(q); }); polys = polys.concat(o.polys || []); lines = lines.concat(o.lines || []); if (o.color && !c.color) c.color = o.color; });
+      c.points = all; c.polys = polys; c.lines = lines; delete c._voStub; c.viewOnly = true; internPoints([c]);
+      return all.length;
+    }
+    var parsed = await parsePointsBuf(buf);
+    var pts = (parsed.marks || []).map(function (pm) {
+      var pt = { id: mpUid(), lat: pm.lat, lon: pm.lon, name: pm.name || "", tags: [], note: String(pm.desc || "").trim(), source: "kml", viewOnly: true };
+      applyKmlFields(pt, pm.data);
+      if (isGeneratedTable(pt.note)) {
+        fieldsFromTable(pt.note, pt);
+        var remark = ""; try { remark = String((pm.data && (pm.data.notes || pm.data.occurrenceRemarks)) || "").trim(); } catch (e) {}
+        if (remark) pt.note = remark; else delete pt.note;
+      }
+      if (pm.color) pt.color = pm.color;
+      return pt;
+    });
+    c.points = pts; c.polys = parsed.polys || []; c.lines = parsed.lines || [];
+    delete c._voStub; c.viewOnly = true;
+    internPoints([c]);
+    return pts.length;
+  }
+  // Someone else's Drive files → shown view-only lists (one per file; the same file again refreshes
+  // its list). items: [{ file, buf, id }].
+  async function openViewOnly(items) {
+    var total = 0, names = [];
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i], c = mpCollections.filter(function (x) { return x.viewOnly && x.driveRef && x.driveRef.id === it.id; })[0];
+      if (!c) {
+        var nm = uniqueListName(listNameFromFile(it.file) || it.file || "shared", mpCollections.map(function (x) { return x.name; }));
+        c = { name: nm, viewOnly: true, driveRef: { id: it.id, file: it.file || "" }, points: [] };
+        mpCollections.push(c);
+      }
+      total += await fillViewOnly(c, it.buf);
+      shownColls[c.name] = true; names.push(c.name);
+    }
+    saveViewOnlyRefs(); saveShownState(); renderMapPoints();
+    return { n: total, names: names };
+  }
+  // Withdrawn by its owner (or removed by the user): the list and its reference go.
+  function forgetViewOnly(name) {
+    mpCollections = mpCollections.filter(function (x) { return !(x.viewOnly && x.name === name); });
+    delete shownColls[name];
+    saveViewOnlyRefs(); saveShownState(); renderMapPoints();
+  }
   function isCollProtected(name) { return protectedColls().indexOf(name) >= 0; }
   function setCollProtected(name, on) {
     var list = protectedColls().slice(), i = list.indexOf(name);
@@ -551,6 +673,7 @@ window.AppPoints = (function () {
   }
   // Forget a named list. The pins currently on the map are left untouched.
   function deleteCollection(name) {
+    if (mpCollections.some(function (x) { return x.viewOnly && x.name === name; })) { forgetViewOnly(name); return; }
     if (isCollProtected(name)) return;   // protected → never deleted
     mpCollections = mpCollections.filter(function (x) { return x.name !== name; });
     if (mpActiveName === name) mpActiveName = "";
@@ -563,9 +686,66 @@ window.AppPoints = (function () {
   // named lists become <Folder>s, loose pins sit at the document root. Just
   // name / description / Point — no app-specific extensions.
   // colls/loose default to "everything" — the per-list download passes just one list.
-  function buildPointsKml(colls, loose) {
+  // A list exactly as it is stored — every point field (colour, uncertainty, marker, edge, species,
+  // observer, …), its areas and tracks, its colour and route flag — as one JSON block in the KML (or a
+  // foreign member of a GeoJSON). The same block Drive sync's list files carry; a file holding it loads
+  // back exactly as it was saved (owner, 2026-10-13: "when saving and sharing lists … preserve coloring,
+  // uncertainty and all other aspects").
+  var LIST_BLOCK_OPEN = '<Data name="birdswhere-list"><value><![CDATA[', LIST_BLOCK_CLOSE = "]]></value></Data>";
+  function listBody(c) {
+    var body = { v: 1, name: c.name, points: c.points || [] };
+    if (c.polys && c.polys.length) body.polys = c.polys;
+    if (c.lines && c.lines.length) body.lines = c.lines;
+    if (c.color) body.color = c.color;
+    if (c.route) body.route = true;
+    return body;
+  }
+  var bodyJson = function (b) { return JSON.stringify(b, function (k, v) { return k.charAt(0) === "_" || k === "viewOnly" ? undefined : v; }); };
+  function listsFromText(text) {   // every list block in a KML / KMZ text → [{name, points, polys, lines, color, route}]
+    var out = [], at = 0;
+    for (;;) {
+      var a = text.indexOf(LIST_BLOCK_OPEN, at); if (a < 0) break;
+      a += LIST_BLOCK_OPEN.length; var b = text.indexOf(LIST_BLOCK_CLOSE, a); if (b < 0) break;
+      try { var o = JSON.parse(text.slice(a, b).split("]]]]><![CDATA[>").join("]]>")); if (o && Array.isArray(o.points)) out.push(o); } catch (e) {}
+      at = b + LIST_BLOCK_CLOSE.length;
+    }
+    return out;
+  }
+  // Lists loaded exactly as saved: each a new list (its own name, made unique), shown.
+  function importListsExact(lists) {
+    var names = mpCollections.map(function (c) { return c.name; }), n = 0, made = [];
+    lists.forEach(function (o) {
+      var nm = uniqueListName(String(o.name || "list"), names); names.push(nm);
+      var c = { name: nm, points: (o.points || []).map(function (p) { var q = Object.assign({}, p); q.id = mpUid(); delete q.viewOnly; delete q.shared; return q; }) };
+      if (Array.isArray(o.polys) && o.polys.length) c.polys = o.polys;
+      if (Array.isArray(o.lines) && o.lines.length) c.lines = o.lines;
+      if (o.color) c.color = o.color;
+      if (o.route) c.route = true;
+      internPoints([c]); mpCollections.push(c); shownColls[nm] = true; n += c.points.length; made.push(nm);
+    });
+    saveShownState(); saveMapPoints(); renderMapPoints();
+    return { lists: made, points: n };
+  }
+  // a point's own fields as KML ExtendedData, under the names the importer (and other apps) know
+  var ED_SKIP = { id: 1, createdAt: 1, lat: 1, lon: 1, name: 1, note: 1, noteHtml: 1, tags: 1, shared: 1, viewOnly: 1, color: 1 };
+  var ED_NAME = { radius: "uncertainty_m", edge: "unc_edge" };
+  function pointData(p, xml) {
+    var out = "";
+    Object.keys(p).forEach(function (k) {
+      if (ED_SKIP[k] || k.charAt(0) === "_") return;
+      var v = p[k]; if (v == null || v === "" || typeof v === "object") return;
+      out += '<Data name="' + (ED_NAME[k] || k) + '"><value>' + xml(v) + "</value></Data>";
+    });
+    if (p.color) out += '<Data name="color"><value>' + xml(p.color) + "</value></Data>";
+    return out;
+  }
+  function kmlColor(hex) {   // #rrggbb → KML aabbggrr
+    var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || "")); return m ? "ff" + m[3] + m[2] + m[1] : "";
+  }
+  function buildPointsKml(colls, loose, opts) {
     var xml = function (s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); };
-    colls = colls || mpCollections;
+    colls = (colls || mpCollections).filter(function (c) { return !isViewOnly(c); });   // a view-only list is never exported
+    var block = !(opts && opts.noBlock), rich = true;
     loose = loose !== undefined ? loose : (mpActiveName ? [] : mapPoints);
     var parts = ['<?xml version="1.0" encoding="UTF-8"?>',
       '<kml xmlns="http://www.opengis.net/kml/2.2">', "<Document>", "<name>Map points</name>"];
@@ -576,6 +756,11 @@ window.AppPoints = (function () {
       if (tags) desc += (desc ? (isHtml ? "<br>" : "\n") : "") + "Tags: " + tags;
       parts.push("<Placemark>");
       parts.push("<name>" + xml(p.name || "Point") + "</name>");
+      if (rich) {   // other apps (Google Earth …): the point's colour and its fields
+        var kc = kmlColor(p.color || p.spColor);
+        if (kc) parts.push("<Style><IconStyle><color>" + kc + "</color></IconStyle></Style>");
+        var ed = pointData(p, xml); if (ed) parts.push("<ExtendedData>" + ed + "</ExtendedData>");
+      }
       // HTML notes are emitted in a CDATA block (KML's convention for rich text) so
       // they survive the round-trip; plain notes are XML-escaped as before.
       if (desc) parts.push("<description>" + (isHtml ? "<![CDATA[" + desc.replace(/]]>/g, "]]&gt;") + "]]>" : xml(desc)) + "</description>");
@@ -584,7 +769,25 @@ window.AppPoints = (function () {
     };
     colls.forEach(function (c) {
       parts.push("<Folder><name>" + xml(c.name) + "</name>");
+      // the whole list, exactly — what makes the file load back as it was saved
+      if (block) parts.push("<ExtendedData>" + LIST_BLOCK_OPEN + bodyJson(listBody(c)).replace(/]]>/g, "]]]]><![CDATA[>") + LIST_BLOCK_CLOSE + "</ExtendedData>");
+      rich = (c.points || []).length <= 20000;   // a huge list: bare placemarks for other apps (the block above is complete)
       (c.points || []).forEach(placemark);
+      rich = true;
+      (c.lines || []).forEach(function (ln) {
+        if (!ln || !ln.r || ln.r.length < 2) return;
+        parts.push("<Placemark><name>" + xml(ln.n || "Track") + "</name>" + (ln.c ? '<ExtendedData><Data name="color"><value>' + xml(ln.c) + "</value></Data></ExtendedData>" : "") +
+                   "<LineString><coordinates>" + ln.r.map(function (v) { return Number(v[1]).toFixed(6) + "," + Number(v[0]).toFixed(6) + ",0"; }).join(" ") + "</coordinates></LineString></Placemark>");
+      });
+      (c.polys || []).forEach(function (pg) {
+        if (!pg || !pg.r || pg.r.length < 3) return;
+        var ring = pg.r.map(function (v) { return Number(v[1]).toFixed(5) + "," + Number(v[0]).toFixed(5) + ",0"; });
+        if (ring[0] !== ring[ring.length - 1]) ring.push(ring[0]);
+        var ed = (pg.c ? '<Data name="color"><value>' + xml(pg.c) + "</value></Data>" : "") + (pg.f === 0 ? '<Data name="fill"><value>0</value></Data>' : "") +
+          (pg.t && pg.t.length ? '<Data name="tags"><value>' + xml(pg.t.join("; ")) + "</value></Data>" : "");
+        parts.push("<Placemark><name>" + xml(pg.n || "Area") + "</name>" + (ed ? "<ExtendedData>" + ed + "</ExtendedData>" : "") +
+                   "<Polygon><outerBoundaryIs><LinearRing><coordinates>" + ring.join(" ") + "</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>");
+      });
       parts.push("</Folder>");
     });
     loose.forEach(placemark);
@@ -603,7 +806,7 @@ window.AppPoints = (function () {
   // and species key survive in each feature's properties; the saved-list name goes in
   // "list". (KML flattens these into folders + description; GeoJSON keeps them exact.)
   function buildPointsGeoJson(colls, loose) {
-    colls = colls || mpCollections;
+    colls = (colls || mpCollections).filter(function (c) { return !isViewOnly(c); });   // a view-only list is never exported
     loose = loose !== undefined ? loose : (mpActiveName ? [] : mapPoints);
     var feats = [];
     function feat(p, listName) {
@@ -613,16 +816,25 @@ window.AppPoints = (function () {
       if (p.note) props.note = p.note;
       if (p.noteHtml) props.noteHtml = true;
       if (p.color) props.color = p.color;
+      if (+p.radius > 0) props.uncertainty_m = +p.radius;
+      if (p.marker) props.marker = p.marker;
+      if (+p.edge > 0) props.unc_edge = +p.edge;
       if (p.spKey) props.spKey = p.spKey;
       if (p.spColor) props.spColor = p.spColor;
       if (p.date) props.date = p.date;
+      Object.keys(p).forEach(function (k) {   // every other field of the point (observer, count, place, url, …)
+        if (ED_SKIP[k] || k.charAt(0) === "_" || k in props || k === "radius" || k === "edge") return;
+        var v = p[k]; if (v != null && v !== "" && typeof v !== "object") props[k] = v;
+      });
       if (listName) props.list = listName;
       if (p.source === "route" || p._route) props.route = true;   // a route stop stays one through a download + load (owner, 2026-10-04)
       return { type: "Feature", properties: props, geometry: { type: "Point", coordinates: [+(+p.lon).toFixed(6), +(+p.lat).toFixed(6)] } };
     }
     colls.forEach(function (c) { var rt = isRouteColl(c); (c.points || []).forEach(function (p) { if (isFinite(+p.lat) && isFinite(+p.lon)) feats.push(feat(rt ? Object.assign({}, p, { _route: true }) : p, c.name)); }); });
     loose.forEach(function (p) { if (isFinite(+p.lat) && isFinite(+p.lon)) feats.push(feat(p, "")); });
-    return JSON.stringify({ type: "FeatureCollection", features: feats }, null, 2);
+    // the lists exactly as stored ride along as a GeoJSON foreign member (other apps ignore it; this one
+    // loads the file back as it was saved)
+    return JSON.stringify({ type: "FeatureCollection", features: feats, "birdswhere-lists": colls.map(function (c) { return JSON.parse(bodyJson(listBody(c))); }) }, null, 2);
   }
   function exportPointsGeoJson() {
     if (!pointsHasAny()) { setStatus(t("points.exportEmpty")); return; }
@@ -808,7 +1020,7 @@ window.AppPoints = (function () {
     await yieldToUi();                       // let that message paint before the long call
     var doc = new DOMParser().parseFromString(text, "application/xml");
     if (doc.getElementsByTagName("parsererror").length) throw new Error(t("kml.parseErr"));
-    var marks = [], fieldSet = {}, folderSet = {};
+    var marks = [], polys = [], lines = [], fieldSet = {}, folderSet = {};
     var styleCol = kmlStyleColors(doc);
     var pms = doc.getElementsByTagName("Placemark");
     function txt(el, tag) { var n = el.getElementsByTagName(tag)[0]; return n ? (n.textContent || "").trim() : ""; }
@@ -818,6 +1030,13 @@ window.AppPoints = (function () {
         await yieldToUi();
       }
       var pm = pms[i];
+      // An area (owner, 2026-10-10: steep-terrain polygons round the map-dot sites) is kept as
+      // the list's POLYGON — outer ring only — instead of becoming a point at its first vertex.
+      var pg = pm.getElementsByTagName("Polygon")[0];
+      if (pg) { var pr0 = kmlPolygon(pm, pg, styleCol); if (pr0) polys.push(pr0); continue; }
+      // …and a LINE (a GPS track, a route drawn in Google Earth) as one of its lines.
+      var lsEl = pm.getElementsByTagName("LineString")[0];
+      if (lsEl) { var ln0 = kmlLine(pm, lsEl); if (ln0) lines.push(ln0); continue; }
       // First coordinates found under this placemark (Point, else first vertex).
       var co = pm.getElementsByTagName("coordinates")[0];
       if (!co) continue;
@@ -849,7 +1068,67 @@ window.AppPoints = (function () {
       }
       marks.push({ name: txt(pm, "name"), lat: lat, lon: lon, desc: txt(pm, "description"), data: data, folder: folder, color: pcol });
     }
-    return { marks: marks, fields: Object.keys(fieldSet), folders: Object.keys(folderSet) };
+    return { marks: marks, polys: polys, lines: lines, fields: Object.keys(fieldSet), folders: Object.keys(folderSet) };
+  }
+  // A placemark's <Data name="…"> value ("" when absent).
+  function kmlData(pm, name) {
+    var ds = pm.getElementsByTagName("Data");
+    for (var d = 0; d < ds.length; d++) if (ds[d].getAttribute("name") === name) { var vv = ds[d].getElementsByTagName("value")[0]; return vv ? (vv.textContent || "").trim() : ""; }
+    return "";
+  }
+  // A placemark's shared style (<styleUrl>#id → <Style id>) or its own inline <Style>.
+  function kmlStyleOf(pm) {
+    var suEl = pm.getElementsByTagName("styleUrl")[0], sref = suEl ? (suEl.textContent || "").trim().replace(/^#/, "") : "";
+    return (sref ? pm.ownerDocument.querySelector('Style[id="' + sref.replace(/"/g, "") + '"]') : null) || pm.getElementsByTagName("Style")[0] || null;
+  }
+  // An area's / line's colour: <Data name="color">, else its style's PolyStyle colour, else its LineStyle
+  // colour (an outline-only style has a line colour and no fill colour).
+  function kmlShapeColor(pm) {
+    var col = kmlData(pm, "color"); if (col) return col;
+    var st = kmlStyleOf(pm); if (!st) return "";
+    var ps = st.getElementsByTagName("PolyStyle")[0], ls = st.getElementsByTagName("LineStyle")[0];
+    var pc = (ps && ps.getElementsByTagName("color")[0]) || (ls && ls.getElementsByTagName("color")[0]);
+    return pc ? kmlColorToHex(pc.textContent) : "";
+  }
+  // Outline only: <Data name="fill">0, or the style's own <PolyStyle><fill>0</fill> (owner, 2026-10-14: "do not
+  // fill the circles of uncertainty, draw only border in color of central dot").
+  function kmlNoFill(pm) {
+    if (kmlData(pm, "fill") === "0") return true;
+    var st = kmlStyleOf(pm), ps = st && st.getElementsByTagName("PolyStyle")[0], f = ps && ps.getElementsByTagName("fill")[0];
+    return !!f && (f.textContent || "").trim() === "0";
+  }
+  // One KML <Polygon> → { r: [[lat, lon], …] outer ring (5 dp ≈ 1 m), c: colour, n: name }. The
+  // colour: a <Data name="color">, else the style's PolyStyle / LineStyle colour, else none.
+  function kmlPolygon(pm, pg, styleCol) {
+    var ob = pg.getElementsByTagName("outerBoundaryIs")[0] || pg;
+    var co = ob.getElementsByTagName("coordinates")[0]; if (!co) return null;
+    var ring = [];
+    (co.textContent || "").trim().split(/\s+/).forEach(function (tup) {
+      var a = tup.split(","), lo = parseFloat(a[0]), la = parseFloat(a[1]);
+      if (isFinite(la) && isFinite(lo)) ring.push([Math.round(la * 1e5) / 1e5, Math.round(lo * 1e5) / 1e5]);
+    });
+    if (ring.length < 3) return null;
+    var col = kmlShapeColor(pm);
+    var nm = pm.getElementsByTagName("name")[0];
+    var out = { r: ring, c: col || "", n: nm ? (nm.textContent || "").trim() : "" };
+    if (kmlNoFill(pm)) out.f = 0;   // outline only (a search radius, an uncertainty circle)
+    // the area's own tags (<Data name="tags">: "a; b"): it then follows the tag chips like a pin (owner,
+    // 2026-10-14: the owl list's uncertainty circles stayed when a tag was selected)
+    var tg = kmlData(pm, "tags");
+    if (tg) { var ts = []; String(tg).split(/[;,|]/).forEach(function (x) { x = normTag(x); if (x && ts.indexOf(x) < 0) ts.push(x); }); if (ts.length) out.t = ts; }
+    return out;
+  }
+  // One KML <LineString> → { r: [[lat, lon], …], c: colour, n: name } (colour as for an area).
+  function kmlLine(pm, ls) {
+    var co = ls.getElementsByTagName("coordinates")[0]; if (!co) return null;
+    var r = [];
+    (co.textContent || "").trim().split(/\s+/).forEach(function (tup) {
+      var a = tup.split(","), lo = parseFloat(a[0]), la = parseFloat(a[1]);
+      if (isFinite(la) && isFinite(lo)) r.push([Math.round(la * 1e6) / 1e6, Math.round(lo * 1e6) / 1e6]);
+    });
+    if (r.length < 2) return null;
+    var nm = pm.getElementsByTagName("name")[0];
+    return { r: r, c: kmlShapeColor(pm), n: nm ? (nm.textContent || "").trim() : "" };
   }
   // Resolve a placemark field to text given a mapping token: "name" / "desc" /
   // "folder" / "data:<key>" / "" (none).
@@ -874,7 +1153,7 @@ window.AppPoints = (function () {
   async function startKmlImport(text, fileName) {
     var parsed;
     try { parsed = await parseKmlText(text); } catch (e) { mpLoading(null); setStatus(t("kml.parseErr")); return; }
-    if (!parsed.marks.length) { mpLoading(null); setStatus(t("kml.none")); return; }
+    if (!parsed.marks.length && !(parsed.polys || []).length && !(parsed.lines || []).length) { mpLoading(null); setStatus(t("kml.none")); return; }
     parsed.fileName = fileName || "";
     kmlImport = parsed;
     setStatus("");
@@ -892,6 +1171,19 @@ window.AppPoints = (function () {
       rd.onload = function () { res(rd.result); };
       rd.readAsArrayBuffer(f);
     });
+  }
+  // The exact lists a file carries (KML / KMZ list blocks, or a GeoJSON's "birdswhere-lists"), or null.
+  async function exactListsOfBuf(buf) {
+    var h = new Uint8Array(buf, 0, Math.min(4, buf.byteLength || 0)), txt;
+    if (h.length >= 4 && h[0] === 0x50 && h[1] === 0x4B && h[2] === 0x03 && h[3] === 0x04) { try { txt = await extractKmlFromKmz(buf); } catch (e) { return null; } }
+    else txt = new TextDecoder().decode(new Uint8Array(buf)).replace(/^\uFEFF/, "").trim();
+    return exactListsOfText(txt);
+  }
+  function exactListsOfText(txt) {
+    var c0 = txt.charAt(0);
+    if (c0 === "{") { try { var g = JSON.parse(txt); return Array.isArray(g["birdswhere-lists"]) && g["birdswhere-lists"].length ? g["birdswhere-lists"] : null; } catch (e) { return null; } }
+    if (txt.indexOf(LIST_BLOCK_OPEN) < 0) return null;
+    var l = listsFromText(txt); return l.length ? l : null;
   }
   // Branch on the bytes, not the extension: ZIP magic → KMZ, a leading { or [ → GeoJSON,
   // anything else → KML. Same test the single-file reader uses, minus the share link
@@ -922,7 +1214,7 @@ window.AppPoints = (function () {
     }
   }
   async function startMultiImport(files) {
-    var items = [], failed = [], shares = [];
+    var items = [], failed = [], shares = [], exactAll = [];
     var taken = mpCollections.map(function (c) { return c.name; });
     for (var i = 0; i < files.length; i++) {
       var f = files[i];
@@ -938,8 +1230,10 @@ window.AppPoints = (function () {
           shares.push({ name: f.name, txt: new TextDecoder().decode(new Uint8Array(buf)).replace(/^\uFEFF/, "").trim() });
           continue;
         }
+        var exact = await exactListsOfBuf(buf);
+        if (exact && exact.length) { exactAll = exactAll.concat(exact); continue; }
         var parsed = await parsePointsBuf(buf);
-        if (parsed.marks.length) {
+        if (parsed.marks.length || (parsed.polys || []).length || (parsed.lines || []).length) {
           var nm = uniqueListName(listNameFromFile(f.name) || f.name, taken);
           taken.push(nm);
           items.push({ name: nm, parsed: parsed });
@@ -952,8 +1246,10 @@ window.AppPoints = (function () {
       try { await window.AppShare.importShared(shares[si].txt, { asList: true, fileName: shares[si].name, quiet: true }); }
       catch (e) { failed.push(shares[si].name); }
     }
+    if (exactAll.length) { var rx = importListsExact(exactAll); setStatus(t("kml.exactImported", { n: rx.points, lists: rx.lists.length })); }
     if (!items.length) {
       mpLoading(null);
+      if (exactAll.length) return;
       setStatus(shares.length && failed.length < shares.length ? t("share.importedLists", { n: shares.length - failed.length }) : t("kml.none"));
       return;
     }
@@ -965,7 +1261,7 @@ window.AppPoints = (function () {
       it.parsed.fields.forEach(function (f) { fieldSet[f] = 1; });
       it.parsed.folders.forEach(function (f) { folderSet[f] = 1; });
       marks = marks.concat(it.parsed.marks);
-      batch.push({ name: it.name, marks: it.parsed.marks });
+      batch.push({ name: it.name, marks: it.parsed.marks, polys: it.parsed.polys || [], lines: it.parsed.lines || [] });
     });
     kmlImport = { marks: marks, fields: Object.keys(fieldSet), folders: Object.keys(folderSet), files: batch };
     setStatus(failed.length ? t("kml.someFailed", { n: failed.length }) : "");
@@ -1003,7 +1299,7 @@ window.AppPoints = (function () {
         }).join("") + "</div></div>";
     }
     var listItems = [{ v: "__new__", l: t("detmenu.newList") }].concat(
-      mpCollections.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (c) { return { v: c.name, l: c.name }; }));
+      ownColls().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (c) { return { v: c.name, l: c.name }; }));
     // A batch has no target picker: the list names are the file names, shown so the user
     // can see what they are about to get (and what each file contributed) before importing.
     var multi = !!(p.files && p.files.length > 1);
@@ -1096,7 +1392,13 @@ window.AppPoints = (function () {
     dset: ["dataset", "datasetName", "dataset_name", "collectionCode"],
     // How far off the position may be, in metres — drawn as a transparent circle round the pin
     // (owner, 2026-10-07: "make a point list with radius of transparent dots reflecting uncertainty")
-    radius: ["uncertainty_m", "radius_m", "radius", "coordinateUncertaintyInMeters", "uncertainty", "accuracy"]
+    radius: ["uncertainty_m", "radius_m", "radius", "coordinateUncertaintyInMeters", "uncertainty", "accuracy"],
+    // The pin's symbol: "ring" = an unfilled circle in the point's colour (owner, 2026-10-10: the
+    // terrain-placed DTM points of the map-dot lists are "unfilled red circles")
+    marker: ["marker", "symbol"],
+    // The uncertainty circle's edge width in px (default 0.8): a list's best-estimate points draw theirs
+    // bolder than the many single readings round them (owner, 2026-10-12)
+    edge: ["unc_edge", "circle_edge"]
   };
   // Our own point builders write the whole record as an HTML <table> into <description>:
   // species, date, place, country, evidence, count, notes, observer, dataset, a GBIF link.
@@ -1205,6 +1507,12 @@ window.AppPoints = (function () {
   var _xKeyOf = Object.create(null);
   function detKeyOf(p) {
     if (!p) return "";
+    // Repair (owner, 2026-10-11: loaded lists turned non-bird records into birds): a key an older build
+    // borrowed for a genus the model does not know is dropped — once per point, not written back here.
+    if (p.spKey && !p._spOk && p.sci && p.spKey.indexOf("x:") !== 0) {
+      var bad = false; try { bad = window.AppAggregate.borrowedKey(p.spKey, p.sci); } catch (e) {}
+      if (bad) delete p.spKey; else hide(p, "_spOk", true);
+    }
     if (p.spKey) {
       if (p.spKey.indexOf("x:") !== 0) return p.spKey;
       var xk = p.spKey + "|" + (p.cls || "");
@@ -1226,7 +1534,7 @@ window.AppPoints = (function () {
         if (v == null || String(v).trim() === "") continue;
         v = String(v).trim();
         if (field === "date") { var m = /\d{4}-\d{2}-\d{2}/.exec(v); v = m ? m[0] : v.slice(0, 10); }
-        if (field === "radius") { v = parseFloat(v); if (!(v > 0)) continue; }
+        if (field === "radius" || field === "edge") { v = parseFloat(v); if (!(v > 0)) continue; }
         pt[field] = v;
         return;
       }
@@ -1250,7 +1558,7 @@ window.AppPoints = (function () {
     }
     var cl = String(data["class"] || data.klass || data.taxonClass || "").trim();
     if (cl && !pt.spCls) pt.spCls = cl;
-    if (!pt.spKey && pt.sci) { var lk = labelForSci(pt.sci); if (lk) pt.spKey = lk.key; }
+    if (!pt.spKey && pt.sci) { var lk = labelForSci(pt.sci, pt.spCls); if (lk) pt.spKey = lk.key; }   // with the record's class: a plant never becomes a bird
     if (/^(1|true|yes)$/i.test(String(data.route || "").trim())) pt.source = "route";   // the stop of a downloaded route
     // Tags may travel as a field too ("a; b" or "a, b"), alongside whatever the dialog mapped.
     var tg = data.tags || data.tag;
@@ -1276,7 +1584,7 @@ window.AppPoints = (function () {
     var noteToks = noteTokens();
     var noteHtmlBox = document.getElementById("kml-note-html");
     var noteIsHtml = !!(noteHtmlBox && noteHtmlBox.checked);
-    function finish(listName, marks, show) {
+    function finish(listName, marks, show, polys, lines) {
       var pts = (marks || p.marks).map(function (pm) {
         var tag = normTag(kmlFieldValue(pm, tagTok));
         // One field → exactly what it always was. Several → each line labelled, because
@@ -1317,9 +1625,13 @@ window.AppPoints = (function () {
         if (noteIsHtml && pt.note && !droppedTable) pt.noteHtml = true;
         return pt;
       });
-      var c = mpCollections.filter(function (x) { return x.name === listName; })[0];
+      var c = mpCollections.filter(function (x) { return x.name === listName && !x.viewOnly; })[0];
       if (!c) { c = { name: listName, points: [] }; mpCollections.push(c); }
       c.points = c.points.concat(pts);
+      polys = polys || (marks ? [] : (p.polys || []));
+      if (polys.length) c.polys = (c.polys || []).concat(polys);   // areas travel with the list (drawn when it is ticked)
+      lines = lines || (marks ? [] : (p.lines || []));
+      if (lines.length) c.lines = (c.lines || []).concat(lines);   // and lines (GPS tracks)
       if (pts.length && pts.every(function (p) { return p.source === "route"; })) c.route = true;   // a loaded route is a route: numbered stops, arrows, Navigate
       internPoints([c]);   // a fresh import is the other place equal strings arrive unshared
       if (show !== false) shownColls[listName] = true;   // a batch of files is saved UNTICKED (owner, 2026-10-02): tick what you want to see
@@ -1333,7 +1645,7 @@ window.AppPoints = (function () {
     }
     if (p.files && p.files.length) {
       var total = 0;
-      p.files.forEach(function (b) { total += finish(b.name, b.marks, p.files.length === 1); });
+      p.files.forEach(function (b) { total += finish(b.name, b.marks, p.files.length === 1, b.polys || [], b.lines || []); });
       commit();
       setStatus(p.files.length > 1 ? t("kml.importedN", { n: total, lists: p.files.length })
                                    : t("kml.imported", { n: total, name: p.files[0].name }));
@@ -1404,6 +1716,16 @@ window.AppPoints = (function () {
     routePoints.push({ lat: +lat, lon: +lon, name: name || "" });
     saveRoute(); updateRouteChip(); renderRoutePoints();
     setStatus(t("route.added", { n: routePoints.length }));
+    routeToast(t("route.added", { n: routePoints.length }));
+  }
+  // A short confirmation ABOVE every window (owner, 2026-10-11: "+ to add to route — no effect is
+  // seen"): the route bar and the status line sit under the observation list and the list windows,
+  // so adding a stop from there showed nothing.
+  var routeToastEl = null, routeToastT = null;
+  function routeToast(msg) {
+    if (!routeToastEl) { routeToastEl = document.createElement("div"); routeToastEl.id = "route-toast"; routeToastEl.setAttribute("role", "status"); document.body.appendChild(routeToastEl); }
+    routeToastEl.textContent = msg; routeToastEl.classList.add("on");
+    clearTimeout(routeToastT); routeToastT = setTimeout(function () { routeToastEl.classList.remove("on"); }, 2500);
   }
   function clearRoute() { routePoints = []; saveRoute(); updateRouteChip(); renderRoutePoints(); }
   // The stops of every SHOWN saved route list (ticked in the Points panel), in list
@@ -1669,7 +1991,7 @@ window.AppPoints = (function () {
   function clearMapPoints() {
     // Detach first so we don't sync the now-empty working set onto the saved
     // list — the named list survives "Delete"; only the live pins are cleared.
-    mpActiveName = ""; mapPoints = []; mpFilter = []; saveMapPoints(); renderMapPoints();
+    mpActiveName = ""; mapPoints = []; mpFilter = []; mpNone = false; saveMapPoints(); renderMapPoints();
   }
   // Distinct tag pool across all stored points, alphabetically sorted.
   function mpAllTags() {
@@ -1794,7 +2116,7 @@ window.AppPoints = (function () {
       if (!tags.length) { if (mpExclude.indexOf("") >= 0) return false; }
       else for (var x = 0; x < tags.length; x++) if (mpExclude.indexOf(tags[x]) >= 0) return false;
     }
-    if (!mpFilter.length) return true;
+    if (!mpFilter.length) return !mpNone;   // nothing included: all shown — unless everything was switched off
     if (!tags.length) return mpFilter.indexOf("") >= 0;
     for (var i = 0; i < tags.length; i++) if (mpFilter.indexOf(tags[i]) >= 0) return true;
     return false;
@@ -1878,7 +2200,9 @@ window.AppPoints = (function () {
   function renderMpPin(p, editable, color) {
     if (+p.radius > 0) {   // the position's uncertainty: a transparent circle in metres, under the pin
       var rc = p.color || color || mpColorFor(p);
-      mpLayer.addLayer(L.circle([p.lat, p.lon], { radius: +p.radius, color: rc, weight: 1, opacity: 0.55, fillColor: rc, fillOpacity: 0.12, interactive: false }));
+      // faint fill, so the map stays readable under many overlapping circles (owner, 2026-10-10), with a
+      // thin black edge so the circle itself is easy to see (owner, 2026-10-12)
+      mpLayer.addLayer(L.circle([p.lat, p.lon], { radius: +p.radius, color: "#000", weight: +p.edge > 0 ? +p.edge : 0.8, opacity: +p.edge > 0 ? 0.8 : 0.55, fillColor: rc, fillOpacity: 0.04, interactive: false }));
     }
     // A detection-saved pin (read-only, carries the species' colour) is drawn
     // like the plotted detection — species colour + ★ for interesting + a black
@@ -1901,12 +2225,24 @@ window.AppPoints = (function () {
       if (p.rare) mpLayer.addLayer(L.circleMarker([p.lat, p.lon], { radius: 1.7, weight: 0, fillColor: "#111", fillOpacity: 1, interactive: false, renderer: detRenderer() }));
       return;
     }
+    // a search's pin (no species): one plain circle in its search's colour, 25 % fill (owner, 2026-10-11)
+    if (p.fromSearch) {
+      var sc = mpHashColor("search:" + p.fromSearch);
+      var sm = L.circleMarker([p.lat, p.lon], { radius: 7, color: sc, weight: 1.5, opacity: 0.9, fillColor: sc, fillOpacity: 0.25 });
+      var srec = { m: sm, p: p, editable: editable }; mpPins.push(srec);
+      sm.on("click", function (e) { if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent); onMpPinClick(srec); });
+      mpLayer.addLayer(sm);
+      return;
+    }
     var fill = p.color || color || mpColorFor(p);   // explicit per-point colour wins over list/tag colour
     // Points that arrived via a shared link are drawn as TRIANGLES so they stand
     // out from your own (circular) pins; everything else stays a circle.
+    // marker "ring": an unfilled circle in the point's colour (still clickable inside: fill with opacity 0)
     var m = p.shared
       ? L.marker([p.lat, p.lon], { icon: mpTriangleIcon(fill), keyboard: false })
-      : L.circleMarker([p.lat, p.lon], { radius: 7, color: "#111", weight: 1, opacity: 0.9, fillColor: fill, fillOpacity: editable ? 0.9 : 0.65 });
+      : p.marker === "ring"
+        ? L.circleMarker([p.lat, p.lon], { radius: 7, color: fill, weight: 2.5, opacity: 0.95, fill: true, fillOpacity: 0 })
+        : L.circleMarker([p.lat, p.lon], { radius: 7, color: "#111", weight: 1, opacity: 0.9, fillColor: fill, fillOpacity: editable ? 0.9 : 0.65 });
     var rec = { m: m, p: p, editable: editable };
     mpPins.push(rec);
     // Stop propagation so a marker click doesn't open the species-list popup
@@ -2015,6 +2351,8 @@ window.AppPoints = (function () {
   // The card's tag row: the point's tags as removable chips, then ＋ to open the picker.
   function pointTagsHtml(p) {
     var tags = (p.tags || []).filter(function (x) { return !!x; });
+    if (p.viewOnly) return '<div class="mp-tagrow">' + tags.map(function (tg) { return '<span class="mp-tag-chip">' + escapeHtml(tagDisplay(tg)) + "</span>"; }).join("") +
+      '<span class="mp-card-acts mp-viewonly">' + escapeHtml(t("drive.viewOnly")) + "</span></div>";   // someone else's shared list: look, don't copy
     return '<div class="mp-tagrow">' +
       tags.map(function (tg) {
         return '<button type="button" class="mp-tag-chip" data-tag="' + escapeHtml(tg) + '" title="' +
@@ -2056,8 +2394,9 @@ window.AppPoints = (function () {
             mpTipHtml(o.p) + "</div>" + pointTagsHtml(o.p) + "</div>";
       }).join("");
     // Leaflet's own maxHeight gives the popup its scrollbar (.leaflet-popup-scrolled).
-    var pop = L.popup({ className: "area-tip mp-stack-pop", maxWidth: 320, maxHeight: 300, autoPan: true })
+    var pop = L.popup({ className: "area-tip mp-stack-pop", maxWidth: 320, maxHeight: 300, autoPan: false })
       .setLatLng(center).setContent(html).openOn(getMap());
+    centerPopup(pop);
     var el = pop.getElement();
     if (!el) return;
     // The card body opens the point's actions; the tag row is edited in place, so a tag
@@ -2183,7 +2522,8 @@ window.AppPoints = (function () {
   // (draw + clearLayers): 4k = 50 ms, 10k = 118 ms, 30k = 350 ms, 64.5k = 661 ms. 8k keeps a
   // zoomed-out redraw around 100 ms on this machine while showing far more than 4k did.
   var MP_DRAW_MAX = 8000;
-  var mpMoveT = null, mpCulling = false;
+  var mpMoveT = null, mpCulling = false, mpPolyCulling = false;
+  var POLY_CULL_MIN = 1500, POLY_MIN_ZOOM = 12;   // many areas (habitat polygons): draw only those in view, from street-level zoom
   function mpPinBudget() {
     var n = +window.GeoState.get("maxMapPoints", 50000);
     return Math.min(MP_DRAW_MAX, (n > 0 ? n : MP_DRAW_MAX));
@@ -2194,13 +2534,30 @@ window.AppPoints = (function () {
   }
   // Re-draw after a pan/zoom, but only while a list is actually being culled, and only
   // once the map has been still -- the same shape the legend's redraw uses.
+  // A point list's popup opens in the MIDDLE of the screen (owner, 2026-10-11: "currently on first
+  // open the right edge disappears outside window"). Leaflet's autoPan fits the popup to its size at
+  // the moment it opens — on a first open the content (fonts, tag row) is still settling and the popup
+  // grows afterwards. So: wait until it has its final size, then pan the map so the popup's centre is
+  // the map's centre.
+  function centerPopup(pop) {
+    var m = getMap(); if (!m || !pop) return;
+    function go() {
+      var el = pop.getElement(); if (!el || !m.hasLayer(pop)) return;
+      pop.update();
+      var r = el.getBoundingClientRect(), mr = m.getContainer().getBoundingClientRect();
+      var dx = (r.left + r.width / 2) - (mr.left + mr.width / 2), dy = (r.top + r.height / 2) - (mr.top + mr.height / 2);
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) m.panBy([dx, dy], { animate: true, duration: 0.25 });
+    }
+    requestAnimationFrame(function () { requestAnimationFrame(go); });
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { setTimeout(go, 0); });
+  }
   function mpWatchMoves() {
     var m = getMap(); if (!m || mpWatchMoves.on) return;
     mpWatchMoves.on = true;
     m.on("moveend zoomend", function () {
-      if (!mpCulling) return;
+      if (!mpCulling && !mpPolyCulling) return;
       clearTimeout(mpMoveT);
-      mpMoveT = setTimeout(function () { if (mpCulling) renderMapPoints(); }, 320);
+      mpMoveT = setTimeout(function () { if (mpCulling || mpPolyCulling) renderMapPoints(); }, 320);
     });
   }
   function renderMapPoints() {
@@ -2211,7 +2568,11 @@ window.AppPoints = (function () {
     ensureMpLayer().clearLayers();
     mpPins = [];
     updateDetSetOverlays();   // keep the shown detection-set layers in sync
-    mapPoints.forEach(function (p) { if (mpVisible(p)) renderMpPin(p, true); });   // loose working pins (editable, tag colour)
+    mapPoints.forEach(function (p) {
+      if (!mpVisible(p)) return;
+      if (p.fromSearch && detKeyOf(p)) return;   // a search's pin WITH a species is drawn by the detection pipeline (legend), in its search's colour
+      renderMpPin(p, true);                      // loose working pins (editable, tag colour)
+    });
     // Ticked saved point-lists: a list's DETECTION points (those carrying a species
     // key) are plotted through the shared detection pipeline (syncListDetections),
     // so they obey the same legend filters and open the same popups as fetched
@@ -2249,6 +2610,33 @@ window.AppPoints = (function () {
       var give = Math.min(want, have);
       share[c.name] = (budget === Infinity) ? Infinity : give;
       left -= give; nLeft--;
+    });
+    // A ticked list's AREAS first, under its pins: faint fill in the area's own colour (else the
+    // list's), outline only a little stronger, not clickable — the map stays readable beneath.
+    var nPoly = 0; shownLists.forEach(function (c) { nPoly += (c.polys || []).length; });
+    mpPolyCulling = nPoly > POLY_CULL_MIN;
+    var pbb = bb;
+    if (mpPolyCulling) {
+      var mz = getMap().getZoom(), pvb = getMap().getBounds().pad(0.2);
+      pbb = mz >= POLY_MIN_ZOOM ? [pvb.getSouth(), pvb.getWest(), pvb.getNorth(), pvb.getEast()] : null;
+      if (!pbb) setStatus(t("points.areasZoom", { n: nPoly }));
+    }
+    if (!mpPolyCulling || pbb) shownLists.forEach(function (c) {
+      (c.polys || []).forEach(function (pg) {
+        if (!pg || !pg.r || pg.r.length < 3) return;
+        var bb = pbb;
+        if (bb) { var inV = false; for (var q = 0; q < pg.r.length && !inV; q++) { var v = pg.r[q]; if (v[0] >= bb[0] && v[0] <= bb[2] && v[1] >= bb[1] && v[1] <= bb[3]) inV = true; } if (!inV) return; }
+        if (pg.t && pg.t.length && !mpTagPasses({ tags: pg.t })) return;   // a tagged area follows the tag chips; an untagged one always shows
+        var pc = pg.c || collColor(c);
+        mpLayer.addLayer(L.polygon(pg.r, { color: pc, weight: pg.f === 0 ? 1.5 : 1, opacity: 0.6, fillColor: pc, fillOpacity: pg.f === 0 ? 0 : 0.25, interactive: false }));
+      });
+    });
+    // A list's LINES (a recorded GPS track) above its areas, below its pins.
+    shownLists.forEach(function (c) {
+      (c.lines || []).forEach(function (ln) {
+        if (!ln || !ln.r || ln.r.length < 2) return;
+        mpLayer.addLayer(L.polyline(ln.r, { color: ln.c || collColor(c), weight: 3, opacity: 0.85, interactive: false }));
+      });
     });
     // Pass 2: draw, largest list first so the smallest end up on top.
     shownLists.slice().reverse().forEach(function (c) {
@@ -2291,7 +2679,8 @@ window.AppPoints = (function () {
     saveShownState: saveShownState, addMapPoint: addMapPoint, updateMapPoint: updateMapPoint,
     deleteMapPoint: deleteMapPoint, mpHasUnsaved: mpHasUnsaved, mpVisible: mpVisible,
     mpAllTags: mpAllTags, mpUid: mpUid, mpParseTags: mpParseTags,
-    deleteCollection: deleteCollection, isCollProtected: isCollProtected, mpLoading: mpLoading,
+    exactListsOfText: exactListsOfText, importListsExact: importListsExact,
+    deleteCollection: deleteCollection, isCollProtected: isCollProtected, isViewOnly: isViewOnly, ownColls: ownColls, openViewOnly: openViewOnly, fillViewOnly: fillViewOnly, forgetViewOnly: forgetViewOnly, mpLoading: mpLoading,
     setCollProtected: setCollProtected, isRouteColl: isRouteColl,
     openCollEditModal: openCollEditModal, collColor: collColor,
     // ---- colours ----
@@ -2309,6 +2698,7 @@ window.AppPoints = (function () {
     updateRouteChip: updateRouteChip, navigatePoints: navigatePoints, navigateStops: navigateStops,
     // ---- pins on the map ----
     ensureMpLayer: ensureMpLayer, renderMapPoints: renderMapPoints, renderMpPin: renderMpPin,
+    centerPopup: centerPopup,
     onMpPinClick: onMpPinClick, setMpDistOrigin: setMpDistOrigin,
 
     // ---- state (app.js reads through these) ----
@@ -2318,6 +2708,7 @@ window.AppPoints = (function () {
     setMpFilter: function (v) { mpFilter = v; }, detKeyOf: detKeyOf, mpTagPasses: mpTagPasses,
     collCount: collCount, anyLazy: anyLazy, whenAllLoaded: whenAllLoaded, hydrateOne: hydrateOne,
     mpExclude: function () { return mpExclude; }, setMpExclude: function (v) { mpExclude = v; },
+    mpNone: function () { return mpNone; }, setMpNone: function (v) { mpNone = !!v; },
     mpShown: function () { return mpShown; },
     setMpShown: function (v) { mpShown = v; },
     mpLayer: function () { return mpLayer; },

@@ -21,14 +21,19 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v2031";
+var VERSION = "v2112";
 // The changelog shown under the lit "Reload to update" button in Settings.
 // THIS RELEASE ONLY — replace it wholesale on every version bump, never append.
 // A returning user wants to know what the update they are about to install changes,
 // not a scroll of things they already have; the feature history lives in Settings →
 // What's new, and the full record in CHANGES.md.
 var NOTES = [
-  "\u2022 Points \u2192 Load from file: one box \u2014 paste a link and press Load, or leave it empty and press Load to choose a file.",
+  "\u2022 Points: search across all your lists; matching records can be shown on the map.",
+  "\u2022 Point lists hold areas and lines, and you can record a GPS track.",
+  "\u2022 Share point lists through Google Drive (view-only for the receiver; withdrawn shares disappear).",
+  "\u2022 Hide observers with an exclude list; compare look-alike species side by side.",
+  "\u2022 New 3D terrain viewer: sun and shadows, base maps and aerial photos, measuring.",
+  "\u2022 Popups fit the screen, each with a \u00d7; the app opens clean.",
 ].join("\n");
 // RC channel isolation: an RC deployment (SW served from a "…-rc/" path) shares the
 // browser ORIGIN with production, so its caches must be namespaced — and its activate
@@ -423,7 +428,7 @@ self.addEventListener("fetch", function (event) {
   if (sameOrigin) {
     // Static, crawlable pages (about/…, robots.txt, sitemap.xml) are plain web pages, not
     // the app shell: never answer them with the cached index.html — leave them to the network.
-    if (/\/(about|owl_network)(\/|$)/.test(url.pathname) || /\/(robots\.txt|sitemap\.xml|google[0-9a-f]+\.html)$/.test(url.pathname)) return;   // owl_network/: the Finnskogen observer graph, a standalone page
+    if (/\/(about|owl_network|mappoints|terrain3d)(\/|$)/.test(url.pathname) || /\/(robots\.txt|sitemap\.xml|google[0-9a-f]+\.html)$/.test(url.pathname)) return;   // owl_network/: the Finnskogen observer graph; mappoints/: the map-dot method page; terrain3d/: the 3-D terrain viewer — standalone pages
     // (The Migration Aloft radar moved to its own repo/site — no /aloft/ path here now.)
     if (/\.(onnx|csv|wasm|mjs)$/.test(url.pathname) ||
         /\/vendor\//.test(url.pathname) ||
