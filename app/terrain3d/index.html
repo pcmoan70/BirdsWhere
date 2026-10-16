@@ -72,13 +72,12 @@
     <div class="row"><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="csmooth" checked> Smooth terrain, σ</label><input id="csig" type="number" min="0.5" max="5" step="0.5" value="1.5" style="width:56px"> m</div>
     <div class="row"><button id="reset">Reset view</button><button id="top">Top view</button></div>
     <!-- collapsible sections (owner, 2026-10-15: "make the subsections: Map, Layers and Sun collapsible like Birds. Default
-         is sun open, while others closed"): Map, Layers, Birds closed, Sun open -->
+         is sun open, while others closed"): Map, Birds closed, Sun open; Map and Layers one Map section (2026-10-16: "merge the
+         Map and Layers subsections into a Map subsection") — the base map, then what is drawn on it -->
     <details class="sec" id="mapSec"><summary>Map</summary>
     <div class="row w">Map <select id="basemap" style="width:auto"><option value="slope">Plain</option><option value="kv_topo">Kartverket topo</option><option value="kv_grey">Kartverket greyscale</option><option value="osm">OpenStreetMap (OpenTopoMap)</option><option value="cyclosm">Paths &amp; cycling (CyclOSM)</option><option value="esri_st">Streets (Esri)</option><option value="esri">Aerial (Esri)</option><option value="wayback">Aerial, earlier photos (Esri Wayback)</option></select>
 </div>
     <div class="row w" id="wbRow" hidden>Photo <select id="wbSel" style="width:auto;max-width:230px"></select></div>
-    </details>
-    <details class="sec" id="layersSec"><summary>Layers</summary>
       <div class="row"><label class="ly"><input type="checkbox" id="lyContours" checked> Contours (5 m, labelled every 25 m)</label></div>
       <div id="lyFiles"></div>
       <div class="row"><label class="ly"><input type="checkbox" id="lyMarkers" checked> Centre, circles &amp; steepest point</label></div>
@@ -133,7 +132,7 @@
 <!-- the map controls in one column on the right (owner, 2026-10-15: "the controls on the right hand side should be one
      column and collapsible"): › tucks them away, ‹ brings them back -->
 <div id="rside"><button id="rsideX" title="Hide the map controls">›</button>
-<div id="rot"><button id="measure" title="Measure: tap two points on the terrain">📏</button><button id="dragmode" title="One-finger / left drag: move the map (tap for rotate)">✋</button><button id="rotl" title="Rotate left 15°">⟲</button><button id="rotr" title="Rotate right 15°">⟳</button><button id="tiltu" title="Tilt up (look more from above)">▲</button><button id="tiltd" title="Tilt down (look more from the side)">▼</button><button id="north" title="North up">N</button><button id="aerial" title="Aerial photo of the place in view, in Norgeskart (Norge i bilder)">🛰</button></div>
+<div id="rot"><button id="measure" title="Measure: tap two points on the terrain">📏</button><button id="dragmode" title="One-finger / left drag: move the map (tap for rotate)">✋</button><button id="rotl" title="Rotate left 15°">⟲</button><button id="rotr" title="Rotate right 15°">⟳</button><button id="tiltu" title="Tilt up (look more from above)">▲</button><button id="tiltd" title="Tilt down (look more from the side)">▼</button><button id="north" title="North up">N</button><button id="aerial" title="Aerial photo of the place in view, in Norgeskart (Norge i bilder)">🛰</button><button id="birdswhere" title="Open BirdsWhere (thebirding.site) at this locality">🐦</button></div>
 <div id="zoom"><button id="zin" title="Zoom in">+</button><button id="zout" title="Zoom out">−</button></div>
 </div><button id="rsideOpen" title="Show the map controls" hidden>‹</button>
 <div id="gate" hidden style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(10,12,16,.6)"><div class="panel" style="position:static;max-width:340px;text-align:center"><div style="margin-bottom:10px">A terrain shared on Google Drive. Sign in with the Google account it is shared with to open it.</div><button id="gateGo" style="font-size:16px;padding:8px 14px">Sign in with Google to open</button><div style="margin-top:8px"><button id="gateX" style="background:#555">Not now</button></div></div></div>
@@ -2019,7 +2018,7 @@ canvas.addEventListener("touchstart", ev => { twist = ev.touches.length === 2 ? 
 canvas.addEventListener("touchmove", ev => {
   if (ev.touches.length !== 2 || twist === null) return;
   const a = tang(ev); let d = a - twist; if (d > Math.PI) d -= 2 * Math.PI; if (d < -Math.PI) d += 2 * Math.PI;
-  twist = a; if (Math.abs(d) > 0.002) rotateBy(-d);
+  twist = a; if (Math.abs(d) > 0.002) rotateBy(d);   // the terrain turns WITH the fingers (owner, 2026-10-16: it turned the opposite way)
 }, { passive: true });
 canvas.addEventListener("touchend", ev => { if (ev.touches.length < 2) twist = null; }, { passive: true });
 const amb = new THREE.AmbientLight(0xffffff, 0.75), sun = new THREE.DirectionalLight(0xffffff, 0.5);
@@ -2277,6 +2276,14 @@ $("aerial").onclick = () => {
   const x = controls.target.x, y = -controls.target.z, [la, lo] = UTM.inv(S.X + x, S.Y + y, S.zone), [e33, n33] = UTM.fwd(la, lo, 33);
   const w = 2 * camera.position.distanceTo(controls.target), z = Math.max(8, Math.min(18, Math.round(Math.log2(156543 * Math.cos(la * RAD) * innerWidth / w))));
   open("https://www.norgeskart.no/?zoom=" + z + "&lat=" + n33.toFixed(1) + "&lon=" + e33.toFixed(1) + "&backgroundLayer=Nibcache_UTM33_EUREF89_v2&rotation=0", "_blank", "noopener");
+};
+// 🐦: BirdsWhere centred on the locality — the view's own centre, its pin dropped there (?lat=&lon=&zoom=), zoomed so
+// the view's square fits (owner, 2026-10-16: "add a button to open thebirding.site centered on the locality center")
+$("birdswhere").onclick = () => {
+  if (!S) return;
+  const [la, lo] = UTM.inv(S.X, S.Y, S.zone);
+  const z = Math.max(8, Math.min(16, Math.round(Math.log2(156543 * Math.cos(la * RAD) * Math.min(innerWidth, innerHeight) / (2.4 * S.R)))));
+  open("https://thebirding.site/?lat=" + la.toFixed(5) + "&lon=" + lo.toFixed(5) + "&zoom=" + z, "_blank", "noopener");
 };
 
 // ---- measuring (owner, 2026-10-12: "a measuring tool, measuring distance horizontal and vertical"):

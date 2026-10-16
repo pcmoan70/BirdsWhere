@@ -723,6 +723,7 @@ window.AppPoints = (function () {
       if (o.route) c.route = true;
       internPoints([c]); mpCollections.push(c); shownColls[nm] = true; n += c.points.length; made.push(nm);
     });
+    allTagsOn();
     saveShownState(); saveMapPoints(); renderMapPoints();
     return { lists: made, points: n };
   }
@@ -1575,6 +1576,13 @@ window.AppPoints = (function () {
     mpLoading(t("kml.importing", { name: into || "…" }));
     setTimeout(function () { try { doKmlImportNow(); } finally { mpLoading(null); } }, 30);   // let the overlay paint before the page blocks
   }
+  // A list just dropped or loaded starts with ALL tag chips on (owner, 2026-10-16: "when dropping, or loading a point
+  // list into birdswhere make sure to enable all tags on list initially"): no tag left picked, excluded or switched off
+  // from an earlier list would hide part of it
+  function allTagsOn() {
+    mpFilter = []; mpExclude = []; mpNone = false;
+    try { window.GeoState.save({ mapPointsFilter: [], mapPointsExclude: [], mapPointsNone: false }); } catch (e) {}
+  }
   function doKmlImportNow() {
     var p = kmlImport; if (!p) return;
     var targetEl = document.getElementById("kml-target");
@@ -1640,6 +1648,7 @@ window.AppPoints = (function () {
     // Commit once for the whole batch: one saveMapPoints / renderMapPoints for N lists
     // instead of N of each (a ten-file import re-rendered the map ten times otherwise).
     function commit() {
+      allTagsOn();
       saveShownState(); saveMapPoints(); renderMapPoints();
       closeKmlImportDialog(); kmlImport = null;
     }
@@ -2523,7 +2532,29 @@ window.AppPoints = (function () {
   // zoomed-out redraw around 100 ms on this machine while showing far more than 4k did.
   var MP_DRAW_MAX = 8000;
   var mpMoveT = null, mpCulling = false, mpPolyCulling = false;
-  var POLY_CULL_MIN = 1500, POLY_MIN_ZOOM = 12;   // many areas (habitat polygons): draw only those in view, from street-level zoom
+  // many areas (habitat polygons): draw only those in view, and only while at most POLY_VIEW_MAX of them are in it
+  // (owner, 2026-10-15: the owl list's cliff polygons — 14k areas with the rings — were hidden below street-level
+  // zoom, the old fixed gate, where only the dots showed; regionally a few hundred are in view, cheap to draw)
+  var POLY_CULL_MIN = 1500, POLY_VIEW_MAX = 2500;
+  var mpAreasMsg = "";   // the "zoom in to see the areas" note while it is up (cleared only if it is still the one shown)
+  function clearAreasMsg() {
+    if (!mpAreasMsg) return;
+    var el = document.getElementById("app-status"); if (el && el.textContent === mpAreasMsg) setStatus("");
+    mpAreasMsg = "";
+  }
+  // an area under ~6 px across at the current zoom: drawn, it is just a dot — it shows once zoomed in far enough
+  var polyBB = new WeakMap();   // area → its bounding box (kept off the area itself: lists are saved and synced as they are)
+  function polyTiny(pg) {
+    var m = getMap(); if (!m) return false;
+    var bb = polyBB.get(pg);
+    if (!bb) { var a = 90, b = 180, c = -90, d = -180; pg.r.forEach(function (v) { if (v[0] < a) a = v[0]; if (v[0] > c) c = v[0]; if (v[1] < b) b = v[1]; if (v[1] > d) d = v[1]; }); bb = [a, b, c, d]; polyBB.set(pg, bb); }
+    var p1 = m.latLngToContainerPoint([bb[0], bb[1]]), p2 = m.latLngToContainerPoint([bb[2], bb[3]]);
+    return Math.max(Math.abs(p2.x - p1.x), Math.abs(p2.y - p1.y)) < 6;
+  }
+  function polyInBox(pg, bb) {
+    for (var q = 0; q < pg.r.length; q++) { var v = pg.r[q]; if (v[0] >= bb[0] && v[0] <= bb[2] && v[1] >= bb[1] && v[1] <= bb[3]) return true; }
+    return false;
+  }
   function mpPinBudget() {
     var n = +window.GeoState.get("maxMapPoints", 50000);
     return Math.min(MP_DRAW_MAX, (n > 0 ? n : MP_DRAW_MAX));
@@ -2617,15 +2648,21 @@ window.AppPoints = (function () {
     mpPolyCulling = nPoly > POLY_CULL_MIN;
     var pbb = bb;
     if (mpPolyCulling) {
-      var mz = getMap().getZoom(), pvb = getMap().getBounds().pad(0.2);
-      pbb = mz >= POLY_MIN_ZOOM ? [pvb.getSouth(), pvb.getWest(), pvb.getNorth(), pvb.getEast()] : null;
-      if (!pbb) setStatus(t("points.areasZoom", { n: nPoly }));
-    }
+      var pvb = getMap().getBounds().pad(0.2), inView = 0;
+      pbb = [pvb.getSouth(), pvb.getWest(), pvb.getNorth(), pvb.getEast()];
+      shownLists.forEach(function (c) { (c.polys || []).forEach(function (pg) { if (pg && pg.r && pg.r.length >= 3 && polyInBox(pg, pbb)) inView++; }); });
+      // hysteresis (owner, 2026-10-16: the note above the map "changes back and forth in size every 1 second"): the
+      // note itself changes the map's height, the refit redraws, and near the limit the count in view crossed it
+      // back and forth — so once hidden, the areas come back only below 75 % of the limit
+      var lim = mpAreasMsg ? 0.75 * POLY_VIEW_MAX : POLY_VIEW_MAX;
+      if (inView > lim) { pbb = null; if (!mpAreasMsg) { mpAreasMsg = t("points.areasZoom", { n: nPoly }); setStatus(mpAreasMsg); } }
+      else clearAreasMsg();   // areas drawn again: the "zoom in" note goes
+    } else clearAreasMsg();
     if (!mpPolyCulling || pbb) shownLists.forEach(function (c) {
       (c.polys || []).forEach(function (pg) {
         if (!pg || !pg.r || pg.r.length < 3) return;
-        var bb = pbb;
-        if (bb) { var inV = false; for (var q = 0; q < pg.r.length && !inV; q++) { var v = pg.r[q]; if (v[0] >= bb[0] && v[0] <= bb[2] && v[1] >= bb[1] && v[1] <= bb[3]) inV = true; } if (!inV) return; }
+        if (pbb && !polyInBox(pg, pbb)) return;
+        if (polyTiny(pg)) return;   // an area a few pixels across would only be a dot (owner, 2026-10-15: "a lot of orange … dots")
         if (pg.t && pg.t.length && !mpTagPasses({ tags: pg.t })) return;   // a tagged area follows the tag chips; an untagged one always shows
         var pc = pg.c || collColor(c);
         mpLayer.addLayer(L.polygon(pg.r, { color: pc, weight: pg.f === 0 ? 1.5 : 1, opacity: 0.6, fillColor: pc, fillOpacity: pg.f === 0 ? 0 : 0.25, interactive: false }));
