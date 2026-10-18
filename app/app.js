@@ -8450,6 +8450,7 @@
       // when a newer version is known to be waiting on the server, apply it after a moment.
       var bfu = document.getElementById("boot-fail-update");
       if (bfu) bfu.addEventListener("click", function () { bfu.disabled = true; if (window.SWUpdate) window.SWUpdate.apply(); else window.location.reload(); });
+      if (window.SWUpdate) window.SWUpdate.onfail = function () { if (bfu) bfu.disabled = false; };   // the install failed — let them try again
       setTimeout(function () { if (window.SWUpdate && (window.SWUpdate.pending || window.SWUpdate.worker)) window.SWUpdate.apply(); }, 4000);
     }
   }
@@ -11556,7 +11557,7 @@
       else if (detFocusKeys) { if (!detFocusKeys.has(k)) return; }   // list/family hover preview
       else if (!detIsVisible(k, selActive)) return;
       var spKey = (detPlot[k] && detPlot[k].key) || k;
-      (detPlot[k].rows || []).forEach(function (r) { if (detDatePasses(r.date) && detPassesNew(r) && detPassesText(r)) fn(r, spKey); });
+      (detPlot[k].rows || []).forEach(function (r) { if (detDatePasses(r.date) && detPassesNew(r) && detPassesText(r)) fn(r, spKey, k); });
     });
   }
   function detDrawableCount() { var n = 0; eachDrawableRow(function () { n++; }); return n; }
@@ -19229,20 +19230,27 @@
       }, "block"));
       positionAnchoredMenu(el, x, y);
     }
+    // Within a folder the shown (ticked) lists come first, in the user's own order; the rest
+    // follow alphabetically (owner, 2026-10-17).
     function mpSortedColls() {
+      var sc = mpState.shownColls();
       return mpState.mpCollections().slice().sort(function (a, b) {
         var fa = String(a.folder || ""), fb = String(b.folder || "");
         if (fa !== fb) return fa.localeCompare(fb);
-        var oa = (a.order == null) ? 1e9 : +a.order, ob = (b.order == null) ? 1e9 : +b.order;
-        if (oa !== ob) return oa - ob;
+        var va = !!sc[a.name], vb = !!sc[b.name];
+        if (va !== vb) return va ? -1 : 1;
+        if (va) {
+          var oa = (a.order == null) ? 1e9 : +a.order, ob = (b.order == null) ? 1e9 : +b.order;
+          if (oa !== ob) return oa - ob;
+        }
         return a.name.localeCompare(b.name);
       });
     }
-    // Move a list one step within its folder: the folder's lists get explicit orders
+    // Move a shown list one step among the shown lists of its folder: they get explicit orders
     // (their current positions) the first time, then the two neighbours swap.
     function mpMoveColl(name, dir) {
-      var all = mpSortedColls(), c = all.filter(function (x) { return x.name === name; })[0]; if (!c) return;
-      var f = String(c.folder || ""), grp = all.filter(function (x) { return String(x.folder || "") === f; });
+      var sc = mpState.shownColls(), all = mpSortedColls(), c = all.filter(function (x) { return x.name === name; })[0]; if (!c || !sc[name]) return;
+      var f = String(c.folder || ""), grp = all.filter(function (x) { return String(x.folder || "") === f && !!sc[x.name]; });
       grp.forEach(function (x, i) { x.order = i; });
       var i = grp.indexOf(c), j = i + dir; if (j < 0 || j >= grp.length) return;
       grp[i].order = j; grp[j].order = i;
@@ -19748,8 +19756,10 @@
                                     'data-name="' + escapeHtml(name) + '"');
       if (count) html += row("mp-coll-dl", ico("download"), t("points.download"), t("points.downloadDesc"));
       if (type === "p") {
-        html += row("mp-coll-up", "\u25B2", t("points.moveUp"), t("points.moveDesc"), 'data-name="' + escapeHtml(name) + '"');
-        html += row("mp-coll-down", "\u25BC", t("points.moveDown"), t("points.moveDesc"), 'data-name="' + escapeHtml(name) + '"');
+        if (mpState.shownColls()[name]) {   // hidden lists sit alphabetically below the shown ones: nothing to move
+          html += row("mp-coll-up", "\u25B2", t("points.moveUp"), t("points.moveDesc"), 'data-name="' + escapeHtml(name) + '"');
+          html += row("mp-coll-down", "\u25BC", t("points.moveDown"), t("points.moveDesc"), 'data-name="' + escapeHtml(name) + '"');
+        }
         html += row("mp-coll-folder", ico("folder"), t("points.moveFolder"), t("points.moveFolderDesc"), 'data-name="' + escapeHtml(name) + '"');
       }
       if (type === "p") {
@@ -21125,6 +21135,9 @@
         upBtn.disabled = true; upBtn.textContent = t("settings.updateApplying");
         SW.apply();   // skipWaiting → controllerchange reloads the page
       });
+      // The install failed (a file still the old version on the server, or offline): say so and
+      // let the user try again — the next automatic check retries too.
+      SW.onfail = function () { if (upBtn) { upBtn.disabled = false; upBtn.textContent = "↻ " + t("settings.updateFailed"); } };
     })();
 
     // ---- Clear cached data (Settings → Storage) ----------------------------
@@ -24999,6 +25012,19 @@
       // mapant.no centred on the clicked point instead (their hash is #zoom/lat/lon).
       // Norway-only by coverage, and Experimental-gated like the radar link.
       if (cc === "NO" && experimentalOn()) {
+        // 3-D terrain: the clicked point opens pcmoan70.github.io/3d_terrain, which builds a
+        // 1 m DTM view (Kartverket, Norway only) 2 km around it. MAIN-level, before More.
+        // The dots on the map inside that square go along in the link's hash (owner, 2026-10-18:
+        // "specify dots with descriptive text from BirdsWhere app to be drawn in 3d view").
+        wrap.insertBefore(
+          makePopupBtn(t("link.terrain3d") + " ↗", "btn-green", function () {
+            mk.closePopup();
+            var pts = terrain3dPoints(lat, lon, 2000);
+            openExternal("https://pcmoan70.github.io/3d_terrain/?lat=" + lat.toFixed(5) + "&lon=" + lon.toFixed(5) + "&r=2000" +
+              (pts.length ? "#pts=" + encodeURIComponent(JSON.stringify(pts)) : ""));
+          }),
+          moreBtn
+        );
         moreSub.appendChild(makePopupBtn(t("link.mapant") + " ↗", "btn-light", function () {
           mk.closePopup();
           openExternal("https://mapant.no/#8/" + lat.toFixed(5) + "/" + lon.toFixed(5));
@@ -25461,6 +25487,32 @@
     });
   }
 
+  // The dots drawn on the map within ±rM metres of (lat, lon), as the 3-D terrain viewer's
+  // #pts= list: [lat, lon, name, text, colour] per dot. The user's own pins carry their name,
+  // note and colour; the plotted observations (the same rows the map draws: visible species,
+  // the newest-N cap) carry the species, then date · count · place · observer, in the species
+  // colour. Nearest first, at most 300 — a link of a few tens of kB, which every browser opens.
+  function terrain3dPoints(lat, lon, rM) {
+    var out = [], seen = new Set(), mPerDegLon = 111320 * Math.cos(lat * Math.PI / 180);
+    function add(la, lo, name, text, col) {
+      la = +la; lo = +lo; if (!isFinite(la) || !isFinite(lo)) return;
+      var dx = (lo - lon) * mPerDegLon, dy = (la - lat) * 111320;
+      if (Math.abs(dx) > rM || Math.abs(dy) > rM) return;
+      out.push({ d: dx * dx + dy * dy, v: [+la.toFixed(5), +lo.toFixed(5), String(name || ""), String(text || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(), col || ""] });
+    }
+    (mpState.mpPins() || []).forEach(function (rec) {
+      var p = rec.p; if (!p || seen.has(p)) return; seen.add(p);   // a pin can have a halo record too
+      add(p.lat, p.lon, p.name, p.note, p.color || p.spColor);
+    });
+    var allowed = detDrawAllowed();
+    eachDrawableRow(function (r, key, k) {
+      if (allowed && !allowed.has(r)) return;
+      var txt = [r.date, (r.count !== "" && r.count != null) ? "n = " + r.count : "", r.place, r.observer].filter(Boolean).join(" \u00b7 ");
+      add(r.lat, r.lon, detName(detPlot[k]), txt, speciesColor(key));
+    });
+    out.sort(function (a, b) { return a.d - b.d; });
+    return out.slice(0, 300).map(function (o) { return o.v; });
+  }
   function haversineKm(la1, lo1, la2, lo2) {
     var R = 6371, dLa = (la2 - la1) * Math.PI / 180, dLo = (lo2 - lo1) * Math.PI / 180;
     var a = Math.sin(dLa / 2) * Math.sin(dLa / 2) + Math.cos(la1 * Math.PI / 180) * Math.cos(la2 * Math.PI / 180) * Math.sin(dLo / 2) * Math.sin(dLo / 2);

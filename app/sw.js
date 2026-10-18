@@ -21,14 +21,16 @@
  *
  * Bump VERSION to invalidate all caches on the next deploy.
  */
-var VERSION = "v2121";
+var VERSION = "v2127";
 // The changelog shown under the lit "Reload to update" button in Settings.
 // THIS RELEASE ONLY — replace it wholesale on every version bump, never append.
 // A returning user wants to know what the update they are about to install changes,
 // not a scroll of things they already have; the feature history lives in Settings →
 // What's new, and the full record in CHANGES.md.
 var NOTES = [
-  "\u2022 Viewpoints layer: wildlife hides (OSM leisure=wildlife_hide) now shown alongside bird hides.",
+  "\u2022 3-D terrain (Norway, Experimental features on): a clicked point gets a 3-D terrain button that opens the terrain 2 km around it, with the map\u2019s dots along \u2014 your pins with their notes and the plotted observations stand in the 3-D view; hover or tap one for its text.",
+  "\u2022 Points panel: the shown lists come first in each folder, in your own order; the hidden ones follow alphabetically.",
+  "\u2022 Updates: every install is checked file by file, so a mixed app can no longer be installed mid-deploy; a failed update says so on the button instead of reloading the old app.",
 ].join("\n");
 // RC channel isolation: an RC deployment (SW served from a "…-rc/" path) shares the
 // browser ORIGIN with production, so its caches must be namespaced — and its activate
@@ -233,13 +235,18 @@ var API_HOSTS = /(nominatim\.openstreetmap\.org|photon\.komoot\.io|overpass-api\
 // caches and only changed files are downloaded. If the manifest is missing or
 // its _version doesn't match this sw.js (regeneration forgotten), we fall back
 // to a full download — never to stale code.
-function fetchManifest() {
-  return fetch(reload("files.json")).then(function (r) {
+// A manifest with the previous version's _version is the edge still serving the old file
+// (GitHub Pages caches each file for up to ten minutes, independently of sw.js): it is fetched
+// once more past the edge (?v=VERSION is a new cache key) and, still old, reported as STALE —
+// the install then fails rather than download an unverifiable mix (see fetchVerified).
+function fetchManifest(bust) {
+  return fetch(reload(bust ? "files.json?v=" + VERSION : "files.json")).then(function (r) {
     if (!r.ok) return null;
     return r.clone().json().then(function (m) {
-      return (m && m._version === VERSION) ? { man: m, res: r } : null;
+      if (m && m._version === VERSION) return { man: m, res: r };
+      return bust ? { stale: (m && m._version) || "?" } : fetchManifest(true);
     });
-  }).catch(function () { return null; });
+  }).catch(function () { return bust ? null : fetchManifest(true); });
 }
 // The previous version's shell cache holds the files.json it installed with —
 // that's the "before" side of the diff. Only OUR channel's caches are candidates.
@@ -269,13 +276,42 @@ function prevShellManifest() {
 // Settings "Update to vX" button and the banner show the update's size.
 // Content-Length is the wire (gzipped) size when the server reports it.
 var DL_KEY = "https://config.local/update-dl";
-function addCounted(c, u, tally) {
-  return fetch(reload(u)).then(function (res) {
-    if (!res || !res.ok) throw new Error(u + " " + (res && res.status));
-    var cl = parseInt(res.headers.get("content-length") || "0", 10);
-    if (cl > 0) { tally.n += cl; return c.put(u, res); }
-    return res.clone().blob().then(function (b) { tally.n += b.size; return c.put(u, res); });
+// Every file an install downloads is checked against its files.json hash (the first 16 hex of
+// SHA-256, as tools/gen-files-manifest.mjs writes it). During a deploy's propagation the edge
+// can still hold the PREVIOUS version of a file next to the new sw.js, and an install that
+// stored it under the new VERSION was a "mixed shell", served until the next deploy (owner,
+// 2026-10-17: "unable to update"). A mismatch is fetched once more past the edge (?v=<hash>);
+// a second mismatch fails the install — the browser retries on the next update check.
+function sha16(buf) {
+  return crypto.subtle.digest("SHA-256", buf).then(function (d) {
+    var b = new Uint8Array(d), out = "";
+    for (var i = 0; i < 8; i++) out += ("0" + b[i].toString(16)).slice(-2);
+    return out;
   });
+}
+function fetchVerified(u, want, tally, bust) {
+  return fetch(reload(bust ? u + (u.indexOf("?") < 0 ? "?" : "&") + "v=" + want : u)).then(function (res) {
+    if (!res || !res.ok) throw new Error(u + " " + (res && res.status));
+    if (!want) {
+      var cl = parseInt(res.headers.get("content-length") || "0", 10);
+      if (cl > 0) { tally.n += cl; return res; }
+      return res.clone().blob().then(function (b) { tally.n += b.size; return res; });
+    }
+    return res.clone().arrayBuffer().then(function (buf) {
+      return sha16(buf).then(function (got) {
+        if (got !== want) {
+          if (!bust) return fetchVerified(u, want, tally, true);
+          throw new Error(u + " is not the version files.json expects (" + got + " vs " + want + ") — the server is still propagating");
+        }
+        var cl = parseInt(res.headers.get("content-length") || "0", 10);
+        tally.n += cl > 0 ? cl : buf.byteLength;
+        return res;
+      });
+    });
+  });
+}
+function addCounted(c, u, tally, want) {
+  return fetchVerified(u, want, tally).then(function (res) { return c.put(u, res); });
 }
 
 self.addEventListener("install", function (event) {
@@ -283,16 +319,18 @@ self.addEventListener("install", function (event) {
   event.waitUntil(
     Promise.all([fetchManifest(), prevShellManifest()]).then(function (rr) {
       var cur = rr[0], prev = rr[1];
+      if (cur && cur.stale) throw new Error("files.json on the server is still " + cur.stale + ", not " + VERSION + " — the deploy is propagating; the next update check retries");
       var canDiff = !!(cur && prev.man && prev.cache);
+      var want = function (u) { return cur ? cur.man[u] : null; };
       return Promise.all([
         caches.open(SHELL_CACHE).then(function (c) {
           var puts = SHELL.map(function (u) {
             if (canDiff && cur.man[u] && cur.man[u] === prev.man[u]) {
               return prev.cache.match(u).then(function (hit) {
-                return hit ? c.put(u, hit) : addCounted(c, u, tally);
+                return hit ? c.put(u, hit) : addCounted(c, u, tally, want(u));
               });
             }
-            return addCounted(c, u, tally);
+            return addCounted(c, u, tally, want(u));
           });
           if (cur) puts.push(c.put("files.json", cur.res));
           // Lazy files: copy over only when present before AND unchanged — never fetch here.
@@ -312,7 +350,7 @@ self.addEventListener("install", function (event) {
               var changed = canDiff && cur.man[u] !== prev.man[u];
               return c.match(u).then(function (hit) {
                 if (hit && !changed) return null;
-                return addCounted(c, u, tally).catch(function () {});
+                return addCounted(c, u, tally, want(u)).catch(function () {});
               });
             })
           );
@@ -421,6 +459,12 @@ self.addEventListener("fetch", function (event) {
     return;
   }
   if (sameOrigin) {
+    // The update machinery itself is never served from a cache: sw-register's version check
+    // reads sw.js, and the shell cache-first path had been answering it with the copy cached on
+    // the first check — so the page compared the running version with ITSELF and never learnt
+    // of a new deploy whose install had failed (2026-10-17). The browser's own sw.js fetch for
+    // an update bypasses this worker; this makes the page's check as fresh.
+    if (/\/(sw\.js|files\.json)$/.test(url.pathname)) return;
     // Static, crawlable pages (about/…, robots.txt, sitemap.xml) are plain web pages, not
     // the app shell: never answer them with the cached index.html — leave them to the network.
     if (/\/(about|owl_network|mappoints|terrain3d)(\/|$)/.test(url.pathname) || /\/(robots\.txt|sitemap\.xml|google[0-9a-f]+\.html)$/.test(url.pathname)) return;   // owl_network/: the Finnskogen observer graph; mappoints/: the map-dot method page; terrain3d/: the 3-D terrain viewer — standalone pages
