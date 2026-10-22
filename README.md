@@ -2,6 +2,8 @@
 
 **Live app:** <https://thebirding.site/> (formerly `pcmoan70.github.io/BirdsWhere`, which now redirects; an app installed from the old address shows a *Move to thebirding.site* button that carries your lists and settings across)
 
+**Licence:** the application code is open source under the **MIT licence** (`LICENSE`); the model, maps and data carry their own licences, listed in the app under *How it works → Credits & licence* and in `THIRD-PARTY-NOTICES.md`.
+
 An interactive, **100% in-browser** explorer of species **distribution, migration and live
 observations**. Everything runs on your device — there is **no server and no backend of our own**;
 live observations are pulled straight from third-party databases in your browser, and around them
@@ -71,7 +73,7 @@ A Leaflet map with a **Mode** selector in the header:
 
 - **📍 Recent** — click the map for a ranked species list at that point, with live recent-observation counts.
 - **Historic** — search GBIF for a chosen date range and set of months around a point.
-- **📍 Migration** — the location-analysis panel (phenology, arrivals, scatter) for a clicked point.
+- **📍 Migration** — the location-analysis panel (phenology, arrivals, scatter) for a clicked point. Opened from the point popup; once its page is left, a map click opens the point popup again.
 - **Species Range** — a probability heatmap for one chosen species, animatable across the year.
 - **Species Richness** — predicted species count per grid cell, also animatable.
 
@@ -102,7 +104,9 @@ birds/mammals/amphibians/insects; **Plants 🌿 and Fungi 🍄 are observation-o
 **Overlay layers** (layer control): **WDPA · Protected Planet** (*Experimental* — enable in Settings), **Ramsar wetlands**,
 **Natura 2000** (EU SPA/SCI; *Experimental* — enable in Settings), **Emerald Network** (Bern Convention — the non-EU counterpart
 to Natura 2000), **Land cover** (CORINE / Copernicus-EEA — habitat backdrop, Europe/EEA, with a
-colour-coded class legend in the lower-right while it's on),
+colour-coded class legend in the lower-right while it's on), **MiS forest habitats** (NIBIO's inventory of Norwegian forest —
+key biotopes and their habitat elements: old trees, dead wood, hollow broadleaves, cliff walls, stream gorges, lichen-hung trees…;
+Norway only; the surveyed outline is not drawn; tap the map for what lies at a point and whether it was surveyed; a legend of the symbols lower-right),
 **GBIF occurrence density** (*Experimental* — enable in Settings; a seasonal heatmap of where records concentrate),
 **OSM protected areas**, **Viewpoints** (a **bundled worldwide snapshot** of 122k OSM bird and wildlife hides, bird-watching towers and birdwatching
 viewpoints — incl. towers/viewpoints validated by proximity to an eBird hotspot — served from the
@@ -124,7 +128,7 @@ with an eBird link and *Navigate*; needs the eBird key). All are streamed from t
 nothing is stored. Hover a layer's checkbox for a short tip, or tap the **?** at the right of its row
 for a detailed explanation (what it shows, why it helps birding, how to use it, caveats — English
 for now). Overlays that carry a colour
-key (WDPA, Natura 2000, Emerald, GBIF density, CORINE land cover) show a **legend in the lower-right**;
+key (WDPA, Natura 2000, Emerald, GBIF density, CORINE land cover, MiS forest habitats) show a **legend in the lower-right**;
 with several on, the legends stack as separate cards you can individually **minimise**.
 
 <p align="center">
@@ -161,7 +165,7 @@ holding a button:
 
 ## Species Range & Richness (the model)
 
-- **Species Range** — pick a species; the map shades occurrence probability (red → green) for
+- **Species Range** — pick a species; the map shades occurrence probability (dry grass → moss → spruce, light = unlikely, dark = near certain; the same ramp as the heatmaps) for
   the current week (opened from an observation, for the week it was seen). **▶ Play migration**
   animates the range across all 48 weeks; **⏸ Pause** stops it.
 - **Species Richness** — the predicted number of species per grid cell, also animatable across
@@ -183,13 +187,14 @@ Click the map in **Migration** mode for a tabbed panel derived from a single 48-
 prediction at that point:
 
 - **Timeline** — per-species phenology bars across the year.
-- **Probability** — species × 48-week heatmap (orange → green).
+- **Probability** — species × 48-week heatmap (dry grass → moss → spruce, light = low). In every heatmap the current week's column is framed (peat with a white inner line, visible on light and dark cells alike) and, where the 48 columns overflow a narrow screen, scrolled into view (centred) when the view opens or the week changes.
 - **Arrivals** — a diverging heatmap of the arrival score `(P[next] − P[prev]) / max_year`
-  (green = arriving, orange = departing).
+  (fjord blue = arriving, rowan red = departing — blue against red so the two read apart with red-green colour blindness).
 - **Annual Top** — a running total of arrival scores; the part of the year each species is most present.
-  Arrivals and Annual Top only list species whose yearly peak probability reaches **1 %** — both are
-  normalised by that peak, so near-absent species would show loud but meaningless patterns.
-- **Scatter** — the top-N species plotted as *(arrival, probability)*, with a sortable table.
+  Every view leaves out species whose probability never reaches **0.5 %** in any week of the year
+  (since v2140; Arrivals and Annual Top are normalised by that peak, so near-absent species would
+  show loud but meaningless patterns).
+- **Scatter** — the top-N species plotted as *(arrival, probability)*, with a sortable table; hovering a dot (a tap on touch) writes its species name next to it.
 
 **‹ returns to where you came from.** Migration and Distribution can be opened from another
 full view — the species list (a card's Probability, or the species menu), the checklist page, the
@@ -213,7 +218,8 @@ is cleared by the funnel's clear-all.
 **Sorting and what the list contains.** Beside the funnel sit two buttons, in the species table and
 the Images view alike: a **probability sort toggle** (↓ commonest first, ↑ rarest first — one tap
 each way; ⇅ while the list is ordered by something else), and the **[!] / [?]** switch — **[!]**
-lists only what has been observed, **[?]** weaves in the species the model predicts here as well,
+lists only what has been observed, **[?]** weaves in the species the model predicts here as well
+(down to a probability of 0.5 %, or the filter pane's own floor when higher),
 and where nothing has been observed the predictions are shown on their own. Every other column
 still sorts from its own header in the table.
 
@@ -307,7 +313,7 @@ notes and status** where the source provides them (GBIF, iNaturalist, Artsobserv
 Artportalen — and eBird checklist comments plus unconfirmed/exotic flags). Hovering the ⓘ shows
 the note itself; a click opens the note window, which has a copy button. The same ⓘ sits on each
 record of the map-dot observation popup. Expanding a species in the table opens its records as an aligned
-sub-table.
+sub-table. The Observation list lists observations on the map; opening the list for a pin that has none of its own (a pin without a fetch, or placed after the last fetch) shows the species table instead for that visit — the saved layout choice is kept.
 
 **Observation photos** — when the source ships the observer's own pictures (iNaturalist, GBIF,
 Artsobservasjoner, Artportalen, Laji.fi) a **📷** sits in its own column, with the picture count
@@ -333,10 +339,10 @@ fully adjustable. **With nothing fetched at all**, opening the list (species tab
 model's species for the **placed pin — or, with no pin, the middle of the map** — likeliest first,
 so the list is useful before you have fetched anything. **When a spot has no observations at all**
 the list fills with the model's own expectation for that place instead of coming back empty — **likeliest first**, everything it puts
-at 1 % or better (and, where even that is empty, its best 25 anyway), with a line saying so. The
+at 0.5 % or better (and, where even that is empty, its best 25 anyway), with a line saying so. The
 **[!]** button switches back to observed-only; your own **[?]** setting is left as you had it. **Filtering** lives in the **filter pane** (funnel button next to the layout
 selector; it keeps its scroll position as you tick things). Every section **folds** — tap its
-heading (▾ / ▸); which sections are folded is remembered. (The count section is called **Counts**.) **Species lists** shows the lists straight
+heading (▾ / ▸); which sections are folded is remembered, and a folded section with a filter set inside shows a **blue** triangle. (The count section is called **Counts**.) **Species lists** shows the lists straight
 away — *Your lists* with the ✎ (manage / edit) beside them, then the premade *Groups*. The **name search** — in the
 **Species** section — matches
 fuzzily against the displayed, English and scientific names and runs **half a second after the
@@ -456,7 +462,7 @@ registered in two databases once instead of twice — off by default).
 
 ## Rarity alerts
 
-A standing **subscription to rarities**: mark any stored location with the **🔔** column
+**Off for a first-time user** — switch it on under Settings → Rarity alerts (*Alerts on*); nothing is gathered, plotted or shown until then. A standing **subscription to rarities**: mark any stored location with the **🔔** column
 (press-and-hold the 🔍 search button to open the stored-locations panel) and, while the app
 is open, eBird's **notable-observations** feed is polled around it (max 50 km — the API's
 limit) at a chosen interval (**10/30/60 min or Manual**, Settings → **Rarity alerts**). Needs the
@@ -472,13 +478,8 @@ not just eBird* (Settings → Rarity alerts). These background checks stay out o
 they never touch the loading line or the status text, they are **skipped while a fetch of yours is
 running**, and they **abort themselves** if you start one — the next check picks up where it left off.
 
-**BAND groups** (Settings → Rarity alerts → *BAND groups*): the posts of your birding groups on
-[BAND](https://band.us) are watched too. Paste a personal access token (BAND Developers → My Apps →
-*Connect BAND account*), load your groups and tick the ones to follow, each with the language its
-members write in and the 🔔 location it belongs to. New posts are searched for whole-word species
-names in that language (scientific names always); a named bird counts as a sighting at that 🔔 spot
-(a post carries no coordinates) and alerts when the model finds it unlikely there — the same gate,
-list, map ★ and notifications as every other source, with the source shown as *BAND post*.
+*BAND groups* (v1942–v2132) as an alert source is **discontinued** (v2133): the code stays behind the
+`BAND_DISCONTINUED` flag in `rarity.js`, but the settings block is not shown and no BAND posts are polled.
 
 When a **never-seen-before** rarity arrives it:
 
@@ -622,11 +623,11 @@ they stay ticked and on the map. A **⚠** appears when the *Max points on map* 
 **Opening the app starts clean**: no species selection and no filters (only display preferences —
 the minimised legend, sort order — and deleted species are kept), and the observations fetched last
 time are **not** put back unless Settings → Fetching & detections → **Show the last session's
-observations on open** is on (off by default). Shown point lists still appear; "Fetch on open" is the
-only start-up fetch.
+observations on open** is on (off by default); their fetched-area squares (and the ✓ update button)
+stay away with them. Shown point lists still appear; "Fetch on open" is the only start-up fetch.
 
 There's also a standalone red **×** on the **right of the map** (near the offline-download button),
-shown while observations or lists are on the map: the first tap clears the fetched observations
+shown while observations, fetched-area squares or lists are on the map: the first tap clears the fetched observations
 (saved point lists stay shown); a second tap — once nothing fetched is left — takes the shown lists
 and trips off the map too (un-ticked; the lists themselves are kept).
 
@@ -772,6 +773,13 @@ and re-filters as you pan or zoom, the same way the legend counts only what is o
 - **Detection sets** — named snapshots of a whole plot (dots, dates, observers, sources, stars)
   that appear as **🗂 tick-to-show overlay rows** in the Points panel; they sync across devices
   and are shareable as a link/file. (Deleting one removes it on every device via a tombstone.)
+- **Edit values** (list menu ⋯ → *Edit values*) — the whole list as a spreadsheet: one row per point, one cell per field
+  (name, latitude, longitude, tags, note, date, count, activity, observer, scientific name, uncertainty in m, link, colour,
+  ★, HTML note; photos shown as a count). Hover a latitude or longitude for the ~4 km preview map; **click** it to set the
+  position on the map (the page steps aside, one tap places the point, Esc cancels); double-click to type it. Tags are
+  comma-separated (existing tags offered as you type); a changed scientific name re-links the model species. Enter moves
+  down a column, × removes a row, **+ Add row** adds a point at the map centre. Nothing is written until **Save**; leaving
+  with unsaved edits asks first. View-only (shared) lists cannot be edited.
 
 ---
 
@@ -1250,7 +1258,9 @@ failed, try again in a minute* and the next check tries again.
 
 **Offline maps** — right-click / long-press the map → **Offline maps** opens the panel; its
 **⬇ Download map** button saves the area on screen (pan/zoom first, – shrinks the panel).
-Areas are colour-coded frames you can delete individually; if the browser evicts
+Areas are colour-coded frames you can delete individually; the panel lists the areas that
+overlap the current view first (tinted, marked *in view*) and follows the map as you pan — tap
+an area's name to show it on the map (switching to its basemap if needed). If the browser evicts
 tiles, the app detects it and offers to re-download. Pinned areas are never auto-purged. A download
 covers the zoom levels from the current view down to the chosen max, **plus a few zoomed-out levels**
 so the area still draws when you zoom out, and it is stored against the basemap actually on screen (a
@@ -1343,12 +1353,27 @@ the one thing left out by default — they are much the largest thing the app ho
   **Press-and-hold** (or right-click) opens the full **Settings** panel — and so does the quick
   panel's last row, **Settings…**, so Settings is always reachable with plain taps. Both sliders
   drive the same controls that live in Settings, so a change made either way is saved the same way.
+- **Model compare** (Settings → About row → *Model compare ↗*, `model-compare/`) — a standalone page that runs
+  the **BirdNET+ Geomodel V3.0.4** (14,082 species) next to the app's own model (12,012) for one species over all
+  of Europe (25° W–45° E, 34–72° N, 1° / 0.5° / 0.25° grid, any week), on three panned-together maps: the two
+  models side by side on the probability ramp and their **difference** below (blue = higher in V3.0.4, red =
+  lower) with mean / largest difference, correlation and the change in cells ≥ 0.1. Species are matched between
+  the two label files by species code (11,880 shared), scientific name as the fallback; the picker shows both
+  models' common names when they differ. Default: White-backed Woodpecker. Online only (not cached).
 - **Persistence** — settings, view, species/year/life lists, checklists, points and plotted
   detections survive across visits. Small settings live in **localStorage**; bulky per-list data
   (saved sets, detections) lives in **IndexedDB** to avoid the ~5 MB cap. Saved point lists load **lazily**: at start only
   the ticked lists are read; the others follow in the background (or at once when ticked or
   opened), so many large lists no longer slow the start. Long lists (species table, observation
   list, legend) show their first rows at once and fill in the rest in the background.
+  **Settings → Storage** lists every cache with its count and size — **Fetched observations**
+  (this session's per-location answers in memory, the IndexedDB copy, the restore-on-open snapshot
+  and the dots on the map), map tiles, range maps, overlays, eBird hotspots, viewpoints, best sites,
+  species names, downloaded names, offline areas and species photos — each with its own clear
+  button, and **Clear all cached data** empties them all in one go (after a confirm; saved lists,
+  checklists and settings stay). The browser's own usage figure counts cross-origin map tiles with
+  a large privacy padding and can read tens of GB for a few hundred MB of real data; the per-row
+  sizes are the measured ones.
 - **Languages** — the **UI is fully translated into 15 languages** (en, sv, de, es, fr, nl, it, pt,
   pl, cs, no, da, fi, et, lt); other languages fall back to English UI text while still showing
   localised species names. **Species common names are available in ~45 languages**, loaded as
@@ -1492,7 +1517,9 @@ The 3-D terrain viewer (1 m Kartverket terrain with the sun and its shadows for 
 - **App code**: MIT (see `LICENSE`).
 - **BirdNET Geomodel** by the [BirdNET team](https://github.com/birdnet-team/geomodel): source
   MIT; **trained weights (`geomodel_fp16.onnx`) are CC BY-SA 4.0** and redistributed here under
-  those terms (share-alike + attribution required).
+  those terms (share-alike + attribution required). The **Model compare** subpage
+  (`app/model-compare/`) also carries the **BirdNET+ Geomodel V3.0.4** FP16 weights and labels from
+  the [v3.0.4 release](https://github.com/birdnet-team/geomodel/releases/tag/v3.0.4) (Apache 2.0).
 - **Bundled libraries** (`app/vendor/`): Leaflet (BSD-2-Clause), ONNX Runtime Web (MIT), h3-js
   (Apache-2.0). Loaded from a CDN: @emailjs/browser (MIT), Google Identity Services.
 - Observations © their respective providers (eBird / Cornell Lab, GBIF, iNaturalist,

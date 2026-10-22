@@ -64,8 +64,12 @@ window.AppRarity = (function () {
   var EBIRD_SPP_LOCALE = { en: "en", sv: "sv", de: "de", es: "es", fr: "fr", nl: "nl", no: "no",
     it: "it", pl: "pl", cs: "cs", et: "et", lt: "lt", fi: "fi", da: "da", pt: "pt_PT" };
   function rarityCfg() {
-    var c = window.GeoState.get("rarityAlerts", null) || {};
-    if (c.enabled == null) c.enabled = true;   // master on/off (toggle in the bell popup)
+    var saved = window.GeoState.get("rarityAlerts", null), c = saved || {};
+    // Master on/off (Settings → Rarity alerts, and the stored-locations panel). OFF for a
+    // first-time user (owner, 2026-10-19: "the birdalert feature should be turned off by
+    // default. (First time users should not see it)"); anyone with a saved config or a
+    // rarity list already in hand keeps the old default, on. The first save persists it.
+    if (c.enabled == null) c.enabled = !!(saved || getRarityList().length);
     // intervalMin 0 = MANUAL: no automatic checks; long-press the bell (or ↻ in
     // the pane) fetches the latest alerts on demand.
     if (!isFinite(+c.intervalMin) || (+c.intervalMin !== 0 && +c.intervalMin < 10)) c.intervalMin = 10;   // 10 min = fastest auto interval (5-min option removed); 0 = manual
@@ -148,6 +152,7 @@ window.AppRarity = (function () {
   // sighting at the band's 🔔 location. Auth is a personal access token (BAND Developers → My Apps →
   // Connect BAND account); the API answers the browser directly (CORS), so no server is involved.
   var BAND_API = "https://openapi.band.us";
+  var BAND_DISCONTINUED = true;    // the BAND source is retired (2026-10-20): no settings block, no polling; stored tokens/groups stay untouched
   var rarityBadBandToken = null;   // the token that last got 401 — retried only after it changes
   function pad2(n) { return (n < 10 ? "0" : "") + n; }
   function bandFetch(path, params, signal) {
@@ -446,7 +451,7 @@ window.AppRarity = (function () {
   // seen-set, so refetching the same area doesn't inflate the tallies).
   function harvestLocalRarities(keys) {
     var cfg = rarityCfg();
-    if (!rarityThOn()) return;
+    if (!rarityThOn() || !cfg.enabled) return;   // off: nothing is gathered in the background
     var adds = [], changed = false;
     keys.forEach(function (k) {
       var e = getDetPlot()[k]; if (!e) return;
@@ -744,7 +749,7 @@ window.AppRarity = (function () {
     // exactly those of an eBird notable record.
     function bandStep(done) {
       var bands = (cfg.bands || []).filter(function (b) { return b && b.on && b.key; });
-      if (!cfg.bandToken || !bands.length || rarityBadBandToken === cfg.bandToken) { done(); return; }
+      if (BAND_DISCONTINUED || !cfg.bandToken || !bands.length || rarityBadBandToken === cfg.bandToken) { done(); return; }
       var j = 0;
       (function nextBand() {
         if (j >= bands.length) { done(); return; }
@@ -1397,7 +1402,7 @@ window.AppRarity = (function () {
     harvestLocalRarities: harvestLocalRarities,
     rarityEmailPost: rarityEmailPost, rarityEmailValid: rarityEmailValid, rarityEmailState: rarityEmailState,
     rarityEmailTestSend: rarityEmailTestSend,
-    bandListBands: bandListBands, bandMatches: bandMatches, bandPlain: bandPlain, rarityLocs: rarityLocs, rarityLocKey: rarityLocKey,
+    BAND_DISCONTINUED: BAND_DISCONTINUED, bandListBands: bandListBands, bandMatches: bandMatches, bandPlain: bandPlain, rarityLocs: rarityLocs, rarityLocKey: rarityLocKey,
     showPanel: showRarityPanel, pageClosed: rarityPageClosed,
     initRarityAlerts: initRarityAlerts,
     // the group key behind the currently-open rarity window (app.js clears it

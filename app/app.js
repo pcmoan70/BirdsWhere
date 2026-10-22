@@ -287,7 +287,7 @@
   // The header (settings) icon reflects the active species group. All icons are
   // monochrome SVGs in one style (currentColor; small details in deep teal),
   // not emoji — so they match the app palette.
-  var EYE = "#0b3a3a";   // deep-teal detail (eyes/nose) on the white silhouette
+  var EYE = cssVar("--brand-deep", "#1f3d2b");   // deep-teal detail (eyes/nose) on the white silhouette
   var GROUP_ICON = {
     // Binoculars (All) — line style.
     all: '<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
@@ -501,10 +501,11 @@
     if (!clearGroupEl) return;
     var hasPts = typeof detPlot !== "undefined" && Object.keys(detPlot).length > 0;
     var hasFilt = typeof detHasFilter === "function" && detHasFilter();
+    var hasAreas = typeof fetchedAreas !== "undefined" && fetchedAreas.length > 0;   // squares can outlive their dots (every species deleted) → still clearable
     var a = clearGroupEl.querySelector(".clearpts-btn");
     if (a) {
       var listsOn = mpState && (Object.keys(mpState.shownColls()).length || Object.keys(mpState.shownDetSets()).length);
-      a.style.display = (hasPts || listsOn) ? "" : "none";
+      a.style.display = (hasPts || listsOn || hasAreas) ? "" : "none";
       // Reflect the shared arm-and-delete state: armed → "click again to clear"; else
       // "arm per-area delete" when there are areas, plain "clear all" otherwise.
       var armed = !!detAreaDeleteMode;
@@ -526,7 +527,7 @@
       var ft = hasFilt ? t("det.clearFiltersHint") : t("det.filtersHint");
       f.title = ft; f.setAttribute("aria-label", hasFilt ? t("det.clearFilters") : t("det.filters"));
     }
-    clearGroupEl.style.display = hasPts ? "" : "none";
+    clearGroupEl.style.display = (hasPts || hasAreas) ? "" : "none";
   }
   // Back-compat aliases (call sites elsewhere).
   function updateClearPtsBtn() { updateClearGroup(); }
@@ -654,10 +655,22 @@
   // opts.boxClass appends to "ui-modal"; opts.onClose runs extra cleanup once;
   // opts.backdropClose (default true) dismisses on a click outside the box;
   // opts.escClose dismisses on Escape.
+  // Whatever opens LAST sits on top (owner, 2026-10-22: the Edit-list dialog came up under the
+  // list's own menu). Every popup opener hands its element here: it gets a z-index one above the
+  // highest popup still showing, within the 8000s band — under the hover tips (9000+), above the
+  // fixed levels in app.css (dropdowns 3000, dialogs 5000, menus 8000, confirms 8500).
+  var _popTop = [];
+  function bringToFront(el) {
+    if (!el) return el;
+    _popTop = _popTop.filter(function (x) { return x !== el && x.isConnected && x.style.display !== "none"; });
+    var top = 8000; _popTop.forEach(function (x) { top = Math.max(top, +x.style.zIndex || 0); });
+    el.style.zIndex = String(top + 1); _popTop.push(el);
+    return el;
+  }
   function createModal(opts) {
     opts = opts || {};
     closeOtherPopups();   // a modal replaces every transient popup on screen
-    var ov = document.createElement("div"); ov.className = "ui-modal-overlay";
+    var ov = document.createElement("div"); ov.className = "ui-modal-overlay"; bringToFront(ov);
     var box = document.createElement("div"); box.className = "ui-modal" + (opts.boxClass ? " " + opts.boxClass : "");
     ov.appendChild(box); document.body.appendChild(ov);
     var closed = false, onKey = null;
@@ -755,16 +768,16 @@
   ];
 
   // ---- Colormap ------------------------------------------------------------
+  // The Species-Range / Richness overlay and its legend run the app's sequential ramp
+  // (analysis.js SEQ, app.css :root, 2026-10-21): dry grass → lichen → moss → spruce,
+  // luminance falling monotonically so it reads under red-green colour blindness. Cell
+  // alpha still scales with the value (see the render loops), so the light end is faint.
   var COLORMAP = (function () {
     var stops = [
-      [0.0,   0,   0,   4],
-      [0.14, 31,  12,  72],
-      [0.28, 85,  15, 109],
-      [0.42, 136,  8,  79],
-      [0.56, 186, 54,  36],
-      [0.70, 227, 105,  5],
-      [0.84, 249, 174,  10],
-      [1.0,  252, 255, 164],
+      [0.0,  243, 236, 210],
+      [0.33, 169, 196, 127],
+      [0.66,  63, 111,  58],
+      [1.0,   31,  61,  43],
     ];
     var ramp = new Array(256);
     for (var i = 0; i < 256; i++) {
@@ -1511,6 +1524,9 @@
     try { updateDistSortPulse(); } catch (e) {}   // start/stop the blue DIST-arrow pulse with tracking
   }
   var currentMode = "range";
+  // A colour token from app.css (:root) for the chrome the JS paints itself — fetched-area
+  // rectangles, the comparison wheel, print styles — so it follows the palette.
+  function cssVar(name, fallback) { try { var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); if (v) return v; } catch (e) {} return fallback; }
   var rendering = false;
   var renderGeneration = 0;
   var moveEndTimer = null;
@@ -2341,6 +2357,8 @@
     var rp = document.getElementById("rarity-page");
     if (rp && rp.style.display !== "none") return true;   // the rarity-alerts page hides the map too
     if (document.body.getAttribute("data-nearby")) return true;
+    var pe = document.getElementById("ptedit-page");
+    if (pe && pe.style.display === "flex") return true;   // the point-list "Edit values" page (lat/lon cells preview their spot)
     return false;
   }
   function scheduleLocHoverMap(lat, lon) {
@@ -2802,12 +2820,12 @@
     var hasSel = Object.keys(detSelected).length > 0;   // a species selection / applied species list narrows the table too
     var now = Date.now();
     // Empty spot → the model's own ranking stands in for the missing observations. Show what
-    // it puts at MODEL_FLOOR or better and, where even that is empty (far offshore, deep
+    // it puts at PRED_MIN_PROB or better and, where even that is empty (far offshore, deep
     // desert), its best MODEL_TOP_N anyway — the answer must never be a blank page. An
     // explicit probability floor set by the user still wins.
-    var MODEL_FLOOR = 0.01, MODEL_MIN_ROWS = 10, MODEL_TOP_N = 25, autoCut = 0;
+    var MODEL_FLOOR = PRED_MIN_PROB, MODEL_MIN_ROWS = 10, MODEL_TOP_N = 25, autoCut = 0;
     var floor = (+document.getElementById("prob-min").value || 0) / 100;   // once per pass (was a DOM read per row)
-    var rareCut = rarePct() / 100, missingOn = spMissingOn();   // once per pass (rarePct read storage per row)
+    var missingOn = spMissingOn();
     var tRows = 0, tDom = 0, tMark = perfOn ? performance.now() : 0;   // ?perf=1: row work vs DOM work
     if (spMissingAuto) {
       var ps = [];
@@ -2886,8 +2904,8 @@
       // [?] on: a model row with no detections at all bypasses the count + recency rules
       // (it has no dates); the species-flag, rarity and selection filters still apply.
       // Predicted species down to the list's own probability floor; with the floor at 0 %
-      // the rare threshold guards instead — else the whole model would pour into the list.
-      var missingCut = spMissingAuto ? Math.max(floor, autoCut) : (floor > 0 ? floor : rareCut);
+      // the predicted-species floor guards instead — else the whole model would pour into the list.
+      var missingCut = spMissingAuto ? Math.max(floor, autoCut) : Math.max(floor, PRED_MIN_PROB);
       var missingOk = missingOn && !!agg && !entry && !extra &&
         (+tr.getAttribute("data-prob") || 0) >= missingCut;
       // What the list offers BEFORE the species selection narrows it — the pool the
@@ -3608,7 +3626,7 @@
     blogsCC = String(cc || "").toUpperCase();
     blogsCountryName = name || blogsCC;
     renderBlogs();
-    document.getElementById("blogs-modal").style.display = "flex";
+    bringToFront(document.getElementById("blogs-modal")).style.display = "flex";
     navOpen("blogs", function () { document.getElementById("blogs-modal").style.display = "none"; });
   }
   function renderBlogs() {
@@ -3834,6 +3852,11 @@
   // at least 15 %, or the Probability slider's own floor when that is higher. (With the
   // slider at its default 0 % the count used to be "N above 0 %" — nearly the whole model.)
   var SUMMARY_MIN_PROB = 0.15;
+  // The lowest probability at which a species the model predicts is listed at all — the
+  // model-only list of an empty spot and the [?] predicted rows of a fetched list — when no
+  // higher floor is set in the Filters pane. The same 0.5 % that keeps near-absent species out
+  // of the Migration views (owner, 2026-10-21: "decrease … to 0.5% in predicted lists and migration panes").
+  var PRED_MIN_PROB = window.GeoAnalysis.MIN_PEAK;
   function summaryProbFloor(pmin) { return Math.max(+pmin || 0, SUMMARY_MIN_PROB); }
   function summaryPct(pmin) { return (summaryProbFloor(pmin) * 100).toFixed(0); }
   function summaryCount(rows, pmin) {
@@ -3885,7 +3908,7 @@
     if ((currentMode !== "list" && currentMode !== "historic") || !map) { hideFetchArea(); return; }
     var b = fetchAreaBounds(latlng);
     if (!fetchAreaRect) {
-      fetchAreaRect = L.rectangle(b, { color: "#2e8b74", weight: 1, opacity: 0.7, dashArray: "4 4", fillColor: "#2e8b74", fillOpacity: 0.04, interactive: false });
+      fetchAreaRect = L.rectangle(b, { color: cssVar("--brand", "#3f6f3a"), weight: 1, opacity: 0.7, dashArray: "4 4", fillColor: cssVar("--brand", "#3f6f3a"), fillOpacity: 0.04, interactive: false });
       fetchAreaRect.addTo(map);
     } else {
       fetchAreaRect.setBounds(b);
@@ -4051,7 +4074,7 @@
     // [[s,w],[n,e]] array, but the persistence + per-area delete call .getSouth() /
     // .contains() on it. (L.latLngBounds is idempotent for an existing bounds.)
     b = L.latLngBounds(b);
-    var rect = L.rectangle(b, { color: "#2e8b74", weight: 1, opacity: 0.5, dashArray: "2 4", fill: false, interactive: false });
+    var rect = L.rectangle(b, { color: cssVar("--brand", "#3f6f3a"), weight: 1, opacity: 0.5, dashArray: "2 4", fill: false, interactive: false });
     fetchedAreasLayer.addLayer(rect);
     // date = the moment observations were last fetched up to (the "end date"); the
     // update button re-fetches from here − overlap to now and lets it re-stamp to now.
@@ -4221,10 +4244,10 @@
     laji: { account: "https://laji.fi/", key: "https://laji.fi/about/806" }
   };
   function srcInfo(id) {
-    if (id === "gbif") return { id: "gbif", name: "GBIF", url: "", days: gbifDays(), timeout: gbifTimeout(), keyed: false, country: null, global: true, removable: false, isGbif: true };
+    if (id === "gbif") return { id: "gbif", name: "GBIF", url: "", days: gbifDays(), timeout: gbifTimeout(), keyed: false, country: null, global: true, isGbif: true };
     var s = directSources().filter(function (x) { return x.id === id; })[0]; if (!s) return null;
     var d = DIRECT_BY_ID[id] || {};
-    return { id: id, name: s.name, url: s.url, days: s.days, timeout: s.timeout, keyed: !!d.keyed, country: d.country || null, global: false, removable: true, isGbif: false };
+    return { id: id, name: s.name, url: s.url, days: s.days, timeout: s.timeout, keyed: !!d.keyed, country: d.country || null, global: false, isGbif: false };
   }
   function srcDescKey(info) { return "srcdesc." + (info.isGbif ? "gbif" : (DIRECT_BY_ID[info.id] ? info.id : "custom")); }
   // One-line "what is this source" blurb for the sources LIST. Falls back to "" for
@@ -4334,7 +4357,6 @@
         '<div class="radius-row"><input type="range" class="src-bw-conf" min="0" max="95" step="5" value="' + Math.round(bwMinConf() * 100) + '" /></div>' +
         '<p class="cu-hint">' + escapeHtml(t("sources.bwHint")) + '</p></div>';
     }
-    if (info.removable) h += '<div class="cu-actions"><button type="button" class="btn btn-light src-del-detail">' + escapeHtml(t("sources.remove")) + "</button></div>";
     h += "</div>";
     el.innerHTML = h;
     var onCb = el.querySelector(".src-on"); if (onCb) onCb.addEventListener("change", function () { setSourceOff(id, !this.checked); });
@@ -4381,12 +4403,7 @@
       bwC.addEventListener("input", function () { if (bwCV) bwCV.textContent = this.value + "%"; });
       bwC.addEventListener("change", function () { window.GeoState.save({ bwMinConf: Math.max(0, Math.min(95, +this.value || 0)) / 100 }); allSightingsCache = {}; });
     }
-    var del = el.querySelector(".src-del-detail");
-    if (del) del.addEventListener("click", function () {
-      if (DIRECT_BY_ID[id]) { var rem = window.GeoState.get("srcRemoved", []) || []; if (rem.indexOf(id) < 0) { rem.push(id); window.GeoState.save({ srcRemoved: rem }); } }
-      saveDirectSources(directSources().filter(function (s) { return s.id !== id; }).map(function (s) { return { id: s.id, name: s.name, url: s.url, days: s.days, timeout: s.timeout }; }));
-      srcDetailId = null; renderSourcesTable();
-    });
+    // (The "Remove source" action was dropped 2026-10-22, owner's request — sources are switched off, never removed; srcRemoved from earlier removals still applies until Reset.)
   }
   function resetSources() { window.GeoState.save({ directSources: null, srcRemoved: null }); allSightingsCache = {}; srcDetailId = null; renderSourcesTable(); }
   // Display name for a species key (current UI language), for the lists view.
@@ -4469,7 +4486,7 @@
     var p = (c.points || []).filter(function (x) { return x.id === id; })[0]; if (!p) return;
     var esc = escapeHtml;
     var ov = document.createElement("div");
-    ov.id = "lp-edit-modal"; ov.className = "kml-modal";
+    ov.id = "lp-edit-modal"; ov.className = "kml-modal"; bringToFront(ov);
     ov.innerHTML = '<div class="kml-modal-box">' +
       '<button type="button" id="lp-close" class="kml-close" aria-label="Close">×</button>' +
       "<h3>" + esc(t("lists.editPoint")) + "</h3>" +
@@ -4741,7 +4758,7 @@
   function openMpAdmin() {
     if (document.getElementById("mp-admin-modal")) return;   // already open
     closeDropdowns();
-    var ov = document.createElement("div"); ov.id = "mp-admin-modal"; ov.className = "kml-modal";
+    var ov = document.createElement("div"); ov.id = "mp-admin-modal"; ov.className = "kml-modal"; bringToFront(ov);
     ov.innerHTML = '<div class="kml-modal-box mp-admin-box">' +
       '<button type="button" id="mp-admin-close" class="kml-close" aria-label="' + escapeHtml(t("btn.close")) + '">×</button>' +
       "<h3>" + escapeHtml(t("points.adminTitle")) + "</h3>" +
@@ -4852,7 +4869,7 @@
     closeDropdowns();
     srcDetailId = null;   // always open on the source LIST
     renderSourcesTable();
-    document.getElementById("sources-modal").style.display = "flex";
+    bringToFront(document.getElementById("sources-modal")).style.display = "flex";
     navOpen("sources", function () { document.getElementById("sources-modal").style.display = "none"; });
   }
   // GBIF datasets manager — launched from the GBIF source panel. The sources modal is
@@ -4863,7 +4880,7 @@
     closeDropdowns();
     renderGbifTable();
     var sm = document.getElementById("sources-modal"); sm.style.display = "none";
-    document.getElementById("gbif-modal").style.display = "flex";
+    bringToFront(document.getElementById("gbif-modal")).style.display = "flex";
     navOpen("gbif", function () {
       document.getElementById("gbif-modal").style.display = "none";
       srcDetailId = "gbif"; renderSourcesTable(); sm.style.display = "flex";
@@ -5790,8 +5807,12 @@
       var nameTd = row && row.children[1], link = nameTd && nameTd.querySelector(".sp-link");
       if (link && spRedList[key] && !nameTd.querySelector(".rl-tag")) link.insertAdjacentHTML("afterend", rlTagHtml(spRedList[key]));
       if (!entry || !entry.count) { if (isFinal) td.textContent = ""; return; }   // partial: leave the hourglass for not-yet-arrived data
-      // Pure total (applyAgeFilter recomputes it as filtered SPECIMENS right after).
+      // Pure total (applyAgeFilter recomputes it as filtered SPECIMENS right after). Rebuilding
+      // the cell drops its "(n)" suffix and orphans the row's cached cell refs, so reset both —
+      // otherwise the refresh pass sees an unchanged data-pairs and never re-adds the suffix
+      // (rows showed "31" instead of "31(3)" after a re-fetch or pan).
       td.innerHTML = '<button type="button" class="det-count-btn" data-key="' + escapeHtml(key) + '">' + entry.count + "</button>";
+      if (row) { row.removeAttribute("data-pairs"); row._spCells = null; }
     });
     // Distance column: how far the NEAREST detection of each species is from the
     // distance origin (the map pin when placed, else this list's point). Sortable.
@@ -6907,7 +6928,7 @@
     var body = document.getElementById("recent-body");
     document.getElementById("recent-title").textContent = name;
     body.innerHTML = '<div class="spinner" style="margin:24px auto"></div>';
-    document.getElementById("recent-modal").style.display = "flex";
+    bringToFront(document.getElementById("recent-modal")).style.display = "flex";
     navOpen("recent", hideRecent);
     var token = ++recentToken;
 
@@ -7075,7 +7096,7 @@
     var body = document.getElementById("distmap-body");
     document.getElementById("distmap-title").textContent = name;
     body.innerHTML = '<div class="spinner" style="margin:24px auto"></div>';
-    modal.style.display = "flex";
+    bringToFront(modal).style.display = "flex";
     navOpen("distmap", hideDistMap);
     var lbl = key && labelsByKey[key];
     var en = (lbl && lbl.common) || name;   // English common name helps match filenames
@@ -7379,7 +7400,7 @@
     // [?] toggle, off by default), so the Images cards showed the fetched species only.
     // Set in memory and NOT saved: this launch shows both, the visitor's own [?] choice is
     // untouched, and pressing [?] still overrides it (that handler saves). The prediction
-    // floor (prob-min, else rarePct — 10 % by default) keeps it from becoming the whole model.
+    // floor (prob-min, else PRED_MIN_PROB — 0.5 %) keeps it from becoming the whole model.
     spShowMissing = true;
     launchNotePending = true;   // the first settled fetch may add the "few sightings — add keys" note
     stripShortcutParams();   // everything above is consumed — a reload must not run the shortcut again
@@ -7527,6 +7548,7 @@
               '<div class="settings-aboutrow">' +
                 '<a class="settings-about about-page-link" href="about/" target="_blank" rel="noopener" data-i18n="settings.aboutPage">About ↗</a>' +
                 '<button type="button" id="about-open" class="settings-about" data-i18n="ctrl.about">How it works</button>' +
+                '<a class="settings-about" href="model-compare/" target="_blank" rel="noopener" data-i18n="settings.modelCompare">Model compare ↗</a>' +
               '</div>' +
               '<div id="settings-version" class="settings-version" style="display:none"></div>' +
               '<button type="button" id="settings-update" class="settings-update" style="display:none"></button>' +
@@ -7687,6 +7709,7 @@
                 '<label class="ctrl-check"><input type="checkbox" id="rarity-country-toggle"> <span data-i18n="rarity.countryWide">Whole-country alerts</span></label>' +
                 '<p class="cu-hint" data-i18n="rarity.countryWideTip">For every 🔔 point, fetch rare-bird alerts for its entire country instead of just the radius around it. Points that share a country are fetched once. Uses more of your eBird API budget.</p>' +
               '</div>' +
+              (window.AppRarity.BAND_DISCONTINUED ? "" :   // BAND groups: retired source, block hidden behind the flag
               '<div class="ctrl-group">' +
                 '<label for="rarity-band-token" data-i18n="rarity.band">BAND groups</label>' +
                 '<div class="ctrl-inline rarity-email-row">' +
@@ -7695,7 +7718,7 @@
                 '</div>' +
                 '<div id="rarity-band-list"></div>' +
                 '<p class="cu-hint" data-i18n="rarity.bandHint">Also watch the posts of your birding groups on BAND (band.us). Paste a personal access token (BAND Developers → My Apps → Connect BAND account), load your groups and tick the ones to follow. New posts are searched for species names in the chosen language (scientific names always); a named bird is treated as a sighting at the chosen 🔔 location — a post has no coordinates — and alerts when the model finds it unlikely there, like any other source.</p>' +
-              '</div>' +
+              '</div>') +
               '<div class="ctrl-group">' +
                 '<label for="rarity-prob-th" data-i18n="rarity.probTh">Rarity threshold (%)</label>' +
                 '<input id="rarity-prob-th" type="number" min="0" max="100" step="1" />' +
@@ -7763,6 +7786,7 @@
                 '<label data-i18n="clear.label">Clear cached data</label>' +
                 '<p class="cu-hint" data-i18n="clear.hint">Clear cached data (re-downloads next time). Saved lists &amp; settings are kept.</p>' +
                 '<div class="clear-cache-grid">' +
+                  '<button type="button" class="clear-cache-btn" data-clear="obs"><span class="clear-lbl" data-i18n="clear.obs">Fetched observations</span><span class="clear-cnt"></span></button>' +
                   '<button type="button" class="clear-cache-btn" data-clear="tiles"><span class="clear-lbl" data-i18n="clear.tiles">Map tiles</span><span class="clear-cnt"></span></button>' +
                   '<button type="button" class="clear-cache-btn" data-clear="range"><span class="clear-lbl" data-i18n="clear.range">Range maps</span><span class="clear-cnt"></span></button>' +
                   '<button type="button" class="clear-cache-btn" data-clear="overlays"><span class="clear-lbl" data-i18n="clear.overlays">Overlays</span><span class="clear-cnt"></span></button>' +
@@ -7774,6 +7798,7 @@
                   '<button type="button" class="clear-cache-btn" data-clear="offline"><span class="clear-lbl" data-i18n="clear.offline">Offline areas</span><span class="clear-cnt"></span></button>' +
                   '<button type="button" class="clear-cache-btn" data-clear="images"><span class="clear-lbl" data-i18n="clear.images">Species photos</span><span class="clear-cnt"></span></button>' +
                 '</div>' +
+                '<button type="button" id="clear-all-btn" class="btn btn-light" data-i18n="clear.all">Clear all cached data</button>' +
                 // Not a cache clear — it rewrites the lists in place, so it sits under its own
                 // label with what it does spelled out. One press, reports what it freed.
                 '<div class="ctrl-group" id="compact-wrap">' +
@@ -7908,7 +7933,7 @@
         '</div>' +
         '<div id="field-page" style="display:none">' +
           '<div class="field-page-bar">' +
-            '<button id="field-back" class="fp-back" title="Back to map">‹</button>' +
+            '<button id="field-back" class="fp-back" title="Back to map">' + ico("back") + '</button>' +
             '<button id="field-nearby" class="fp-nearby" title="Nearby places" aria-label="Nearby places">▾</button>' +
             '<input id="field-coords" class="field-place" type="text" autocomplete="off" data-i18n-ph="ph.fieldtitle" placeholder="Location name" />' +
             '<button type="button" id="field-far" class="fp-far" style="display:none" aria-label="!">!</button>' +
@@ -7966,7 +7991,7 @@
         '<div id="rarity-page" class="rarity-panel" style="display:none"></div>' +
         '<div id="entry-page" style="display:none">' +
           '<div class="field-page-bar">' +
-            '<button id="entry-back" class="fp-back" title="Back">‹</button>' +
+            '<button id="entry-back" class="fp-back" title="Back">' + ico("back") + '</button>' +
             '<span id="entry-title" class="field-place"></span>' +
             '<span class="field-actions">' +
               '<button id="entry-merge" class="btn" data-i18n="chk.merge">Merge</button>' +
@@ -7976,7 +8001,7 @@
         '</div>' +
         '<div id="review-page" style="display:none">' +
           '<div class="field-page-bar">' +
-            '<button id="review-back" class="fp-back" title="Back">‹</button>' +
+            '<button id="review-back" class="fp-back" title="Back">' + ico("back") + '</button>' +
             '<span id="review-title" class="field-place" data-i18n="review.title">Review &amp; upload</span>' +
             '<span class="field-actions">' +
               '<button id="review-new" class="btn" data-i18n="review.newGroup">+ Checklist</button>' +
@@ -8300,12 +8325,14 @@
         var mo = new MutationObserver(function (muts) {
           muts.forEach(function (m) {
             var p = m.target;
-            if (p.style.display !== "none" && p.classList && p.classList.contains("dd-panel") && hdr.contains(p)) placeHeaderPanel(p);
+            if (p.style.display === "none") return;
+            if (p.classList && p.classList.contains("dd-panel") && hdr.contains(p)) placeHeaderPanel(p);
+            ensureDdClose(p);   // the × survives the panel's innerHTML rebuilds (childList)
           });
         });
         ["checklists-panel", "settings-panel", "mp-panel"].forEach(function (id) {
           var p = document.getElementById(id);
-          if (p) mo.observe(p, { attributes: true, attributeFilter: ["style"] });
+          if (p) mo.observe(p, { attributes: true, attributeFilter: ["style"], childList: true });
         });
         // group-quick-panel is created lazily inside settings-wrap → hook it on creation.
         var swWrap = document.getElementById("settings-wrap");
@@ -8313,8 +8340,8 @@
           var p = document.getElementById("group-quick-panel");
           if (p && !p.__hdrObs) {
             p.__hdrObs = 1;
-            mo.observe(p, { attributes: true, attributeFilter: ["style"] });
-            if (p.style.display !== "none") placeHeaderPanel(p);
+            mo.observe(p, { attributes: true, attributeFilter: ["style"], childList: true });
+            if (p.style.display !== "none") { placeHeaderPanel(p); ensureDdClose(p); }
           }
         }).observe(swWrap, { childList: true });
       })();
@@ -9395,6 +9422,7 @@
     psPanel.style.display = "none";
     psPanel.innerHTML = '<input id="place-search" type="text" autocomplete="off" data-i18n-ph="ph.place" placeholder="' + escapeHtml(t("ph.place")) + '" />' +
       '<div id="place-results"></div>';
+    ensureDdClose(psPanel);
     // iOS Safari scrolls the page to bring a focused input above its keyboard and can
     // leave that scroll (and a keyboard-sized map) behind when the keyboard goes — the
     // map's bottom-right buttons then sit off-screen. Put the page back the moment the
@@ -9619,7 +9647,11 @@
     // both the download and overlay-toggle icons, not between them.
     if (clearGroupEl && clearGroupEl.parentNode) clearGroupEl.parentNode.appendChild(clearGroupEl);
     loadDetections(true);  // restore any "Show in map" detection points — at START: no selection, no filters
-    restoreFetchedAreas(); // ...and their fetched-area outlines (per-area red × needs them)
+    // ...and their fetched-area outlines (per-area red × needs them) — but only WITH the
+    // observations: opening clean (the default) used to leave the squares and the ✓ update
+    // button on an empty map, with nothing to clear them and a tap re-fetching the lot
+    // (owner, 2026-10-21). The areas stay in storage with the observations they belong to.
+    if (!detRestoreSkipped) restoreFetchedAreas();
     loadMapPoints();       // user-added pins + saved named lists (IndexedDB, hydrated above)
     try { migrateDetSetsToLists(); } catch (e) {}   // old "trips" (detection sets) → ordinary saved lists, once
     try { updateBackupNudge(); } catch (e) {}   // gear/Sync go orange when the lists have outgrown the last backup
@@ -9932,6 +9964,20 @@
   // the pre-rendered raster (clean filled land cover); same ArcGIS server family as Natura 2000.
   var CLC2018_EXPORT = "https://image.discomap.eea.europa.eu/arcgis/rest/services/Corine/CLC2018_WM/MapServer/export";
   var CLC_ATTR = 'Land cover &copy; <a href="https://land.copernicus.eu/pan-european/corine-land-cover" target="_blank" rel="noopener">Copernicus CORINE Land Cover</a> (EEA)';
+  // MiS forest habitats (NIBIO, Norway) — "Miljøregistrering i Skog": the key biotopes and the
+  // habitat elements mapped in Norwegian forest (owner, 2026-10-19: "add MIS forest habitats to
+  // BirdsWhere map overlays"). NIBIO's MapServer WMS serves EPSG:3857 with CORS open: GetMap
+  // tiles, GetFeatureInfo (GML) names the layers with something at a point, GetLegendGraphic
+  // draws each layer's symbol. Layer names are the service's; the labels are English.
+  var MIS_WMS = "https://wms.nibio.no/cgi-bin/mis";
+  var MIS_ATTR = 'MiS forest habitats &copy; <a href="https://www.nibio.no/" target="_blank" rel="noopener">NIBIO</a>';
+  var MIS_LAYERS = [["Nokkelbiotop", "Key biotopes"], ["Hule_lauvtrar_punkt", "Hollow broadleaf trees"], ["Gamle_trar", "Old trees"], ["Staende_dod_ved", "Standing dead wood"], ["Liggende_dod_ved", "Lying dead wood"],
+    ["Eldre_lauvsuksesjon", "Older broadleaf succession"], ["Bergvegger_alle", "Cliff walls"], ["Bekkeklofter", "Stream gorges"], ["Leirraviner", "Clay ravines"], ["Rik_bakkevegetasjon", "Rich ground vegetation"],
+    ["Trar_m_hengelav_alle", "Trees with hanging lichen"], ["Rikbarkstrar_alle", "Rich-bark trees"], ["Brannflater", "Burnt areas"]];
+  var MIS_SURVEYED = ["Kartleggingsomr", "Surveyed area"];   // the surveyed outline: queried in the point popup, never drawn nor in the legend (owner, 2026-10-20)
+  var MIS_LAYER_LIST = MIS_LAYERS.map(function (l) { return l[0]; }).join(",");
+  var MIS_QUERY_LIST = MIS_LAYER_LIST + "," + MIS_SURVEYED[0];
+  function misLegendUrl(layer) { return MIS_WMS + "?service=WMS&version=1.3.0&request=GetLegendGraphic&format=image/png&sld_version=1.1.0&layer=" + layer; }
   // CORINE Land Cover legend — the 44 standard classes grouped by their level-1 category,
   // with the exact fill colours the CLC2018 raster renders (decoded from the EEA
   // MapServer legend swatches). Class names are the official CLC nomenclature (kept in
@@ -10009,7 +10055,7 @@
         .then(function (j) {
           if (mine !== token || !active) return;
           grp.clearLayers();
-          var style = { color: "#1f8a3b", weight: 1.5, opacity: 0.9, fillColor: "#1f8a3b", fillOpacity: 0.08 };
+          var style = { color: cssVar("--brand", "#3f6f3a"), weight: 1.5, opacity: 0.9, fillColor: cssVar("--brand", "#3f6f3a"), fillOpacity: 0.08 };
           var n = 0;
           (j.elements || []).forEach(function (el) {
             var nm = (el.tags && el.tags.name) || t("layer.osmpa");
@@ -12175,7 +12221,7 @@
     // closeAnchoredMenu(undefined) means "close every popup", which would take the host too.
     if (host) { var hi = _anchStack.indexOf(host); if (hi + 1 < _anchStack.length) closeAnchoredMenu(_anchStack[hi + 1]); }
     else closeOtherPopups(true);                                            // incl. every anchored menu; keeps map popups
-    var el = document.createElement("div"); el.className = className;
+    var el = document.createElement("div"); el.className = className; bringToFront(el);
     document.body.appendChild(el);
     _anchStack.push(el);
     _anchMenuEl = el;
@@ -12583,7 +12629,7 @@
     { k: "life", label: "traits.lifestyle" },
     { k: "mig", label: "traits.migration", map: { "1": "traits.migSed", "2": "traits.migPart", "3": "traits.migMig" } }
   ];
-  var CMP_FOCAL_COL = "#2e8b74", CMP_PARTNER_COL = "#d98e2e";   // focal vs look-alike, shared by the wheel + season chart
+  var CMP_FOCAL_COL = cssVar("--brand", "#3f6f3a"), CMP_PARTNER_COL = cssVar("--warn", "#c7791c");   // focal vs look-alike, shared by the wheel + season chart
   // Plumage colour as a per-colour DEVIATION between the two birds, one diverging strip per sex
   // (male above female). For each colour class either bird uses, dev = 200·(base − look-alike) /
   // (base + look-alike): the bar rises above the zero line when the base species has relatively
@@ -14575,8 +14621,12 @@
   }
   // Which point an un-fetched list should describe: the placed pin, else the point the last
   // list was about, else the middle of the map.
-  function listRefPoint() {
+  function pinPoint() {   // the placed pin, if any
     try { if (marker && marker.getLatLng) { var ll = marker.getLatLng(); if (ll && isFinite(ll.lat)) return { lat: ll.lat, lon: ll.lng }; } } catch (e) {}
+    return null;
+  }
+  function listRefPoint() {
+    var pin = pinPoint(); if (pin) return pin;
     if (currentSpView && isFinite(+currentSpView.lat) && isFinite(+currentSpView.lon)) return { lat: +currentSpView.lat, lon: +currentSpView.lon };
     try { if (map && map.getCenter) { var c = map.getCenter(); if (c && isFinite(c.lat)) return { lat: c.lat, lon: c.lng }; } } catch (e2) {}
     return null;
@@ -14590,25 +14640,35 @@
       var bc = document.getElementById("barchart-panel"); if (bc) bc.style.display = "none";
       // A model-only list belongs to ONE point: if the pin (or, with no pin, the map) has moved
       // since it was built, it describes the wrong place and must be rebuilt for the new one.
-      var refNow = hasPlottedDetections() ? null : listRefPoint();
+      var haveDots = hasPlottedDetections();
+      var multi = mapFromMultiFetch && haveDots;   // several locations fetched (and their dots still on the map): their "By observation" page
+      // A pin placed since the list was built (owner, 2026-10-20: "when user sets the pin in the map and
+      // goes to list view … it should switch the view to specieslist"): the page describes another place,
+      // so it is rebuilt for the pin — a model-only list, whatever dots (alerts, an older fetch) the map holds.
+      var pin = pinPoint();
+      var pinMoved = !multi && currentMode === "list" && !!(pin && currentSpView &&
+        (Math.abs(pin.lat - +currentSpView.lat) > 1e-4 || Math.abs(pin.lon - +currentSpView.lon) > 1e-4));
+      var noFetchList = !!(currentSpView && currentSpView._noFetch);   // the open list is a point's model-only list
+      var refNow = (haveDots && !pinMoved && !noFetchList) ? null : listRefPoint();
       var movedAway = !!(spMissingAuto && refNow && currentSpView &&
         (Math.abs(refNow.lat - +currentSpView.lat) > 1e-4 || Math.abs(refNow.lon - +currentSpView.lon) > 1e-4));
       var showedObsPage = false;
-      var haveDots = hasPlottedDetections();
       // The Observation layout draws plotted dots and nothing else. With none on the map it
       // renders a header over an EMPTY body — the species table is display:none in that
       // layout — so the page opened and looked blank, which is what "clicking the List
-      // button does nothing" is. Fall back to the species table for THIS render only: the
-      // stored preference is untouched and returns as soon as there are dots again, and the
-      // layout tabs show which view you actually got.
-      var obsLayoutEmpty = (spLayout === "observation") && !haveDots;
+      // button does nothing" is. The same for a point's model-only list (a pin without a
+      // fetch): it has no observations of its own, and the layout listed nothing, or only
+      // dots from somewhere else (v2138). Fall back to the species table for THIS render only:
+      // the stored preference is untouched and returns as soon as there are dots again, and
+      // the layout tabs show which view you actually got.
+      var modelOnly = pinMoved || movedAway || noFetchList;
+      var obsLayoutEmpty = (spLayout === "observation") && (!haveDots || (modelOnly && !multi));
       if (obsLayoutEmpty) spLayout = "table";
       // Rebuild when the page holds an observation list that has nothing left to list —
       // otherwise the old empty page is shown again and the click looks ignored.
       var staleObsPage = spPageIsObs && !haveDots;
-      if (!speciesPanelPopulated() || movedAway || staleObsPage || obsLayoutEmpty || (mapFromMultiFetch && haveDots)) {
-        // The multi-fetch flag only decides anything while its dots are still on the map.
-        var refPt = (mapFromMultiFetch && haveDots) ? null : refNow;
+      if (!speciesPanelPopulated() || movedAway || pinMoved || staleObsPage || obsLayoutEmpty || multi) {
+        var refPt = multi ? null : refNow;
         // Dots on the map → their "By observation" list. Nothing fetched at all → the model's
         // own species for the pin / map centre, commonest first (renderSpeciesList's noFetch
         // path ends in applySightings with an empty result, which is what turns that on).
@@ -15359,7 +15419,13 @@
   // detSelected mechanism as "Show only this species". Build a selection first (Show
   // only + Add to species filter), then Save selection as list.
   function getSpeciesLists() { return window.GeoState.get("speciesLists", []) || []; }
-  function saveSpeciesLists(a) { window.GeoState.save({ speciesLists: a }); }
+  // The one place species lists are written — so every surface listing them follows: the
+  // open all-filters pane redraws its Species-lists section (owner, 2026-10-21: "when deleting
+  // one of my lists in filter pane, the pane should be redrawn. The same when adding lists").
+  function saveSpeciesLists(a) {
+    window.GeoState.save({ speciesLists: a });
+    if (allFiltersPane) renderAllFiltersPane();
+  }
   function sameKeySet(selObj, arr) {
     var keys = Object.keys(selObj); if (!arr || keys.length !== arr.length) return false;
     for (var i = 0; i < arr.length; i++) if (!selObj[arr[i]]) return false;
@@ -17051,17 +17117,22 @@
   function dateRelBtnHtml(d) {
     var st = dateRelState(d);
     var label = st === "on" ? t("date.on") : st === "before" ? t("date.before") : st === "after" ? t("date.after") : "–";
-    return '<button type="button" class="sp-date-rel' + (st !== "none" ? " on" : "") + '" data-date="' + escapeHtml(d) + '" data-state="' + st + '" title="' + escapeHtml(t("date.on") + " / " + t("date.before") + " / " + t("date.after")) + '">' + escapeHtml(label) + "</button>";
+    return '<button type="button" class="sp-date-rel' + (st !== "none" ? " on" : "") + '" data-date="' + escapeHtml(d) + '" title="' + escapeHtml(t("date.on") + " / " + t("date.before") + " / " + t("date.after")) + '">' + escapeHtml(label) + "</button>";
   }
   function dateRelRowHtml(d) {
     return '<div class="sp-date-rel-row"><b class="sp-date-lbl">' + escapeHtml(fmtDate(d) || d) + "</b>" + dateRelBtnHtml(d) + "</div>";
   }
-  function cycleDateRel(dateStr, state) {
-    var next = DATE_REL_ORDER[(DATE_REL_ORDER.indexOf(state) + 1) % DATE_REL_ORDER.length];
+  // The state is read from the live filter, not from the button's attribute: after a click
+  // detFiltersRefresh re-filters the table but leaves the open pane as it was, so the attribute
+  // went stale and every click set "on" again (v2135). The pane is redrawn here so the button
+  // shows the new state (the fetch list's modal redraws itself in detFiltersRefresh).
+  function cycleDateRel(dateStr) {
+    var next = DATE_REL_ORDER[(DATE_REL_ORDER.indexOf(dateRelState(dateStr)) + 1) % DATE_REL_ORDER.length];
     if (next === "on") setDetDateFilter(dateStr, dateStr);
     else if (next === "before") setDetDateFilter("", dateStr);
     else if (next === "after") setDetDateFilter(dateStr, "");
     else setDetDateFilter("", "");   // none
+    if (typeof speciesPanelPopulated === "function" && speciesPanelPopulated()) renderSpControls();
   }
   // `dateForRel` (Per-observation) wraps the open days panel with a clear-× and the
   // On/Before/After row for the clicked date.
@@ -17172,7 +17243,7 @@
     // "Per observation" date pane: On/Before/After the clicked date + a green × that
     // clears every date filter and closes the pane.
     el.querySelectorAll(".sp-date-rel").forEach(function (b) {
-      b.addEventListener("click", function (e) { e.stopPropagation(); cycleDateRel(this.getAttribute("data-date"), this.getAttribute("data-state")); });
+      b.addEventListener("click", function (e) { e.stopPropagation(); cycleDateRel(this.getAttribute("data-date")); });
     });
     var dclr = el.querySelector(".sp-date-clear");
     if (dclr) dclr.addEventListener("click", function (e) { e.stopPropagation(); closeDatePane(); });
@@ -17738,6 +17809,8 @@
     updateDetSetOverlays: updateDetSetOverlays, updateMpBadge: updateMpBadge,
     pulseFunnels: pulseFunnels, tagDisplay: tagDisplay,
     updateSpDistances: updateSpDistances, t: t,
+    modalConfirm: modalConfirm, wireLocHover: wireLocHover, bringToFront: bringToFront,
+    pickOnMap: function (fn) { mapPickHandler = fn; },   // the next map click goes to fn(latlng) instead of the point popup (Edit values)
     getMap: function () { return map; },
     getMarker: function () { return marker; },
     getSpiderHidden: function () { return spiderHidden; },
@@ -18668,7 +18741,7 @@
   }
   // ---- Overlay "identify" at a point (for the right-click menu) --------------------
   // The ArcGIS raster overlays that can report a value at a clicked point.
-  var IDENTIFY_OVERLAY_KEYS = ["layer.wdpa", "layer.ramsar", "layer.natura2000", "layer.emerald", "layer.landcover"];
+  var IDENTIFY_OVERLAY_KEYS = ["layer.wdpa", "layer.ramsar", "layer.natura2000", "layer.emerald", "layer.landcover", "layer.mis"];
   function arcPick(a, keys) { for (var i = 0; i < keys.length; i++) { var v = a[keys[i]]; if (v != null && v !== "" && String(v).toLowerCase() !== "null") return v; } return ""; }
   function clcLabelForCode(code) {
     for (var i = 0; i < CLC_LEGEND.length; i++) for (var j = 0; j < CLC_LEGEND[i].items.length; j++) if (CLC_LEGEND[i].items[j][2] === code) return CLC_LEGEND[i].items[j][1];
@@ -18708,11 +18781,26 @@
     return AppFetch.fetchWithTimeout(u, {}, 9000).then(function (r) { return r.json(); }).then(function (j) { return j.results || []; });
   }
   function activeIdentifyOverlays() {
-    return (overlayDefsRef || []).filter(function (d) { return IDENTIFY_OVERLAY_KEYS.indexOf(d.key) >= 0 && d.layer && d.layer._base && map.hasLayer(d.layer); });
+    return (overlayDefsRef || []).filter(function (d) { return IDENTIFY_OVERLAY_KEYS.indexOf(d.key) >= 0 && d.layer && (d.layer._base || d.key === "layer.mis") && map.hasLayer(d.layer); });
+  }
+  // MiS: WMS GetFeatureInfo on the map's own view (EPSG:3857) at the point, 6 px round it (the
+  // features are drawn a few px wide); the GML's <Layer_feature> elements say which layers hit.
+  function misIdentifyAt(latlng) {
+    var sz = map.getSize(), b = map.getBounds(), pt = map.latLngToContainerPoint(latlng);
+    var sw = L.CRS.EPSG3857.project(b.getSouthWest()), ne = L.CRS.EPSG3857.project(b.getNorthEast());
+    var u = MIS_WMS + "?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=" + MIS_QUERY_LIST + "&query_layers=" + MIS_QUERY_LIST + "&styles=&crs=EPSG:3857" +
+      "&bbox=" + sw.x + "," + sw.y + "," + ne.x + "," + ne.y + "&width=" + sz.x + "&height=" + sz.y + "&i=" + Math.round(pt.x) + "&j=" + Math.round(pt.y) +
+      "&info_format=application/vnd.ogc.gml&feature_count=30&radius=6";
+    return AppFetch.fetchWithTimeout(u, {}, 9000).then(function (r) { return r.text(); }).then(function (txt) {
+      var hit = Object.create(null), m, re = /<([A-Za-z_]+)_feature>/g;
+      while ((m = re.exec(txt))) hit[m[1]] = 1;
+      return MIS_LAYERS.concat([MIS_SURVEYED]).filter(function (l) { return hit[l[0]]; }).map(function (l) { return l[1]; }).join(", ");
+    });
   }
   // Query every active identifiable overlay at a point → [{ key, title, value }].
   function identifyOverlayValuesAt(latlng) {
     return Promise.all(activeIdentifyOverlays().map(function (d) {
+      if (d.key === "layer.mis") return misIdentifyAt(latlng).then(function (val) { return { key: d.key, title: t(d.key), value: val }; }).catch(function () { return { key: d.key, title: t(d.key), value: "" }; });
       var defs = d.layer.options && d.layer.options.layerDefs;
       return arcIdentifyAt(d.layer._base, defs, latlng).then(function (results) {
         var val = (d.key === "layer.landcover") ? landcoverValueText(results) : protectedValueText(results);
@@ -19613,6 +19701,9 @@
     // Per-row ✎ opens the whole-list editor (colour + tags + rename).
       root.querySelectorAll(".mp-coll-edit").forEach(function (b) {
       b.addEventListener("click", function (e) { e.preventDefault(); openCollEditModal(this.getAttribute("data-name")); });
+      });
+      root.querySelectorAll(".mp-coll-values").forEach(function (b) {
+      b.addEventListener("click", function (e) { e.preventDefault(); closeOtherPopups(); window.AppPoints.openCollValuesEditor(this.getAttribute("data-name")); });
     });
     // Per-row × deletes that saved list / detection set (after confirming).
       root.querySelectorAll(".mp-coll-filt").forEach(function (b) {
@@ -19753,6 +19844,8 @@
                   t(isRoute ? "points.navDescRoute" : "points.navDesc"));
       html += row("mp-coll-share", ico("share"), t("share.link"), t("points.shareDesc"));
       if (type === "p") html += row("mp-coll-edit", ico("edit"), t("points.editList"), t("points.editDesc"),
+                                    'data-name="' + escapeHtml(name) + '"');
+      if (type === "p") html += row("mp-coll-values", ico("list"), t("points.editValues"), t("points.editValuesDesc"),
                                     'data-name="' + escapeHtml(name) + '"');
       if (count) html += row("mp-coll-dl", ico("download"), t("points.download"), t("points.downloadDesc"));
       if (type === "p") {
@@ -20254,6 +20347,7 @@
     { key: "layer.natura2000", arc: N2K_EXPORT, layers: [0] },
     { key: "layer.emerald", arc: EMERALD_EXPORT, layers: [0, 1, 2] },
     { key: "layer.landcover", clc: true },
+    { key: "layer.mis", mis: true },
     { key: "layer.gbif", gbif: true }
   ];
   var legendStackCtrl = null;
@@ -20288,6 +20382,12 @@
       });
     });
     return rows.length ? rows.join("") : '<div class="lg-note">—</div>';
+  }
+  var MIS_TWO_SYMBOLS = { Bergvegger_alle: 1, Rikbarkstrar_alle: 1, Trar_m_hengelav_alle: 1 };   // legend images 39 px tall: two symbols stacked
+  function misLegendBody() {   // each MiS layer's symbol from the service (cropped to the symbol: the image's own text is too small to read), labelled in English
+    return MIS_LAYERS.map(function (l) {
+      return '<div class="lg-row"><img class="lg-sw lg-sw-mis' + (MIS_TWO_SYMBOLS[l[0]] ? " lg-sw-mis2" : "") + '" src="' + escapeHtml(misLegendUrl(l[0])) + '" alt=""><span class="lg-lbl">' + escapeHtml(l[1]) + "</span></div>";
+    }).join("");
   }
   var gbifLegendRange = null;   // { lo, hi } record counts of the hexes in view, set by the dynamic fit
   function fmtGbifN(n) {
@@ -20334,7 +20434,7 @@
     if (legendMin[def.key]) {
       return '<div class="lg-card lg-card-min" data-key="' + escapeHtml(def.key) + '"><button type="button" class="lg-restore" title="' + escapeHtml(hasTip ? tip : t("det.expand")) + '">' + escapeHtml(title) + "</button></div>";
     }
-    var body = def.clc ? clcLegendBody() : def.gbif ? gbifLegendBody() : arcLegendBody(def);
+    var body = def.clc ? clcLegendBody() : def.mis ? misLegendBody() : def.gbif ? gbifLegendBody() : arcLegendBody(def);
     return '<div class="lg-card" data-key="' + escapeHtml(def.key) + '">' +
       '<div class="lg-head"><span class="lg-title' + (hasTip ? " lg-hashelp" : "") + '"' + (hasTip ? ' title="' + escapeHtml(tip) + '"' : "") + ">" + escapeHtml(title) + "</span>" +
         '<button type="button" class="lg-min" title="' + escapeHtml(t("det.minimise")) + '" aria-label="' + escapeHtml(t("det.minimise")) + '">−</button></div>' +
@@ -20429,6 +20529,7 @@
     // are complementary, so showing both keeps land cover visible at every zoom.
     var landcover = new ArcGISExportLayer(CLC2018_EXPORT, { opacity: 0.55, attribution: CLC_ATTR, maxZoom: MAX_ZOOM, arcLayers: "show:0,1" });
     clcLayerRef = landcover;   // the CORINE legend (bottom-right) shows only while this layer is on
+    var mis = L.tileLayer.wms(MIS_WMS, { layers: MIS_LAYER_LIST, format: "image/png", transparent: true, version: "1.3.0", opacity: 0.9, attribution: MIS_ATTR, maxZoom: MAX_ZOOM });
     arcOverlays = [{ layer: wdpa, kind: "wdpa" },
       { layer: ramsar, kind: "wdpa", defs: ramsar.options.layerDefs },
       { layer: n2k, kind: "natura" },
@@ -20445,6 +20546,7 @@
       { key: "layer.natura2000", layer: n2k },
       { key: "layer.emerald", layer: emerald, tip: "layer.emeraldTip" },
       { key: "layer.landcover", layer: landcover, tip: "layer.landcoverTip" },
+      { key: "layer.mis", layer: mis, tip: "layer.misTip" },
       { key: "layer.gbif", layer: gbif, tip: "layer.gbifTip" },
       { key: "layer.osmpa", layer: osmProtectedLayer(), tip: "layer.osmpaTip" },
       { key: "layer.hotspots", layer: hotspotsLayer, tip: "layer.hotspotsTip" },
@@ -20766,7 +20868,7 @@
     if (el) { el.textContent = parts.join(" · "); el.style.display = parts.length ? "" : "none"; }
     // The running version also shows in Settings, under "About & how it works".
     var sv = document.getElementById("settings-version");
-    if (sv) { sv.textContent = parts.join(" · "); sv.style.display = parts.length ? "" : "none"; }
+    if (sv) { sv.textContent = parts.join(" · "); sv.style.display = parts.length ? "" : "none"; }   // the MIT link lives in About → Credits & licence (v2137)
   }
 
   // A ?from=poster launch counts on the anonymous Abacus poster-scan counter (see counterHit)
@@ -20918,7 +21020,7 @@
     closeDropdowns();
     var st = document.getElementById("feedback-status"); if (st) st.textContent = "";
     feedbackSyncLimit();
-    document.getElementById("feedback-modal").style.display = "flex";
+    bringToFront(document.getElementById("feedback-modal")).style.display = "flex";
     navOpen("feedback", hideFeedback);
     var ta = document.getElementById("feedback-msg"); if (ta) ta.focus();
   }
@@ -21164,6 +21266,15 @@
         p = window.caches ? caches.open(MAP_POOL_CACHE).then(function (c) { return c.delete(H3_POOL_URL); }) : Promise.resolve();
         if (currentMode === "range" || currentMode === "richness") { try { clearOverlay(); triggerRender(); } catch (e) {} }   // wipe the stale heatmap, recompute the visible area fresh
       }
+      else if (what === "obs") {   // every fetched observation, wherever it sits (owner, 2026-10-21: memory climbed to tens of GB):
+        // this session's per-location answers (memory), the IndexedDB copy that serves a revisit,
+        // the restore-on-open snapshot, the per-record model probabilities and the dots on the map.
+        allSightingsCache = {}; histSightingsCache = {}; histAggCache = {}; seededSightings = {}; persistedSightings = {};
+        obsProbCache = Object.create(null);
+        try { clearDetections(); } catch (e) {}
+        window.GeoState.save({ mapDetections: null });
+        p = (window.AppIDB && AppIDB.available()) ? AppIDB.del("sightingsCache").catch(function () {}) : Promise.resolve();
+      }
       else if (what === "overlays") p = delByPrefix("api-");   // cached Overpass / overlay query responses → refetch fresh
       else if (what === "hotspots") {
         window.AppSites.clearHotspotStore();
@@ -21194,11 +21305,19 @@
       else p = Promise.resolve();
       var restore = btn ? btn.innerHTML : "";   // keep the label + count markup to restore after the ✓
       if (btn) btn.disabled = true;
-      p.catch(function () {}).then(function () {
+      return p.catch(function () {}).then(function () {
         if (btn) { btn.textContent = "✓"; btn.disabled = false; setTimeout(function () { btn.innerHTML = restore; updateClearCacheCounts(); }, 1200); }
         else updateClearCacheCounts();
         setStatus(t("clear.done"));
       });
+    }
+    // Everything at once — every row above, one after the other (each row's own clean-up,
+    // nothing bypassed), behind a confirm because the offline areas and the map's dots go too.
+    var CLEAR_ALL_ROWS = ["obs", "tiles", "range", "overlays", "hotspots", "birds", "best", "names", "harvest", "offline", "images"];
+    function clearAllCachedData() {
+      var chain = Promise.resolve();
+      CLEAR_ALL_ROWS.forEach(function (w) { chain = chain.then(function () { return clearCachedData(w, null); }); });
+      return chain.then(function () { updateClearCacheCounts(); try { renderStorageUsage(); } catch (e) {} });
     }
     // Show the cached-item count AND size on each clear button (small font): map
     // tiles + overlay responses from the Cache API, eBird hotspots + birding spots
@@ -21225,6 +21344,12 @@
       }
       var hs = loadHotspotStore();
       setCnt("hotspots", Object.keys(hs).length, jsonBytes(hs));
+      if (window.AppIDB && AppIDB.available()) {
+        AppIDB.get("sightingsCache").then(function (m) {
+          m = (m && typeof m === "object") ? m : {};
+          setCnt("obs", Object.keys(m).length, jsonBytes(m));
+        }).catch(function () {});
+      } else setCnt("obs", Object.keys(persistedSightings).length, jsonBytes(persistedSightings));
       if (window.AppOffline && AppOffline.areaStats) AppOffline.areaStats().then(function (s) { setCnt("offline", s.n, s.bytes, true); }).catch(function () {});
       // Species-Range cache: the in-memory Map IS the working set (hydrated from
       // its pool blob at boot) — count its (species,week) tags, size via the same
@@ -21304,6 +21429,14 @@
       var btn = e.target.closest && e.target.closest(".clear-cache-btn"); if (!btn) return;
       clearCachedData(btn.getAttribute("data-clear"), btn);
     });
+    var clearAllBtn = document.getElementById("clear-all-btn");
+    if (clearAllBtn) clearAllBtn.addEventListener("click", function () {
+      modalConfirm(t("clear.allConfirm")).then(function (ok) {
+        if (!ok) return;
+        clearAllBtn.disabled = true;
+        clearAllCachedData().then(function () { clearAllBtn.disabled = false; setStatus(t("clear.done")); });
+      });
+    });
 
     // National-database list: edit / block / delete per row, plus add / reset. Each
     // row carries its cc+url+label in data-*, so actions persist immediately
@@ -21327,7 +21460,7 @@
       natdbOpenBtn.addEventListener("click", function () {
         closeDropdowns();
         renderCustomUrls();
-        document.getElementById("natdb-modal").style.display = "flex";
+        bringToFront(document.getElementById("natdb-modal")).style.display = "flex";
         navOpen("natdb", function () { document.getElementById("natdb-modal").style.display = "none"; });
       });
       document.getElementById("natdb-close").addEventListener("click", function () { navClose("natdb"); });
@@ -21377,7 +21510,7 @@
         closeDropdowns();
         if (leTog) leTog.checked = listEdgesOn();   // reflect current state when opening
         renderListsModal();
-        document.getElementById("lists-modal").style.display = "flex";
+        bringToFront(document.getElementById("lists-modal")).style.display = "flex";
         navOpen("lists", function () { document.getElementById("lists-modal").style.display = "none"; });
       });
       // Toggle the year/life-list coloured edge on map markers (off when many dots
@@ -21530,7 +21663,8 @@
       rCw.checked = !!rarityCfg().countryWide;
       rCw.addEventListener("change", function () { raritySave({ countryWide: !!this.checked }); scheduleRarityPoll(); });   // takes effect on the next poll
     }
-    // BAND groups: token + the list of groups (tick · names-in language · alert location).
+    // BAND groups: token + the list of groups (tick · names-in language · alert location). Retired behind
+    // AppRarity.BAND_DISCONTINUED: the block is not rendered, so the three lookups below come back null and nothing is wired.
     var rBt = document.getElementById("rarity-band-token"), rBl = document.getElementById("rarity-band-load"), rBL = document.getElementById("rarity-band-list");
     function renderBandList(bands) {
       if (!rBL) return;
@@ -21940,7 +22074,7 @@
         var cats = saved.cats || { settings: 1, lists: 1, trips: 1, checklists: 1, fetched: 0 };
         var catRow = function (id, lbl) { return '<label class="so-cat"><input type="checkbox" class="so-cat-cb" data-cat="' + id + '"' + (cats[id] ? " checked" : "") + "> " + escapeHtml(t(lbl)) + "</label>"; };
         var dirRow = function (val, lbl) { return '<label class="so-dir"><input type="radio" name="so-dir" value="' + val + '"' + (dir === val ? " checked" : "") + "> " + escapeHtml(t(lbl)) + "</label>"; };
-        var ov = document.createElement("div"); ov.id = "sync-opts-modal"; ov.className = "kml-modal";
+        var ov = document.createElement("div"); ov.id = "sync-opts-modal"; ov.className = "kml-modal"; bringToFront(ov);
         ov.innerHTML = '<div class="kml-modal-box sync-opts-box">' +
           '<button type="button" class="kml-close so-close" aria-label="' + escapeHtml(t("btn.close")) + '">×</button>' +
           "<h3>" + escapeHtml(t("sync.title")) + "</h3>" +
@@ -22746,7 +22880,7 @@
     // About (model & methodology) opens from the Settings dropdown as a modal.
     document.getElementById("about-open").addEventListener("click", function () {
       closeDropdowns();
-      document.getElementById("about-modal").style.display = "flex";
+      bringToFront(document.getElementById("about-modal")).style.display = "flex";
       navOpen("about", hideAbout);
     });
     document.getElementById("about-close").addEventListener("click", function () { navClose("about"); });
@@ -24407,8 +24541,10 @@
     }
     return false;
   }
+  var mapPickHandler = null;   // set by AppPoints (Edit values): one click = a position, consumed here
   function onMapClick(e) {
     if (eventOverControl(e)) return;   // a tap on a control button is not a map click
+    if (mapPickHandler) { var ph = mapPickHandler; mapPickHandler = null; ph(e.latlng); return; }
     // Ignore an accidental brush on the empty map: opening the point popup / placing
     // Debounce every map click: ignore any click that lands within 200 ms of the
     // previous one (rapid double-taps, or a legend re-render leaking through).
@@ -24430,6 +24566,12 @@
     var hadPopupOrMenu = isPopupOrMenuOpen();
     dismissTransientUI();
     if (hadPopupOrMenu) return;
+    // Migration is a page, not a map mode: when its page is left by browser Back, a fetch
+    // or another page the mode lingers as "barchart", and the next map click used to jump
+    // straight into the analysis (owner, 2026-10-21: "make sure I see the point popup").
+    // A click on the bare map means the user is back on the map → Recent mode, then the
+    // popup (which still offers Migration) as usual.
+    if (currentMode === "barchart") { var bcp = document.getElementById("barchart-panel"); if (!bcp || bcp.style.display === "none") exitToRecentMode(); }
     // List + Range show the per-point species list; Migration the analysis;
     // Historic the GBIF date-range search.
     if (["list", "barchart", "range", "historic"].indexOf(currentMode) < 0) return;
@@ -24538,7 +24680,7 @@
       var r = l.radius || recentRadiusKm();
       var dLat = r / 111, dLon = r / ((111 * Math.cos(l.lat * Math.PI / 180)) || 1);
       var rect = L.rectangle([[l.lat - dLat, l.lon - dLon], [l.lat + dLat, l.lon + dLon]],
-        { className: "storedloc-frame", color: "#2e8b74", weight: 1, opacity: 0.6, dashArray: "4 4", fill: false, interactive: false });   // thin dashed green outline, no fill
+        { className: "storedloc-frame", color: cssVar("--brand", "#3f6f3a"), weight: 1, opacity: 0.6, dashArray: "4 4", fill: false, interactive: false });   // thin dashed green outline, no fill
       rect.bindTooltip(escapeHtml(l.name), { direction: "top", className: "area-tip", sticky: true });
       storedLocFramesLayer.addLayer(rect);
       // A pin at the area's centre so the stored POINT itself is visible, not just
@@ -24589,6 +24731,7 @@
           '<button type="button" class="slp-go" data-i="' + i + '">' + escapeHtml(l.name) + "</button>" +
           '<input type="number" class="slp-radius" data-i="' + i + '" min="1" max="200" step="1" value="' + (l.radius || recentRadiusKm()) + '" title="' + escapeHtml(t("loc.radius")) + '" /><span class="slp-km">km</span>' +
           '<button type="button" class="slp-del" data-i="' + i + '" aria-label="' + escapeHtml(t("btn.delete")) + '">×</button></div>';
+    ensureDdClose(panel);
       }).join("") +
       // Column legend: one line per checkbox column (tooltips alone are invisible on touch).
       '<div class="slp-openhint">' +
@@ -24951,16 +25094,16 @@
     wrap.className = "map-choose";
     // The popup's own labels drop the leading pictogram (the mode dropdown keeps it).
     function noIcon(x) { return String(x).replace(/^[^\w\u00C0-\u024F]+/, ""); }
-    wrap.appendChild(makePopupBtn(noIcon(t("mode.list")), "btn-green", function () { mk.closePopup(); renderSpeciesList(lat, lon); }));
+    wrap.appendChild(makePopupBtn(noIcon(t("mode.list")), "", function () { mk.closePopup(); renderSpeciesList(lat, lon); }));
     // Historic + Migration moved out of the Mode dropdown: they start HERE, at the
     // clicked point. Historic rides the mode switch (the placed marker carries in);
     // Migration switches mode and runs the analysis for this exact spot.
-    wrap.appendChild(makePopupBtn(noIcon(t("mode.historic")), "btn-green", function () {
+    wrap.appendChild(makePopupBtn(noIcon(t("mode.historic")), "", function () {
       mk.closePopup();
       var sel = document.getElementById("mode-select");
       if (sel && sel.value !== "historic") { sel.value = "historic"; sel.dispatchEvent(new Event("change", { bubbles: true })); }
     }));
-    if (groupHasModel()) wrap.appendChild(makePopupBtn(noIcon(t("mode.barchart")), "btn-green", function () {
+    if (groupHasModel()) wrap.appendChild(makePopupBtn(noIcon(t("mode.barchart")), "", function () {
       mk.closePopup();
       var sel = document.getElementById("mode-select");
       if (sel && sel.value !== "barchart") { sel.value = "barchart"; sel.dispatchEvent(new Event("change", { bubbles: true })); }
@@ -24998,7 +25141,7 @@
       // popup entry (not inside "More"), Europe only, Experimental-gated. Inserted before the More toggle.
       if (continentFor(cc) === "EU" && experimentalOn()) {
         wrap.insertBefore(
-          makePopupBtn(t("link.aloft") + " ↗", "btn-green", function () {
+          makePopupBtn(t("link.aloft") + " ↗", "", function () {
             mk.closePopup(); openExternal("https://pcmoan70.github.io/BirdsWhere-aloft/");   // the Migration Aloft radar is its own repo/site now
           }),
           moreBtn
@@ -25017,7 +25160,7 @@
         // The dots on the map inside that square go along in the link's hash (owner, 2026-10-18:
         // "specify dots with descriptive text from BirdsWhere app to be drawn in 3d view").
         wrap.insertBefore(
-          makePopupBtn(t("link.terrain3d") + " ↗", "btn-green", function () {
+          makePopupBtn(t("link.terrain3d") + " ↗", "", function () {
             mk.closePopup();
             var pts = terrain3dPoints(lat, lon, 2000);
             openExternal("https://pcmoan70.github.io/3d_terrain/?lat=" + lat.toFixed(5) + "&lon=" + lon.toFixed(5) + "&r=2000" +
@@ -25118,23 +25261,19 @@
   }
 
   // Cell for "Annual max" comparison: current week as a fraction of the
-  // species' annual peak (0\u2013100%), tinted red(off-peak)\u2192green(at peak).
-  // Shared probability palette: red (hue 10, low) -> green (hue 130, high),
-  // matching the migration analysis heatmaps. n in [0, 1].
-  function probHueColor(n) {
-    n = Math.max(0, Math.min(1, n));
-    return "hsl(" + (10 + n * 120) + ", 60%, 42%)";
-  }
+  // species' annual peak (0\u2013100%). The palette's sequential scale (dry grass →
+  // spruce), shared with the migration heatmaps (GeoAnalysis.probColor). n in [0, 1].
+  function probHueColor(n) { return window.GeoAnalysis.probColor(n); }
   function ratioCell(ratio) {
     var r = Math.max(0, Math.min(1, ratio));
-    return '<td class="ratio-cell" style="background:' + probHueColor(r) + '">' + (r * 100).toFixed(0) + "%</td>";
+    return '<td class="ratio-cell' + window.GeoAnalysis.lightCls(r) + '" style="background:' + probHueColor(r) + '">' + (r * 100).toFixed(0) + "%</td>";
   }
 
   // Cell for the "Annual Top" comparison: focus value 0–100, tinted red→green.
   function focusCell(v) {
     if (Number.isNaN(v)) return '<td class="ratio-cell">-</td>';
     var n = Math.max(0, Math.min(100, v));
-    return '<td class="ratio-cell" style="background:' + probHueColor(n / 100) + '">' + Math.round(n) + "%</td>";
+    return '<td class="ratio-cell' + window.GeoAnalysis.lightCls(n / 100) + '" style="background:' + probHueColor(n / 100) + '">' + Math.round(n) + "%</td>";
   }
 
   // Species List comparison cell as a probability-style bar (used when every
@@ -25228,7 +25367,9 @@
     // A model-only list describes ONE point — the pin, or the middle of the map. Naming the
     // squares fetched earlier somewhere else would answer a question nobody asked (a pin in
     // Iceland under a header reading "Åfjord"), so that list gets its own point's place.
-    if (spMissingAuto && isFinite(lat) && isFinite(lon)) { setCoordsWithPlace(el, lat, lon, summary); return; }
+    // (A list built without a fetch — a pin placed, a restored view — is such a list from the start,
+    // before the fallback flag has settled, v2139.)
+    if ((spMissingAuto || (currentSpView && currentSpView._noFetch)) && isFinite(lat) && isFinite(lon)) { setCoordsWithPlace(el, lat, lon, summary); return; }
     // Only the fetched squares that touch the current map view are described — the header
     // names what the list below shows (the list itself is scoped to the view), and re-renders
     // when the map settles (listViewKick). A square entirely off screen is not a filter target
@@ -25634,7 +25775,7 @@
     }).join("");
     var html = '<!doctype html><html><head><meta charset="utf-8"><title>' + esc(heading) + "</title><style>" +
       "body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#16302b;margin:32px;}" +
-      "h1{font-size:19px;color:#0b3a3a;margin:0 0 2px;}" +
+      "h1{font-size:19px;color:" + cssVar("--brand-deep", "#1f3d2b") + ";margin:0 0 2px;}" +
       ".meta{color:#5b6f69;font-size:12px;margin-bottom:18px;}" +
       "table{border-collapse:collapse;width:100%;font-size:13px;}" +
       "th,td{text-align:left;padding:6px 9px;border-bottom:1px solid #d8e1dd;}" +
@@ -27465,14 +27606,10 @@
       lo.addEventListener("input", upd); hi.addEventListener("input", upd);
       lo.addEventListener("change", apply); hi.addEventListener("change", apply);
     } else if (spHeadPanel === "last") {
-      var clr = container.querySelector(".sp-date-clear");
-      if (clr) clr.addEventListener("click", function (e) { e.stopPropagation(); closeDatePane(); });
-      var clrf = container.querySelector(".sp-date-clearfilters");
-      if (clrf) clrf.addEventListener("click", function (e) { e.stopPropagation(); clearDateFilters(); });
-      container.querySelectorAll(".sp-date-rel").forEach(function (b) {
-        b.addEventListener("click", function (e) { e.stopPropagation(); cycleDateRel(this.getAttribute("data-date"), this.getAttribute("data-state")); });
-      });
-      wireDetFilters(document.getElementById("species-panel"));   // recency chips / range inputs / month chips
+      // wireDetFilters wires the whole pane: recency chips / range inputs / month chips AND the
+      // On/Before/After button and the two × — wiring those here as well gave every button two
+      // handlers, so one tap on the date button advanced two steps (v2136).
+      wireDetFilters(document.getElementById("species-panel"));
     }
   }
   // Clear every date filter (recency window → All, absolute range → off, month-of-year
@@ -28194,6 +28331,20 @@
     })();
   }
 
+  // Every popup has a × top-right (owner, 2026-10-19: "Make sure all popup windows eg my points have x in upper
+  // right corner for closing"). The header dropdowns, the stored-locations panel and the place-search box get
+  // theirs here; the header observer puts it back after every innerHTML rebuild, and it is sticky, so a scrolled
+  // panel keeps it in the corner.
+  function ensureDdClose(p) {
+    if (!p || p.querySelector(":scope > .dd-x")) return;
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "dd-x"; b.setAttribute("aria-label", t("btn.close")); b.title = t("btn.close"); b.textContent = "\u00d7";
+    b.addEventListener("click", function (e) {
+      e.preventDefault(); e.stopPropagation();
+      if (p.id === "stored-loc-panel") hideStoredLocations(); else if (p.classList.contains("place-search-panel")) closePlaceSearch(); else p.style.display = "none";
+    });
+    p.insertBefore(b, p.firstChild);
+  }
   function closeDropdowns() {
     ["checklists-panel", "settings-panel", "mp-panel", "group-quick-panel"].forEach(function (idp) {
       var p = document.getElementById(idp);

@@ -18,22 +18,26 @@
 window.GeoAnalysis = (function () {
   "use strict";
 
-  // ---- Colour scales: the app's orange → green palette --------------------
-  // Probability: orange (the app's --warn, hue 30) at low → brand green (hue 163,
-  // #2e8b74) at high, through yellow-green in between.
-  var HUE_LO = 30, HUE_HI = 163;
+  // ---- Colour scales: the app's natural palette (app.css :root, 2026-10-21) ----------
+  // Sequential (probability, timeline bars, list bars): dry grass → lichen → moss → spruce.
+  // Luminance falls monotonically, so the scale reads the same with red-green colour
+  // blindness. Diverging (arrivals, deltas): rowan red (departing / falling) ← stone →
+  // fjord blue (arriving / rising) — blue vs red, never green vs red.
+  var SEQ = [[243,236,210],[169,196,127],[63,111,58],[31,61,43]];
+  var DIV_NEG = [169,50,38], DIV_MID = [233,228,216], DIV_POS = [43,111,142];
+  function mix(a, b, t) { return "rgb(" + Math.round(a[0] + (b[0] - a[0]) * t) + "," + Math.round(a[1] + (b[1] - a[1]) * t) + "," + Math.round(a[2] + (b[2] - a[2]) * t) + ")"; }
   function probColor(norm) {
-    var n = Math.max(0, Math.min(1, norm));
-    return "hsl(" + Math.round(HUE_LO + n * (HUE_HI - HUE_LO)) + ", " + Math.round(80 - n * 30) + "%, " + Math.round(50 - n * 14) + "%)";
+    var n = Math.max(0, Math.min(1, norm)) * (SEQ.length - 1), i = Math.min(SEQ.length - 2, Math.floor(n));
+    return mix(SEQ[i], SEQ[i + 1], n - i);
   }
-  // Arrival: diverging — orange (negative/departing) → grey (≈0) → green
-  // (positive/arriving), intensity ∝ |value|. Value already in [-1, 1].
   function arrivalColor(val) {
     var a = Math.max(-1, Math.min(1, val));
-    var hue = a >= 0 ? HUE_HI : HUE_LO;
-    var mag = Math.abs(a);
-    return "hsl(" + hue + ", " + Math.round(mag * (a >= 0 ? 55 : 80)) + "%, " + Math.round(62 - mag * (a >= 0 ? 26 : 12)) + "%)";
+    return a >= 0 ? mix(DIV_MID, DIV_POS, a) : mix(DIV_MID, DIV_NEG, -a);
   }
+  // Dark text on the light end of either scale, white on the dark end — as a class
+  // for the cell (see app.css .an-lt).
+  function lightCls(norm) { return norm < 0.45 ? " an-lt" : ""; }
+  function lightClsDiv(val) { return Math.abs(val) < 0.55 ? " an-lt" : ""; }
 
   function arrivalAt(probs, w, maxYear) {
     if (maxYear < 1e-6) return 0;
@@ -75,6 +79,7 @@ window.GeoAnalysis = (function () {
   // hypothetical reused-but-mutated ctx still misses. We intentionally
   // recompute fresh rows on every miss because renderers mutate the returned
   // row objects (attaching .series/.sortKey/.arrival and re-sorting in place).
+  var MIN_PEAK = 0.005;   // yearly-peak floor for every analysis view (0.5 %)
   var memoCtx = null, memoSig = null, memoResult = null;
   function visibleSig(ctx) {
     return ctx.week + "|" + ctx.thresholdFrac + "|" + ctx.thresholdMax +
@@ -110,26 +115,24 @@ window.GeoAnalysis = (function () {
         probs[w] = v;
         if (v > mx) mx = v;
       }
-      // Drop species that are effectively absent all year (zero probability
-      // across every week) so they never clutter any analysis view.
-      if (mx < 1e-4) continue;
+      // Drop species that are as good as absent all year: a yearly peak under MIN_PEAK keeps a
+      // species out of every analysis view (owner, 2026-10-20: "do not show species with max
+      // probability through the year of less than 0.5%").
+      if (mx < MIN_PEAK) continue;
       out.push({ idx: i, label: lbl, probs: probs, maxYear: mx, curProb: cur });
     }
     return out;
   }
 
   // ---- Heatmap (probability / arrivals / focus) ---------------------------
-  // mode: "prob" | "arrival" | "focus".
-  // Arrivals and Annual Top are normalised by the species' yearly peak, so a species whose
-  // probability never reaches this floor would show a loud but meaningless pattern; they need
-  // a yearly peak of at least 1 %.
-  var ARRIVAL_MIN_PEAK = 0.01;
+  // mode: "prob" | "arrival" | "focus". (Arrivals and Annual Top are normalised by the species'
+  // yearly peak; MIN_PEAK in computeVisibleSpecies keeps near-absent species — a loud but
+  // meaningless pattern — out of these and every other view.)
   function renderHeatmap(el, ctx, mode) {
     var rows = visibleSpecies(ctx);
     var wkIdx = ctx.week - 1;
     var esc = ctx.escapeHtml;
     var isArrival = mode === "arrival", isFocus = mode === "focus";
-    if (isArrival || isFocus) rows = rows.filter(function (r) { return r.maxYear >= ARRIVAL_MIN_PEAK; });
 
     if (rows.length === 0) {
       el.innerHTML = '<p class="an-empty">' + esc(ctx.t("analysis.empty")) + "</p>";
@@ -167,7 +170,10 @@ window.GeoAnalysis = (function () {
     var gRange = gMax - gMin;
 
     var months = ctx.months;
-    var html = '<div class="an-scroll"><table class="an-heatmap">';
+    // A same-tab, same-week re-render (a filter, a threshold) keeps the scroll the reader has;
+    // a new tab or week brings this week's column into view (below).
+    var prev = el.querySelector(".an-scroll"), keepLeft = prev && prev.getAttribute("data-mode") === mode && prev.getAttribute("data-wk") === String(wkIdx) ? prev.scrollLeft : null;
+    var html = '<div class="an-scroll" data-mode="' + mode + '" data-wk="' + wkIdx + '"><table class="an-heatmap">';
     // Month header row (each month spans 4 weeks).
     html += "<thead><tr><th class='an-corner'></th>";
     for (var m = 0; m < 12; m++) html += '<th colspan="4" class="an-month">' + esc(months[m]) + "</th>";
@@ -184,29 +190,37 @@ window.GeoAnalysis = (function () {
       // long names, so hover must reveal what got cut, not just the sci name.
       html += '<tr><td class="an-name" title="' + esc(ctx.speciesName(row.label) + " · " + row.label.sci) + '"><span class="an-name-in">' + ctx.nameLink(row.label) + "</span></td>";
       for (var cc = 0; cc < 48; cc++) {
-        var color, text;
+        var color, text, lt = "";
         if (isArrival) {
           var av = row.series[cc];
-          color = arrivalColor(av);
+          color = arrivalColor(av); lt = lightClsDiv(av);
           // Show only the number; negatives keep their "-", positives have no sign.
           text = Math.abs(av) >= 0.005 ? (av * 100).toFixed(0) : "";
         } else if (isFocus) {
           var fv = row.series[cc];
-          color = probColor(Math.max(0, Math.min(1, fv / 100)));
+          color = probColor(Math.max(0, Math.min(1, fv / 100))); lt = lightCls(fv / 100);
           text = Math.abs(fv) >= 1 ? Math.round(fv).toString() : "";
         } else {
           var pv = row.probs[cc];
           var norm = gRange > 0 ? (pv - gMin) / gRange : 0;
-          color = probColor(norm);
+          color = probColor(norm); lt = lightCls(norm);
           text = pv > 0 ? (pv * 100).toFixed(0) : "";
         }
         var curCls = cc === wkIdx ? " an-cur" : "";
-        html += '<td class="an-cell' + curCls + '" style="background:' + color + '">' + text + "</td>";
+        html += '<td class="an-cell' + curCls + lt + '" style="background:' + color + '">' + text + "</td>";
       }
       html += "</tr>";
     }
     html += "</tbody></table></div>";
     el.innerHTML = html;
+    // This week's column in view (owner, 2026-10-20: "make sure the arrivals column for current week is in
+    // focus when user opens pane"): on a narrow screen the 48 columns overflow sideways and the current
+    // week — late in the year — sat off to the right. Centred in the room beside the sticky name column.
+    var sc = el.querySelector(".an-scroll"), cur = el.querySelector("th.an-cur"), corner = el.querySelector("th.an-corner");
+    if (sc && sc.scrollWidth > sc.clientWidth + 1) {
+      if (keepLeft != null) sc.scrollLeft = keepLeft;
+      else if (cur) { var nameW = corner ? corner.offsetWidth : 0; sc.scrollLeft = Math.max(0, cur.offsetLeft - nameW - (sc.clientWidth - nameW - cur.offsetWidth) / 2); }
+    }
     // Desktop: give the sticky name column a bit more room than mobile's 110 px
     // (up to the 6th-widest rendered name, hard-capped at 180 px) — the rest of
     // the page width goes to the 48 week cells, which stretch via width:100%.
@@ -302,7 +316,7 @@ window.GeoAnalysis = (function () {
         var x = sx(it.arrival).toFixed(1), y = sy(it.probability).toFixed(1);
         var name = ctx.speciesName(it.label);
         var title = name + " (" + it.label.sci + ")\n" + ctx.t("th.arrival") + " " + (it.arrival * 100).toFixed(1) + "%\n" + ctx.t("th.prob") + " " + (it.probability * 100).toFixed(1) + "%";
-        svg += '<circle class="an-pt" cx="' + x + '" cy="' + y + '" r="5" fill="' + arrivalColor(it.arrival) + '" stroke="rgba(0,0,0,0.5)" stroke-width="0.8"><title>' + esc(title) + "</title></circle>";
+        svg += '<circle class="an-pt" cx="' + x + '" cy="' + y + '" r="5" fill="' + arrivalColor(it.arrival) + '" stroke="rgba(0,0,0,0.5)" stroke-width="0.8" data-name="' + esc(name) + '"><title>' + esc(title) + "</title></circle>";
       });
       svg += "</svg>";
     }
@@ -334,12 +348,37 @@ window.GeoAnalysis = (function () {
     rows.forEach(function (r) {
       var norm = pRange > 0 ? (r.probability - pMin) / pRange : 0;
       tbl += "<tr><td>" + ctx.nameLink(r.label) + "</td>";
-      tbl += '<td class="an-num an-tint" style="background:' + probColor(norm) + '">' + (r.probability * 100).toFixed(1) + "%</td>";
-      tbl += '<td class="an-num an-tint" style="background:' + arrivalColor(r.arrival) + '">' + (r.arrival * 100).toFixed(1) + "%</td></tr>";
+      tbl += '<td class="an-num an-tint' + lightCls(norm) + '" style="background:' + probColor(norm) + '">' + (r.probability * 100).toFixed(1) + "%</td>";
+      tbl += '<td class="an-num an-tint' + lightClsDiv(r.arrival) + '" style="background:' + arrivalColor(r.arrival) + '">' + (r.arrival * 100).toFixed(1) + "%</td></tr>";
     });
     tbl += "</tbody></table>";
 
     el.innerHTML = svg + tbl;
+
+    // Hovering a dot names it at once, in the plot itself — the <title> tooltip comes late and
+    // not at all on touch, where a tap shows the label instead (owner, 2026-10-20: "make sure
+    // hover gives the species name of the dots"). W/ML/MT/MR are the plot's own margins above.
+    var svgEl = el.querySelector(".an-scatter-svg");
+    if (svgEl) {
+      var lbl = null;
+      var hideLbl = function () { if (lbl) { lbl.parentNode.removeChild(lbl); lbl = null; } };
+      var showLbl = function (c) {
+        hideLbl();
+        var cx = +c.getAttribute("cx"), cy = +c.getAttribute("cy");
+        lbl = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        lbl.setAttribute("class", "an-pt-lbl");
+        lbl.setAttribute("x", cx);
+        lbl.setAttribute("y", cy > MT + 24 ? cy - 11 : cy + 20);   // above the dot, below it near the top edge
+        lbl.setAttribute("text-anchor", cx < ML + 90 ? "start" : cx > W - MR - 90 ? "end" : "middle");   // kept inside the plot
+        lbl.textContent = c.getAttribute("data-name");
+        lbl._for = c;
+        svgEl.appendChild(lbl);
+      };
+      var dotOf = function (e) { var n = e.target; while (n && n !== svgEl) { if (n.classList && n.classList.contains("an-pt")) return n; n = n.parentNode; } return null; };
+      svgEl.addEventListener("mouseover", function (e) { var c = dotOf(e); if (c) showLbl(c); });
+      svgEl.addEventListener("mouseout", function (e) { if (dotOf(e)) hideLbl(); });
+      svgEl.addEventListener("click", function (e) { var c = dotOf(e); if (!c) hideLbl(); else if (lbl && lbl._for === c) hideLbl(); else showLbl(c); });
+    }
 
     // Header click → sort (handled by app.js via the returned hook).
     var ths = el.querySelectorAll(".an-scatter-table th[data-sort]");
@@ -383,11 +422,13 @@ window.GeoAnalysis = (function () {
   }
 
   return {
+    MIN_PEAK: MIN_PEAK,          // the shared 0.5 % floor — app.js uses it for predicted species in the lists too
     visibleSpecies: visibleSpecies,
     renderHeatmap: renderHeatmap,
     renderScatter: renderScatter,
     probColor: probColor,        // the migration palette (orange → green) — the Timeline tab bars use it too
     arrivalColor: arrivalColor,
+    lightCls: lightCls,          // " an-lt" when a probColor cell needs dark text
     buildCsv: buildCsv,
     focusSeries: focusSeries,
   };
