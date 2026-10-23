@@ -72,6 +72,9 @@ layered on top are the real sightings.
 A Leaflet map with a **Mode** selector in the header:
 
 - **📍 Recent** — click the map for a ranked species list at that point, with live recent-observation counts.
+- **📍 Predicted** — the model's own ranking for the tapped point, no observation fetch: the inference runs
+  and the species-list page opens on completion, most likely species first and listed down to 1 %, so the rare
+  end is on the page with its **◉** marks (the point popup's second button, under Recent).
 - **Historic** — search GBIF for a chosen date range and set of months around a point.
 - **📍 Migration** — the location-analysis panel (phenology, arrivals, scatter) for a clicked point. Opened from the point popup; once its page is left, a map click opens the point popup again.
 - **Species Range** — a probability heatmap for one chosen species, animatable across the year.
@@ -101,7 +104,7 @@ fetched at once; it is a *display* choice, so what a fetch asks for is still dec
 birds/mammals/amphibians/insects; **Plants 🌿 and Fungi 🍄 are observation-only**
 (Range/Richness/Migration are hidden for them).
 
-**Overlay layers** (layer control): **WDPA · Protected Planet** (*Experimental* — enable in Settings), **Ramsar wetlands**,
+**Overlay layers** (tap the bird button, top-left → *Overlays…*: a popup with a tick box and a one-line description per overlay, a **?** for the full explanation and a ⚙ on the three layers with their own settings; the birding layers come first — Best sites, Viewpoints, eBird hotspots, MiS forest habitats, Land cover — then the protected-area outlines): **WDPA · Protected Planet** (*Experimental* — enable in Settings), **Ramsar wetlands**,
 **Natura 2000** (EU SPA/SCI; *Experimental* — enable in Settings), **Emerald Network** (Bern Convention — the non-EU counterpart
 to Natura 2000), **Land cover** (CORINE / Copernicus-EEA — habitat backdrop, Europe/EEA, with a
 colour-coded class legend in the lower-right while it's on), **MiS forest habitats** (NIBIO's inventory of Norwegian forest —
@@ -148,7 +151,7 @@ holding a button:
 
 | hold… | to get |
 |---|---|
-| the **overlays** (layers) button | hide/show all ticked overlays in one go (button turns orange while they're suspended) |
+| the **Overlays…** row in the bird button's quick panel (or tap the button at the top of the Overlays popup) | hide/show all ticked overlays in one go (the row and the bird button turn orange while they're suspended) |
 | the **🔍** search button | the **stored locations** popup |
 | the **locate crosshair** | continuous **GPS-follow** (hold again = red read cursor) |
 | the **Settings ⚙** gear | the full **Settings** panel (a *tap* gives the quick panel instead) |
@@ -159,7 +162,7 @@ holding a button:
 | the **collapsed legend pill** | pan/zoom to frame **all fetched points** |
 | the **rarity bell 🔔** | poll eBird's notable sightings at all 🔔 locations right now |
 | the **✓ update** button (right of the map) | its two settings — how many **overlap days** to re-fetch before each area's last fetch (default 2) and **only areas in view** |
-| the **Viewpoints**, **Best sites** or **eBird hotspots** row in the overlays menu | that layer's settings: the zoom from which its icons appear, how many are shown at once, and for Best sites the **site detail level** (Auto / 500 m / 25 km / 75 km) + the chart's AI-model cutoff |
+| the **Viewpoints**, **Best sites** or **eBird hotspots** row in the Overlays popup (or tap its ⚙) | that layer's settings: the zoom from which its icons appear, how many are shown at once, and for Best sites the **site detail level** (Auto / 500 m / 25 km / 75 km) + the chart's AI-model cutoff |
 
 ---
 
@@ -177,7 +180,8 @@ re-showing a week is instant.
 The same predicted probability is reused beyond these two views: it **orders the species lists**
 (the per-point Species List and the plotted-detections legend are both ranked by likelihood) and
 defines **"locally rare"** — a species at or below the *Rare species threshold* is flagged with the
-**◉** icon and can be filtered on, regardless of how often it has actually been reported.
+**◉** icon and can be filtered on, regardless of how often it has actually been reported — in every species
+list, the model-only Predicted list included.
 
 ---
 
@@ -1351,7 +1355,8 @@ the one thing left out by default — they are much the largest thing the app ho
   settings that decide what the next tap on the map brings back: the **species group**, the
   **fetch radius** and **how many days back** to fetch (1 · 2 · 3 · 7 · 14 · 21 · 28 · 42 · 91).
   **Press-and-hold** (or right-click) opens the full **Settings** panel — and so does the quick
-  panel's last row, **Settings…**, so Settings is always reachable with plain taps. Both sliders
+  panel's last row, **Settings…**, so Settings is always reachable with plain taps. The row above
+  it, **Overlays…**, opens the map-overlay popup (hold the row = hide/show the ticked overlays). Both sliders
   drive the same controls that live in Settings, so a change made either way is saved the same way.
 - **Model compare** (Settings → About row → *Model compare ↗*, `model-compare/`) — a standalone page that runs
   the **BirdNET+ Geomodel V3.0.4** (14,082 species) next to the app's own model (12,012) for one species over all
@@ -1359,7 +1364,9 @@ the one thing left out by default — they are much the largest thing the app ho
   models side by side on the probability ramp and their **difference** below (blue = higher in V3.0.4, red =
   lower) with mean / largest difference, correlation and the change in cells ≥ 0.1. Species are matched between
   the two label files by species code (11,880 shared), scientific name as the fallback; the picker shows both
-  models' common names when they differ. Default: White-backed Woodpecker. Online only (not cached).
+  models' common names when they differ. Default: White-backed Woodpecker. Two Norwegian examples at the foot of the page
+  (White-backed Woodpecker, Gyrfalcon) show a small 0.1° difference map around Oslo for the chosen week with the
+  values at Oslo; *Show over Europe* loads that species into the three large maps. Online only (not cached).
 - **Persistence** — settings, view, species/year/life lists, checklists, points and plotted
   detections survive across visits. Small settings live in **localStorage**; bulky per-list data
   (saved sets, detections) lives in **IndexedDB** to avoid the ~5 MB cap. Saved point lists load **lazily**: at start only
@@ -1367,13 +1374,15 @@ the one thing left out by default — they are much the largest thing the app ho
   opened), so many large lists no longer slow the start. Long lists (species table, observation
   list, legend) show their first rows at once and fill in the rest in the background.
   **Settings → Storage** lists every cache with its count and size — **Fetched observations**
-  (this session's per-location answers in memory, the IndexedDB copy, the restore-on-open snapshot
-  and the dots on the map), map tiles, range maps, overlays, eBird hotspots, viewpoints, best sites,
+  (every location's downloaded observations, kept on the device until you clear them: one
+  IndexedDB record per location, read again when you revisit the spot — plus the restore-on-open
+  snapshot and the dots on the map; clearing deletes the records and releases the space), map tiles, range maps, overlays, eBird hotspots, viewpoints, best sites,
   species names, downloaded names, offline areas and species photos — each with its own clear
   button, and **Clear all cached data** empties them all in one go (after a confirm; saved lists,
   checklists and settings stay). The browser's own usage figure counts cross-origin map tiles with
   a large privacy padding and can read tens of GB for a few hundred MB of real data; the per-row
-  sizes are the measured ones.
+  sizes are the measured ones. *Reuse downloads* (Settings) defaults to 0 = a stored location is
+  reused until cleared; set minutes there to have a reopen refetch after that long.
 - **Languages** — the **UI is fully translated into 15 languages** (en, sv, de, es, fr, nl, it, pt,
   pl, cs, no, da, fi, et, lt); other languages fall back to English UI text while still showing
   localised species names. **Species common names are available in ~45 languages**, loaded as

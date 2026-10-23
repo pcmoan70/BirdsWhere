@@ -24,7 +24,8 @@ window.AppGeo = (function () {
     loadBorders();
   }
 
-  var countryCache = {};   // key -> { cc, name }
+  var countryCache = {};   // key -> { cc, name } (capped: the oldest entries go past 500)
+  function capObj(o, max) { var ks = Object.keys(o); for (var i = 0; i < ks.length - max; i++) delete o[ks[i]]; }
   function countryInfo(lat, lon) {
     var k = lat.toFixed(2) + "," + lon.toFixed(2);
     if (countryCache[k] !== undefined) return Promise.resolve(countryCache[k]);
@@ -33,9 +34,9 @@ window.AppGeo = (function () {
       .then(function (j) {
         var addr = (j && j.address) || {};
         var info = { cc: (addr.country_code || "").toUpperCase(), name: addr.country || "" };
-        countryCache[k] = info; return info;
+        countryCache[k] = info; capObj(countryCache, 500); return info;
       })
-      .catch(function () { var info = { cc: "", name: "" }; countryCache[k] = info; return info; });
+      .catch(function () { var info = { cc: "", name: "" }; countryCache[k] = info; capObj(countryCache, 500); return info; });
   }
   function countryCode(lat, lon) { return countryInfo(lat, lon).then(function (i) { return i.cc; }); }
   // One level below the country: the county / län / fylke the point falls in.
@@ -133,7 +134,7 @@ window.AppGeo = (function () {
   // widens the zone, so a point whose radius reaches the other side queries both.
   function noSeBorderLon(lat) { return 11.4 + 0.91 * (lat - 59); }
   function nearCountry(lat, lon, cc, marginKm) {
-    var mk = marginKm || 0, dLat = mk / 111, dLon = mk / ((111 * Math.cos(lat * Math.PI / 180)) || 1);
+    var mk = marginKm || 0, dLat = mk / 111, dLon = Math.min(180, mk / (111 * Math.max(0.1, Math.cos(lat * Math.PI / 180))));   // cos clamped: the box must not balloon east near the pole (B8)
     var bl = noSeBorderLon(lat);
     if (cc === "NO") return lat >= 57.5 - dLat && lat <= 71.5 + dLat && lon >= 3.5 - dLon && lon <= bl + dLon;
     if (cc === "SE") return lat >= 55.0 - dLat && lat <= 69.3 + dLat && lon >= bl - dLon && lon <= 24.6 + dLon;
@@ -222,7 +223,7 @@ window.AppGeo = (function () {
         }
       }
     }
-    nearCountryCache[k] = set; return set;
+    nearCountryCache[k] = set; capObj(nearCountryCache, 500); return set;
   }
   function countryMatch(lat, lon, sourceCC, rkm, cc) {
     if (!sourceCC) return true;

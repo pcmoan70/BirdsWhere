@@ -269,6 +269,7 @@
   var labelClass = [];        // class_name per label index (built after load)
 
   function buildLabelClass() {
+    _grpIdx = {};   // the class table is (re)built → the per-group index arrays with it
     labelClass = labels.map(function (l) {
       var row = taxByCode[l.key];
       return (row && row.class_name) || "";
@@ -277,6 +278,14 @@
 
   // Is the species at label index `i` in the active group?
   function inGroup(i) { return speciesGroup === "all" || labelClass[i] === speciesGroup; }
+  // The label indices of the current group, built once per group (P15): the list renderers used
+  // to test all ~12k labels on every render.
+  var _grpIdx = {};
+  function groupLabelIdx() {
+    var g = speciesGroup, arr = _grpIdx[g];
+    if (!arr) { arr = []; for (var i = 0; i < labels.length; i++) if (inGroup(i)) arr.push(i); _grpIdx[g] = arr; }
+    return arr;
+  }
 
   // Richness cache key — distinct per group so counts don't collide.
   function richKey() { return "__richness__@" + speciesGroup; }
@@ -398,7 +407,9 @@
       linkout:  '<path d="M14 5h5v5"/><path d="M19 5l-8 8"/><path d="M17 13.5V18a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h4.5"/>',
       bell:     '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
       // Clock — the legend's "sort by date" state.
-      clock:    '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>'
+      clock:    '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
+      // Stacked layers — the Overlays row in the bird button's quick panel.
+      layers:   '<path d="M12 3.5l9 4.75-9 4.75-9-4.75z"/><path d="M3 13l9 4.75 9-4.75"/><path d="M3 17.25L12 22l9-4.75"/>'
     };
     return '<svg class="btn-ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (P[name] || "") + "</svg>";
   }
@@ -443,6 +454,14 @@
   function fitMapHeight() {
     var el = document.getElementById("app-map");
     if (!el || el.offsetParent === null) return;   // not visible yet
+    // Under the full-screen list page the map is not on screen, and the species table is
+    // scoped to ITS viewport: a refit here (keyboard, toolbar, rotation, a status-line edge)
+    // shrank the hidden map, and the next list pass dropped every species whose dots had
+    // fallen outside the new, unseen bounds — until the list was opened again from the map
+    // (owner, 2026-10-22: "switching between list types and turning prediction on and off
+    // the fetched obs disappear from list. Going to map and back brings them back").
+    // The map keeps the size the user last saw; closeAnyFullPage refits once it is back.
+    if (onListView()) return;
     // The map view fills the viewport and must never page-scroll. A transient overflow —
     // e.g. the histogram strip expanding before the map is re-sized — can scroll the page,
     // which pushes the map (and its top-corner controls) up UNDER the fixed header and, read
@@ -681,7 +700,10 @@
       if (opts.onClose) opts.onClose();
     }
     if (opts.backdropClose !== false) ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
-    if (opts.escClose) { onKey = function (e) { if (e.key === "Escape") { e.preventDefault(); close(); } }; document.addEventListener("keydown", onKey, true); }
+    // Esc closes only the topmost modal (an overlay's help dialog stacks on the Overlays
+    // popup), and only that: the document's Esc = Back handler must not also pop the
+    // popup underneath.
+    if (opts.escClose) { onKey = function (e) { if (e.key !== "Escape") return; var all = document.querySelectorAll(".ui-modal-overlay"); if (all[all.length - 1] !== ov) return; e.preventDefault(); e.stopPropagation(); close(); }; document.addEventListener("keydown", onKey, true); }
     // Every popup carries a × (the app-wide rule). Callers fill `box` synchronously right
     // after this returns, so it goes in on the next tick — after their own markup, and
     // skipped where they already built a close control.
@@ -804,14 +826,6 @@
   }
 
   // ---- Utilities -----------------------------------------------------------
-  function perceptualNorm(raw, maxVal) {
-    var out = new Float32Array(raw.length);
-    if (maxVal > 0) {
-      for (var i = 0; i < raw.length; i++)
-        out[i] = Math.pow(raw[i] / maxVal, DISPLAY_GAMMA);
-    }
-    return out;
-  }
 
   function wrapLon(v) { return ((((v + 180) % 360) + 360) % 360) - 180; }
 
@@ -1037,11 +1051,11 @@
     var now = Date.now();
     Object.keys(overlayBusySet).forEach(function (n) { if (overlayBusySet[n] < now) delete overlayBusySet[n]; });
     var names = Object.keys(overlayBusySet), any = names.length > 0;
-    var tog = document.querySelector(".leaflet-control-layers-toggle");
-    if (tog) tog.classList.toggle("ovl-loading", any);
-    document.querySelectorAll(".leaflet-control-layers-overlays label").forEach(function (lb) {
-      var txt = (lb.textContent || "").trim();
-      lb.classList.toggle("ovl-row-loading", names.some(function (n) { return txt.indexOf(n) === 0; }));
+    // The bird button and the quick panel's Overlays row pulse; so does the loading
+    // overlay's row in the Overlays popup while it is open.
+    document.querySelectorAll("#settings-toggle, .gq-overlays").forEach(function (b) { b.classList.toggle("ovl-loading", any); });
+    document.querySelectorAll(".ovl-row").forEach(function (lb) {
+      lb.classList.toggle("ovl-row-loading", names.indexOf(lb.getAttribute("data-name")) >= 0);
     });
     clearTimeout(overlayBusyTimer);
     if (any) overlayBusyTimer = setTimeout(overlayBusyRender, 3000);   // sweep expired stragglers
@@ -1228,6 +1242,19 @@
   var H3_POOL_URL = "https://mapcache.local/range-v1";      // synthetic key for the range blob
   var h3CacheMB = 2;          // range-cache slice of the shared pool, MB (0 = off)
   var h3SaveTimer = null;
+  // Storing a cell's value also bumps that cache's version; the paints ask h3CacheMax() for the
+  // peak at their resolution, which is recomputed only when the version moved (P3: the old
+  // per-paint rescan of every cached cell was the cost of each pan/zoom).
+  var _h3Ver = new WeakMap(), _h3Max = new WeakMap();
+  function h3CacheStore(cache, cell, v) { cache[cell] = v; _h3Ver.set(cache, (_h3Ver.get(cache) || 0) + 1); }
+  function h3CacheMax(cache, res) {
+    var ver = _h3Ver.get(cache) || 0, m = _h3Max.get(cache);
+    if (m && m.ver === ver && m.res === res) return m.max;
+    var max = 0, keys = Object.keys(cache);
+    for (var i = 0; i < keys.length; i++) { if (h3ResOf(keys[i]) !== res) continue; var v = cache[keys[i]]; if (v != null && v > max) max = v; }
+    _h3Max.set(cache, { ver: ver, res: res, max: max });
+    return max;
+  }
   function h3RangeCacheFor(tag) {
     var m = h3RangeCache.get(tag);
     if (!m) { m = {}; h3RangeCache.set(tag, m); if (h3RangeCache.size > 600) h3RangeCache.delete(h3RangeCache.keys().next().value); }
@@ -1259,12 +1286,16 @@
     if (typeof caches === "undefined") return;
     if (h3CacheMB <= 0) { caches.open(MAP_POOL_CACHE).then(function (c) { return c.delete(H3_POOL_URL); }).catch(function () {}); return; }
     var capChars = h3CacheMB * 1e6;   // ~1 char ≈ 1 byte for this ascii/numeric data
-    var obj = h3CacheToJson(), str = JSON.stringify(obj);
-    // Evict oldest tags (Map order) until within the range slice.
-    while (str.length > capChars && Object.keys(obj).length > 1) {
-      delete obj[Object.keys(obj)[0]];
-      str = JSON.stringify(obj);
+    // Each tag is serialised ONCE; the newest tags (Map order = insertion order) are kept until the
+    // cap is reached, then joined — the old loop re-stringified the whole blob per evicted tag (P8).
+    var obj = h3CacheToJson(), tags = Object.keys(obj), parts = {}, keep = [], total = 2;
+    for (var ti = tags.length - 1; ti >= 0; ti--) {
+      var pt = JSON.stringify(obj[tags[ti]]), len = pt.length + tags[ti].length + 4;
+      if (total + len > capChars && keep.length) break;
+      parts[tags[ti]] = pt; total += len; keep.push(tags[ti]);
     }
+    keep.reverse();
+    var str = "{" + keep.map(function (tg) { return JSON.stringify(tg) + ":" + parts[tg]; }).join(",") + "}";
     caches.open(MAP_POOL_CACHE).then(function (c) {   // put → re-stamps to most-recent in the shared LRU pool
       return c.put(H3_POOL_URL, new Response(str, { headers: { "Content-Type": "application/json" } }));
     }).catch(function () {});
@@ -1756,14 +1787,15 @@
   // species actually OBSERVED here (agg), because the list also holds hundreds of
   // predicted-but-unseen species and the low-probability tail of those would
   // otherwise all light up.
-  function spRareSet(agg, tbody) {
+  // Every listed species the model finds unlikely at this spot (probability ≤ the rare threshold)
+  // gets the ◉ centre dot — observed or not (owner, 2026-10-22: "the rarity dots should also show in
+  // species list, and other lists"), so a model-only (Predicted) list marks its rare end too.
+  function spRareSet(tbody) {
     var set = Object.create(null);
-    if (!agg || !tbody) return set;
+    if (!tbody) return set;
     Array.prototype.forEach.call(tbody.querySelectorAll("tr"), function (tr) {
       var sl = tr.querySelector(".sp-link[data-key]"), k = sl && sl.getAttribute("data-key");
       if (!k) return;
-      var e = agg[k];
-      if (!e || !(e.count > 0)) return;                       // not observed here → not "rare here"
       if (isRareProb(parseFloat(tr.getAttribute("data-prob")))) set[k] = 1;
     });
     return set;
@@ -1778,8 +1810,9 @@
   // Should a row be kept under the active filters? Encapsulates the rule so
   // renderSpeciesList and renderSpeciesInCountry stay consistent. Filters are
   // independent and AND-combined; the "needs" ones mirror the map's year/life
-  // edges. ◉ rare is absent here on purpose — it needs the fetched observations,
-  // so it is applied as a row-hiding pass in applyAgeFilter instead.
+  // edges. ◉ rare is absent here on purpose — it comes from the list's rare set (model
+  // probability ≤ the threshold, see spRareSet) and is applied as a row-hiding pass in
+  // applyAgeFilter instead.
   function passSpeciesFilter(key) {
     if (spFilters.star && !isInteresting(key)) return false;
     if (spFilters.year && inYearList(key)) return false;
@@ -2823,7 +2856,7 @@
     // it puts at PRED_MIN_PROB or better and, where even that is empty (far offshore, deep
     // desert), its best MODEL_TOP_N anyway — the answer must never be a blank page. An
     // explicit probability floor set by the user still wins.
-    var MODEL_FLOOR = PRED_MIN_PROB, MODEL_MIN_ROWS = 10, MODEL_TOP_N = 25, autoCut = 0;
+    var MODEL_FLOOR = (currentSpView && currentSpView._predicted) ? 0.01 : PRED_MIN_PROB, MODEL_MIN_ROWS = 10, MODEL_TOP_N = 25, autoCut = 0;
     var floor = (+document.getElementById("prob-min").value || 0) / 100;   // once per pass (was a DOM read per row)
     var missingOn = spMissingOn();
     var tRows = 0, tDom = 0, tMark = perfOn ? performance.now() : 0;   // ?perf=1: row work vs DOM work
@@ -3221,7 +3254,10 @@
       fp.style.display = "none";
     }
     var sp = document.getElementById("species-panel");
-    if (sp && sp.classList.contains("as-page")) { sp.classList.remove("as-page"); sp.style.display = "none"; }
+    if (sp && sp.classList.contains("as-page")) {
+      sp.classList.remove("as-page"); sp.style.display = "none";
+      try { fitMapHeight(); } catch (e) {}   // refits were held back while the page covered the map (see fitMapHeight)
+    }
     var bc = document.getElementById("barchart-panel");
     if (bc && bc.classList.contains("as-page")) { bc.classList.remove("as-page"); bc.style.display = "none"; }
     var rp = document.getElementById("rarity-page");
@@ -3857,7 +3893,7 @@
   // higher floor is set in the Filters pane. The same 0.5 % that keeps near-absent species out
   // of the Migration views (owner, 2026-10-21: "decrease … to 0.5% in predicted lists and migration panes").
   var PRED_MIN_PROB = window.GeoAnalysis.MIN_PEAK;
-  function summaryProbFloor(pmin) { return Math.max(+pmin || 0, SUMMARY_MIN_PROB); }
+  function summaryProbFloor(pmin) { return Math.max(+pmin || 0, (currentSpView && currentSpView._predicted) ? 0.01 : SUMMARY_MIN_PROB); }   // the Predicted list counts down to 1 %
   function summaryPct(pmin) { return (summaryProbFloor(pmin) * 100).toFixed(0); }
   function summaryCount(rows, pmin) {
     var f = summaryProbFloor(pmin);
@@ -4213,6 +4249,15 @@
   // and keys. This store only ever holds the latest import and survives those wipes.
   var seededSightings = {};
   var histSightingsCache = {};  // "lat,lon:rkm:range" -> Promise<aggregated map> for Historic observations
+  // A change to WHAT a fetch would return (sources on/off, keys, datasets, borders) forgets every
+  // cached answer — recent, historic AND the broadest-historic store below, which otherwise serves a
+  // narrower range from the old configuration (#5, re-review 2026-10-22). Radius, group ticks, the
+  // per-source timeout and the BirdWeather thresholds only shape the RECENT fetch (the historic keys
+  // carry radius + group themselves), so those paths keep the expensive historic results.
+  // Session caches that grew without bound (P9): drop the oldest entries past a cap.
+  function capObj(o, max) { var ks = Object.keys(o); for (var i = 0; i < ks.length - max; i++) delete o[ks[i]]; }
+  function invalidateSightings() { allSightingsCache = {}; histSightingsCache = {}; histAggCache = {}; }
+  function invalidateRecentSightings() { allSightingsCache = {}; }
   // Broadest COMPLETED historic result per location/radius/group, kept across fetches
   // (NOT wiped like histSightingsCache) so a narrower date range or month subset that
   // it covers can be served by filtering it — no re-fetch. { from, to, months[], out }.
@@ -4386,26 +4431,26 @@
     var urlInp = el.querySelector(".src-url"); if (urlInp) urlInp.addEventListener("change", function () { patchSource(id, "url", this.value.trim()); });
     var daysInp = el.querySelector(".src-days"); if (daysInp) daysInp.addEventListener("change", function () { var v = Math.max(1, Math.min(info.isGbif ? 92 : 365, +this.value || 1)); if (info.isGbif) setGbifDays(v); else patchSource(id, "days", v); });
     var dsBtn = el.querySelector("#gbif-ds-open"); if (dsBtn) dsBtn.addEventListener("click", openGbifDatasets);
-    var toInp = el.querySelector(".src-timeout-inp"); if (toInp) toInp.addEventListener("change", function () { var v = Math.max(0, Math.min(600, Math.round(+this.value) || 0)); this.value = String(v); if (info.isGbif) setGbifTimeout(v); else patchSource(id, "timeout", v); allSightingsCache = {}; });
+    var toInp = el.querySelector(".src-timeout-inp"); if (toInp) toInp.addEventListener("change", function () { var v = Math.max(0, Math.min(600, Math.round(+this.value) || 0)); this.value = String(v); if (info.isGbif) setGbifTimeout(v); else patchSource(id, "timeout", v); invalidateRecentSightings(); });
     var keyInp = el.querySelector(".src-key");
     if (keyInp) {
-      keyInp.addEventListener("input", function () { setDirectKey(id, this.value); allSightingsCache = {}; window.GeoState.touch(); });
+      keyInp.addEventListener("input", function () { setDirectKey(id, this.value); invalidateSightings(); window.GeoState.touch(); });
       keyInp.addEventListener("change", function () { runSrcKeyTest(id); });
       if (directKey(id)) runSrcKeyTest(id);
     }
     var bwMd = el.querySelector(".src-bw-md"), bwMdV = el.querySelector(".src-bw-md-val");
     if (bwMd) {
       bwMd.addEventListener("input", function () { if (bwMdV) bwMdV.textContent = this.value; });
-      bwMd.addEventListener("change", function () { window.GeoState.save({ bwMinDet: Math.max(1, Math.min(50, +this.value || 2)) }); allSightingsCache = {}; });
+      bwMd.addEventListener("change", function () { window.GeoState.save({ bwMinDet: Math.max(1, Math.min(50, +this.value || 2)) }); invalidateRecentSightings(); });
     }
     var bwC = el.querySelector(".src-bw-conf"), bwCV = el.querySelector(".src-bw-conf-val");
     if (bwC) {
       bwC.addEventListener("input", function () { if (bwCV) bwCV.textContent = this.value + "%"; });
-      bwC.addEventListener("change", function () { window.GeoState.save({ bwMinConf: Math.max(0, Math.min(95, +this.value || 0)) / 100 }); allSightingsCache = {}; });
+      bwC.addEventListener("change", function () { window.GeoState.save({ bwMinConf: Math.max(0, Math.min(95, +this.value || 0)) / 100 }); invalidateRecentSightings(); });
     }
     // (The "Remove source" action was dropped 2026-10-22, owner's request — sources are switched off, never removed; srcRemoved from earlier removals still applies until Reset.)
   }
-  function resetSources() { window.GeoState.save({ directSources: null, srcRemoved: null }); allSightingsCache = {}; srcDetailId = null; renderSourcesTable(); }
+  function resetSources() { window.GeoState.save({ directSources: null, srcRemoved: null }); invalidateSightings(); srcDetailId = null; renderSourcesTable(); }
   // Display name for a species key (current UI language), for the lists view.
   function listKeyName(key) {
     var lbl = labelsByKey[key];
@@ -4802,7 +4847,7 @@
       var rem = window.GeoState.get("gbifRemoved", []) || [];
       if (rem.indexOf(key) < 0) { rem.push(key); window.GeoState.save({ gbifRemoved: rem }); }
     }
-    allSightingsCache = {};
+    invalidateSightings();
     renderGbifTable();
   }
   // Accept a bare dataset key or a gbif.org/dataset/<key> URL; pull the name from
@@ -4820,7 +4865,7 @@
     var rem = window.GeoState.get("gbifRemoved", []) || []; var ri = rem.indexOf(key);
     if (ri >= 0) { rem.splice(ri, 1); window.GeoState.save({ gbifRemoved: rem }); }
     list.push({ key: key, name: homepage || "", url: homepage, country: country });
-    window.GeoState.save({ gbifDatasets: list }); allSightingsCache = {};
+    window.GeoState.save({ gbifDatasets: list }); invalidateSightings();
     renderGbifTable();
     // Fill in the title / homepage from GBIF (don't overwrite a URL the user gave).
     fetch("https://api.gbif.org/v1/dataset/" + key).then(function (r) { return r.json(); }).then(function (dj) {
@@ -5084,7 +5129,7 @@
   // still fetches. (Also helps offline: a cached location opens with no network.)
   // How long a downloaded location stays reusable before a reopen refetches it.
   // User-set in Settings (minutes); default 30 min. 0 = always reuse (never expire).
-  function sightTtlMin() { var v = +window.GeoState.get("sightTtlMin", 30); return isFinite(v) && v >= 0 ? v : 30; }
+  function sightTtlMin() { var v = +window.GeoState.get("sightTtlMin", 0); return isFinite(v) && v >= 0 ? v : 0; }   // default 0 = reuse until cleared (owner, 2026-10-22)
   function sightTtlMs() { return sightTtlMin() * 60000; }
   // "Fetch on open": on a plain app open, auto-fetch the stored locations ticked
   // "load on open" and plot their observations — reusing the same persisted,
@@ -5101,10 +5146,6 @@
   // Bump when the aggregation/matching logic changes so results cached by the
   // previous code are ignored and the next fetch re-aggregates.
   var SIGHT_CACHE_VER = 7;   // bumped: Sweden Artportalen "Corvus corone" (kråka) → Corvus cornix
-  var persistedSightings = {};           // ck -> { ts, sig, ver, out }, loaded once at boot
-  function sightCK(lat, lon, rkm, group, days) { return lat.toFixed(2) + "," + lon.toFixed(2) + ":" + rkm + ":" + group + (days > 0 ? ":d" + days : ""); }
-  // Signature of the settings that change what a fetch returns; a mismatch means a
-  // cached copy is stale for the current config and must not be reused.
   function sightConfigSig() {
     try {
       var srcs = obsSources().filter(function (s) { return s.enabled(); }).map(function (s) { return s.name; }).sort().join(",");
@@ -5121,24 +5162,75 @@
   // optimisation while the user is stuck. Re-introduce it with a test that seeds a real
   // persisted cache, not a synthetic one.
   function sigServes(cachedSig, nowSig) { return cachedSig === nowSig; }
+  function sightCK(lat, lon, rkm, group, days) { return lat.toFixed(2) + "," + lon.toFixed(2) + ":" + rkm + ":" + group + (days > 0 ? ":d" + days : ""); }
+  // Signature of the settings that change what a fetch returns; a mismatch means a
+  // cached copy is stale for the current config and must not be reused.
+  function sightConfigSig() {
+    try {
+      var srcs = obsSources().filter(function (s) { return s.enabled(); }).map(function (s) { return s.name; }).sort().join(",");
+      return srcs + "|bw" + window.GeoState.get("bwMinDet", 2) + "," + window.GeoState.get("bwMinConf", 0) + "|ds" + ((gbifDatasets || []).length) +
+        "|g" + fetchGroupList().join("+");   // a narrower tick set holds less: don't serve it as a wider one
+    } catch (e) { return ""; }
+  }
+  // Every fetched location is KEPT ON THE DEVICE until the user clears it (Settings → Storage →
+  // Fetched observations), one IndexedDB record per location ("sight:<ck>") plus a small index
+  // ("sightIdx": ts / config signature / size per location) that is read at boot; a record is
+  // read only when its location is revisited, so memory holds just what this session used.
+  // (Owner, 2026-10-22: "Fetches should be kept on device until user clears them, upon which
+  // the disk space should be released." — the old single record kept the 6 newest only.)
+  var persistedSightings = {};           // ck -> { ts, sig, ver, out } — loaded records only
+  var sightIdx = {};                     // ck -> { ts, sig, ver, bytes } — every stored location
+  var SIGHT_IDX_KEY = "sightIdx", SIGHT_REC = "sight:";
+  function sightBytes(out) { try { return JSON.stringify(out).length; } catch (e) { return 0; } }
   function loadPersistedSightings() {
     if (!window.AppIDB) return Promise.resolve();
-    return AppIDB.get("sightingsCache").then(function (m) { if (m && typeof m === "object") persistedSightings = m; }).catch(function () {});
+    return AppIDB.get(SIGHT_IDX_KEY).then(function (ix) { if (ix && typeof ix === "object") sightIdx = ix; })
+      .then(function () { return AppIDB.get("sightingsCache"); })   // one-time migration of the legacy single record
+      .then(function (m) {
+        if (!m || typeof m !== "object") return;
+        var writes = [];
+        Object.keys(m).forEach(function (ck) {
+          var e = m[ck]; if (!e || !e.out) return;
+          persistedSightings[ck] = e; sightIdx[ck] = { ts: e.ts || 0, sig: e.sig || "", ver: e.ver, bytes: sightBytes(e.out) };
+          writes.push(AppIDB.put(SIGHT_REC + ck, e));
+        });
+        return Promise.all(writes).then(function () { return AppIDB.put(SIGHT_IDX_KEY, sightIdx); }).then(function () { return AppIDB.del("sightingsCache"); });
+      }).catch(function () {});
+  }
+  function storeSightEntry(ck, e) {
+    persistedSightings[ck] = e;
+    sightIdx[ck] = { ts: e.ts || 0, sig: e.sig || "", ver: e.ver, bytes: sightBytes(e.out) };
+    if (!window.AppIDB || !AppIDB.available()) return Promise.resolve();
+    return AppIDB.put(SIGHT_REC + ck, e).then(function () { return AppIDB.put(SIGHT_IDX_KEY, sightIdx); })
+      .catch(function () { try { setStatus(t("err.storageFull")); } catch (e2) {} });
   }
   function persistSightings(ck, out, sig) {
-    if (!window.AppIDB) return;
-    try {
-      // `sig` is the signature captured when the fetch STARTED (sources, keys, and which
-      // species types it asked for). Filing it under a freshly-read one could label a
-      // narrow result as a wide one — see the poster launch's birds-only fetch.
-      persistedSightings[ck] = { ts: Date.now(), sig: sig || sightConfigSig(), ver: SIGHT_CACHE_VER, out: out };
-      var keys = Object.keys(persistedSightings);
-      if (keys.length > 6) {   // keep the 6 most-recently fetched locations
-        keys.sort(function (a, b) { return (persistedSightings[b].ts || 0) - (persistedSightings[a].ts || 0); });
-        keys.slice(6).forEach(function (k) { delete persistedSightings[k]; });
-      }
-      AppIDB.put("sightingsCache", persistedSightings).catch(function () {});
-    } catch (e) {}
+    // `sig` is the signature captured when the fetch STARTED (sources, keys, and which
+    // species types it asked for). Filing it under a freshly-read one could label a
+    // narrow result as a wide one — see the poster launch's birds-only fetch.
+    storeSightEntry(ck, { ts: Date.now(), sig: sig || sightConfigSig(), ver: SIGHT_CACHE_VER, out: out });
+    try { checkStoragePressure(); } catch (e) {}
+  }
+  // The index says whether a stored download may answer this request; the record itself is read then.
+  function sightReusable(ck, cfgSig) {
+    var ix = sightIdx[ck], ttl = sightTtlMs();
+    return !!(ix && ix.ver === SIGHT_CACHE_VER && sigServes(ix.sig, cfgSig) && (ttl === 0 || (Date.now() - (ix.ts || 0)) < ttl));
+  }
+  function loadSight(ck) {
+    var e = persistedSightings[ck]; if (e && e.out) return Promise.resolve(e.out);
+    if (!window.AppIDB || !AppIDB.available()) return Promise.resolve(null);
+    return AppIDB.get(SIGHT_REC + ck).then(function (rec) {
+      if (rec && rec.out) { persistedSightings[rec.ck ? rec.ck : ck] = rec; return rec.out; }
+      delete sightIdx[ck]; return null;   // the record is gone (storage eviction): forget it so the next ask fetches
+    }).catch(function () { return null; });
+  }
+  function loadAllSights() { return Promise.all(Object.keys(sightIdx).map(loadSight)).then(function () { return persistedSightings; }); }
+  function clearPersistedSightings() {   // Settings → Storage → Fetched observations: every record goes, the space with it
+    var ks = Object.keys(sightIdx); sightIdx = {}; persistedSightings = {};
+    if (!window.AppIDB || !AppIDB.available()) return Promise.resolve();
+    return Promise.all(ks.map(function (ck) { return AppIDB.del(SIGHT_REC + ck).catch(function () {}); }))
+      .then(function () { return AppIDB.del(SIGHT_IDX_KEY).catch(function () {}); })
+      .then(function () { return AppIDB.del("sightingsCache").catch(function () {}); });
   }
   // Derive a single-group result from a cached "All" aggregate by keeping only the
   // species/extras of that group's class (animals) or kingdom (plants/fungi) — the
@@ -5212,10 +5304,13 @@
     if (allSightingsCache[ck]) { disarm(); return allSightingsCache[ck]; }
     // Reuse a previously-downloaded result for this exact location (same radius,
     // group + source config) that is still fresh — no network, no refetch on reopen.
-    var pf = persistedSightings[ck], ttl = sightTtlMs();
-    if (pf && pf.out && pf.ver === SIGHT_CACHE_VER && sigServes(pf.sig, cfgSig) && (ttl === 0 || (Date.now() - (pf.ts || 0)) < ttl)) {
-      var cachedPr = Promise.resolve(pf.out);
-      allSightingsCache[ck] = cachedPr;
+    if (sightReusable(ck, cfgSig)) {
+      var cachedPr = loadSight(ck).then(function (out) {
+        if (out) return out;
+        delete allSightingsCache[ck];   // the stored record vanished → a real fetch (sightReusable is false now)
+        return fetchAllSightingsAt(lat, lon, onPartial, radiusOverride, daysOverride);
+      });
+      allSightingsCache[ck] = cachedPr; capObj(allSightingsCache, 60);
       disarm();
       return cachedPr;
     }
@@ -5223,8 +5318,9 @@
     // spot / radius / day-window is cached, derive this group by filtering All's
     // aggregate — no network. (Skipped for "all" itself and when no All cache exists.)
     if (fetchGroup !== "all") {
-      var pa = persistedSightings[sightCK(lat, lon, rkm, "all", days)];
-      if (pa && pa.out && pa.ver === SIGHT_CACHE_VER && sigServes(pa.sig, cfgSig) && (ttl === 0 || (Date.now() - (pa.ts || 0)) < ttl)) {
+      var ckAll = sightCK(lat, lon, rkm, "all", days);
+      var pa = sightReusable(ckAll, cfgSig) ? persistedSightings[ckAll] : null;   // only an already-loaded All record is derived from synchronously
+      if (pa && pa.out) {
         var derived = filterAggByGroup(pa.out, fetchGroup);
         // An "All" fetch shares each source's paging budget across every taxon, so at a
         // dense spot it can truncate before it has any of a smaller group — and deriving
@@ -5234,7 +5330,7 @@
         // records. So: empty is not an answer — fall through and fetch it properly.
         if (derived.dedupTotal > 0) {
           var derivedPr = Promise.resolve(derived);
-          allSightingsCache[ck] = derivedPr;
+          allSightingsCache[ck] = derivedPr; capObj(allSightingsCache, 60);
           disarm();
           return derivedPr;
         }
@@ -5254,8 +5350,15 @@
       // Records + per-source counts accumulate as sources resolve; emitPartial()
       // re-aggregates the running set and hands it to onPartial for live rendering.
       var records = [], bySrc = {};
+      // Sources land close together and each partial render re-aggregates EVERY record so far
+      // (P11): coalesce to one render per 250 ms — the trailing one always runs, so the last
+      // arrival is never missed; the final aggregate below cancels anything still pending.
+      var partialTimer = null, partialAt = 0;
       function emitPartial() {
-        if (typeof onPartial !== "function") return;
+        if (typeof onPartial !== "function" || partialTimer) return;
+        partialTimer = setTimeout(function () { partialTimer = null; partialAt = Date.now(); emitPartialNow(); }, Math.max(0, 250 - (Date.now() - partialAt)));
+      }
+      function emitPartialNow() {
         try {
           var p = AppAggregate.aggregateRecords(records, fetchGroup);
           p.bySrc = {}; for (var k in bySrc) p.bySrc[k] = bySrc[k];
@@ -5294,7 +5397,9 @@
           release();
           var rr = recs || [];
           if (killed) {
-            timedOut.push(s.name); var fi = failed.indexOf(s.name); if (fi >= 0) failed.splice(fi, 1);   // a timeout isn't a hard failure
+            timedOut.push(s.name);   // a timeout isn't a hard failure — drop it from `failed` (entries are {name, error} objects; an indexOf on the name never matched, B1)
+            var fi = -1; for (var fj = 0; fj < failed.length; fj++) { var ff = failed[fj]; if ((ff && ff.name ? ff.name : ff) === s.name) { fi = fj; break; } }
+            if (fi >= 0) failed.splice(fi, 1);
             var prog = obsSub[s.name] || {};
             timedOutInfo[s.name] = { kept: rr.length, total: (prog.total > 0 ? prog.total : null) };   // what it had paged when cut off
           }
@@ -5307,13 +5412,14 @@
         });
       });
       return Promise.all(jobs).then(function () {
+        if (partialTimer) { clearTimeout(partialTimer); partialTimer = null; }   // the final result supersedes any pending partial render
         var out = AppAggregate.aggregateRecords(records, fetchGroup); out.failed = failed; out.bySrc = bySrc; out.timedOut = timedOut; out.timedOutInfo = timedOutInfo; out.truncInfo = truncInfo; out.group = fetchGroup; out.origin = fetchOrigin;
         // out.dedupTotal (unique observations kept after de-dup + the bird filter)
         // is computed by aggregateRecords — surfaced in the per-source counts.
         return out;
       });
     });
-    allSightingsCache[ck] = pr;   // discovery now runs inside the cc resolution above
+    allSightingsCache[ck] = pr; capObj(allSightingsCache, 60);   // discovery now runs inside the cc resolution above
     // Cache-eviction policy: a transient TOTAL failure must not become this
     // location's permanent answer, but a PARTIAL success has to stay cached —
     // otherwise reusing the same location ("pin to map", week change, etc.) would
@@ -5452,7 +5558,7 @@
     if (covering && histCovers(covering, from, to, reqMonths)) {
       var filtered = filterHistAgg(covering.out, from, to, reqMonths);
       var prC = Promise.resolve(filtered);
-      histSightingsCache[ck] = prC;
+      histSightingsCache[ck] = prC; capObj(histSightingsCache, 30);
       try { plotHistoricAgg(filtered, speciesGroup); saveDetections(); } catch (e) {}
       try { setStatus(t("hist.reused", { n: filtered.dedupTotal })); } catch (e) {}
       return prC;
@@ -5524,7 +5630,7 @@
         return out;
       });
     });
-    histSightingsCache[ck] = pr;
+    histSightingsCache[ck] = pr; capObj(histSightingsCache, 30);
     // As with fetchAllSightingsAt: keep a partial/clean result cached (so "pin to
     // map" reuses it), evict only a no-data failure or a hard rejection/abort so a
     // fresh request retries.
@@ -5836,7 +5942,7 @@
     });
     // We now know WHICH species were seen here, so the dot can mark the ones the model
     // considers unlikely at this spot (rare-here) — applyAgeFilter repaints the dots.
-    tbody._rareSet = spRareSet(agg, tbody);
+    tbody._rareSet = spRareSet(tbody);
     prependExtraSightings(tbody, extras);
     // Re-apply the active age/rare filters and sort as data arrives.
     applyAgeFilter();
@@ -6058,7 +6164,7 @@
     // ONLY when the "Fetched points" box is ticked (see SYNC_CAT_KEYS.fetched).
     try {
       if (syncCatOn("fetched") && typeof persistedSightings !== "undefined" && persistedSightings) {
-        state.sightingsCache = persistedSightings;
+        state.sightingsCache = persistedSightings;   // the sync / export loads every stored record first (loadAllSights)
       }
     } catch (e) {}
     return {
@@ -6145,7 +6251,7 @@
     }
   }
   function exportAppData() {
-    mpState.whenAllLoaded().then(function () {   // lists load lazily: a backup must hold them whole
+    mpState.whenAllLoaded().then(function () { return syncCatOn("fetched") ? loadAllSights() : null; }).then(function () {   // lists (and fetched records) load lazily: a backup must hold them whole
       if (mpState.anyLazy()) return;
       downloadCsv("BirdsWhere_backup_" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify(buildPayload(), null, 2), "application/json;charset=utf-8;");
     });
@@ -6315,7 +6421,7 @@
       o.mapDetections = capDetections(obj.mapDetections, st.cap);
       if (st.caches) dropRebuildable(o);
       if (st.rar != null && o.rarityList && o.rarityList.length > st.rar) o.rarityList = o.rarityList.slice(0, st.rar);
-      try { localStorage.setItem(window.GeoState.storageKey, JSON.stringify(o)); window.GeoState.invalidate(); return detRowCount(o.mapDetections); }
+      try { localStorage.setItem(window.GeoState.storageKey, JSON.stringify(o)); window.GeoState.invalidate(); try { AppSources.invalidate(); } catch (e3) {} return detRowCount(o.mapDetections); }
       catch (e) { /* quota — free more and retry */ }
     }
     throw new Error("storage full; biggest: " + biggestStateKeys(obj, 3));
@@ -6580,8 +6686,7 @@
     // ticked; write it straight back to IndexedDB and into the live map.
     try {
       if (incoming.sightingsCache && window.AppIDB && AppIDB.available()) {
-        persistedSightings = incoming.sightingsCache;
-        AppIDB.put("sightingsCache", persistedSightings).catch(function () {});
+        Object.keys(incoming.sightingsCache).forEach(function (ck) { var e = incoming.sightingsCache[ck]; if (e && e.out) storeSightEntry(ck, e); });
       }
     } catch (e) {}
     // Reflect the merged pins (dots/stars) on the map + legend immediately.
@@ -6842,6 +6947,7 @@
   // copies through the exact same code path as the file Export/Import.
   window.AppData = {
     buildPayload: buildPayload,
+    loadFetchedForSync: function () { return syncCatOn("fetched") ? loadAllSights() : Promise.resolve(); },   // the stored location records are read on demand; a sync with "Fetched points" ticked needs them all
     flushWrites: flushWrites,
     driveExtraFiles: driveExtraFiles,
     markBackedUp: markBackedUp,
@@ -7362,7 +7468,7 @@
     var rk = parseFloat(p.radius);
     if (isFinite(rk) && rk > 0) {   // persist so the fetch + the settings slider agree
       rk = Math.max(0.1, Math.min(150, rk));
-      window.GeoState.save({ recentRadiusKm: rk }); allSightingsCache = {};
+      window.GeoState.save({ recentRadiusKm: rk }); invalidateRecentSightings();
       var rrEl = document.getElementById("recent-radius"); if (rrEl) rrEl.value = String(radiusStepIndex(rk));
       var rrVal = document.getElementById("recent-radius-val"); if (rrVal) rrVal.textContent = radiusLabel(rk);
     }
@@ -7428,10 +7534,10 @@
     // Hand the aggregation module live access to the model data + family index
     // (it owns the record→species matching; these stay owned by app.js).
     // A source/dataset config change invalidates the cached sightings fetches.
-    AppSources.init({ onConfigChange: function () { allSightingsCache = {}; } });
+    AppSources.init({ onConfigChange: function () { invalidateSightings(); } });
     // Start the country-border load; when it arrives, drop the sightings cache
     // so country-gating re-runs with the (now accurate) polygons.
-    AppGeo.init({ onBordersLoaded: function () { allSightingsCache = {}; } });
+    AppGeo.init({ onBordersLoaded: function () { invalidateSightings(); } });
     AppAggregate.init({
       getLabels: function () { return labels; },
       familyOfKey: function (key) { return famOf(key); },   // disambiguates a shared epithet across genera
@@ -9295,7 +9401,7 @@
       var idx = Math.max(0, Math.min(RADIUS_STEPS.length - 1, radiusStepIndex(recentRadiusKm()) + (e.deltaY < 0 ? 1 : -1)));
       var km = RADIUS_STEPS[idx];
       if (km === recentRadiusKm()) return;
-      window.GeoState.save({ recentRadiusKm: km }); allSightingsCache = {};
+      window.GeoState.save({ recentRadiusKm: km }); invalidateRecentSightings();
       var rrEl = document.getElementById("recent-radius"); if (rrEl) rrEl.value = String(idx);
       var rrVal = document.getElementById("recent-radius-val"); if (rrVal) rrVal.textContent = radiusLabel(km);
       try { updateFetchArea(map.mouseEventToLatLng(e)); } catch (er) {}                                // resize the live movable preview
@@ -9782,8 +9888,7 @@
   // any future try-it-out links/features.
   function experimentalOn() { return !!window.GeoState.get("experimental", false); }
   // Every menu entry that only appears when Experimental features are on gets a
-  // trailing "*" so it reads as an experimental extra. applyOverlayTips() strips it
-  // back off before matching overlay rows by label.
+  // trailing "*" so it reads as an experimental extra.
   var EXP_STAR = "*";
   function expMark(text) { return text + EXP_STAR; }
   // Show/hide the experimental-gated UI that lives in static HTML (re-run on the
@@ -10153,6 +10258,7 @@
           var code = ln.slice(0, ci).trim(), fam = ln.slice(ci + 1).trim();
           if (code && fam) bundledFam[code] = fam;
         });
+        famIndexGen++;   // the bundled families change every colour's input
         if (Object.keys(detPlot).length) { try { recolorDetections(); rebuildDetLayers(); updateDetLegend(); } catch (e) {} }   // provisional hues → family hues
       }).catch(function () {});
     } catch (e) {}
@@ -10161,7 +10267,7 @@
   function recordFamily(key, fam) {
     fam = (fam || "").trim();
     if (!key || !fam || famIndex[key] === fam) return false;
-    famIndex[key] = fam; return true;   // caller persists once per batch
+    famIndex[key] = fam; famIndexGen++; return true;   // caller persists once per batch
   }
   // Stable non-negative hash of a string.
   function strHash(s) { var h = 0; s = String(s); for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
@@ -10185,8 +10291,15 @@
   // same on every device). Run whenever the plotted set changes or a family is
   // newly learned from GBIF — so a dot snaps to its family's hue the moment GBIF
   // supplies the family.
+  // recolorDetections runs on every legend click / point add (P1): an entry already coloured
+  // for the current family index (`_cg`, non-enumerable so it is never persisted) is skipped —
+  // only new / re-created entries and a changed family index (famIndexGen: harvested families,
+  // the bundled families.csv, a sync merge) cost the four hashes per species.
+  var famIndexGen = 0;
   function recolorDetections() {
     Object.keys(detPlot).forEach(function (k) {
+      if (detPlot[k]._cg === famIndexGen) return;
+      Object.defineProperty(detPlot[k], "_cg", { value: famIndexGen, writable: true, enumerable: false, configurable: true });
       var f = famOf(k);
       if (f) {
         var hue = (famHue(f) + (strHash("h:" + k) % 7) - 3 + 360) % 360;          // ±3° jitter within the family band
@@ -14062,7 +14175,7 @@
       if (!detPassesText(r)) return;            // words in notes
       var lk = (+r.lat).toFixed(4) + "," + (+r.lon).toFixed(4);
       var s = obsByLoc[lk] || (obsByLoc[lk] = Object.create(null));
-      var o = (r.observer || "").trim(); if (o) s[o] = 1;
+      detObsRealNames((r.observer || "").trim()).forEach(function (n) { s[n] = 1; });   // split "A | B" into its people (tags dropped) — the ≥2 ring counts observers, not strings (B4)
       drawRows.push({ r: r, lk: lk });          // filtered ONCE — the draw pass reuses this row + key
     });
     var ringed = Object.create(null);
@@ -14198,6 +14311,12 @@
     });
     return folded;
   }
+  // Several single-point adds in quick succession (a search, a shared link's pins) used to
+  // rebuild the legend and persist after EACH one; one short timer folds them into one pass.
+  var detAfterAddTimer = null;
+  function runDetAfterAdd() { detAfterAddTimer = null; try { updateDetLegend(); } catch (e) {} try { saveDetections(); } catch (e) {} }
+  function scheduleDetAfterAdd() { if (!detAfterAddTimer) detAfterAddTimer = setTimeout(runDetAfterAdd, 60); }
+  function flushDetAfterAdd() { if (detAfterAddTimer) { clearTimeout(detAfterAddTimer); runDetAfterAdd(); } }   // before a page hide or a store reload, so the add is never lost
   function plotDetections(key, name, rows, fit, defer, cls) {
     var slim = detSlim(rows);
     if (currentFetchAreaId) slim.forEach(function (r) { r._areas = [currentFetchAreaId]; });
@@ -14226,7 +14345,7 @@
       e.group = renderDetGroup(detName(e), merged, e.color, isInteresting(e.key), detIsRare(key), null, e.key);
       e.group.addTo(map);
     }
-    if (!defer) { updateDetLegend(); saveDetections(); }   // batch when plotting many at once
+    if (!defer) scheduleDetAfterAdd();   // batch when plotting many at once; single adds coalesce within a tick (P2)
     if (fit && e.group) { try { fitBoundsMin(e.group.getBounds(), 0.25); } catch (err) { /* single point / bad bounds */ } }
   }
   // Rebuild every detection layer from the current selection state (called when
@@ -15221,7 +15340,7 @@
     if (_legendSaveT) return;                      // one write per burst, not one per toggle
     _legendSaveT = setTimeout(function () { _legendSaveT = null; saveLegendStateNow(); }, 300);
   }
-  function flushLegendState() { if (_legendSaveT) { clearTimeout(_legendSaveT); _legendSaveT = null; saveLegendStateNow(); } }
+  function flushLegendState() { flushDetAfterAdd(); if (_legendSaveT) { clearTimeout(_legendSaveT); _legendSaveT = null; saveLegendStateNow(); } }
   window.addEventListener("pagehide", flushLegendState);
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") flushLegendState(); });
   function saveLegendStateNow() {
@@ -15325,10 +15444,11 @@
   // import merged them) and re-render the map + legend in place.
   function reloadPlottedFromStore() {
     if (typeof map === "undefined" || !map) return;
+    flushDetAfterAdd();   // a point added within the last 60 ms must reach the store before it is re-read
     Object.keys(detPlot).forEach(function (k) { if (detPlot[k].group) map.removeLayer(detPlot[k].group); });
     detPlot = {};
     // Pick up families merged in from another device so colours match it.
-    try { var ff = (window.GeoState && window.GeoState.get("detFamilies", {})) || {}; Object.keys(ff).forEach(function (k) { if (ff[k]) famIndex[k] = ff[k]; }); } catch (e) {}
+    try { var ff = (window.GeoState && window.GeoState.get("detFamilies", {})) || {}; Object.keys(ff).forEach(function (k) { if (ff[k]) famIndex[k] = ff[k]; }); famIndexGen++; } catch (e) {}
     if (typeof loadInteresting === "function") loadInteresting();
     if (typeof loadLists === "function") loadLists();   // pick up merged year/life lists from a sync
     loadDetections();
@@ -20087,35 +20207,14 @@
       gbifLayer.setUrl(gbifRasterUrl());
     }
   }
-  // The Leaflet overlay control builds its labels ONCE from the overlays object, so a
-  // runtime language change would leave them stale (e.g. still "Fugleplasser" after
-  // switching to English). Keep a name-key per layer so the control can be re-labelled.
-  var overlayLayersCtrl = null, overlayDefsRef = null;
+  // The overlay registry: a name key (+ description key) per layer. The Overlays popup
+  // (bird button → Overlays…) is built from it each time it opens.
+  var overlayDefsRef = null, overlaysPopup = null;
   // Detailed explanation of one overlay (what it shows, why it helps, how to use it,
-  // caveats) — opened from the ⓘ-style "?" badge at the right of its row. The texts are
-  // English so far; other languages get the English one with a small note.
-  // While the help dialog is up, Leaflet's layers control must not fold away (its
-  // mouseleave / map-click collapse fires as the pointer moves onto the dialog): any
-  // collapse is undone at once, and after the dialog closes the panel is re-expanded
-  // so it stays open until the user closes it themselves (tap the map / move off it).
-  var ovlPinObs = null;
-  function pinOverlayCtrl(on) {
-    var c = overlayLayersCtrl; if (!c) return;
-    var el = c.getContainer();
-    if (on) {
-      try { c.expand(); } catch (e) {}
-      if (!ovlPinObs && window.MutationObserver) {
-        ovlPinObs = new MutationObserver(function () { if (!el.classList.contains("leaflet-control-layers-expanded")) { try { c.expand(); } catch (e) {} } });
-        ovlPinObs.observe(el, { attributes: true, attributeFilter: ["class"] });
-      }
-    } else {
-      if (ovlPinObs) { ovlPinObs.disconnect(); ovlPinObs = null; }
-      setTimeout(function () { try { c.expand(); } catch (e) {} }, 0);
-    }
-  }
+  // caveats) — opened from the "?" at the right of its row. The texts are English so
+  // far; other languages get the English one with a small note.
   function showOverlayHelp(def) {
-    pinOverlayCtrl(true);
-    var m = createModal({ escClose: true, backdropClose: true, boxClass: "ovl-help-box", onClose: function () { pinOverlayCtrl(false); } });
+    var m = createModal({ escClose: true, backdropClose: true, boxClass: "ovl-help-box" });
     var html = t(def.key + "Help");
     var enOnly = (lang !== "en") && !window.GeoI18N.hasOwn(lang, def.key + "Help");
     m.box.innerHTML = '<div class="ui-modal-msg ovl-help-title">' + escapeHtml(t(def.key)) + "</div>" +
@@ -20124,60 +20223,99 @@
       '<div class="ui-modal-btns"><button type="button" class="btn ovl-help-ok">' + escapeHtml(t("popup.ok")) + "</button></div>";
     m.box.querySelector(".ovl-help-ok").addEventListener("click", m.close);
   }
-  function applyOverlayTips() {
-    if (!overlayLayersCtrl || !overlayDefsRef) return;
-    try {
-      var tips = {}, defsByName = {};
-      overlayDefsRef.forEach(function (d) { if (d.tip) tips[t(d.key)] = t(d.tip); defsByName[t(d.key)] = d; });
-      var wantBird = t("layer.birdSpots");
-      Array.prototype.forEach.call(overlayLayersCtrl.getContainer().querySelectorAll(".leaflet-control-layers-overlays label"), function (lab) {
-        // The zoom-hint badge (added below) lives in its own span; exclude it when
-        // reading the layer name so tip-matching still works after it's attached.
-        var hint = lab.querySelector(".ovl-zoomhint");
-        var txt = (lab.textContent || "");
-        if (hint) txt = txt.replace(hint.textContent, "");
-        txt = txt.trim();
-        if (txt.slice(-1) === EXP_STAR) txt = txt.slice(0, -1).trim();   // drop the experimental "*" before matching
-        lab.title = tips[txt] || "";
-        // "?" badge at the right edge of every row → the overlay's detailed explanation.
-        var def = defsByName[txt];
-        if (def && !lab.querySelector(".ovl-help")) {
-          var q = document.createElement("span");
-          q.className = "ovl-help"; q.setAttribute("role", "button"); q.tabIndex = 0;
-          q.textContent = "?"; q.title = t("layer.helpBtn"); q.setAttribute("aria-label", t("layer.helpBtn"));
-          q.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); showOverlayHelp(def); });
-          q.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); showOverlayHelp(def); } });
-          lab.appendChild(q);
-        }
-        // Birding spots + eBird hotspots + Best sites have related settings
-        // (visibility zoom, max shown, min species) — a ⚙-badge marks that on the
-        // row; tapping the gear (or long-pressing the row) opens the settings popup.
-        if (txt === wantBird || txt === t("layer.hotspots") || txt === t("layer.bestSites")) {
-          if (!hint) {
-            hint = document.createElement("span");
-            hint.className = "ovl-zoomhint";
-            var span = lab.querySelector("span") || lab;
-            span.appendChild(hint);
-          }
-          var which = (txt === wantBird) ? "bird" : (txt === t("layer.bestSites") ? "best" : "hs");
-          if (which === "bird") birdSpotsHintEl = hint;
-          else if (which === "best") bestSitesHintEl = hint;
-          else hotspotsHintEl = hint;
-          wireZoomLongPress(lab, which);
-          if (!hint._gearWired) {   // a tap on the gear itself opens the settings (not the checkbox)
-            hint._gearWired = true;
-            hint.addEventListener("click", function (e) {
-              e.preventDefault(); e.stopPropagation();
-              showZoomMenu(which, e.clientX, e.clientY);
-            });
-          }
-        }
+  // The overlays on offer: every registered one; the experimental ones only while
+  // Settings → Experimental features is on.
+  function offeredOverlayDefs() {
+    return (overlayDefsRef || []).filter(function (d) { return !isExperimentalOverlay(d.key) || experimentalOn(); });
+  }
+  // Viewpoints / Best sites / eBird hotspots carry their own settings popup (showZoomMenu).
+  function overlayGearKind(d) { return d.key === "layer.birdSpots" ? "bird" : d.key === "layer.bestSites" ? "best" : d.key === "layer.hotspots" ? "hs" : null; }
+  // Hide every ticked overlay in one go (the set is remembered, persisted) or bring that
+  // set back — a quick peek at the bare map. Hold the quick panel's Overlays row, or use
+  // the button at the top of the popup.
+  function toggleAllOverlays() {
+    if (!overlayDefsRef || !map) return;
+    var on = overlayDefsRef.filter(function (d) { return map.hasLayer(d.layer); });
+    if (on.length) {
+      window.GeoState.save({ suspendedOverlays: on.map(function (d) { return d.key; }) });
+      on.forEach(function (d) { try { map.removeLayer(d.layer); } catch (e) {} });
+    } else {
+      var keys = window.GeoState.get("suspendedOverlays", []) || [];
+      overlayDefsRef.forEach(function (d) {
+        if (keys.indexOf(d.key) < 0) return;
+        if (isExperimentalOverlay(d.key) && !experimentalOn()) return;
+        try { map.addLayer(d.layer); } catch (e) {}
       });
-      // The collapsed control's button: localized "hold to hide/show" hint.
-      var tgl = overlayLayersCtrl.getContainer().querySelector(".leaflet-control-layers-toggle");
-      if (tgl) tgl.title = t("layer.holdHint");
-      updateBirdSpotsZoomHint();
-    } catch (e) {}
+    }
+    updateOverlayBtnState();
+  }
+  function overlaysSuspended() {
+    if (!overlayDefsRef || !map) return false;
+    var anyOn = overlayDefsRef.some(function (d) { return map.hasLayer(d.layer); });
+    var susp = window.GeoState.get("suspendedOverlays", []) || [];
+    return !anyOn && susp.length > 0;
+  }
+  // The suspended state shows as an ORANGE cue (--warn, like an active filter) on the bird
+  // button, the quick panel's Overlays row and the popup's hide/show button.
+  function updateOverlayBtnState() {
+    var susp = overlaysSuspended();
+    document.querySelectorAll("#settings-toggle, .gq-overlays, .ovl-all").forEach(function (b) { b.classList.toggle("ovl-suspended", susp); });
+    var ab = document.querySelector(".ovl-all");
+    if (ab) ab.textContent = t(susp ? "ovl.showAll" : "ovl.hideAll");
+  }
+  // The Overlays popup: one row per overlay — checkbox, name, description, a "?" for the
+  // long explanation, and for the three layers with settings a ⚙ (or a long-press on the
+  // row) that opens the same anchored settings popup as before.
+  function openOverlaysPopup() {
+    if (!overlayDefsRef || !map) return;
+    closeDropdowns();
+    var m = createModal({ escClose: true, backdropClose: true, boxClass: "ovl-box", onClose: function () { overlaysPopup = null; navClose("overlays"); } });
+    overlaysPopup = m;
+    navOpen("overlays", m.close);   // Back closes it like the other popups
+    m.box.innerHTML = '<div class="ui-modal-msg ovl-help-title">' + escapeHtml(t("ctrl.overlays")) + "</div>" +
+      '<button type="button" class="btn ovl-all"></button><div class="ovl-rows"></div>';
+    m.box.querySelector(".ovl-all").addEventListener("click", function () { toggleAllOverlays(); });
+    renderOverlayRows();
+  }
+  function renderOverlayRows() {
+    var host = overlaysPopup && overlaysPopup.box.querySelector(".ovl-rows"); if (!host) return;
+    host.innerHTML = "";
+    birdSpotsHintEl = hotspotsHintEl = bestSitesHintEl = null;
+    offeredOverlayDefs().forEach(function (d) {
+      var name = t(d.key), exp = isExperimentalOverlay(d.key), kind = overlayGearKind(d);
+      var row = document.createElement("div");
+      row.className = "ovl-row"; row.setAttribute("data-key", d.key); row.setAttribute("data-name", name);
+      row.innerHTML = '<label class="ovl-main"><input type="checkbox" class="ovl-cb"' + (map.hasLayer(d.layer) ? " checked" : "") + '> <span class="ovl-name">' + escapeHtml(exp ? expMark(name) : name) + "</span></label>" +   // "*" marks experimental overlays
+        (kind ? '<span class="ovl-zoomhint ok" role="button" tabindex="0"></span>' : "") +
+        '<span class="ovl-help" role="button" tabindex="0" title="' + escapeHtml(t("layer.helpBtn")) + '" aria-label="' + escapeHtml(t("layer.helpBtn")) + '">?</span>' +
+        (d.tip ? '<div class="ovl-desc">' + escapeHtml(t(d.tip)) + "</div>" : "");
+      row.querySelector(".ovl-cb").addEventListener("change", function () {
+        try { if (this.checked) map.addLayer(d.layer); else map.removeLayer(d.layer); } catch (e) {}
+      });
+      var q = row.querySelector(".ovl-help");
+      q.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); showOverlayHelp(d); });
+      q.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showOverlayHelp(d); } });
+      if (kind) {
+        var g = row.querySelector(".ovl-zoomhint");
+        if (kind === "bird") birdSpotsHintEl = g; else if (kind === "best") bestSitesHintEl = g; else hotspotsHintEl = g;
+        g.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); showZoomMenu(kind, e.clientX, e.clientY); });
+        g.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); var r = g.getBoundingClientRect(); showZoomMenu(kind, r.left, r.bottom); } });
+        wireZoomLongPress(row.querySelector(".ovl-main"), kind);
+      }
+      row.classList.toggle("ovl-row-loading", !!overlayBusySet[name]);
+      host.appendChild(row);
+    });
+    updateBirdSpotsZoomHint();
+    updateOverlayBtnState();
+  }
+  // A layer toggled from elsewhere (restore, the hold, a ⚙ change) → keep the boxes in step.
+  function syncOverlayRows() {
+    if (!overlaysPopup || !map) return;
+    Array.prototype.forEach.call(overlaysPopup.box.querySelectorAll(".ovl-row"), function (row) {
+      var d = legendDefFor(row.getAttribute("data-key")), cb = row.querySelector(".ovl-cb");
+      if (d && cb) cb.checked = map.hasLayer(d.layer);
+    });
+    updateOverlayBtnState();
   }
   // The map's attribution line grows long with overlays on and eats map space.
   // OSM's attribution guidelines explicitly allow a collapsed control that
@@ -20325,17 +20463,11 @@
     upd(hotspotsHintEl, hotspotZoomFrom());
     upd(bestSitesHintEl, bestSiteZoomFrom());
   }
+  // A language change re-renders the open Overlays popup (it is rebuilt on every open anyway).
   function relabelOverlays() {
-    if (!overlayLayersCtrl || !overlayDefsRef) return;
-    try {
-      (overlayLayersCtrl._layers || []).forEach(function (o) {
-        for (var i = 0; i < overlayDefsRef.length; i++) {
-          if (overlayDefsRef[i].layer === o.layer) { o.name = t(overlayDefsRef[i].key); break; }
-        }
-      });
-      overlayLayersCtrl._update();   // re-render the labels in the new language
-      applyOverlayTips();            // labels were rebuilt → reattach the hover tips
-    } catch (e) {}
+    if (!overlaysPopup) return;
+    var h = overlaysPopup.box.querySelector(".ovl-help-title"); if (h) h.textContent = t("ctrl.overlays");
+    renderOverlayRows();
   }
   // ---- Overlay legend stack (bottom-right; a collapsible card per active overlay) ------
   // Overlays that carry a legend, in stack order. `arc` = fetch the MapServer /legend
@@ -20496,25 +20628,15 @@
   // third-party services). Kept out of the layer control until the gate is on.
   var EXPERIMENTAL_OVERLAY_KEYS = ["layer.gbif", "layer.emerald", "layer.osmpa", "layer.natura2000", "layer.wdpa"];
   function isExperimentalOverlay(key) { return EXPERIMENTAL_OVERLAY_KEYS.indexOf(key) >= 0; }
-  // Add/remove the experimental overlays from the layer control when the Settings →
-  // Experimental toggle changes (called from applyExperimentalUi). Re-render the CORINE
-  // legend hook stays independent.
+  // Settings → Experimental toggled (applyExperimentalUi): gated off → the experimental
+  // overlays leave the map; the Overlays popup lists them only while the gate is on.
   function syncExperimentalOverlays() {
-    if (!overlayLayersCtrl || !overlayDefsRef) return;
-    var on = experimentalOn(), touched = false;
-    EXPERIMENTAL_OVERLAY_KEYS.forEach(function (key) {
-      var d = null;
-      for (var i = 0; i < overlayDefsRef.length; i++) if (overlayDefsRef[i].key === key) { d = overlayDefsRef[i]; break; }
-      if (!d) return;
-      var inCtrl = (overlayLayersCtrl._layers || []).some(function (o) { return o.layer === d.layer; });
-      if (on) {
-        if (!inCtrl) { overlayLayersCtrl.addOverlay(d.layer, t(d.key)); touched = true; }
-      } else {
-        if (map.hasLayer(d.layer)) map.removeLayer(d.layer);   // turn the layer off
-        if (inCtrl) { overlayLayersCtrl.removeLayer(d.layer); touched = true; }   // removing rebuilds the labels too
-      }
+    if (!overlayDefsRef || !map) return;
+    if (!experimentalOn()) EXPERIMENTAL_OVERLAY_KEYS.forEach(function (key) {
+      var d = legendDefFor(key);
+      if (d && map.hasLayer(d.layer)) map.removeLayer(d.layer);
     });
-    if (touched) applyOverlayTips();
+    if (overlaysPopup) renderOverlayRows();
   }
   function setupAreaOverlays() {
     if (!map || !window.L) return;
@@ -20540,18 +20662,20 @@
     // Hover tips explain eBird hotspots (50 km fetch + caching) and OSM protected areas
     // (drawn live from OpenStreetMap; only loads when zoomed in — a wide view returns
     // too much data for the Overpass API).
+    // Row order = menu order: the birding layers first (owner, 2026-10-22), then the
+    // habitat backdrops, then the protected-area outlines; experimental ones append last.
     overlayDefsRef = [
-      { key: "layer.wdpa", layer: wdpa },
-      { key: "layer.ramsar", layer: ramsar },
-      { key: "layer.natura2000", layer: n2k },
-      { key: "layer.emerald", layer: emerald, tip: "layer.emeraldTip" },
-      { key: "layer.landcover", layer: landcover, tip: "layer.landcoverTip" },
-      { key: "layer.mis", layer: mis, tip: "layer.misTip" },
-      { key: "layer.gbif", layer: gbif, tip: "layer.gbifTip" },
-      { key: "layer.osmpa", layer: osmProtectedLayer(), tip: "layer.osmpaTip" },
-      { key: "layer.hotspots", layer: hotspotsLayer, tip: "layer.hotspotsTip" },
       { key: "layer.bestSites", layer: bestSitesLayer(), tip: "layer.bestSitesTip" },
-      { key: "layer.birdSpots", layer: birdingSpotsLayer(), tip: "layer.birdSpotsTip" }
+      { key: "layer.birdSpots", layer: birdingSpotsLayer(), tip: "layer.birdSpotsTip" },
+      { key: "layer.hotspots", layer: hotspotsLayer, tip: "layer.hotspotsTip" },
+      { key: "layer.mis", layer: mis, tip: "layer.misTip" },
+      { key: "layer.landcover", layer: landcover, tip: "layer.landcoverTip" },
+      { key: "layer.wdpa", layer: wdpa, tip: "layer.wdpaTip" },
+      { key: "layer.ramsar", layer: ramsar, tip: "layer.ramsarTip" },
+      { key: "layer.natura2000", layer: n2k, tip: "layer.natura2000Tip" },
+      { key: "layer.emerald", layer: emerald, tip: "layer.emeraldTip" },
+      { key: "layer.gbif", layer: gbif, tip: "layer.gbifTip" },
+      { key: "layer.osmpa", layer: osmProtectedLayer(), tip: "layer.osmpaTip" }
     ];
     // Tile/raster overlays (WDPA, Ramsar, Natura 2000, Emerald, Land cover, GBIF
     // density) don't call overlayLoadStatus — they load through Leaflet's own tile
@@ -20576,16 +20700,16 @@
       ly.on("load", function () { overlayBusy(nm(), false); });
       ly.on("remove", function () { overlayBusy(nm(), false); });   // toggled off mid-load → stop pulsing
     });
-    var overlays = {};
-    // Experimental overlays (EXPERIMENTAL_OVERLAY_KEYS) are only offered when Settings →
-    // Experimental features is on; syncExperimentalOverlays() adds/removes them live.
+    // No layer control on the map: the overlays are ticked in the Overlays popup (bird
+    // button → Overlays…). Leaflet's control used to raise overlayadd / overlayremove for
+    // its layers; raise them here so the persist / legend / suspend handlers below (and
+    // the eBird nudge) see every toggle, whichever path added the layer.
     overlayDefsRef.forEach(function (d) {
-      if (isExperimentalOverlay(d.key) && !experimentalOn()) return;
-      overlays[isExperimentalOverlay(d.key) ? expMark(t(d.key)) : t(d.key)] = d.layer;   // "*" marks experimental overlays
+      var ly = d.layer; if (!ly || !ly.on) return;
+      ly.on("add", function () { map.fire("overlayadd", { layer: ly, name: t(d.key) }); });
+      ly.on("remove", function () { map.fire("overlayremove", { layer: ly, name: t(d.key) }); });
     });
-    overlayLayersCtrl = L.control.layers(null, overlays, { collapsed: true, position: "topleft" }).addTo(map);
-    applyOverlayTips();
-    map.on("zoomend", updateBirdSpotsZoomHint);   // keep the "zoom in" badge in sync
+    map.on("zoomend", updateBirdSpotsZoomHint);   // keep the ⚙ hover text in sync
     collapseMapAttribution();                     // attribution bar → tap-to-expand © chip
     // Dot declutter follows ZOOM only — clusters live in world-projected pixel
     // space, so panning never changes membership. A zoom change does (dots that
@@ -20632,7 +20756,7 @@
       var r = regionHere(); if (r === detRegionHere) return;
       detRegionHere = r; try { detFiltersRefresh(); } catch (e) {}
     });
-    // A "Reload" button just below the overlays control — visible only in "New" mode.
+    // A "Reload" button in the top-left stack — visible only in "New" mode.
     // Click re-fetches every fetched area so the fresh finds are highlighted for all.
     var ReloadControl = L.Control.extend({
       options: { position: "topleft" },
@@ -20648,18 +20772,12 @@
       }
     });
     map.addControl(new ReloadControl());
-    // Persist on every toggle. Registered BEFORE the saved-set restore below:
-    // every map.addLayer during the restore makes Leaflet rebuild the control's
-    // labels (dropping the ⚙ badges applyOverlayTips just attached) — this
-    // handler's reattach must already be listening or the badges only appear
-    // after the first manual toggle.
+    // Persist on every toggle (registered before the saved-set restore below).
     map.on("overlayadd overlayremove", function () {
       var on = []; overlayDefsRef.forEach(function (d) { if (map.hasLayer(d.layer)) on.push(d.key); });
       window.GeoState.save({ activeOverlays: on });
       updateClcLegend();   // toggle the CORINE legend with its overlay
-      // Leaflet rebuilds the control's labels on every toggle — reattach the
-      // hover tips, the ⚙ settings badge and the long-press wiring.
-      setTimeout(applyOverlayTips, 0);
+      syncOverlayRows();   // the popup's boxes follow toggles made elsewhere
     });
     // Remember which overlays are enabled across reloads: restore the saved set
     // (adding a layer ticks its box + runs its fetch).
@@ -20671,46 +20789,11 @@
       });
     }
     updateClcLegend();   // restore may have re-enabled the land-cover overlay
-    // Press-and-hold (or right-click) the overlays button → toggle the ticked overlays
-    // off/on in one go: the active set is remembered (persisted), so holding again
-    // restores exactly the overlays you had. Quick peek at the bare map.
-    (function () {
-      var ctr = overlayLayersCtrl.getContainer();
-      var btn = ctr && ctr.querySelector(".leaflet-control-layers-toggle");
-      if (!btn) return;
-      btn.title = t("layer.holdHint");
-      // The suspended state shows as an ORANGE overlays button (--warn, like an active
-      // filter) instead of a toast; the layer list is collapsed so it doesn't pop over
-      // the freshly-bared map.
-      function updateOverlayBtnState() {
-        var anyOn = overlayDefsRef.some(function (d) { return map.hasLayer(d.layer); });
-        var susp = window.GeoState.get("suspendedOverlays", []) || [];
-        btn.classList.toggle("ovl-suspended", !anyOn && susp.length > 0);
-      }
-      function toggleAllOverlays() {
-        var on = overlayDefsRef.filter(function (d) { return map.hasLayer(d.layer); });
-        if (on.length) {
-          window.GeoState.save({ suspendedOverlays: on.map(function (d) { return d.key; }) });
-          on.forEach(function (d) { try { map.removeLayer(d.layer); } catch (e) {} });
-        } else {
-          var keys = window.GeoState.get("suspendedOverlays", []) || [];
-          overlayDefsRef.forEach(function (d) {
-            if (keys.indexOf(d.key) < 0) return;
-            if (isExperimentalOverlay(d.key) && !experimentalOn()) return;
-            try { map.addLayer(d.layer); } catch (e) {}
-          });
-        }
-        try { overlayLayersCtrl.collapse(); } catch (e) {}
-        updateOverlayBtnState();
-      }
-      // Manually ticking any overlay ends the suspended state (the set is spent).
-      map.on("overlayadd", function () { window.GeoState.save({ suspendedOverlays: [] }); updateOverlayBtnState(); });
-      map.on("overlayadd", function (ev) { if (ev && ev.layer === hotspotsLayer) maybeEbirdNudge(); });
-      map.on("overlayremove", updateOverlayBtnState);
-      updateOverlayBtnState();   // reload while suspended → keep the orange cue
-      // Hold = suspend/restore every ticked overlay; the tap still expands the list.
-      wireHoldButton(btn, toggleAllOverlays);
-    })();
+    // Manually ticking any overlay ends the suspended state (the set is spent).
+    map.on("overlayadd", function () { window.GeoState.save({ suspendedOverlays: [] }); updateOverlayBtnState(); });
+    map.on("overlayadd", function (ev) { if (ev && ev.layer === hotspotsLayer) maybeEbirdNudge(); });
+    map.on("overlayremove", updateOverlayBtnState);
+    updateOverlayBtnState();   // reload while suspended → keep the orange cue
     setupAreaHover();
   }
 
@@ -21269,11 +21352,11 @@
       else if (what === "obs") {   // every fetched observation, wherever it sits (owner, 2026-10-21: memory climbed to tens of GB):
         // this session's per-location answers (memory), the IndexedDB copy that serves a revisit,
         // the restore-on-open snapshot, the per-record model probabilities and the dots on the map.
-        allSightingsCache = {}; histSightingsCache = {}; histAggCache = {}; seededSightings = {}; persistedSightings = {};
+        allSightingsCache = {}; histSightingsCache = {}; histAggCache = {}; seededSightings = {};
         obsProbCache = Object.create(null);
         try { clearDetections(); } catch (e) {}
         window.GeoState.save({ mapDetections: null });
-        p = (window.AppIDB && AppIDB.available()) ? AppIDB.del("sightingsCache").catch(function () {}) : Promise.resolve();
+        p = clearPersistedSightings();   // every stored location record + the index → the space is released
       }
       else if (what === "overlays") p = delByPrefix("api-");   // cached Overpass / overlay query responses → refetch fresh
       else if (what === "hotspots") {
@@ -21344,12 +21427,8 @@
       }
       var hs = loadHotspotStore();
       setCnt("hotspots", Object.keys(hs).length, jsonBytes(hs));
-      if (window.AppIDB && AppIDB.available()) {
-        AppIDB.get("sightingsCache").then(function (m) {
-          m = (m && typeof m === "object") ? m : {};
-          setCnt("obs", Object.keys(m).length, jsonBytes(m));
-        }).catch(function () {});
-      } else setCnt("obs", Object.keys(persistedSightings).length, jsonBytes(persistedSightings));
+      var sightN = 0, sightB = 0; Object.keys(sightIdx).forEach(function (k) { sightN++; sightB += +sightIdx[k].bytes || 0; });   // from the index: no record is read
+      setCnt("obs", sightN, sightB);
       if (window.AppOffline && AppOffline.areaStats) AppOffline.areaStats().then(function (s) { setCnt("offline", s.n, s.bytes, true); }).catch(function () {});
       // Species-Range cache: the in-memory Map IS the working set (hydrated from
       // its pool blob at boot) — count its (species,week) tags, size via the same
@@ -21776,7 +21855,7 @@
         FETCH_GROUP_IDS.forEach(function (g) { if (!(g in cur)) cur[g] = true; });
         cur[cb.getAttribute("data-fg")] = !!cb.checked;
         window.GeoState.save({ fetchGroups: cur });
-        allSightingsCache = {};   // a different tick set is different data: don't reuse this session's answers
+        invalidateRecentSightings();   // a different tick set is different data: don't reuse this session's answers
                                   // (the persisted cache is keyed by sightConfigSig, which now carries the set)
         render();
       });
@@ -21815,7 +21894,7 @@
     rrEl.value = String(radiusStepIndex(+window.GeoState.get("recentRadiusKm", 25) || 25));
     if (rrVal) rrVal.textContent = radiusLabel(RADIUS_STEPS[+rrEl.value]);
     rrEl.addEventListener("input", function () { if (rrVal) rrVal.textContent = radiusLabel(RADIUS_STEPS[+this.value]); });
-    rrEl.addEventListener("change", function () { window.GeoState.save({ recentRadiusKm: RADIUS_STEPS[+this.value] || 25 }); allSightingsCache = {}; });
+    rrEl.addEventListener("change", function () { window.GeoState.save({ recentRadiusKm: RADIUS_STEPS[+this.value] || 25 }); invalidateRecentSightings(); });
 
     var histFetchBtn = document.getElementById("hist-fetch");
     if (histFetchBtn) histFetchBtn.addEventListener("click", function () {
@@ -22157,12 +22236,13 @@
             }).join("");
             Array.prototype.forEach.call(bakList.querySelectorAll(".so-bak-go"), function (btn) {
               btn.addEventListener("click", function () {
-                var when = fmtBackupWhen(+this.getAttribute("data-at"));
-                if (!window.confirm(t("sync.restoreConfirm", { t: when }))) return;
-                var id = this.getAttribute("data-id");
-                close();
-                gdStatus.textContent = "⟳ " + t("gdrive.syncing"); gdStatus.classList.add("gd-syncing");
-                window.GDriveSync.restoreBackup(id).then(function (ok) { if (ok) setStatus(t("sync.restored", { t: when })); });
+                var when = fmtBackupWhen(+this.getAttribute("data-at")), id = this.getAttribute("data-id");
+                modalConfirm(t("sync.restoreConfirm", { t: when })).then(function (ok) {   // the app's own dialog (window.confirm dropped fullscreen on Android, S1)
+                  if (!ok) return;
+                  close();
+                  gdStatus.textContent = "⟳ " + t("gdrive.syncing"); gdStatus.classList.add("gd-syncing");
+                  window.GDriveSync.restoreBackup(id).then(function (ok2) { if (ok2) setStatus(t("sync.restored", { t: when })); });
+                });
               });
             });
           });
@@ -22814,15 +22894,26 @@
       // — the "Reload to update" button included — would then be unreachable. (v1795-97
       // was exactly that trap on Android: the hold opened Settings and the emulated
       // click shut it again, with no other door.)
-      html += '<div class="gq-foot"><button type="button" class="gq-item gq-settings">' + ico("menu") +
+      // Overlays… (above Settings…): the map-overlay list, which used to be a layers
+      // button on the map. Hold the row = hide/show every ticked overlay in one go.
+      html += '<div class="gq-foot"><button type="button" class="gq-item gq-overlays" title="' + escapeHtml(t("layer.holdHint")) + '">' + ico("layers") +
+        "<span>" + escapeHtml(t("ctrl.overlays")) + "…</span></button>" +
+        '<button type="button" class="gq-item gq-settings">' + ico("menu") +
         "<span>" + escapeHtml(t("ctrl.settings")) + "…</span></button></div>";
       panel.innerHTML = html;
       panel.style.display = "block";
       var setBtn = panel.querySelector(".gq-settings");
       if (setBtn) setBtn.addEventListener("click", function () { toggleSettingsPanel(); });
+      var ovBtn = panel.querySelector(".gq-overlays");
+      if (ovBtn) {
+        ovBtn.addEventListener("click", function () { panel.style.display = "none"; openOverlaysPopup(); });
+        wireHoldButton(ovBtn, function () { toggleAllOverlays(); panel.style.display = "none"; });
+        updateOverlayBtnState();
+      }
       Array.prototype.forEach.call(panel.querySelectorAll(".gq-item"), function (b) {
         b.addEventListener("click", function () {
           var v = this.getAttribute("data-val");
+          if (v == null) return;   // the foot rows (Overlays…, Settings…) are not groups
           if (sel.value !== v) { sel.value = v; sel.dispatchEvent(new Event("change", { bubbles: true })); }
           panel.style.display = "none";
         });
@@ -23613,6 +23704,7 @@
       var msg = { type: "infer", id: id, flatInputs: buf, batchSize: batchSize, task: opts.task || "raw" };
       if (opts.task === "column") msg.speciesIdx = opts.speciesIdx;
       if (opts.task === "richness") { msg.threshold = opts.threshold; if (opts.thresholds) msg.thresholds = opts.thresholds; if (opts.mask) msg.mask = opts.mask; }
+      if (opts.task === "aggs" || opts.task === "aggsFinish") { msg.aggSession = opts.aggSession; msg.aggMatrix = !!opts.aggMatrix; }
       try {
         worker.postMessage(msg, [buf]);   // mask (if any) is cloned, not transferred
       } catch (e) {
@@ -23900,6 +23992,7 @@
     if (overlayCanvas.width !== size.x || overlayCanvas.height !== size.y) { overlayCanvas.width = size.x; overlayCanvas.height = size.y; }
     L.DomUtil.setPosition(overlayCanvas, map.containerPointToLayerPoint([0, 0]));
     var ctx = overlayCanvas.getContext("2d");
+    var pjo = h3ProjOffsets();   // one projection origin per paint; hex vertices come from the per-(cell, zoom) memo (P12)
     ctx.clearRect(0, 0, size.x, size.y);
     var targetRes = h3ResForView(), cells = h3CellsInView(targetRes);
     var i, max = 0, v;
@@ -23910,11 +24003,7 @@
     // Important: ignore cells from other H3 resolutions left in the cache from
     // an earlier hiResFactor — they'd skew the max for the cells we actually
     // draw and wash out the colours at the new resolution.
-    var allKeys = Object.keys(cache);
-    for (i = 0; i < allKeys.length; i++) {
-      if (h3ResOf(allKeys[i]) !== targetRes) continue;
-      v = cache[allKeys[i]]; if (v != null && v > max) max = v;
-    }
+    max = h3CacheMax(cache, targetRes);
     if (max <= 0) max = 0.01;
     cachedRender.maxProb = max;   // legend reflects this species-wide normalisation
     var pmin = +document.getElementById("prob-min").value / 100;
@@ -23925,11 +24014,10 @@
       var p = Math.pow(raw / max, DISPLAY_GAMMA);
       if (!(p >= 0.01)) continue;
       var sh = h3Shape(cells[i]); if (sh.straddles) continue;   // skip antimeridian-straddling hexes
-      var bnd = sh.bnd;
+      var pj = h3Proj(cells[i], sh, pjo.zoom);
       ctx.beginPath();
-      for (var vtx = 0; vtx < bnd.length; vtx++) {
-        var pt = map.latLngToContainerPoint([bnd[vtx][0], bnd[vtx][1]]);
-        if (vtx === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y);
+      for (var vtx = 0; vtx < pj.length; vtx += 2) {
+        if (vtx === 0) ctx.moveTo(pj[vtx] - pjo.ox, pj[vtx + 1] - pjo.oy); else ctx.lineTo(pj[vtx] - pjo.ox, pj[vtx + 1] - pjo.oy);
       }
       ctx.closePath();
       var col = colormapLookup(p);
@@ -23952,15 +24040,12 @@
     if (overlayCanvas.width !== size.x || overlayCanvas.height !== size.y) { overlayCanvas.width = size.x; overlayCanvas.height = size.y; }
     L.DomUtil.setPosition(overlayCanvas, map.containerPointToLayerPoint([0, 0]));
     var ctx = overlayCanvas.getContext("2d");
+    var pjo = h3ProjOffsets();   // one projection origin per paint; hex vertices come from the per-(cell, zoom) memo (P12)
     ctx.clearRect(0, 0, size.x, size.y);
     var targetRes = h3ResForView(), cells = h3CellsInView(targetRes);
     // Peak across cached cells of the CURRENT resolution (ignore leftovers from an
     // earlier detail setting), so colours stay stable when zooming into a low area.
-    var i, max = 0, v, allKeys = Object.keys(cache);
-    for (i = 0; i < allKeys.length; i++) {
-      if (h3ResOf(allKeys[i]) !== targetRes) continue;
-      v = cache[allKeys[i]]; if (v != null && v > max) max = v;
-    }
+    var i, max = h3CacheMax(cache, targetRes);
     if (max <= 0) max = 1;
     cachedRender.maxVal = max;   // legend shows the peak species count
     for (i = 0; i < cells.length; i++) {
@@ -23969,11 +24054,10 @@
       var p = Math.pow(raw / max, DISPLAY_GAMMA);
       if (!(p >= 0.01)) continue;
       var sh = h3Shape(cells[i]); if (sh.straddles) continue;
-      var bnd = sh.bnd;
+      var pj = h3Proj(cells[i], sh, pjo.zoom);
       ctx.beginPath();
-      for (var vtx = 0; vtx < bnd.length; vtx++) {
-        var pt = map.latLngToContainerPoint([bnd[vtx][0], bnd[vtx][1]]);
-        if (vtx === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y);
+      for (var vtx = 0; vtx < pj.length; vtx += 2) {
+        if (vtx === 0) ctx.moveTo(pj[vtx] - pjo.ox, pj[vtx + 1] - pjo.oy); else ctx.lineTo(pj[vtx] - pjo.ox, pj[vtx + 1] - pjo.oy);
       }
       ctx.closePath();
       var col = colormapLookup(p);
@@ -24046,6 +24130,23 @@
     }
     return s;
   }
+  // Hex vertices projected to world pixels, memoised per (cell, zoom): a paint then only subtracts
+  // the pan/origin offset per vertex instead of projecting every vertex of every cell again (P12).
+  var _h3Proj = Object.create(null), _h3ProjN = 0;
+  function h3ProjOffsets() {
+    var po = map.getPixelOrigin(), o0 = map.containerPointToLayerPoint([0, 0]);
+    return { zoom: map.getZoom(), ox: po.x + o0.x, oy: po.y + o0.y };   // container = project(ll, zoom) − pixelOrigin + panePos
+  }
+  function h3Proj(cell, sh, zoom) {
+    var k = cell + "@" + zoom, p = _h3Proj[k];
+    if (p === undefined) {
+      if (_h3ProjN > 60000) { _h3Proj = Object.create(null); _h3ProjN = 0; }
+      var bnd = sh.bnd; p = new Float64Array(bnd.length * 2);
+      for (var w = 0; w < bnd.length; w++) { var q = map.project([bnd[w][0], bnd[w][1]], zoom); p[w * 2] = q.x; p[w * 2 + 1] = q.y; }
+      _h3Proj[k] = p; _h3ProjN++;
+    }
+    return p;
+  }
   function h3ResOf(cell) {
     var r = _h3Res[cell];
     if (r === undefined) r = _h3Res[cell] = window.h3.getResolution(cell);
@@ -24059,6 +24160,7 @@
     if (overlayCanvas.width !== size.x || overlayCanvas.height !== size.y) { overlayCanvas.width = size.x; overlayCanvas.height = size.y; }
     L.DomUtil.setPosition(overlayCanvas, map.containerPointToLayerPoint([0, 0]));
     var ctx = overlayCanvas.getContext("2d");
+    var pjo = h3ProjOffsets();   // one projection origin per paint; hex vertices come from the per-(cell, zoom) memo (P12)
     ctx.clearRect(0, 0, size.x, size.y);
 
     var cells = h3CellsInView(h3ResForView());
@@ -24072,11 +24174,10 @@
       if (!(p >= 0.01)) continue;
       // Skip hexes straddling the antimeridian (would smear across the map).
       var sh = h3Shape(cells[i]); if (sh.straddles) continue;
-      var bnd = sh.bnd;
+      var pj = h3Proj(cells[i], sh, pjo.zoom);
       ctx.beginPath();
-      for (var v = 0; v < bnd.length; v++) {
-        var pt = map.latLngToContainerPoint([bnd[v][0], bnd[v][1]]);
-        if (v === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y);
+      for (var v = 0; v < pj.length; v += 2) {
+        if (v === 0) ctx.moveTo(pj[v] - pjo.ox, pj[v + 1] - pjo.oy); else ctx.lineTo(pj[v] - pjo.ox, pj[v + 1] - pjo.oy);
       }
       ctx.closePath();
       var col = colormapLookup(p);
@@ -24211,20 +24312,6 @@
     return arr;
   }
 
-  function normalizeProbs(raw) {
-    var maxProb = 0;
-    for (var i = 0; i < raw.length; i++) if (raw[i] > maxProb) maxProb = raw[i];
-    var norm = perceptualNorm(raw, maxProb);
-    // Hide cells whose raw probability falls outside the min–max range slider
-    // so the same control filters the species-range overlay.
-    var pmin = +document.getElementById("prob-min").value / 100;
-    var pmax = +document.getElementById("prob-max").value / 100;
-    if (pmin > 0 || pmax < 1) {
-      for (var j = 0; j < raw.length; j++) if (raw[j] < pmin || raw[j] > pmax) norm[j] = 0;
-    }
-    return { probs: norm, maxProb: maxProb };
-  }
-
   // Weeks to compute for a range/richness render: just the selected week
   // normally, or all 48 when precomputing for migration animation.
   function weeksToCompute() {
@@ -24338,7 +24425,7 @@
         }
         // Worker returns just this species' column (batch.length floats).
         var out = await runInference(inputs, batch.length, { task: "column", speciesIdx: speciesIdx });
-        for (var k = 0; k < batch.length; k++) batch[k].cache[batch[k].c] = out[k];
+        for (var k = 0; k < batch.length; k++) h3CacheStore(batch[k].cache, batch[k].c, out[k]);
         setComputeProgress(++done / total);
         setStatus(t("status.computing", { name: name, week: weekText(selectedWeek), n: missing.length, i: done, total: total }));
         if (gen === renderGeneration) { cachedRender = { h3range: true, tag: key + ":" + selectedWeek }; schedulePaint(); }
@@ -24440,7 +24527,7 @@
         }
         // Worker counts species ≥ threshold (optionally masked to a group) per cell.
         var out = await runInference(inputs, batch.length, { task: "richness", threshold: RICHNESS_THRESHOLD, mask: mask });
-        for (var k = 0; k < batch.length; k++) batch[k].cache[batch[k].c] = out[k];
+        for (var k = 0; k < batch.length; k++) h3CacheStore(batch[k].cache, batch[k].c, out[k]);
         setComputeProgress(++done / total);
         setStatus(t("status.computing", { name: richName, week: weekText(selectedWeek), n: missing.length, i: done, total: total }));
         if (gen === renderGeneration) { cachedRender = { h3richness: true, tag: richTag(selectedWeek) }; schedulePaint(); }
@@ -25095,6 +25182,13 @@
     // The popup's own labels drop the leading pictogram (the mode dropdown keeps it).
     function noIcon(x) { return String(x).replace(/^[^\w\u00C0-\u024F]+/, ""); }
     wrap.appendChild(makePopupBtn(noIcon(t("mode.list")), "", function () { mk.closePopup(); renderSpeciesList(lat, lon); }));
+    // Predicted (owner, 2026-10-22): the model's own ranking for this point — no observation
+    // fetch — opened straight as the species-list page once the inference has run.
+    wrap.appendChild(makePopupBtn(noIcon(t("mode.predicted")), "", function () {
+      mk.closePopup(); urlForceView = "list";
+      speciesListSort = { col: "prob", dir: "desc" }; try { updateSortIndicators(); } catch (e) {}   // most likely first, rarest last (owner, 2026-10-22)
+      renderSpeciesList(lat, lon, null, { noFetch: true, predicted: true });
+    }));
     // Historic + Migration moved out of the Mode dropdown: they start HERE, at the
     // clicked point. Historic rides the mode switch (the placed marker carries in);
     // Migration switches mode and runs the analysis for this exact spot.
@@ -25307,7 +25401,7 @@
     apply("");   // show the coordinate/summary line while the place name resolves
     reverseGeocode(lat, lon).then(function (name) {
       if (!name) return;                 // failed / rate-limited → keep the coordinate line, retry next time
-      placeCache[k] = name;
+      placeCache[k] = name; capObj(placeCache, 1000);
       if (el.dataset.placeKey === k) apply(placeCache[k]);
     });
   }
@@ -25396,7 +25490,7 @@
       var label = a.name || (cached ? cached : "");
       if (!a.name && !cached && !placePending[key]) {   // resolve this square's name, then re-render; a FAILED lookup is not cached — it retries on the next render
         placePending[key] = 1;
-        reverseGeocode(a.clat, a.clon).then(function (n) { delete placePending[key]; if (n) { placeCache[key] = n; reRender(); } });
+        reverseGeocode(a.clat, a.clon).then(function (n) { delete placePending[key]; if (n) { placeCache[key] = n; capObj(placeCache, 1000); reRender(); } });
       }
       var named = !!label;
       if (!label) label = a.clat.toFixed(4) + "°, " + a.clon.toFixed(4) + "°";
@@ -25519,7 +25613,7 @@
           return (specific && town && specific !== town) ? specific + ", " + town : (specific || town || p.country || "");
         });
       })
-      .then(function (n) { if (n) placeDetailCache[k] = n; return n; });   // a failed lookup is not cached — retried next time
+      .then(function (n) { if (n) { placeDetailCache[k] = n; capObj(placeDetailCache, 1000); } return n; });   // a failed lookup is not cached — retried next time
   }
 
   // ---- Map-derived place names for the observation lists --------------------
@@ -25839,7 +25933,7 @@
       if (!Array.isArray(arr)) { lastSppError = "format"; return null; }
       var set = Object.create(null);
       arr.forEach(function (c) { set[c] = 1; });
-      countryEBirdCache[cc] = set;
+      countryEBirdCache[cc] = set; capObj(countryEBirdCache, 16);
       return set;
     } catch (e) { lastSppError = "network"; return null; }
   }
@@ -25913,53 +26007,35 @@
   // so a[i] <= a[k] for i<k and >= for i>k. 3-way partition stays O(n) despite the
   // many duplicate (zero) probabilities in a species' column — replaces a full
   // O(n log n) sort + per-species array copy when we only need p90 + median.
-  function quickselectF(a, lo, hi, k) {
-    while (hi - lo > 1) {
-      var pivot = a[lo + ((hi - lo) >> 1)];
-      var lt = lo, gt = hi - 1, i = lo, t;
-      while (i <= gt) {
-        var x = a[i];
-        if (x < pivot) { t = a[lt]; a[lt] = x; a[i] = t; lt++; i++; }
-        else if (x > pivot) { t = a[gt]; a[gt] = x; a[i] = t; gt--; }
-        else i++;
-      }
-      if (k < lt) hi = lt; else if (k > gt) lo = gt + 1; else return a[k];
-    }
-    return a[k];
-  }
+  // The per-cell maximum and the p90 / median over all cells are computed IN THE WORKER (P5):
+  // each chunk is appended to a worker-side session ("aggs"), and one "aggsFinish" message
+  // returns max | p90 | median as one flat array — nothing of nSpecies × cells crosses back
+  // to the UI thread or runs on it.
+  var aggSessionSeq = 0;
   async function speciesAggsAcrossCells(cells, week, progress) {
     var nSpecies = labels.length, CHUNK = inferChunk();
-    var allowMatrix = cells.length <= SPECIES_AGG_CAP_CELLS;
-    var maxArr = new Float32Array(nSpecies);
-    var mat = allowMatrix ? new Float32Array(cells.length * nSpecies) : null;
-    for (var s = 0; s < cells.length; s += CHUNK) {
-      var batch = cells.slice(s, s + CHUNK);
-      var inputs = new Float32Array(batch.length * 3);
-      for (var j = 0; j < batch.length; j++) {
-        var ll = window.h3.cellToLatLng(batch[j]);
-        inputs[j * 3] = ll[0]; inputs[j * 3 + 1] = ll[1]; inputs[j * 3 + 2] = week;
+    var allowMatrix = cells.length <= SPECIES_AGG_CAP_CELLS, sid = ++aggSessionSeq;
+    try {
+      for (var s = 0; s < cells.length; s += CHUNK) {
+        var batch = cells.slice(s, s + CHUNK);
+        var inputs = new Float32Array(batch.length * 3);
+        for (var j = 0; j < batch.length; j++) {
+          var ll = window.h3.cellToLatLng(batch[j]);
+          inputs[j * 3] = ll[0]; inputs[j * 3 + 1] = ll[1]; inputs[j * 3 + 2] = week;
+        }
+        await runInference(inputs, batch.length, { task: "aggs", aggSession: sid, aggMatrix: allowMatrix });
+        if (progress) progress(Math.min(s + batch.length, cells.length), cells.length);
       }
-      var out = await runInference(inputs, batch.length);
-      if (mat) mat.set(out, s * nSpecies);
-      for (var k = 0; k < batch.length; k++) {
-        var base = k * nSpecies;
-        for (var i = 0; i < nSpecies; i++) { var v = out[base + i]; if (v > maxArr[i]) maxArr[i] = v; }
-      }
-      if (progress) progress(Math.min(s + batch.length, cells.length), cells.length);
+    } catch (err) {
+      // A failed chunk must not leave the (up to ~144 MB) session behind in the worker: close it, then rethrow.
+      try { await runInference(new Float32Array(0), 0, { task: "aggsFinish", aggSession: sid }); } catch (e2) {}
+      throw err;
     }
-    if (!mat) return { max: maxArr };
-    var p90 = new Float32Array(nSpecies), median = new Float32Array(nSpecies);
-    var col = new Float32Array(cells.length);
-    var p90Idx = Math.min(cells.length - 1, Math.floor(cells.length * 0.9));
-    var medIdx = Math.floor(cells.length / 2);
-    for (var i2 = 0; i2 < nSpecies; i2++) {
-      for (var c = 0; c < cells.length; c++) col[c] = mat[c * nSpecies + i2];
-      // Two order statistics via in-place quickselect — no full sort, no per-species
-      // allocation. (col is reused/overwritten next iteration, so partitioning it is fine.)
-      p90[i2] = quickselectF(col, 0, cells.length, p90Idx);
-      median[i2] = quickselectF(col, 0, cells.length, medIdx);
-    }
-    return { max: maxArr, p90: p90, median: median };
+    var fin = await runInference(new Float32Array(0), 0, { task: "aggsFinish", aggSession: sid });
+    if (fin.length < nSpecies) throw new Error("species aggregation lost in the worker");   // never cache an empty result
+    var maxArr = fin.subarray(0, nSpecies);
+    if (fin.length < 3 * nSpecies) return { max: maxArr };
+    return { max: maxArr, p90: fin.subarray(nSpecies, 2 * nSpecies), median: fin.subarray(2 * nSpecies, 3 * nSpecies) };
   }
   async function renderSpeciesInCountry(lat, lon) {
     var keepScroll = keepListScroll; keepListScroll = false;   // consume one-shot flag
@@ -25977,7 +26053,7 @@
       // Cache cells by (cc, res, rounded click) — different polygons (mainland
       // vs an overseas island) for the same country must not share a cache.
       var cellsKey = info.cc + ":" + res + ":" + Math.round(lat * 2) / 2 + "," + Math.round(lon * 2) / 2;
-      var cells = countryCellsCache[cellsKey] || (countryCellsCache[cellsKey] = cellsCoveringCountry(geom, res, lat, lon));
+      var cells = countryCellsCache[cellsKey] || (countryCellsCache[cellsKey] = cellsCoveringCountry(geom, res, lat, lon)); capObj(countryCellsCache, 8);
       if (!cells.length) { setStatus(t("status.error", { msg: "no cells" }), true); return; }
       if (cells.length > SP_COUNTRY_MAX_CELLS) { setStatus(t("status.countryTooMany", { n: cells.length, max: SP_COUNTRY_MAX_CELLS })); return; }
       var aggKey = info.cc + ":" + res + ":" + week;
@@ -25985,13 +26061,14 @@
       if (!aggs) {
         setStatus(t("status.countrySampling", { country: info.name || info.cc, n: cells.length, week: week, res: res }));
         aggs = await speciesAggsAcrossCells(cells, week, function (done, total) { setComputeProgress(done / total); });
-        countryAggCache[aggKey] = aggs;
+        countryAggCache[aggKey] = aggs; capObj(countryAggCache, 4);   // each entry holds up to three 12k-float arrays
       }
       var maxArr = aggs[countryAgg] || aggs.max;
       var spp = await ebirdCountrySpecies(info.cc);   // null when no key / fetch fails
       var results = [];
-      for (var i = 0; i < labels.length; i++) {
-        var lbl = labels[i]; if (!inGroup(i) || !passSpeciesFilter(lbl.key)) continue;
+      var gIdx = groupLabelIdx();
+      for (var gi = 0; gi < gIdx.length; gi++) {
+        var i = gIdx[gi], lbl = labels[i]; if (!passSpeciesFilter(lbl.key)) continue;
         var prob = maxArr[i];
         var inModel = prob >= pmin && prob <= pmax;
         var inList = !!(spp && spp[lbl.key]);
@@ -27653,6 +27730,8 @@
     scrollSpFiltersIntoView();
   }
   async function renderSpeciesList(lat, lon, hist, opts) {
+    var _nm = new Map();   // speciesName() per label once per render (it is asked for the sort key, the CSV and the PDF; P14)
+    function spNm(l) { var v = _nm.get(l); if (v === undefined) { v = speciesName(l); _nm.set(l, v); } return v; }
     // `opts.noFetch` = restoring the view on app open — build the (local) model list but
     // DON'T re-run the observation fetch; fill counts from the already-restored map dots.
     var noFetch = !!(opts && opts.noFetch);
@@ -27695,6 +27774,7 @@
       : { mode: "point", lat: lat, lon: lon };
     currentSpView._plotGen = detPlotGen;   // red × mid-fetch bumps this → partial plots stop
     if (noFetch) currentSpView._noFetch = true;   // a model-only list: it holds no observations of its own (see goToMapView)
+    if (opts && opts.predicted) currentSpView._predicted = true;   // the popup's Predicted button: list the ranking down to 1 % so its rare end shows
     if (reuse) { currentSpView._plotGen = prevView._plotGen; currentSpView._result = prevView._result; currentSpView._final = true; if (prevView._noFetch) currentSpView._noFetch = true; }
     // Harmonise the date window so historic records aren't dropped by the recency
     // filter: Historic sets the global date-range to the fetched range (and clears
@@ -27735,8 +27815,10 @@
       function buildResults() {
         var r = [];
         if (noModel) return r;   // nothing the model predicts belongs to this group
-        for (var i = 0; i < labels.length; i++) {
-          if (out[i] >= pmin && out[i] <= pmax && inGroup(i) && passSpeciesFilter(labels[i].key)) {
+        var gIdx = groupLabelIdx();
+        for (var gi = 0; gi < gIdx.length; gi++) {
+          var i = gIdx[gi];
+          if (out[i] >= pmin && out[i] <= pmax && passSpeciesFilter(labels[i].key)) {
             var cval = 0;
             if (hasCompare) {
               cval = kind === "ratio" ? (cmp.probs[i] > 0 ? Math.min(1, out[i] / cmp.probs[i]) : 0)   // current ÷ peak ≤ 1 (100%)
@@ -27794,7 +27876,7 @@
         var name2Cell = '<td class="name2">' + (secondLang ? escapeHtml(secondName(r.label)) : "") + '</td>';
         var dKey = escapeHtml(r.label.key);
         var pct = Math.round(r.prob * 100);
-        var sortAttrs = ' data-name="' + escapeHtml(speciesName(r.label).toLowerCase()) + '" data-prob="' + r.prob + '"' + (hasCompare ? ' data-cmp="' + (Number.isNaN(r.cmpVal) ? -1 : r.cmpVal) + '"' : "");
+        var sortAttrs = ' data-name="' + escapeHtml(spNm(r.label).toLowerCase()) + '" data-prob="' + r.prob + '"' + (hasCompare ? ' data-cmp="' + (Number.isNaN(r.cmpVal) ? -1 : r.cmpVal) + '"' : "");
         return '<tr' + sortAttrs + '>' +
                '<td class="num det-nd" data-key="' + dKey + '"><span class="det-wait" title="' + escapeHtml(t("status.loadingDet")) + '"></span></td>' +   // Total FIRST (count left of the name)
                '<td>' + spListDot(r.label.key) + nameLinkHtml(r.label, true) + '</td>' + name2Cell +
@@ -27875,7 +27957,7 @@
         header += ",seen_count";
         var csvLines = [header];
         results.forEach(function (r, idx) {
-          var line = (idx + 1) + ',"' + r.label.key + '","' + speciesName(r.label).replace(/"/g, '""') + '"';
+          var line = (idx + 1) + ',"' + r.label.key + '","' + speciesName(r.label).replace(/"/g, '""') + '"';   // at download time: names harvested since the render count
           if (secondLang) line += ',"' + secondName(r.label).replace(/"/g, '""') + '"';
           line += ',"' + r.label.sci.replace(/"/g, '""') + '",' + r.prob.toFixed(6);
           if (hasCompare) line += "," + (Number.isNaN(r.cmpVal) ? "" : r.cmpVal.toFixed(6));
@@ -27961,7 +28043,7 @@
               : kind === "focus" ? (Number.isNaN(r.cmpVal) ? "-" : Math.round(r.cmpVal) + "%")   // Annual Top: current÷peak %, "-" when peak 0
               : (r.cmpVal >= 0 ? "+" : "") + (r.cmpVal * 100).toFixed(1) + "%";
           }
-          return { key: r.label.key, name: speciesName(r.label), name2: secondLang ? secondName(r.label) : "", sci: r.label.sci, prob: (r.prob * 100).toFixed(1) + "%", cmp: cmpText };
+          return { key: r.label.key, name: spNm(r.label), name2: secondLang ? secondName(r.label) : "", sci: r.label.sci, prob: (r.prob * 100).toFixed(1) + "%", cmp: cmpText };
         }),
       };
       showCsvBtn();
