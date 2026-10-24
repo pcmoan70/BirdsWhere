@@ -523,13 +523,14 @@
     var hasAreas = typeof fetchedAreas !== "undefined" && fetchedAreas.length > 0;   // squares can outlive their dots (every species deleted) → still clearable
     var a = clearGroupEl.querySelector(".clearpts-btn");
     if (a) {
-      var listsOn = mpState && (Object.keys(mpState.shownColls()).length || Object.keys(mpState.shownDetSets()).length);
-      a.style.display = (hasPts || listsOn || hasAreas) ? "" : "none";
+      // Shown lists' points and search pins are never cleared here (the Points panel does
+      // that), so the × shows only while something FETCHED (or a fetched area) is on the map.
+      a.style.display = (detFetchedCount() || hasAreas) ? "" : "none";
       // Reflect the shared arm-and-delete state: armed → "click again to clear"; else
       // "arm per-area delete" when there are areas, plain "clear all" otherwise.
       var armed = !!detAreaDeleteMode;
       a.classList.toggle("armed", armed);
-      var title = armed ? t("det.delAreaHint") : (fetchedAreas.length ? t("det.delAreaArm") : (detFetchedCount() ? t("ctrl.clearPoints") : t("ctrl.clearLists")));
+      var title = armed ? t("det.delAreaHint") : (fetchedAreas.length ? t("det.delAreaArm") : t("ctrl.clearPoints"));
       a.title = title; a.setAttribute("aria-label", title);
     }
     var f = clearGroupEl.querySelector(".filterclear-btn");
@@ -7707,6 +7708,9 @@
               '<div class="ctrl-group" id="week-select-wrap" style="display:none">' +
                 '<select id="week-select" aria-hidden="true" tabindex="-1"></select>' +
               '</div>' +
+              // The base-map chooser lives in the Maps & overlays popup (owner, 2026-10-23); the hidden
+              // holder keeps the markup (and its wiring) in the document between opens.
+              '<div id="maptype-home" hidden>' +
               '<div class="ctrl-group" id="maptype-wrap">' +
                 '<label for="maptype-select" data-i18n="ctrl.basemap">Map type</label>' +
                 '<select id="maptype-select">' +
@@ -7727,6 +7731,7 @@
                   '<input type="text" id="maptiler-key-input" autocomplete="off" spellcheck="false" data-i18n-ph="ph.maptilerKey" placeholder="MapTiler API key (for MapTiler Outdoor)" />' +
                   '<p class="cu-hint" data-i18n="ctrl.maptilerKeyHint">MapTiler Outdoor (trails + terrain) needs a free personal MapTiler API key from maptiler.com — paste it here to use it. Until then a plain Streets map is shown.</p>' +
                 '</div>' +
+              '</div>' +
               '</div>' +
               '<div class="settings-section" data-i18n="settings.secFetch">Fetching &amp; detections</div>' +
               '<div class="ctrl-group">' +
@@ -9674,11 +9679,13 @@
       document.addEventListener("webkitfullscreenchange", onFsChange);   // Safari's name for it
     }
 
-    // One leaflet-bar on the right, holding (top) a red × that clears all plotted
-    // observations and (below it) a funnel-with-red-× that clears all detection
-    // filters. Each button shows only when it applies; the bar hides when neither does.
+    // One leaflet-bar in the lower-right corner (above the zoom / search / crosshair
+    // buttons — bottom corners stack newest-on-top), holding (top) a red × that clears
+    // all plotted observations and (below it) a funnel-with-red-× that clears all
+    // detection filters. Each button shows only when it applies; the bar hides when
+    // neither does. (Owner, 2026-10-24: moved here from the top right.)
     var ClearControl = L.Control.extend({
-      options: { position: "topright" },
+      options: { position: "bottomright" },
       onAdd: function () {
         var c = L.DomUtil.create("div", "leaflet-bar leaflet-control clearpts-ctrl");
         L.DomEvent.disableClickPropagation(c);
@@ -9748,10 +9755,6 @@
     });
 
     setupAreaOverlays();   // protected/priority-area overlay toggles (off by default)
-    // Leaflet stacks top-right controls in add order; the overlay-toggles control was
-    // just added ABOVE the clear-× (added earlier). Re-append the × so it sits BELOW
-    // both the download and overlay-toggle icons, not between them.
-    if (clearGroupEl && clearGroupEl.parentNode) clearGroupEl.parentNode.appendChild(clearGroupEl);
     loadDetections(true);  // restore any "Show in map" detection points — at START: no selection, no filters
     // ...and their fetched-area outlines (per-area red × needs them) — but only WITH the
     // observations: opening clean (the default) used to leave the squares and the ✓ update
@@ -10951,7 +10954,7 @@
     if (k && k.indexOf("x:") === 0) { var e = dEntry(k); return (e && e.cls) || ""; }
     return (taxByCode[k] && taxByCode[k].class_name) || "";
   }
-  function detPassesGroup(k) { return speciesGroup === "all" || String(detClassOf(k)).toLowerCase() === String(speciesGroup).toLowerCase(); }
+  function detPassesGroup(k) { return speciesGroup === "all" || isSearchKey(k) || String(detClassOf(k)).toLowerCase() === String(speciesGroup).toLowerCase(); }   // a search's pins have no class
   var mapClickGuardUntil = 0;   // onMapClick ignores clicks before this time; each accepted click re-arms it (200 ms debounce), legend re-renders set a longer window
   var mapPtrDownTs = 0, mapPtrUpTs = 0, mapPtrIsTouch = false;   // last map pointer-down/-up times + whether it was touch (press-duration gating)
   function mapPtrStillDown() { return mapPtrDownTs > 0 && mapPtrUpTs < mapPtrDownTs; }
@@ -11453,6 +11456,7 @@
     // Extra stored under "x:<sci>" — re-resolve to a model species by scientific
     // name (or class-aware epithet) so it localises to the current UI language
     // instead of showing the capture-locale name (e.g. Norwegian "hønsehauk").
+    if (isSearchKey(e.key)) return e.name || e.key.slice(SEARCH_KEY_PREFIX.length);   // a search's row: its words
     if (e.key && e.key.indexOf("x:") === 0) {
       var sci = e.key.slice(2);
       // The epithet-only matcher needs the record's class: without one, "Astragalus norvegicus"
@@ -15138,13 +15142,9 @@
   // are left, the shown lists and trips come off the map (un-ticked; the lists themselves are kept).
   function clearStep() {
     if (!detAreaDeleteMode && fetchedAreas.length) { enterAreaDeleteMode(); updateDetLegend(); return; }
-    if (detAreaDeleteMode || detFetchedCount()) { clearDetections(); return; }
-    if (Object.keys(mpState.shownColls()).length || Object.keys(mpState.shownDetSets()).length) {
-      mpState.setShownColls({}); mpState.setShownDetSets({});
-      saveShownState(); updateDetSetOverlays(); renderMapPoints();
-      if (typeof refreshMpPanel === "function") refreshMpPanel();
-      setStatus(t("ctrl.listsCleared"));
-    }
+    if (detAreaDeleteMode || detFetchedCount()) clearDetections();
+    // Only FETCHED observations ever go (owner, 2026-10-24): the points of shown lists and
+    // the points a search put on the map stay — they are cleared from the Points panel.
   }
   function clearDetections() {
     detPlotGen++;   // invalidate in-flight fetches' late plotting (they finish, but won't repopulate a cleared map)
@@ -17027,13 +17027,9 @@
     };
     el.innerHTML = '<div class="det-legend-head" data-help="maphelp.legend">' +
         '<button type="button" class="det-min" title="' + escapeHtml(t("det.minimise")) + '" aria-label="' + escapeHtml(t("det.minimise")) + '">−</button>' +
-        (function () {   // legend funnel: orange only when the filters actually REMOVE observations
-          var st = hasFilter ? detFilteredStats() : null;
-          return '<button type="button" class="det-clear-sel' + (st && st.removed > 0 ? " on" : "") + '" title="' + escapeHtml(hasFilter ? t("det.clearFiltersHint") : t("det.filtersHint")) + '" aria-label="' + escapeHtml(hasFilter ? t("det.clearFilters") : t("det.filters")) + '">' + (hasFilter ? filterXSvg(15) : ico("funnel")) +
-            fxBarHtml(st) + '</button>';
-        })() +
+        // The filter funnel and the red × live ONLY on the map's lower-right bar (owner, 2026-10-24:
+        // "sufficient that they are on the map"); the legend head keeps − and the selection-only ×.
         (selOverride ? '<button type="button" class="det-clear-selonly" title="' + escapeHtml(t("det.clearSel")) + '" aria-label="' + escapeHtml(t("det.clearSel")) + '">' + X_MARK_SVG + '</button>' : "") +
-        '<button type="button" class="det-clear' + (detAreaDeleteMode ? " armed" : "") + '" title="' + escapeHtml(detAreaDeleteMode ? t("det.delAreaHint") : (fetchedAreas.length ? t("det.delAreaArm") : t("det.clearAll"))) + '" aria-label="' + escapeHtml(t("det.clearAll")) + '">' + X_MARK_SVG + '</button>' +
         (capped ? '<span class="det-cap-warn" role="img" title="' + escapeHtml(capTip) + '" aria-label="' + escapeHtml(capTip) + '">⚠</span>' : "") +
       "</div>" +
       // "Total" is a 4-state TOGGLE picking which species the legend LISTS: All / Selected /
@@ -17053,14 +17049,6 @@
       delKeys.map(function (k) {
         return '<div class="det-row det-row-deleted" data-key="' + escapeHtml(k) + '" title="' + escapeHtml(t("det.deletedHint")) + '"><span class="det-nm">' + escapeHtml(deletedSpecies[k]) + "</span></div>";
       }).join("");
-    // Red ×, two-stage: with remembered fetched areas and not yet armed, the first
-    // click arms per-area delete (a red × appears on each area). Otherwise it wipes
-    // everything (a 2nd click while armed, or when there are no areas to pick from).
-    el.querySelector(".det-clear").addEventListener("click", function (e) {
-      e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
-      clearStep(); updateClearGroup();
-    });
-    wireClearFilterBtn(el.querySelector(".det-clear-sel"));   // click = clear all; long-press/right-click = all-filters pane
     // "Total" cycles the listed row-set: All → Selected → Starred → Rare → New for {year} → All, skipping the sets that would be empty (see detRowsStates).
     var totTg = el.querySelector(".det-total-toggle");
     if (totTg) totTg.addEventListener("click", function (e) {
@@ -18229,8 +18217,12 @@
     // Map points put there by a search, with a species (owner, 2026-10-11: "the species names should be
     // parsed correctly and added to legend"): they join the legend like a shown list's records, drawn as
     // one circle per point in their SEARCH's colour (see the _search branch of the dot drawing).
+    // A pin WITHOUT a species (matched on its note) joins too, under one legend row per search —
+    // named by the search words, in the search's colour — so the legend, its filters and the red ×
+    // reach every point a search put on the map (owner, 2026-10-23).
     mpSearchPins().forEach(function (p) {
-      var key = mpState.detKeyOf(p); if (!key) return;
+      if (!isFinite(+p.lat) || !isFinite(+p.lon)) return;
+      var key = mpState.detKeyOf(p) || searchKey(p.fromSearch);
       var col = mpSearchColor(p.fromSearch);
       var row = _listRowOf && _listRowOf.get(p);
       if (!row) {
@@ -18240,7 +18232,9 @@
         if (_listRowOf) _listRowOf.set(p, row);
       }
       var e = detPlot[key];
-      if (!e) e = detPlot[key] = { key: key, name: (key.indexOf("x:") === 0 ? (p.sci || p.name) : p.name) || key, color: p.spColor || "#888", rows: [], group: null, cls: p.spCls || (taxByCode[key] && taxByCode[key].class_name) || "" };
+      if (!e) e = detPlot[key] = isSearchKey(key)
+        ? { key: key, name: "\u201c" + p.fromSearch + "\u201d", color: col, rows: [], group: null, cls: "" }
+        : { key: key, name: (key.indexOf("x:") === 0 ? (p.sci || p.name) : p.name) || key, color: p.spColor || "#888", rows: [], group: null, cls: p.spCls || (taxByCode[key] && taxByCode[key].class_name) || "" };
       // the same record already there (a shown list's, a fetched one): not counted twice
       var sk = (+row.lat).toFixed(5) + "," + (+row.lon).toFixed(5) + "|" + String(row.date || "").slice(0, 10);
       if (e.rows.some(function (r0) { return (+r0.lat).toFixed(5) + "," + (+r0.lon).toFixed(5) + "|" + String(r0.date || "").slice(0, 10) === sk; })) { skipped++; return; }
@@ -18675,9 +18669,14 @@
     var isEdit = !!(existing && existing.id);
     // Re-use a single working popup; close any other detail popups first.
     if (mpEditPopup) map.closePopup(mpEditPopup);
-    var html = mpEditorHtml(p, isEdit);
+    // The content goes in as a DOM node, not a string: centerPopup() calls pop.update() once the
+    // popup has its final size, and Leaflet re-renders STRING content from scratch on every update
+    // — which threw away the Save / Delete / route handlers wireEditorPopup had just attached
+    // whenever that update landed after the wiring (owner, 2026-10-23: "Save does nothing").
+    // A node is re-appended as-is, listeners included.
+    var node = document.createElement("div"); node.innerHTML = mpEditorHtml(p, isEdit);
     var pop = L.popup({ closeButton: true, autoClose: true, maxWidth: 280, className: "mp-popup", autoPan: false })
-      .setLatLng([p.lat, p.lon]).setContent(html);
+      .setLatLng([p.lat, p.lon]).setContent(node);
     mpEditPopup = pop; pop.openOn(map);
     window.AppPoints.centerPopup(pop);   // in the middle of the screen, once it has its final size
     setTimeout(function () { wireEditorPopup(p, isEdit); }, 0);
@@ -19248,6 +19247,11 @@
   var MP_OTHER = "#other-map-points#";
   // The map points a search put there, and that search's colour (stable per search words).
   function mpSearchPins() { return mpState.mapPoints().filter(function (p) { return p && p.fromSearch; }); }
+  // The legend key of a search's species-less pins: "x:search:<words>" — an extra like a non-model
+  // species, so it rides the "x:" paths; named by the words, never resolved against the taxonomy.
+  var SEARCH_KEY_PREFIX = "x:search:";
+  function searchKey(q) { return SEARCH_KEY_PREFIX + q; }
+  function isSearchKey(k) { return typeof k === "string" && k.indexOf(SEARCH_KEY_PREFIX) === 0; }
   function mpSearchColor(q) { return mpState.mpHashColor("search:" + q); }
   // One record's identity for de-duplication: its spot to ~1 m, its date, its species (else its name).
   function mpRecKey(q) { var k = mpState.detKeyOf(q); return (+q.lat).toFixed(5) + "," + (+q.lon).toFixed(5) + "|" + (q.date || "").slice(0, 10) + "|" + (k || textFold(q.name || "")); }
@@ -20269,11 +20273,16 @@
   function openOverlaysPopup() {
     if (!overlayDefsRef || !map) return;
     closeDropdowns();
-    var m = createModal({ escClose: true, backdropClose: true, boxClass: "ovl-box", onClose: function () { overlaysPopup = null; navClose("overlays"); } });
+    var mapWrap = document.getElementById("maptype-wrap"), mapHome = document.getElementById("maptype-home");
+    var m = createModal({ escClose: true, backdropClose: true, boxClass: "ovl-box", onClose: function () {
+      overlaysPopup = null; navClose("overlays");
+      if (mapWrap && mapHome) mapHome.appendChild(mapWrap);   // park the base-map chooser again (its wiring stays)
+    } });
     overlaysPopup = m;
     navOpen("overlays", m.close);   // Back closes it like the other popups
     m.box.innerHTML = '<div class="ui-modal-msg ovl-help-title">' + escapeHtml(t("ctrl.overlays")) + "</div>" +
       '<button type="button" class="btn ovl-all"></button><div class="ovl-rows"></div>';
+    if (mapWrap) m.box.insertBefore(mapWrap, m.box.querySelector(".ovl-all"));   // the base map first, then the overlays
     m.box.querySelector(".ovl-all").addEventListener("click", function () { toggleAllOverlays(); });
     renderOverlayRows();
   }

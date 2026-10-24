@@ -2,7 +2,7 @@
 
 **Live app:** <https://thebirding.site/> (formerly `pcmoan70.github.io/BirdsWhere`, which now redirects; an app installed from the old address shows a *Move to thebirding.site* button that carries your lists and settings across)
 
-**Licence:** the application code is open source under the **MIT licence** (`LICENSE`); the model, maps and data carry their own licences, listed in the app under *How it works → Credits & licence* and in `THIRD-PARTY-NOTICES.md`.
+**Licence:** the application code is **public domain — CC0 1.0 Universal** (`LICENSE`) — CC0 because the code was written by AI; the idea, the concept and the UI design are Per Christian Moan's, and proper attribution would be appreciated (not required). **Not included:** the name **BirdsWhere**, its icons, the domain **thebirding.site** and the hosted service's endpoints, counters, keys and sign-in client are **proprietary, all rights reserved** — a fork needs its own name, domain and keys (`NOTICE.md`, which also holds the terms of use). The datasets the author's own pipelines generate (**Best sites** and its week rankings, the confusion-species lists and traits) are **© Per Christian Moan, all rights reserved** — not CC0. The model, maps and other data carry their own licences, listed in the app under *How it works → Credits & licence* and in `THIRD-PARTY-NOTICES.md`.
 
 An interactive, **100% in-browser** explorer of species **distribution, migration and live
 observations**. Everything runs on your device — there is **no server and no backend of our own**;
@@ -88,7 +88,7 @@ stubs on zero-observation days. **Hover** a bar to preview just that
 day's dots on the map and in the legend; **click** it (green → orange) to add that date to the
 filters — multi-select, click again to remove; clears with *Clear filters*.
 
-**Base maps:** Voyager, Streets, CyclOSM, Topographic, Esri Topo, Satellite — deep zoom (down to ~0.25°
+**Base maps** (bird button → *Maps & overlays*, top of the popup): Voyager, Streets, CyclOSM, Topographic, Esri Topo, Satellite — deep zoom (down to ~0.25°
 cells) with bilinear smoothing on the model layers. A **Resolution** control trades finer
 detail for speed. **More place names** (Settings → Map) renders vector labels (MapLibre GL over
 OpenFreeMap's OpenMapTiles data, no key) on the Voyager and Satellite maps, so local names surface
@@ -104,7 +104,7 @@ fetched at once; it is a *display* choice, so what a fetch asks for is still dec
 birds/mammals/amphibians/insects; **Plants 🌿 and Fungi 🍄 are observation-only**
 (Range/Richness/Migration are hidden for them).
 
-**Overlay layers** (tap the bird button, top-left → *Overlays…*: a popup with a tick box and a one-line description per overlay, a **?** for the full explanation and a ⚙ on the three layers with their own settings; the birding layers come first — Best sites, Viewpoints, eBird hotspots, MiS forest habitats, Land cover — then the protected-area outlines): **WDPA · Protected Planet** (*Experimental* — enable in Settings), **Ramsar wetlands**,
+**Overlay layers** (tap the bird button, top-left → *Maps & overlays…*: the base-map chooser, then a popup row with a tick box and a one-line description per overlay, a **?** for the full explanation and a ⚙ on the three layers with their own settings; the birding layers come first — Best sites, Viewpoints, eBird hotspots, MiS forest habitats, Land cover — then the protected-area outlines): **WDPA · Protected Planet** (*Experimental* — enable in Settings), **Ramsar wetlands**,
 **Natura 2000** (EU SPA/SCI; *Experimental* — enable in Settings), **Emerald Network** (Bern Convention — the non-EU counterpart
 to Natura 2000), **Land cover** (CORINE / Copernicus-EEA — habitat backdrop, Europe/EEA, with a
 colour-coded class legend in the lower-right while it's on), **MiS forest habitats** (NIBIO's inventory of Norwegian forest —
@@ -151,7 +151,7 @@ holding a button:
 
 | hold… | to get |
 |---|---|
-| the **Overlays…** row in the bird button's quick panel (or tap the button at the top of the Overlays popup) | hide/show all ticked overlays in one go (the row and the bird button turn orange while they're suspended) |
+| the **Maps & overlays…** row in the bird button's quick panel (or tap the button at the top of that popup) | hide/show all ticked overlays in one go (the row and the bird button turn orange while they're suspended) |
 | the **🔍** search button | the **stored locations** popup |
 | the **locate crosshair** | continuous **GPS-follow** (hold again = red read cursor) |
 | the **Settings ⚙** gear | the full **Settings** panel (a *tap* gives the quick panel instead) |
@@ -162,7 +162,7 @@ holding a button:
 | the **collapsed legend pill** | pan/zoom to frame **all fetched points** |
 | the **rarity bell 🔔** | poll eBird's notable sightings at all 🔔 locations right now |
 | the **✓ update** button (right of the map) | its two settings — how many **overlap days** to re-fetch before each area's last fetch (default 2) and **only areas in view** |
-| the **Viewpoints**, **Best sites** or **eBird hotspots** row in the Overlays popup (or tap its ⚙) | that layer's settings: the zoom from which its icons appear, how many are shown at once, and for Best sites the **site detail level** (Auto / 500 m / 25 km / 75 km) + the chart's AI-model cutoff |
+| the **Viewpoints**, **Best sites** or **eBird hotspots** row in the Maps & overlays popup (or tap its ⚙) | that layer's settings: the zoom from which its icons appear, how many are shown at once, and for Best sites the **site detail level** (Auto / 500 m / 25 km / 75 km) + the chart's AI-model cutoff |
 
 ---
 
@@ -618,11 +618,9 @@ Palearctic ones), re-evaluated as you move; and **From a region** — species ty
 pick. It combines with every other filter and steers the **map dots, legend, day-histogram and
 lists** together.
 
-Plus **−** minimise (to a corner pill), a black **× Clear filters** (keeps the dots), and a
-red **×** that clears all detections — or, when fetched-area outlines exist, first arms
-**per-area delete** (a red × on each area removes just that area's detections; a second click
-clears every fetched detection). Shown saved point lists and detection sets are **not** removed —
-they stay ticked and on the map. A **⚠** appears when the *Max points on map* draw cap is hiding dots.
+Plus **−** minimise (to a corner pill) and, while a species selection is active, a black **×** that
+drops just that selection. A **⚠** appears when the *Max points on map* draw cap is hiding dots. The
+filter funnel and the red × are **not** in the legend — they sit on the map at the lower right (below).
 
 **Opening the app starts clean**: no species selection and no filters (only display preferences —
 the minimised legend, sort order — and deleted species are kept), and the observations fetched last
@@ -630,10 +628,12 @@ time are **not** put back unless Settings → Fetching & detections → **Show t
 observations on open** is on (off by default); their fetched-area squares (and the ✓ update button)
 stay away with them. Shown point lists still appear; "Fetch on open" is the only start-up fetch.
 
-There's also a standalone red **×** on the **right of the map** (near the offline-download button),
-shown while observations, fetched-area squares or lists are on the map: the first tap clears the fetched observations
-(saved point lists stay shown); a second tap — once nothing fetched is left — takes the shown lists
-and trips off the map too (un-ticked; the lists themselves are kept).
+The red **×** sits at the **lower right of the map** (above the 🔍 search and locate buttons; the filter
+**funnel** sits under it in the same bar), shown while fetched observations or fetched-area squares are on the
+map. It clears the **fetched observations only** — or, when fetched-area outlines exist, first arms
+**per-area delete** (a red × on each area removes just that area's detections; a second tap clears every
+fetched detection). The points of shown saved lists, detection sets and the pins a search put on the map are
+**never** touched by it: take those off from the Points panel (un-tick the list, or the × on its "On the map" row).
 
 A **✓ Update** button (also on the right of the map, shown only when you have fetched areas) brings
 **every area you've already fetched up to today's latest observations** in one tap: each area is
@@ -1028,8 +1028,10 @@ Right-click / long-press / tap any species name for a menu **led by the species 
   matching records of the lists not struck through into the map points (the working pins); the lists
   and their shown / hidden state stay as they were. Each record goes on once — the same observation in
   several lists (same spot to ~1 m, date and species, else name) counts and is added once, and a
-  record already on the map is not added again. Save
-  the pins into a list to keep them.
+  record already on the map is not added again. Every point a search put on the map goes through the
+  legend: a record with a species sits under its species, a record matched on its note under one row
+  named by the search words (in the search's colour), so the filters reach them all. The map's red × leaves
+  them alone — the × on the search's "On the map" row takes them off. Save the pins into a list to keep them.
   A search's points are drawn as plain circles in that search's own colour (25 % fill); those with a
   species — read from the point's stored species or scientific name through the model labels — also
   join the legend and its filters like a shown list's records.
@@ -1356,7 +1358,7 @@ the one thing left out by default — they are much the largest thing the app ho
   **fetch radius** and **how many days back** to fetch (1 · 2 · 3 · 7 · 14 · 21 · 28 · 42 · 91).
   **Press-and-hold** (or right-click) opens the full **Settings** panel — and so does the quick
   panel's last row, **Settings…**, so Settings is always reachable with plain taps. The row above
-  it, **Overlays…**, opens the map-overlay popup (hold the row = hide/show the ticked overlays). Both sliders
+  it, **Maps & overlays…**, opens the base-map + overlay popup (hold the row = hide/show the ticked overlays). Both sliders
   drive the same controls that live in Settings, so a change made either way is saved the same way.
 - **Model compare** (Settings → About row → *Model compare ↗*, `model-compare/`) — a standalone page that runs
   the **BirdNET+ Geomodel V3.0.4** (14,082 species) next to the app's own model (12,012) for one species over all
@@ -1393,7 +1395,7 @@ the one thing left out by default — they are much the largest thing the app ho
 - **CSV export** throughout (recent detections, species lists, checklist CSV/Log, eBird
   Record-Format CSV). A **Share between devices** section also **exports/imports all your data as a
   backup file** (merging checklists on import) and shows the app QR.
-- Settings additionally cover base map & resolution, map-data cache size, second-name and
+- Settings additionally cover resolution, map-data cache size, second-name and
   scientific-name display, the rare-species threshold, max map points, hotspot minimum species,
   and country sampling resolution.
 
@@ -1523,7 +1525,14 @@ The 3-D terrain viewer (1 m Kartverket terrain with the sun and its shadows for 
 
 ## Attribution & licensing
 
-- **App code**: MIT (see `LICENSE`).
+- **App code**: public domain, CC0 1.0 Universal (see `LICENSE`) — AI-written, hence CC0; the idea, concept and UI design
+  are Per Christian Moan's and proper attribution is appreciated, though not required. The **BirdsWhere** name and icons, the
+  **thebirding.site** domain and the hosted service's endpoints, counters, keys and sign-in client are
+  **proprietary** (`NOTICE.md`, with the terms of use).
+- **The app's own generated datasets** — `app/best-sites/**`, `app/best-sites-week/**`, `app/coverage.html`,
+  `app/confusion.csv`, `app/species-traits.json` — are **© 2026 Per Christian Moan, all
+  rights reserved** (NOTICE.md §3): view them in the app, no extraction or redistribution without permission.
+  Birding spots (`app/birding-spots/**`) are OpenStreetMap extracts, ODbL © OpenStreetMap contributors.
 - **BirdNET Geomodel** by the [BirdNET team](https://github.com/birdnet-team/geomodel): source
   MIT; **trained weights (`geomodel_fp16.onnx`) are CC BY-SA 4.0** and redistributed here under
   those terms (share-alike + attribution required). The **Model compare** subpage

@@ -2586,8 +2586,11 @@ window.AppPoints = (function () {
             mpTipHtml(o.p) + "</div>" + pointTagsHtml(o.p) + "</div>";
       }).join("");
     // Leaflet's own maxHeight gives the popup its scrollbar (.leaflet-popup-scrolled).
+    // A DOM node, not a string: centerPopup's pop.update() re-renders string content and would drop
+    // the click handlers attached below (same fix as openPointEditor in app.js).
+    var node = document.createElement("div"); node.innerHTML = html;
     var pop = L.popup({ className: "area-tip mp-stack-pop", maxWidth: 320, maxHeight: 300, autoPan: false })
-      .setLatLng(center).setContent(html).openOn(getMap());
+      .setLatLng(center).setContent(node).openOn(getMap());
     centerPopup(pop);
     var el = pop.getElement();
     if (!el) return;
@@ -2784,7 +2787,7 @@ window.AppPoints = (function () {
     updateDetSetOverlays();   // keep the shown detection-set layers in sync
     mapPoints.forEach(function (p) {
       if (!mpVisible(p)) return;
-      if (p.fromSearch && detKeyOf(p)) return;   // a search's pin WITH a species is drawn by the detection pipeline (legend), in its search's colour
+      if (p.fromSearch) return;   // a search's pins are drawn by the detection pipeline (legend rows, filters, red ×), in the search's colour
       renderMpPin(p, true);                      // loose working pins (editable, tag colour)
     });
     // Ticked saved point-lists: a list's DETECTION points (those carrying a species
