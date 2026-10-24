@@ -2,7 +2,7 @@
 
 **Live app:** <https://thebirding.site/> (formerly `pcmoan70.github.io/BirdsWhere`, which now redirects; an app installed from the old address shows a *Move to thebirding.site* button that carries your lists and settings across)
 
-**Licence:** the application code is **public domain — CC0 1.0 Universal** (`LICENSE`) — CC0 because the code was written by AI; the idea, the concept and the UI design are Per Christian Moan's, and proper attribution would be appreciated (not required). **Not included:** the name **BirdsWhere**, its icons, the domain **thebirding.site** and the hosted service's endpoints, counters, keys and sign-in client are **proprietary, all rights reserved** — a fork needs its own name, domain and keys (`NOTICE.md`, which also holds the terms of use). The datasets the author's own pipelines generate (**Best sites** and its week rankings, the confusion-species lists and traits) are **© Per Christian Moan, all rights reserved** — not CC0. The model, maps and other data carry their own licences, listed in the app under *How it works → Credits & licence* and in `THIRD-PARTY-NOTICES.md`.
+**Licence:** the application code is **public domain, CC0 1.0 Universal** (`LICENSE`; basis: the code is AI-generated — the idea, concept and UI design are Per Christian Moan's, credit appreciated; suggestions and improvements sent through the app's **Feedback** form will be implemented, so that effort is not spent twice and we build one useful tool together); the BirdsWhere name and icons, the thebirding.site domain and service, and the datasets based on modelling by Per Christian Moan (**Best sites** with its weekly rankings; the **confusion-species** lists and traits) are **reserved** — the defining text, with the exact file list and the terms of use, is [`NOTICE.md`](NOTICE.md); third-party licences are in `THIRD-PARTY-NOTICES.md`.
 
 An interactive, **100% in-browser** explorer of species **distribution, migration and live
 observations**. Everything runs on your device — there is **no server and no backend of our own**;
@@ -1525,14 +1525,8 @@ The 3-D terrain viewer (1 m Kartverket terrain with the sun and its shadows for 
 
 ## Attribution & licensing
 
-- **App code**: public domain, CC0 1.0 Universal (see `LICENSE`) — AI-written, hence CC0; the idea, concept and UI design
-  are Per Christian Moan's and proper attribution is appreciated, though not required. The **BirdsWhere** name and icons, the
-  **thebirding.site** domain and the hosted service's endpoints, counters, keys and sign-in client are
-  **proprietary** (`NOTICE.md`, with the terms of use).
-- **The app's own generated datasets** — `app/best-sites/**`, `app/best-sites-week/**`, `app/coverage.html`,
-  `app/confusion.csv`, `app/species-traits.json` — are **© 2026 Per Christian Moan, all
-  rights reserved** (NOTICE.md §3): view them in the app, no extraction or redistribution without permission.
-  Birding spots (`app/birding-spots/**`) are OpenStreetMap extracts, ODbL © OpenStreetMap contributors.
+- **App code**: public domain, CC0 1.0 Universal (`LICENSE`). Brand, service identifiers and the datasets based on modelling by Per Christian
+  Moan (Best sites with its weekly rankings; the confusion-species lists and traits) are reserved — see [`NOTICE.md`](NOTICE.md), which defines each class by file path and holds the terms of use.
 - **BirdNET Geomodel** by the [BirdNET team](https://github.com/birdnet-team/geomodel): source
   MIT; **trained weights (`geomodel_fp16.onnx`) are CC BY-SA 4.0** and redistributed here under
   those terms (share-alike + attribution required). The **Model compare** subpage
