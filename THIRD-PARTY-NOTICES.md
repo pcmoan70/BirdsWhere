@@ -89,6 +89,29 @@ redistributed here under those terms.
   holds no name for, and stores those names on the device. The About panel carries the
   attribution and the licence link in all 15 UI languages.
 
+### "Sounds like" table (`app/sound.csv`) and "heard alongside" table (`app/soundscape.csv`) — derived numbers
+
+The per-bird Sound scores were computed offline with **BirdNET+ V3.0 developer preview 3.1**
+(K. Lisa Yang Center for Conservation Bioacoustics, Cornell University; Chemnitz University of
+Technology; Museum für Naturkunde Berlin — models CC BY-SA 4.0, https://zenodo.org/records/20703646,
+"Powered by BirdNET"; the model's terms forbid use for poaching or military purposes, and this
+table is neither) together with **Bird-MAE-Base** (L. Rauch, I. Moummad, R. Heinrich, A. Joly, B. Sick,
+C. Scholz, "Can Masked Autoencoders Also Listen to Birds?", arXiv:2504.12880, 2025; weights from
+Hugging Face DBD-research-group/Bird-MAE-Base — no licence is stated by the authors; the weights were
+used offline only and nothing of them is redistributed), earlier cross-checked with **Perch 2.0**
+(Google DeepMind, Apache-2.0). Since v2208 the Sound score is the shared-vocalisation metric: each
+recording's vocalisations (3-second pieces, 1-second overlap) are embedded by both models and a pair
+is close when a species' best pieces have a near twin among the other's. The audio
+came from **Xeno-canto** (https://xeno-canto.org, recordings under the recordists' Creative Commons
+licences, mostly CC BY-NC-SA). No recording, no embedding and no recordist name is redistributed:
+the app ships only the derived closeness numbers and the report `about/audio-similarity.html`.
+
+Since v2209 the compare card also plays **Xeno-canto recordings** (grade A) of the two birds being compared:
+the sonogram image and the audio are loaded from xeno-canto.org at the time of use, nothing is copied into the
+app; the app carries only an index (`app/xc/`: XC number, voice category, the upload path, recordist and licence
+of up to two recordings per voice and species) so that every clip is shown with its recordist, its Creative
+Commons licence and a link to its Xeno-canto page, as the licences require.
+
 ### Simplified country borders
 File: `app/countries-lite.json` — heavily simplified national outlines used only to gate
 country-scoped observation sources. Derived from open/public-domain geographic boundary data

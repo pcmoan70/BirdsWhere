@@ -65,6 +65,14 @@
   .ex-val { font-size: 12px; font-variant-numeric: tabular-nums; }
   .ex-val b { color: var(--ink); }
   .ex-txt .btn { align-self: flex-start; padding: 5px 12px; font-size: 13px; margin-top: auto; }
+  .models { margin-top: 12px; }
+  .models-body { padding: 4px 12px 10px; font-size: 13px; line-height: 1.45; color: var(--ink-muted); max-width: 900px; }
+  .models-body h3 { margin: 10px 0 4px; font-size: 13px; color: var(--ink); }
+  .models-body h3 small { font-weight: 400; color: var(--ink-muted); }
+  .models-body p { margin: 6px 0; } .models-body b { color: var(--ink); } .models-body a { color: var(--info); }
+  .models-body table { border-collapse: collapse; margin: 6px 0; font-variant-numeric: tabular-nums; }
+  .models-body th, .models-body td { border: 1px solid var(--border); padding: 3px 8px; text-align: left; font-size: 12px; }
+  .models-body th { color: var(--ink); background: var(--surface-2, transparent); }
   footer { font-size: 12px; color: var(--ink-muted); margin-top: 14px; line-height: 1.5; }
   footer a { color: var(--info); }
 </style>
@@ -109,6 +117,35 @@
         <p>A breeder of the Norwegian mountains that reaches the Oslo lowlands only as a wandering bird outside the breeding season. The app’s model never lets it reach the fjord (near zero all year); the new model gives it a real chance there from autumn to late winter, and the two agree again in summer.</p>
         <div class="ex-val" id="ex-val-1"></div>
         <button type="button" class="btn ex-go" data-i="1">Show over Europe</button></div></div>
+    </div>
+  </section>
+  <section class="card models"><h2>The look-alike models <small>where the Confusion-species numbers come from — Match (BioCLIP 2 + the misID model) and Sound (BirdNET+ V3.0)</small></h2>
+    <div class="models-body">
+      <h3>Match — the misID model, built on BioCLIP 2</h3>
+      <p><b>BioCLIP 2</b> (Imageomics Institute, 2025) is a CLIP-style vision–language model trained on TreeOfLife-200M, about 214 million organism photos paired with their taxonomic names. Its text tower turns a scientific name into an embedding of 768 numbers that lies close to the embeddings of that species’ photos, so two names whose vectors point the same way belong to birds that look alike in pictures. BirdsWhere uses only the published name embeddings, no images: 11,131 bird names, 9,610 matched to the app’s species. The cosine similarity of two names and each name’s rank among the other’s nearest are the strongest inputs of the <b>misID model</b>, a gradient-boosted classifier (HistGradientBoosting, monotone constraints) trained on about 803,000 ordered species pairs to predict whether a partner holds at least 5 % of a species’ real iNaturalist misidentifications <i>at equal exposure</i>. Its other inputs are AVONET shape, size and mass, ecological niche and lifestyle, genus / family / order and HBW plumage colour. Where and when the birds live is deliberately not an input, so the model can only learn appearance; its probability × 100 is the app’s Match. Geography enters the app once, as Here.</p>
+      <p>Measured on held-out families — 4,446 species with at least 20 recorded confusions; a partner counts when it holds ≥ 5 % of the species’ confusions:</p>
+      <table>
+        <tr><th>ranking of a species’ candidates</th><th>recall@10</th><th>recall@20</th><th>nDCG@10</th></tr>
+        <tr><td>random order</td><td>0.08</td><td>0.16</td><td>0.05</td></tr>
+        <tr><td>shape / size / niche / genus / colour heuristic, no names</td><td>0.47</td><td>0.59</td><td>0.43</td></tr>
+        <tr><td>BioCLIP 2 name similarity alone</td><td>0.52</td><td>0.64</td><td>0.47</td></tr>
+        <tr><td><b>the misID model (all appearance inputs) — shipped</b></td><td><b>0.62</b></td><td><b>0.74</b></td><td><b>0.57</b></td></tr>
+        <tr><td>the same model with co-occurrence added (geography in) — not used</td><td>0.75</td><td>0.86</td><td>0.71</td></tr>
+      </table>
+      <p>The shipped model separates the ≥ 5 % partners from the rest with AUC 0.88. Among candidates that actually share the species’ range and season it finds 92 % of the real confusion partners in its top 10 (3,893 species), and it keeps 60 % of the look-alikes that never meet in the top 10, where the geography-aware model keeps 44 % — that is why geography stays out. The misID column beside Match is the real iNaturalist share itself, corrected for how often the two birds are in the same place at the same time of year.</p>
+      <h3>Sound — BirdNET+ V3.0 and Bird-MAE over Xeno-canto <small>(Experimental features)</small></h3>
+      <p><b>BirdNET+ V3.0</b> (Cornell Lab of Ornithology and Chemnitz University of Technology, developer preview 3.1, 2026, CC BY-SA 4.0) is a bird-sound classifier with 11,560 labels that also gives a 1,280-number embedding per window of audio; <b>Bird-MAE-Base</b> (Rauch et al. 2025, a masked autoencoder trained on bird sound without species labels) gives a 768-number one. Since v2208 the table is built from vocalisations, not whole recordings: 85,327 Xeno-canto recordings of 9,796 species (grades A and B, up to four per kind of voice — song, call, drumming, other — the first 45 s of each) were scored frame by frame by BirdNET+; where the labelled bird is actually singing (its frame probability ≥ 0.4) the audio is cut into 3-second pieces with 1-second overlap (188,533 pieces; 117,743 kept after dropping pieces in whose 5-second window another species reaches 0.3 — the background birds that used to fake matches). Each piece is embedded by both models (whitened to 64 numbers). For two species, each piece of A finds its nearest piece of B; the 90th percentile of those (BirdNET+) or the 75th (Bird-MAE) is A’s closeness to B, symmetrised; the two models’ row-standardised scores are averaged. The per-model views pull apart: BirdNET+ keeps 18 of 22 hard congener pairs but 4 of 14 cross-family by-ear pairs within its eight nearest, Bird-MAE 10 and 10 — the fusion holds both. Species whose recordings gave no clean piece (1,839) keep their whole-recording entry from the v2200 table. Powered by BirdNET.</p>
+      <table>
+        <tr><th>measure (7,478 species in the table; checks within the 5,639 on the new method)</th><th>value</th></tr>
+        <tr><td>recordings / 5-second windows / vocalisation pieces (clean)</td><td>85,327 / 539,555 / 188,533 (117,743)</td></tr>
+        <tr><td>the recordist’s label is BirdNET+’s first choice / in its top 3 / detected at all (p ≥ 0.1), per recording</td><td>56 % / 73 % / 75 % (grade A 63 / 79 / 82 %, grade B 42 / 59 / 60 %)</td></tr>
+        <tr><td>22 pairs European birders find hard by ear (congeners): in each other’s eight nearest, among 5,639 species</td><td>19 of 22 (median rank 1; missed: Greenish ↔ Arctic Warbler, Herring ↔ Caspian Gull, Chiffchaff ↔ Willow Warbler at 9)</td></tr>
+        <tr><td>23 same-habitat pairs that do not sound alike: wrongly in the eight nearest</td><td>5 of 23 (median rank 21)</td></tr>
+        <tr><td>14 cross-family by-ear pairs (Blackbird ↔ Mistle Thrush, Cuckoo ↔ Collared Dove, Wryneck ↔ Lesser Spotted Woodpecker …): in the eight nearest</td><td>10 of 14 (median rank 2; the Wryneck pair at 8)</td></tr>
+        <tr><td>species with a Sound entry</td><td>7,478 (5,639 vocalisation-based, 1,839 whole-recording)</td></tr>
+      </table>
+      <p>The same pass gives the <b>Soundscape</b> column (Experimental): the share of a bird’s 5-second recording windows in which another bird is detected (p ≥ 0.1; 9,426 species, partners with at least 5 %), shown times the chance that bird is here — the chorus around it, kept apart from “sounds alike” on purpose. Counting windows instead of recordings removed the one-off false detections that the old recording shares carried at 17–20 %.</p>
+      <p>Coverage follows Xeno-canto: 540 recordings per European species against 26 for African and 21 for Oceanian ones. The full breakdown by region, class and family is in <a href="../about/audio-similarity.html">How well does the “sounds like” table work?</a></p>
     </div>
   </section>
   <div id="tip"></div>

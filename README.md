@@ -20,7 +20,7 @@ layered on top are the real sightings.
 > Model outputs are estimates, not ground truth; BirdWeather detections are AI acoustic
 > identifications, not human-verified.
 
-*Documentation last updated 2026-09-29 (app version ~v1928).*
+*Documentation last updated 2026-10-27 (app version ~v2200).*
 
 ---
 
@@ -581,6 +581,31 @@ Tap a row to select it (picks stack, so several show together); on a mouse, hove
 it on the map. Long-press (or right-click) a species **name** for its menu (info, references, lists
 & actions) — the same menu a species-list name opens.
 
+**Points view (v2192, every field v2193).** The species legend lists only the fetched species; a shown point list never
+joins it. Instead, while a list is shown, a **dots button** in the legend's top row swaps the species rows
+for the lists' points — and the legend opens in this view by itself when there are no species to list. The heading is
+the grouping: **tap it for the menu of fields** the shown points carry (each with its number of distinct values, a dot
+marking one that holds picks), **hold it** for the next one. The fields are every one an observation record has —
+**Lists · Tags · Species · Groups** (the obs filter's: birds, mammals, …) **· Observers · Places · Activity · Count**
+(1 · 2–5 · 6–20 · 21–100 · 100+) **· Source · Datasets · Country · Life stage · Years · Months** — plus each kept
+column the file brought (status, type, …); a field is offered only when some point carries it. The rows are that
+field's values (species by their local name, months by name, years newest first) with their **count on screen**,
+each with a swatch showing the list's dot shape in the colour the pins wear while that grouping is on. Tap a row to show only those
+points (picks stack; clearing the last one shows all), hover to isolate, long-press a name for **Zoom to these** /
+**Show only these** — and, on a year or month, **Pick through here**, which picks every row between the picks so
+far and that one (a range). **Picks on different fields combine**: years 2019–2021 and one observer leaves the
+points matching both. A **strip under the heading** lists the picks on the fields you are not looking at
+(`Years: 2019–2021 ×`) — tap a name to go to that field, × to clear its picks; a row's own count ignores the
+picks on its own field, so an unpicked row stays listed, greyed, for a tap to bring it back.
+The Tags grouping *is* the Points panel's tag chips — a tap here ticks the chip there. The funnel
+clears every points pick like any other filter. The fetched-species filters (date, observer, mode) never
+touch list points; a list's own observer / date funnel sits in the Points panel. **Text (v2194):** the Points
+panel's **filter box** narrows the shown points by text — fuzzy, as the observer filter is: every word must
+*start* a word in a point's name, note, place, observer, activity, tags, species (scientific or local name),
+country, dataset, life stage or kept columns, or in its **list's name and note** (a list whose note matches
+keeps every point); `−word` excludes. The legend shows the text as a chip in the same strip (tap it to get to the
+box, × clears it) and the funnel clears it with the rest.
+
 The control line opens three mutually-exclusive **filter subwindows**:
 
 - **Time** — presets in a grid (days 1–6, weeks 1–6, months 1–3), an **all/∞** chip, a
@@ -694,6 +719,25 @@ and re-filters as you pan or zoom, the same way the legend counts only what is o
   colour/tags for every point and tick **Protect from deletion** there (a protected list then shows a
   🔒 in place of its red × — hover it for the note), delete it, or expand it to
   edit/remove individual points.
+- **Point lists are separate from the fetched species (v2192)** — a list point is never a species
+  record: it does not enter the species legend, and the date, observer and mode filters of the fetched
+  species leave it alone, and since v2194 so do the species pane's name and text searches — the lists have their
+  own filter box. Every list point is drawn as a
+  see-through dot a little larger than an observation dot, in the list's colour — a circle unless the list or the
+  point chose another **shape (v2195)**: circle · ring · square · diamond · triangle · star, all the same footprint
+  with a 60 % fill (the ring unfilled). The list's default sits in **Edit list → Dot shape**, a point's own in the
+  **Shape** column of Edit values (or a `marker` / `symbol` field in an imported file); both travel in KMZ / KML /
+  GeoJSON. The colour: the point's own, else the list's, else its auto colour — unless the legend's points view
+  groups by something other than Lists, when the pins take that grouping's colours. The uncertainty circle
+  (`radius` in metres, `unc_edge` for its edge) stays as before and follows the pin's colour. The lists' own controls:
+  the Points panel (tick, the per-list observer / date funnel, the tag chips, the text filter box) and the legend's **points
+  view** (see *The map legend & filters*), which groups the shown points by list, tag, species or any
+  field the file brought and switches them on and off. Imported files keep their other fields (status,
+  type, year, habitat …) on each point: on the pin card, as columns in **Edit values** (**+ Column** adds
+  one), and in KML / GeoJSON downloads. **A list has a note of its own (v2194)** — Edit list → Note; the first
+  line shows under the list's row in the Points panel, the filter box searches it, and it travels in the list's
+  KMZ / KML (as the folder's description, where Google Earth shows it), GeoJSON and Drive copies. A plain KML's
+  document description becomes the note of the list it imports into.
 - **Opening a file from the OS** — a `.kml`, `.kmz` or `.geojson` can be opened **from outside the
   app**, landing in the same import dialog. On **desktop Chromium** (Chrome/Edge 102+, Windows ·
   macOS · Linux · ChromeOS) install BirdsWhere and it registers as a file handler, so the file lists
@@ -994,7 +1038,7 @@ Right-click / long-press / tap any species name for a menu **led by the species 
   **Settings → Distribution**
   picks which opens first, model by default, each falling back to the other when it has nothing for the
   species, Wikipedia also when offline; the Wikipedia dialog links to the model map), **Migration**,
-  **Images** (Macaulay Library, birds), **Audio** (Xeno-canto, animals), **More of these**, **Wikipedia**,
+  **Images** (Macaulay Library, birds), **Audio** (v2210: the bird's preselected Xeno-canto clips in the app — up to two A-grade recordings per kind of voice, tap a sonogram to play — with the link to all its recordings on Xeno-canto at the bottom; animals; v2215: the clips you play and their sonograms are kept on the device — a 160-entry, version-independent service-worker cache, Settings → Storage → *Recordings (Xeno-canto)* — so they play offline; on the compare card the recordings sit in a row of the trait table, the clips in columns under the two pinned names), **More of these**, **Wikipedia**,
   then **Family** and the group-specific references: **Macaulay Library** photos/audio (narrowed to the
   observation's season — a ±1-month `beginMonth`/`endMonth` window — so images match the time of
   year) and **eBird photos** for birds, **Kew POWO** for plants, **Animal Diversity Web** for
@@ -1093,6 +1137,27 @@ habitat model puts above 0 % at your point/week and ranks them by local likeliho
     renormalised over the listed partners (sum ≈ 100 %).
   - The app ships only each species' **9 best partners** by the location-free score; the full
     ranked lists stay on the data disk (`confusion_full.csv`).
+  - **Sound** (v2200; rebuilt v2208; *Experimental* — enable in Settings, v2202) is how alike the two birds are **by ear to a sound-recognition model** (0–100):
+    the shared-vocalisation metric of `tools/sound/` — BirdNET+ V3.0 marks where in each Xeno-canto recording
+    (85,327 recordings, 9,796 species, grades A and B, up to four per kind of voice) the labelled bird sings, those
+    stretches become 3-second pieces (1-second overlap; a piece with another species loud in its window is dropped),
+    every piece is embedded by BirdNET+ and by Bird-MAE, and two species are close when one's best pieces have a near
+    twin among the other's, in both models and both directions (`shared_metric.py`, `sound_table.py`;
+    `app/sound.csv`, 7,478 species × up to 8 partners — 5,639 on the vocalisation metric, 1,839 kept from the
+    v2200 whole-recording table). Shown beside Match · misID · Here in the table and on the cards, **not fused into
+    Score**; only a bird's eight nearest by ear carry a number, the rest stay blank. The note under
+    the list links **[How well does the "sounds like" table work?](app/about/audio-similarity.md)**
+    (`about/audio-similarity.html` in the app): coverage by region / class, the label-versus-model check and the pair checks.
+  - **Order** (v2201): the header line of both views has buttons — **Score · Match · misID ·
+    Sound · Soundscape** (the last two with Experimental on) — that order the list by that column; the
+    choice is remembered. Score needs an open point (it is greyed without one). **Sound** lists the
+    bird's **eight nearest by ear** from the sound table whether or not they are visual look-alikes; a
+    sound-only bird shows no Match / misID.
+  - **Soundscape** (v2205; window shares v2208; *Experimental*) is the **heard-alongside** measure: the share of the bird's
+    5-second Xeno-canto recording windows in which the other bird is detected (BirdNET+ V3.0, p ≥ 0.1;
+    `tools/sound/scape_freq.py` → `app/soundscape.csv`, 9,426 species × up to 12 partners with share ≥ 5 %) **× Here** — the
+    birds you will hear next to it this week, whether or not they sound alike (share alone without a
+    point). **Cutoff:** with a point open only birds with **Here ≥ 15 %** get a value and enter the Soundscape order. The Soundscape order adds those birds to the list. Teal bar; not part of Score.
   Each input must be **significant** before it counts: a **Match below 10 %** or a **misID below
   5 %** contributes nothing, so a species cannot earn a place in the ranking on a 3 % resemblance
   or a single stray misidentification. A look-alike under both floors scores **0 and is not listed
@@ -1113,7 +1178,7 @@ habitat model puts above 0 % at your point/week and ranks them by local likeliho
   cards**: the species itself first (marked by a thicker green frame), then left to right by Score, wrapping
   onto further rows (two per row on narrow phones). Each card carries the Wikipedia/Commons lead photo
   with its credit, the name, the scientific name and **Match · misID · Here · Score** as small bars;
-  tapping a look-alike (card or table row) offers **⇆ Compare … side by side** (the compare card) or that bird's own
+  tapping a look-alike (card or table row) offers **⇆ Compare … side by side** (the compare card) or that bird's own With Experimental on, the compare card ends with **Recordings** (v2209): up to two Xeno-canto A-grade clips per voice for each bird, side by side by kind of voice (song, calls, alarm, flight, drumming, young birds, other) from the index `app/xc/<first char>.csv` (`tools/sound/xc_clips.py`, built from the archive's Darwin Core metadata since the Xeno-canto API now needs a key); the sonogram is the button (tap to play, tap again to stop, one clip at a time, streamed from xeno-canto.org), and each clip shows its XC number, recordist and licence and links its page.
   **☰ Species menu**. The footer explains the columns, including how Match compares the names (the cosine of their
   BioCLIP 2 embedding vectors). **Settings → Confusion species** switches between
   *Photo cards* (default) and the *Table*; offline the table is used automatically, and each popup has a
@@ -1190,10 +1255,13 @@ an **eBird Record Format CSV** ready for [ebird.org/import](https://ebird.org/im
 ## Country resources & place links
 
 - **Map right-click / long-press menu** — *Add point*, *Share point*, *Save location*, *Navigate
-  here*, *Add to route* and *Offline maps* (the coordinates line copies them); the click popup adds
+  here*, *Add to route*, **Radar** (Europe, with *Experimental features* on — opens
+  [Migration Aloft](https://pcmoan70.github.io/BirdsWhere-aloft/), the weather-radar migration map),
+  **3-D terrain** (Norway, with *Experimental features* on — see below) and
+  *Offline maps* (the coordinates line copies them); the click popup adds
   a **Birdingplaces** link (birdingplaces.eu at the point),
   and, for Sweden & Norway, a **Fågelkartan** link to that point's county / fylke page. In Norway,
-  with *Experimental features* on, the popup gets a **3-D terrain** button, which opens the
+  with *Experimental features* on, the long-press menu's **3-D terrain** button opens the
   [3-D terrain viewer](https://pcmoan70.github.io/3d_terrain/) at the clicked point (it builds a
   1 m elevation model 2 km around it from Kartverket's height data and lets you move the centre or
   radius before building). The dots on the map inside that square go along: your pins with their
@@ -1369,11 +1437,16 @@ the one thing left out by default — they are much the largest thing the app ho
   models' common names when they differ. Default: White-backed Woodpecker. Two Norwegian examples at the foot of the page
   (White-backed Woodpecker, Gyrfalcon) show a small 0.1° difference map around Oslo for the chosen week with the
   values at Oslo; *Show over Europe* loads that species into the three large maps. Online only (not cached).
+  *Experimental* — the link shows with Experimental features on (v2203). The foot of the page describes the two
+  **look-alike models** with their measured numbers: Match (BioCLIP 2 name embeddings feeding the misID model —
+  held-out recall@10 0.62 against 0.52 for the name similarity alone and 0.47 for the measurement heuristic; AUC
+  0.88) and Sound (BirdNET+ V3.0 over Xeno-canto — held-out top-1 74.7 %, hard pairs 18 of 22, coverage by region).
 - **Persistence** — settings, view, species/year/life lists, checklists, points and plotted
   detections survive across visits. Small settings live in **localStorage**; bulky per-list data
   (saved sets, detections) lives in **IndexedDB** to avoid the ~5 MB cap. Saved point lists load **lazily**: at start only
-  the ticked lists are read; the others follow in the background (or at once when ticked or
-  opened), so many large lists no longer slow the start. Long lists (species table, observation
+  one small index (each list's name, fields and point count) and the ticked lists are read; an unticked list stays on
+  disk until something needs it — ticking it, opening it, the Points panel's search, a sync or a backup — so many
+  large lists do not slow the start or the first minute after it. Long lists (species table, observation
   list, legend) show their first rows at once and fill in the rest in the background.
   **Settings → Storage** lists every cache with its count and size — **Fetched observations**
   (every location's downloaded observations, kept on the device until you clear them: one

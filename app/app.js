@@ -80,7 +80,11 @@
   var TAX_URL = "taxonomy-base.csv";        // species_code + English name + class (split from taxonomy.csv)
   var TAX_NAMES_BASE = "i18n/names/";       // per-language name packs, line-aligned to taxonomy-base.csv rows
   var CONFUSION_URL = "confusion.csv";      // per-bird look-alike (confusion) partner codes; fetched on first use
-  var CONFUSION_REV = 18;                     // bump when confusion.csv changes — busts the runtime (cache-first) copy
+  var CONFUSION_REV = 19;                     // bump when confusion.csv changes — busts the runtime (cache-first) copy
+  var SOUND_URL = "sound.csv";                // per-bird "sounds like" partners (tools/sound, BirdNET+ V3.0 over Xeno-canto): code -> "code:SCORE …"
+  var SOUND_REV = 2;                          // bump when sound.csv changes (2 = S17 shared-vocalisation table, 2026-10-29)
+  var SCAPE_URL = "soundscape.csv";           // per-bird "heard alongside" partners (tools/sound measures_v2.py heard.csv): code -> "code:SHARE …" (share of recordings, 0-100)
+  var SCAPE_REV = 2;                          // bump when soundscape.csv changes (2 = window shares of the full archive, 2026-10-29)
   var TRAITS_URL = "species-traits.json";   // per-species characteristics (AVONET morphology/ecology + HBW colour)
   var TRAITS_REV = 2;                        // bump when species-traits.json changes
 
@@ -361,6 +365,7 @@
       sources:  '<circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 16.2a6 6 0 0 0 0-8.4M4.9 4.9a10 10 0 0 0 0 14.2M19.1 19.1a10 10 0 0 0 0-14.2"/>',
       datasets: '<path d="M12 3 3 7.5 12 12l9-4.5L12 3zM3 12l9 4.5 9-4.5M3 16.5 12 21l9-4.5"/>',
       globe:    '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 2.6 15.4 0 18M12 3c-2.6 2.6-2.6 15.4 0 18"/>',
+      radar:    '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><path d="M12 12l6.4-6.4"/>',
       camera:   '<path d="M4 8h3l1.6-2.2h6.8L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.2" r="3.4"/>',
       download: '<path d="M12 3v11M7.5 9.5 12 14l4.5-4.5M5 20h14"/>',
       upload:   '<path d="M12 21V10M7.5 14.5 12 10l4.5 4.5M5 4h14"/>',
@@ -518,7 +523,7 @@
   // neither applies. Kept in sync from updateDetLegend (runs on every plot/clear).
   function updateClearGroup() {
     if (!clearGroupEl) return;
-    var hasPts = typeof detPlot !== "undefined" && Object.keys(detPlot).length > 0;
+    var hasPts = (typeof detPlot !== "undefined" && Object.keys(detPlot).length > 0) || !!(mpState && (mpState.ptSelActive() || mpState.mpTextActive()));   // a points-legend pick is a filter to clear, observations or not
     var hasFilt = typeof detHasFilter === "function" && detHasFilter();
     var hasAreas = typeof fetchedAreas !== "undefined" && fetchedAreas.length > 0;   // squares can outlive their dots (every species deleted) → still clearable
     var a = clearGroupEl.querySelector(".clearpts-btn");
@@ -2976,7 +2981,6 @@
     return detFuzzy(q, detSearchText({ key: key, name: name }));
   }
   function filterSpRows() {
-    // The same search also filters list pins on the map (listPointPasses → pointNameMatches).
     try { if (mpState && mpState.mpFilterRefresh) mpState.mpFilterRefresh(); } catch (e) {}
     var tb = document.getElementById("sp-tbody"); if (!tb) return;
     var q = spNameQuery.trim();
@@ -6252,7 +6256,7 @@
     }
   }
   function exportAppData() {
-    mpState.whenAllLoaded().then(function () { return syncCatOn("fetched") ? loadAllSights() : null; }).then(function () {   // lists (and fetched records) load lazily: a backup must hold them whole
+    mpState.whenAllLoaded().then(cachesReady).then(function () { return syncCatOn("fetched") ? loadAllSights() : null; }).then(function () {   // lists (and fetched records) load lazily: a backup must hold them whole
       if (mpState.anyLazy()) return;
       downloadCsv("BirdsWhere_backup_" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify(buildPayload(), null, 2), "application/json;charset=utf-8;");
     });
@@ -6958,7 +6962,7 @@
     SYNC_CATS: SYNC_CATS,
     filterIncomingForSync: filterIncomingForSync,
     overlayExcludedForPush: overlayExcludedForPush,
-    splitListsForDrive: splitListsForDrive, listFromKmz: listFromKmz, localListSig: localListSig, isListRef: isListRef,
+    splitListsForDrive: splitListsForDrive, listFromKmz: listFromKmz, localListSig: localListSig, isListRef: isListRef, cachesReady: cachesReady,
     _listKmzBytes: listKmzBytes, _listPointsSig: listPointsSig
   };
 
@@ -7575,7 +7579,6 @@
     try { if (window.AppPoints && window.AppPoints.initMpSetStore) await window.AppPoints.initMpSetStore(); } catch (e) {}   // named point lists → IndexedDB (same pattern as trips)
     try { if (window.bootPhase) window.bootPhase("obs"); } catch (e) {}
     try { await loadPersistedSightings(); } catch (e) {}   // so a reopen reuses the last downloads instead of refetching
-    try { hydrateHotspotStore(); hydrateVernacCache(); hydrateNameHarvest(); } catch (e) {}   // fire-and-forget: the general cache's IDB stores (hotspots, iNat names)
     ensurePersistentStorage();   // keep offline-map tiles + saved data from being evicted
     setTimeout(maybeAskRedownloadOffline, 3000);   // offer to re-fetch any browser-evicted offline areas
 
@@ -7655,7 +7658,7 @@
               '<div class="settings-aboutrow">' +
                 '<a class="settings-about about-page-link" href="about/" target="_blank" rel="noopener" data-i18n="settings.aboutPage">About ↗</a>' +
                 '<button type="button" id="about-open" class="settings-about" data-i18n="ctrl.about">How it works</button>' +
-                '<a class="settings-about" href="model-compare/" target="_blank" rel="noopener" data-i18n="settings.modelCompare">Model compare ↗</a>' +
+                '<a class="settings-about" id="model-compare-link" href="model-compare/" target="_blank" rel="noopener" data-i18n="settings.modelCompare"' + (experimentalOn() ? "" : ' style="display:none"') + '>Model compare ↗</a>' +   // Experimental only (owner, 2026-10-27)
               '</div>' +
               '<div id="settings-version" class="settings-version" style="display:none"></div>' +
               '<button type="button" id="settings-update" class="settings-update" style="display:none"></button>' +
@@ -7908,6 +7911,7 @@
                   '<button type="button" class="clear-cache-btn" data-clear="harvest"><span class="clear-lbl" data-i18n="clear.harvest">Downloaded names</span><span class="clear-cnt"></span></button>' +
                   '<button type="button" class="clear-cache-btn" data-clear="offline"><span class="clear-lbl" data-i18n="clear.offline">Offline areas</span><span class="clear-cnt"></span></button>' +
                   '<button type="button" class="clear-cache-btn" data-clear="images"><span class="clear-lbl" data-i18n="clear.images">Species photos</span><span class="clear-cnt"></span></button>' +
+                  '<button type="button" class="clear-cache-btn" data-clear="clips"><span class="clear-lbl" data-i18n="clear.clips">Recordings (Xeno-canto)</span><span class="clear-cnt"></span></button>' +
                 '</div>' +
                 '<button type="button" id="clear-all-btn" class="btn btn-light" data-i18n="clear.all">Clear all cached data</button>' +
                 // Not a cache clear — it rewrites the lists in place, so it sits under its own
@@ -8625,7 +8629,7 @@
   // export snapshot (buildPayload) rides in the URL fragment — compressed, never sent
   // to any server — and the new origin merges it after a confirmation (below).
   function moveToNewHome() {
-    mpState.whenAllLoaded().then(function () {
+    mpState.whenAllLoaded().then(cachesReady).then(function () {
     var payload; try { payload = window.AppData.buildPayload(); } catch (e) { location.href = NEW_HOME; return; }
     return window.AppShare.encodeShare(payload).then(function (enc) {
       if (enc.length > MIGRATE_MAX) { modalAlert(t("moved.tooBig")).then(function () { location.href = NEW_HOME; }); return; }
@@ -8639,7 +8643,7 @@
     window.AppShare.decodeShare(m[1]).then(function (obj) {
       return modalConfirm(t("moved.confirm")).then(function (ok) {
         if (!ok) return;
-        return mpState.whenAllLoaded().then(function () {
+        return mpState.whenAllLoaded().then(cachesReady).then(function () {
         if (mpState.anyLazy()) return;
         applyRemote(obj, { incomingWins: true, interactive: true });
         setStatus(t("moved.done"));
@@ -9324,7 +9328,7 @@
     // every pan: grey the counts as "stale" the moment the map moves, then re-render only
     // once the map has been still for LEGEND_REDRAW_IDLE ms (no further pan/zoom).
     var legendRedrawTimer = null, LEGEND_REDRAW_IDLE = 2000;   // ms of map stillness before the legend re-renders
-    function legendHasData() { return detLegend && typeof detPlot !== "undefined" && (Object.keys(detPlot).length || Object.keys(alertPlot).length); }
+    function legendHasData() { return detLegend && typeof detPlot !== "undefined" && (Object.keys(detPlot).length || Object.keys(alertPlot).length || (mpState && mpState.ptAvail())); }
     map.on("movestart zoomstart", function () {
       if (!legendHasData()) return;
       clearTimeout(legendRedrawTimer);
@@ -9904,6 +9908,8 @@
     if (cw) { if (!experimentalOn()) cw.style.display = "none"; else try { updateModeVisibility(); } catch (e) { cw.style.display = ""; } }
     var b = document.getElementById("sp-checklist-btn");
     if (b) b.style.display = "";   // always visible (was experimental-gated in v868)
+    var mc = document.getElementById("model-compare-link");
+    if (mc) mc.style.display = experimentalOn() ? "" : "none";   // the Model compare page is Experimental
     if (typeof syncExperimentalOverlays === "function") syncExperimentalOverlays();   // Birding spots + GBIF are experimental-only
     try { updateBasemapOptions(); } catch (e) {}   // refresh basemap options (harmless; maps are no longer experimental)
   }
@@ -11101,18 +11107,20 @@
   // sci-name match, current locale). Cached UNLIMITED in IndexedDB (part of the
   // general cache; the old capped GeoState copy migrates over once). Offline just
   // keeps the sci name and retries another session.
-  var vernacPending = Object.create(null), vernacTimer = null, extraVernacMem = null;
+  var vernacPending = Object.create(null), vernacTimer = null, extraVernacMem = null, vernacHydrating = null;
   function vernacCache() {
     if (!extraVernacMem) extraVernacMem = window.GeoState.get("extraVernac", {}) || {};   // pre-hydration / no-IDB fallback
+    if (!vernacHydrating) hydrateVernacCache();   // first use reads the store (not at start any more, v2197)
     return extraVernacMem;
   }
   function saveVernacCache() {
     if (window.AppIDB && AppIDB.available()) AppIDB.put("extraVernac", vernacCache()).catch(function () {});
     else window.GeoState.save({ extraVernac: vernacCache() });
   }
-  function hydrateVernacCache() {
-    if (!(window.AppIDB && AppIDB.available())) return Promise.resolve();
-    return AppIDB.get("extraVernac").then(function (m) {
+  function hydrateVernacCache() {   // once; returns the same promise afterwards
+    if (vernacHydrating) return vernacHydrating;
+    if (!(window.AppIDB && AppIDB.available())) return (vernacHydrating = Promise.resolve());
+    return (vernacHydrating = AppIDB.get("extraVernac").then(function (m) {
       var mem = (m && typeof m === "object") ? m : {};
       var old = window.GeoState.get("extraVernac", null);   // one-time migration off localStorage
       if (old && Object.keys(old).length) {
@@ -11122,8 +11130,11 @@
       }
       if (extraVernacMem) Object.keys(extraVernacMem).forEach(function (k) { mem[k] = extraVernacMem[k]; });   // keep pre-hydration lookups
       extraVernacMem = mem;
-    }).catch(function () {});
+    }).catch(function () {}));
   }
+  // The two name caches read and merged — before anything that serialises them (sync, backup,
+  // move, migrate-import): a payload built from an unread cache would carry an empty one.
+  function cachesReady() { return Promise.all([hydrateVernacCache(), hydrateNameHarvest()]).catch(function () {}); }
   // ---- Bundled names for the groups outside the model ----------------------
   // The positional packs (i18n/names/) only cover the model's own species list, so
   // plants, fungi and most insects have no row there at all. These per-language
@@ -11202,18 +11213,19 @@
   // only place their names can come from.
   //
   // iNaturalist's taxonomy is CC BY 4.0 (GBIF dataset 738041eb-…) — About credits it.
-  var nhMem = null, nhPending = Object.create(null), nhTimer = null, nhDirty = false, nhAsked = 0;
+  var nhMem = null, nhPending = Object.create(null), nhTimer = null, nhDirty = false, nhAsked = 0, nhHydrating = null;
   var NH_RATE_MS = 1100;     // iNaturalist asks for <= 60 requests/minute
   var NH_SESSION_MAX = 600;  // and <= ~10k/day: a polite ceiling per app session
-  function nameHarvest() { if (!nhMem) nhMem = {}; return nhMem; }
+  function nameHarvest() { if (!nhMem) nhMem = {}; if (!nhHydrating) hydrateNameHarvest(); return nhMem; }   // first use reads the store (v2197)
   function nhKey(sci) { return sciBinomial(sci).toLowerCase(); }
-  function hydrateNameHarvest() {
-    if (!(window.AppIDB && AppIDB.available())) return Promise.resolve();
-    return AppIDB.get("nameHarvest").then(function (m) {
+  function hydrateNameHarvest() {   // once; returns the same promise afterwards
+    if (nhHydrating) return nhHydrating;
+    if (!(window.AppIDB && AppIDB.available())) return (nhHydrating = Promise.resolve());
+    return (nhHydrating = AppIDB.get("nameHarvest").then(function (m) {
       var mem = (m && typeof m === "object") ? m : {};
       if (nhMem) Object.keys(nhMem).forEach(function (k) { mem[k] = nhMem[k]; });   // keep pre-hydration lookups
       nhMem = mem;
-    }).catch(function () {});
+    }).catch(function () {}));
   }
   function saveNameHarvest() {
     if (!nhDirty) return;
@@ -11956,7 +11968,7 @@
     (mpState.mpCollections() || []).forEach(function (c) {
       if (!mpState.shownColls()[c.name]) return;
       (c.points || []).forEach(function (p) {
-        if (p && !p.spKey && isFinite(p.lat) && isFinite(p.lon)) out.push({ point: true, name: p.name || c.name || t("nearby.point"), lat: +p.lat, lon: +p.lon });
+        if (p && isFinite(p.lat) && isFinite(p.lon)) out.push({ point: true, name: p.name || c.name || t("nearby.point"), lat: +p.lat, lon: +p.lon });
       });
     });
     return out;
@@ -12718,6 +12730,123 @@
       .catch(function () { _confusionP = null; return null; });
     return _confusionP;
   }
+  // "Sounds like" partners: how close two birds are to a sound-recognition model's ear (0-1), from the
+  // world sound table (tasks/sound-table_20261025.md; the report is about/audio-similarity.html).
+  // Same shape as the confusion file; the map is code -> { partnerCode: score }.
+  // soundscape.csv has the same shape: the share (0-100) of the bird's 5 s recording windows in which the partner is detected (p ≥ 0.1).
+  function pairsLoader(url, rev) {
+    var map = null, p = null;
+    return function () {
+      if (map) return Promise.resolve(map);
+      if (p) return p;
+      p = fetch(new URL(url, SCRIPT_BASE).href + "?r=" + rev)
+        .then(function (r) { if (!r.ok) throw new Error(url + " " + r.status); return r.text(); })
+        .then(function (text) {
+          var m = Object.create(null), lines = text.split(/\r?\n/);
+          for (var i = 1; i < lines.length; i++) {
+            var line = lines[i]; if (!line) continue;
+            var c = line.indexOf(","); if (c < 0) continue;
+            var o = Object.create(null);
+            line.slice(c + 1).split(" ").forEach(function (pp) { var a = pp.split(":"); if (a[0]) o[a[0]] = (+a[1] || 0) / 100; });
+            m[line.slice(0, c)] = o;
+          }
+          map = m; return m;
+        })
+        .catch(function () { p = null; return null; });
+      return p;
+    };
+  }
+  var ensureSound = pairsLoader(SOUND_URL, SOUND_REV), ensureScape = pairsLoader(SCAPE_URL, SCAPE_REV);
+  // Xeno-canto clips for the compare card (owner, 2026-10-29): app/xc/<first char>.csv (tools/sound/xc_clips.py) — per species up
+  // to two A-grade recordings per voice as "xc|cat|hash|recordist|licence;…". The sonogram and the audio come from xeno-canto.org
+  // itself; the recordist and licence are shown with each clip (the CC attribution). One shared Audio element plays one clip at a time.
+  var XC_REV = 1, xcShards = Object.create(null), XC_CATS = ["s", "c", "a", "f", "d", "j", "o"];
+  function ensureClips(code) {
+    var k = String(code || "").charAt(0).toLowerCase(); if (!k) return Promise.resolve([]);
+    if (!xcShards[k]) xcShards[k] = fetch(new URL("xc/" + k + ".csv", SCRIPT_BASE).href + "?r=" + XC_REV)
+      .then(function (r) { return r.ok ? r.text() : ""; })
+      .then(function (text) {
+        var m = Object.create(null);
+        text.split(/\r?\n/).slice(1).forEach(function (line) {
+          var c = line.indexOf(","); if (c < 0) return;
+          m[line.slice(0, c)] = line.slice(c + 1).split(";").map(function (cl) { var f = cl.split("|"); return { xc: f[0], cat: f[1], h: f[2], by: f[3] || "", lic: f[4] || "" }; });
+        });
+        return m;
+      }, function () { return Object.create(null); });
+    return xcShards[k].then(function (m) { return m[code] || []; });
+  }
+  var xcAudio = null, xcPlayingEl = null;
+  function xcStop() {
+    if (xcAudio) { try { xcAudio.pause(); } catch (e) {} }
+    if (xcPlayingEl) xcPlayingEl.classList.remove("playing");
+    xcPlayingEl = null;
+  }
+  function xcToggle(clipEl) {
+    if (xcPlayingEl === clipEl) { xcStop(); return; }
+    xcStop();
+    if (!xcAudio) {
+      xcAudio = new Audio(); xcAudio.preload = "none"; xcAudio.crossOrigin = "anonymous";   // a CORS request: the service worker stores the clip as a real (sized) response for offline play
+      xcAudio.addEventListener("ended", xcStop);
+      xcAudio.addEventListener("timeupdate", function () { if (xcPlayingEl && !document.body.contains(xcPlayingEl)) xcStop(); });   // the card closed under it
+    }
+    xcAudio.src = "https://xeno-canto.org/" + clipEl.dataset.xc + "/download";
+    xcPlayingEl = clipEl; clipEl.classList.add("playing");
+    xcAudio.play().catch(function () { xcStop(); });
+  }
+  function xcClipHtml(c, side) {
+    var cap = "XC" + c.xc + " \u00b7 " + c.by + " \u00b7 CC " + c.lic;
+    return '<div class="xc-clip xc-' + side + '" data-xc="' + escapeHtml(c.xc) + '" title="' + escapeHtml(cap) + '">' +
+      '<img src="https://xeno-canto.org/sounds/uploaded/' + escapeHtml(c.h) + '/ffts/XC' + escapeHtml(c.xc) + '-small.png" alt="">' +
+      '<a class="xc-cap" href="https://xeno-canto.org/' + escapeHtml(c.xc) + '" target="_blank" rel="noopener">' + escapeHtml(cap) + "</a></div>";
+  }
+  // The species menu's Audio panel (owner, 2026-10-29: "The species popup Audio should give the preselected audio clips used in the
+  // confusion (audio) pane. At the bottom there should be a link to xeno-canto for that species"): the same clips as the compare card,
+  // one column, grouped by voice, then the Xeno-canto search link that the entry used to open directly.
+  function openAudioMenu(key, name, sci, x, y) {
+    var el = openAnchoredMenu("detrow-menu conf-menu cmp-menu xc-menu");
+    el.style.maxHeight = "min(82vh,640px)"; el.style.overflowY = "auto"; el.style.width = "min(94vw,360px)";
+    var closeBtn = document.createElement("button");
+    closeBtn.type = "button"; closeBtn.className = "conf-close"; closeBtn.textContent = "\u00d7"; closeBtn.setAttribute("aria-label", "Close");
+    closeBtn.addEventListener("click", function (e) { e.stopPropagation(); closeAnchoredMenu(); });
+    el.appendChild(closeBtn);
+    var hdr = document.createElement("div"); hdr.className = "detrow-menu-hdr"; hdr.textContent = name; el.appendChild(hdr);
+    var box = document.createElement("div"); box.className = "xc-sec"; box.innerHTML = '<span class="cmp-nocol">\u2026</span>'; el.appendChild(box);
+    var more = document.createElement("a"); more.className = "xc-more"; more.href = xenoCantoUrl(sci || ""); more.target = "_blank"; more.rel = "noopener";
+    more.textContent = t("clips.more"); more.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); openExternal(xenoCantoUrl(sci || "")); });
+    el.appendChild(more); positionAnchoredMenu(el, x, y);
+    ensureClips(key).then(function (A) {
+      if (!document.body.contains(box)) return;
+      var h = '<div class="xc-sec-lbl">' + escapeHtml(t("clips.sec")) + "</div>";
+      if (!A.length) h += '<div class="cmp-nocol">' + escapeHtml(t("clips.none")) + "</div>";
+      XC_CATS.forEach(function (k) {
+        var a = A.filter(function (c) { return c.cat === k; }); if (!a.length) return;
+        h += '<div class="xc-voice"><div class="xc-vlbl">' + escapeHtml(t("clips." + k)) + '</div><div class="xc-col xc-col-a">' + a.map(function (c) { return xcClipHtml(c, "a"); }).join("") + "</div></div>";
+      });
+      box.innerHTML = h;
+      box.querySelectorAll(".xc-clip").forEach(function (cl) {
+        cl.addEventListener("click", function (e) { e.stopPropagation(); if (e.target.closest(".xc-cap")) return; xcToggle(cl); });
+        cl.querySelector("img").addEventListener("error", function () { cl.classList.add("xc-noimg"); });
+      });
+      positionAnchoredMenu(el, x, y);
+    });
+  }
+  // The compare card's Recordings section (a grid under the trait table, not table rows: a table cannot shrink the sonograms
+  // on a phone): one block per voice either bird has, the two birds' clips in two columns coloured like their names.
+  function xcSection(focalKey, partnerKey) {
+    return Promise.all([ensureClips(focalKey), ensureClips(partnerKey)]).then(function (ab) {
+      var A = ab[0], B = ab[1], h = '<div class="xc-sec"><div class="xc-sec-lbl">' + escapeHtml(t("clips.sec")) + "</div>";
+      if (!A.length && !B.length) return h + '<div class="cmp-nocol">' + escapeHtml(t("clips.none")) + "</div></div>";
+      // One table row spanning the three columns (so the pinned names row stays over the clips too), the clips in a grid whose columns are set to the table's
+      XC_CATS.forEach(function (k) {
+        var a = A.filter(function (c) { return c.cat === k; }), b = B.filter(function (c) { return c.cat === k; });
+        if (!a.length && !b.length) return;
+        h += '<div class="xc-grid"><div class="xc-vlbl">' + escapeHtml(t("clips." + k)) + "</div>" +   // the voice in the table's label column, the clips under the two names (owner, 2026-10-29)
+          '<div class="xc-col xc-col-a">' + (a.map(function (c) { return xcClipHtml(c, "a"); }).join("") || '<span class="cmp-nocol">\u2014</span>') + "</div>" +
+          '<div class="xc-col xc-col-b">' + (b.map(function (c) { return xcClipHtml(c, "b"); }).join("") || '<span class="cmp-nocol">\u2014</span>') + "</div></div>";
+      });
+      return '<tr class="xc-tr"><td class="xc-td" colspan="3">' + h + "</div></td></tr>";
+    });
+  }
   // Per-species characteristics (AVONET morphology/ecology + HBW plumage colour),
   // for the confusion "compare" card. Fetched on first use, cache-first like confusion.
   var traitsData = null, _traitsP = null;
@@ -12929,6 +13058,25 @@
     tbl.innerHTML = rows;
     // Either species name → open that bird's own confusion-species list (pick a new look-alike).
     el.appendChild(tbl);
+    // Recordings side by side (owner, 2026-10-29; Experimental / Sound on): appended once the clip index shard is here.
+    if (soundOn()) xcSection(focalKey, partnerKey).then(function (xr) {
+      if (!document.body.contains(tbl)) return;
+      // The clip columns line up under the two names: the grid's columns are the table's own, as shares of its width,
+      // measured BEFORE the row goes in (the row then adds nothing to the column widths, and shares follow a resize)
+      var ths = tbl.querySelectorAll(".cmp-head th"), shares = null;
+      if (ths.length === 3) {   // column pitches, not cell widths (collapsed borders make a cell's rect wider than its column)
+        var r0 = ths[0].getBoundingClientRect(), r1 = ths[1].getBoundingClientRect(), r2 = ths[2].getBoundingClientRect(), tl = tbl.getBoundingClientRect(), W = tl.right - r0.left;
+        if (W > 0) shares = [(r1.left - r0.left) / W, (r2.left - r1.left) / W, (tl.right - r2.left) / W];
+      }
+      (tbl.tBodies[0] || tbl).insertAdjacentHTML("beforeend", xr);
+      var sec = tbl.querySelector(".xc-sec");
+      if (sec && shares) { sec.style.setProperty("--xc-lbl", (shares[0] * 100).toFixed(3) + "%"); sec.style.setProperty("--xc-a", (shares[1] * 100).toFixed(3) + "%"); sec.style.setProperty("--xc-b", (shares[2] * 100).toFixed(3) + "%"); }
+      el.querySelectorAll(".xc-clip").forEach(function (cl) {
+        cl.addEventListener("click", function (e) { e.stopPropagation(); if (e.target.closest(".xc-cap")) return; xcToggle(cl); });
+        cl.querySelector("img").addEventListener("error", function () { cl.classList.add("xc-noimg"); });   // no sonogram on XC yet (new uploads): caption only, still playable
+      });
+      positionAnchoredMenu(el, x, y);
+    });
     tbl.querySelectorAll(".cmp-clk").forEach(function (th) {
       th.addEventListener("click", function (e) {
         e.stopPropagation();
@@ -12968,30 +13116,82 @@
     var d = w.mid >= CONF_MISID_MIN ? w.mid : 0;
     return (0.25 * m + 0.75 * (d / 100)) * w.p;
   }
-  // The ranked look-alikes of a species: [{ m: label, w: Match, mid: misID %, p: Here }]
-  // by Score (most likely confusion first) when a point is open, else by Match; `out`
-  // is that week's prediction at the point (null without one). Shared by the
-  // Confusion-species table and its images view.
-  async function confusionRanked(key) {
-    var map = await ensureConfusion();
-    var entries = (map && map[key]) || [];
-    var members = entries.map(function (e) { var l = labelsByKey[e.c]; return l ? { m: l, w: e.w, mid: e.mid || 0 } : null; }).filter(Boolean);
-    if (!members.length) return { none: true, arr: [], out: null };
+  // The ranked look-alikes of a species: [{ m: label, w: Match, mid: misID %, snd: Sound, p: Here }] in the
+  // order `by` asks for — "score" (most likely confusion first; needs a point, else Match), "match", "misid"
+  // or "sound"; `out` is that week's prediction at the point (null without one), `by` the order taken.
+  // Sound mode lists the bird's eight nearest BY EAR from the sound table, whether or not they are visual
+  // look-alikes (owner, 2026-10-27: "for audio make sure to load the top matches when toggled to audio");
+  // such a sound-only bird has no Match / misID. Shared by the Confusion-species table and its images view.
+  // "scape" (owner, 2026-10-27: "species that are heard in the same audio clips and have reasonably high probability
+  // for the point have a high soundscape score"): Soundscape = share of the bird's recordings with the partner heard
+  // in the background × Here — the birds you hear ALONGSIDE it, whether or not they sound alike. Experimental, like Sound.
+  var CONF_SORTS = ["score", "match", "misid", "sound", "scape"];
+  // Cutoff (owner, 2026-10-27: "Other species must have a reasonable probability of eg 15%"): with a point open, a bird
+  // under SCAPE_HERE_MIN here gets no Soundscape value and is left out of the Soundscape order.
+  var SCAPE_HERE_MIN = 0.15;
+  function scapeScore(w) { return (w.hs < 0 || (w.p >= 0 && w.p < SCAPE_HERE_MIN)) ? -1 : w.hs * (w.p >= 0 ? w.p : 1); }
+  function scapeTxt(v) { v *= 100; return v >= 0.5 ? String(Math.round(v)) : (v > 0 ? "<1" : "0"); }   // a positive share × Here under 0.5 reads "<1", never "0"
+  // The by-ear side (Sound button, column, card row, note, the sound.csv fetch) is Experimental (owner, 2026-10-27:
+  // "Gate the audio confusion behind the experimental gate").
+  function soundOn() { return experimentalOn(); }
+  function confSort() { var v = window.GeoState.get("confusionSort", "score"); return (CONF_SORTS.indexOf(v) >= 0 && ((v !== "sound" && v !== "scape") || soundOn())) ? v : "score"; }
+  async function confusionRanked(key, by) {
+    var map = await ensureConfusion(), snd = soundOn() ? await ensureSound() : null, scp = soundOn() ? await ensureScape() : null;
+    var entries = (map && map[key]) || [], sm = (snd && snd[key]) || {}, hm = (scp && scp[key]) || {};
+    function mem(l, c, w, mid) { return { m: l, w: w, mid: mid, snd: (c in sm) ? sm[c] : -1, hs: (c in hm) ? hm[c] : -1 }; }
+    var members = entries.map(function (e) { var l = labelsByKey[e.c]; return l ? mem(l, e.c, e.w, e.mid || 0) : null; }).filter(Boolean);
+    var union = {}; members.forEach(function (mm) { union[mm.m.key] = 1; }); Object.keys(sm).concat(Object.keys(hm)).forEach(function (c) { if (labelsByKey[c]) union[c] = 1; });
+    var nAll = Object.keys(union).length;   // every bird any order could list: the images view sizes its grid by this, so the popup keeps one shape across the orders (owner, 2026-10-29)
+    if (by === "sound" || by === "scape") {                 // the by-ear / heard-alongside partners join the list, look-alikes or not
+      var have = {}; entries.forEach(function (e) { have[e.c] = 1; });
+      Object.keys(by === "sound" ? sm : hm).forEach(function (c) { var l = labelsByKey[c]; if (l && !have[c]) members.push(mem(l, c, 0, 0)); });
+      members = members.filter(function (mm) { return (by === "sound" ? mm.snd : mm.hs) >= 0; });
+    }
     var pt = (currentSpView && isFinite(+currentSpView.lat) && isFinite(+currentSpView.lon)) ? currentSpView : null;
     var out = null;
     if (pt) { try { out = await predictWeek(+pt.lat, +pt.lon, +document.getElementById("week-select").value); } catch (e) {} }
-    var arr = members.map(function (mm) { return { m: mm.m, w: mm.w, mid: mm.mid, p: out ? (out[mm.m.index] || 0) : -1 }; });
-    if (out) {
+    by = (by === "score" && !out) ? "match" : (CONF_SORTS.indexOf(by) >= 0 ? by : "match");
+    if (!members.length) return { none: true, arr: [], out: out, by: by, nAll: nAll };
+    var arr = members.map(function (mm) { return { m: mm.m, w: mm.w, mid: mm.mid, snd: mm.snd, hs: mm.hs, p: out ? (out[mm.m.index] || 0) : -1 }; });
+    if (by === "score") {
       // Occurs-here only, and only where the Score survives its floors: a look-alike that
       // scores 0 is one whose resemblance is under 10 % AND whose real-misidentification
       // share is under 5 %, which is not a confusion anyone would make — listing it at the
       // bottom said "consider this bird" about a bird nobody mistakes for this one.
       arr = arr.filter(function (w) { return w.p > 0 && confScore(w) > 0; });
       arr.sort(function (a, b) { return confScore(b) - confScore(a); });    // by Score, most likely-confusion first
+    } else if (by === "misid") {
+      arr.sort(function (a, b) { return (b.mid - a.mid) || (b.w - a.w); });
+    } else if (by === "sound") {
+      arr.sort(function (a, b) { return b.snd - a.snd; });
+    } else if (by === "scape") {
+      arr = arr.filter(function (w) { return scapeScore(w) >= 0; });          // the Here cutoff
+      arr.sort(function (a, b) { return scapeScore(b) - scapeScore(a); });   // heard alongside × Here
     } else {
-      arr.sort(function (a, b) { return b.w - a.w; });                      // no point: by Match (confusion score)
+      arr.sort(function (a, b) { return b.w - a.w; });                      // by Match (confusion score)
     }
-    return { arr: arr, out: out };
+    return { arr: arr, out: out, by: by, nAll: nAll };
+  }
+  // The header line of both look-alike views: the title, then the sort buttons Score · Match · misID · Sound
+  // (owner, 2026-10-27: "toggleable with button on top … Let toggle be on top line. Of confusion panes (both
+  // text and image)"). The choice is remembered (Settings-wide); a tap re-opens the same view at the same
+  // anchor in the new order. Returns the marker to call once the list is ranked: it lights the order taken
+  // and greys Score when no point is open (Score needs Here).
+  function confHeader(el, reopen) {
+    var hdr = document.createElement("div"); hdr.className = "detrow-menu-hdr detrow-menu-name";
+    var ttl = document.createElement("span"); ttl.className = "conf-title"; ttl.textContent = t("menu.confusion"); hdr.appendChild(ttl);
+    var bar = document.createElement("span"); bar.className = "conf-sort"; bar.title = t("confusion.sortTip");
+    var labels = { score: t("confusion.colCombined"), match: t("confusion.colScore"), misid: t("confusion.colMisid"), sound: t("confusion.colSound"), scape: t("confusion.colScape") };
+    CONF_SORTS.forEach(function (s) {
+      if ((s === "sound" || s === "scape") && !soundOn()) return;
+      var b = document.createElement("button"); b.type = "button"; b.textContent = labels[s]; b.setAttribute("data-sort", s);
+      b.addEventListener("click", function (e) { e.stopPropagation(); if (b.disabled) return; window.GeoState.save({ confusionSort: s }); closeAnchoredMenu(); reopen(); });
+      bar.appendChild(b);
+    });
+    hdr.appendChild(bar); el.appendChild(hdr);
+    return function (rk) {
+      Array.prototype.forEach.call(bar.children, function (b) { var s = b.getAttribute("data-sort"); b.classList.toggle("on", s === rk.by); if (s === "score") b.disabled = !rk.out; });
+    };
   }
   function confusionView() { return window.GeoState.get("confusionView", "images") === "table" ? "table" : "images"; }
   // The view switch in the popup's top-right (next to ×): table ↔ photo cards, one-off (the
@@ -13096,10 +13296,7 @@
     var el = openAnchoredMenu("detrow-menu family-menu conf-menu conf-img-menu");
     el.style.maxHeight = "min(80vh,640px)"; el.style.overflowY = "auto";
     el.style.width = "min(97vw,900px)";
-    var hdr = document.createElement("div");
-    hdr.className = "detrow-menu-hdr detrow-menu-name";
-    hdr.textContent = t("menu.confusion");   // same title as the text view — the pictures speak for themselves
-    el.appendChild(hdr);
+    var mark = confHeader(el, function () { openConfusionImages(key, x, y); });   // same title as the text view, with the sort buttons
     var closeBtn = document.createElement("button");
     closeBtn.type = "button"; closeBtn.className = "conf-close"; closeBtn.textContent = "×";
     closeBtn.setAttribute("aria-label", "Close");
@@ -13108,13 +13305,14 @@
     confSwitchBtn(el, t("confusion.toText"), function () { openConfusionMenu(key, x, y); });   // "Text" → the table view
     var wait = document.createElement("div"); wait.className = "detrow-menu-hdr"; wait.textContent = "…";
     el.appendChild(wait); positionAnchoredMenu(el, x, y);
-    var rk = await confusionRanked(key);
+    var rk = await confusionRanked(key, confSort());
     if (!anchMenuOpen(el)) return;
-    if (rk.none) { wait.textContent = t("confusion.none"); positionAnchoredMenu(el, x, y); return; }
+    mark(rk);
+    if (rk.none) { wait.textContent = t(rk.by === "sound" ? "confusion.noneSound" : rk.by === "scape" ? "confusion.noneScape" : "confusion.none"); positionAnchoredMenu(el, x, y); return; }
     var out = rk.out, arr = rk.arr;
     if (!arr.length) { wait.textContent = t("confusion.noneHere"); positionAnchoredMenu(el, x, y); return; }
     if (wait.parentNode) wait.parentNode.removeChild(wait);
-    var L = { match: t("confusion.colScore"), misid: t("confusion.colMisid"), here: t("confusion.colHere"), score: t("confusion.colCombined") };
+    var L = { match: t("confusion.colScore"), misid: t("confusion.colMisid"), sound: t("confusion.colSound"), scape: t("confusion.colScape"), here: t("confusion.colHere"), score: t("confusion.colCombined") };
     // Each metric row carries data-hintkey → the wrapped hover tooltip the table headers
     // use (a native title can't wrap these explanations); phones have the legend below.
     function row(cls, label, txt, pct, color, tipKey) {
@@ -13130,8 +13328,10 @@
         '<div class="cfi-name">' + escapeHtml(nm) + "</div>" +   // the species itself is marked by its thicker frame (.cfi-base), not a label
         '<div class="cfi-sci">' + escapeHtml(m.sci) + "</div>" +
         '<div class="cfi-stats">' +
-          row("cfi-match", L.match, isBase ? "—" : String(Math.round(w.w * 100)), isBase ? 0 : w.w * 100, "", "confusion.tipMatch") +
+          row("cfi-match", L.match, (!isBase && w.w > 0) ? String(Math.round(w.w * 100)) : "—", (!isBase && w.w > 0) ? w.w * 100 : 0, "", "confusion.tipMatch") +
           row("cfi-misid", L.misid, (!isBase && w.mid > 0) ? w.mid + "%" : "—", (!isBase && w.mid > 0) ? Math.max(6, w.mid) : 0, "", "confusion.tipMisid") +
+          (soundOn() ? row("cfi-sound", L.sound, (!isBase && w.snd >= 0) ? String(Math.round(w.snd * 100)) : "—", (!isBase && w.snd >= 0) ? Math.max(4, w.snd * 100) : 0, "", "confusion.tipSound") : "") +
+          (soundOn() ? row("cfi-scape", L.scape, (!isBase && scapeScore(w) >= 0) ? scapeTxt(scapeScore(w)) : "—", (!isBase && scapeScore(w) >= 0) ? Math.max(4, scapeScore(w) * 100) : 0, "", "confusion.tipScape") : "") +
           row("cfi-here", L.here, here >= 0 ? pctTxt(here) : "—", here >= 0 ? Math.max(4, here * 100) : 0, here >= 0 ? probHueColor(here) : "", "confusion.tipHere") +
           row("cfi-score", L.score, sv >= 0 ? (sv >= 0.5 ? String(Math.round(sv)) : (sv > 0 ? "<1" : "0")) : "—", sv >= 0 ? Math.max(2, sv) : 0, sv >= 0 ? probHueColor(sv / 100) : "", "confusion.tipScore") +
         "</div>" +
@@ -13140,10 +13340,11 @@
     }
     var strip = document.createElement("div"); strip.className = "cfi-strip";
     strip.innerHTML = card(lbl, null, true) + arr.map(function (w) { return card(w.m, w, false); }).join("");
-    el.appendChild(strip); fitCardGrid(el, strip.children.length);   // shrink-wrap to the squarest grid (6 cards → 3 × 2)
+    el.appendChild(strip); fitCardGrid(el, Math.max(strip.children.length, rk.nAll + 1));   // the squarest grid for ALL the look-alikes (+ the base card), whatever this order lists: one width across Points / Match / misID / Audio
     var legend = document.createElement("div"); legend.className = "conf-legend";
     legend.textContent = t("confusion.legend", { match: L.match, misid: L.misid, here: L.here, score: L.score });
     el.appendChild(legend);
+    if (soundOn()) legend.parentNode.appendChild(soundNote());
     centerPhotoPopup(el);
     wirePhotoCards(el, strip);
     wireYearProbTips(el);                                    // hold any metric row → the year curve
@@ -13180,10 +13381,7 @@
     var el = openAnchoredMenu("detrow-menu family-menu conf-menu");
     el.style.maxHeight = "min(72vh,560px)"; el.style.overflowY = "auto";
     el.style.width = "min(97vw,540px)";                       // full phone width (content-sized it came out squashed), capped on desktop
-    var hdr = document.createElement("div");
-    hdr.className = "detrow-menu-hdr detrow-menu-name";
-    hdr.textContent = t("menu.confusion");
-    el.appendChild(hdr);
+    var mark = confHeader(el, function () { openConfusionMenu(key, x, y); });
     var closeBtn = document.createElement("button");
     closeBtn.type = "button"; closeBtn.className = "conf-close"; closeBtn.textContent = "×";
     closeBtn.setAttribute("aria-label", "Close");
@@ -13193,9 +13391,10 @@
     positionAnchoredMenu(el, x, y);
     var wait = document.createElement("div"); wait.className = "detrow-menu-hdr"; wait.textContent = "…";
     el.appendChild(wait); positionAnchoredMenu(el, x, y);
-    var rk = await confusionRanked(key);
+    var rk = await confusionRanked(key, confSort());
     if (!anchMenuOpen(el)) return;                          // menu closed while loading
-    if (rk.none) { wait.textContent = t("confusion.none"); positionAnchoredMenu(el, x, y); return; }
+    mark(rk);
+    if (rk.none) { wait.textContent = t(rk.by === "sound" ? "confusion.noneSound" : rk.by === "scape" ? "confusion.noneScape" : "confusion.none"); positionAnchoredMenu(el, x, y); return; }
     var out = rk.out, arr = rk.arr;
     if (!arr.length) { wait.textContent = t("confusion.noneHere"); positionAnchoredMenu(el, x, y); return; }
     if (wait.parentNode) wait.parentNode.removeChild(wait);
@@ -13206,6 +13405,8 @@
     thr.innerHTML = "<th></th>" +
       '<th title="' + escapeHtml(t("confusion.tipMatch")) + '">' + escapeHtml(t("confusion.colScore")) + "</th>" +
       '<th title="' + escapeHtml(t("confusion.tipMisid")) + '">' + escapeHtml(t("confusion.colMisid")) + "</th>" +
+      (soundOn() ? '<th title="' + escapeHtml(t("confusion.tipSound")) + '">' + escapeHtml(t("confusion.colSound")) + "</th>" : "") +
+      (soundOn() ? '<th title="' + escapeHtml(t("confusion.tipScape")) + '">' + escapeHtml(t("confusion.colScape")) + "</th>" : "") +
       '<th title="' + escapeHtml(t("confusion.tipHere")) + '">' + escapeHtml(t("confusion.colHere")) + "</th>" +
       '<th title="' + escapeHtml(t("confusion.tipScore")) + '">' + escapeHtml(t("confusion.colCombined")) + "</th>";
     tbl.appendChild(thr);
@@ -13233,9 +13434,13 @@
         probCell = probBarNa();
         scoreCell = probBarNa();
       }
+      // Sound: the pair's by-ear closeness (0-100) from the sound table; empty when the pair is not among the bird's eight nearest by ear
+      var sndCell = !soundOn() ? "" : w.snd >= 0 ? probBarCell(Math.round(w.snd * 100), Math.max(4, w.snd * 100), "", "conf-sound") : probBarNa("conf-sound");
+      // Soundscape: share of the bird's recordings with this one heard in the background × Here (share alone without a point)
+      var ss = scapeScore(w), scpCell = !soundOn() ? "" : ss >= 0 ? probBarCell(scapeTxt(ss), Math.max(4, ss * 100), "", "conf-scape") : probBarNa("conf-scape");
       tr.innerHTML = '<td class="conf-name" data-name="' + escapeHtml(nm) + '" data-sci="' + escapeHtml(m.sci) + '">' + escapeHtml(nm) + '</td>' +
-        probBarCell(mv, mv, "", "conf-match") +
-        midCell +
+        (w.w > 0 ? probBarCell(mv, mv, "", "conf-match") : probBarNa("conf-match")) +   // a sound-only bird has no Match
+        midCell + sndCell + scpCell +
         probCell + scoreCell;
       (function (w2) { tr.addEventListener("click", function (ev) { confPick(key, lbl, w2, out, ev.clientX, ev.clientY); }); })(w);
       tbl.appendChild(tr);
@@ -13244,8 +13449,15 @@
     // Column legend at the bottom — the header tooltips need a hover, which a phone hasn't got.
     var legend = document.createElement("div"); legend.className = "conf-legend";
     legend.textContent = t("confusion.legend", { match: t("confusion.colScore"), misid: t("confusion.colMisid"), here: t("confusion.colHere"), score: t("confusion.colCombined") });
-    el.appendChild(legend);
+    el.appendChild(legend); if (soundOn()) el.appendChild(soundNote());
     positionAnchoredMenu(el, x, y);
+  }
+  // Under both look-alike views: what the Sound number is (a model's ear, not people's) and the report on how good it is.
+  function soundNote() {
+    var d = document.createElement("div"); d.className = "conf-legend conf-sound-note";
+    d.textContent = t("confusion.legendSound", { sound: t("confusion.colSound") }) + " " + t("confusion.legendScape", { scape: t("confusion.colScape"), here: t("confusion.colHere") }) + " ";
+    var a = document.createElement("a"); a.href = "about/audio-similarity.html"; a.target = "_blank"; a.rel = "noopener"; a.textContent = t("confusion.soundReport");
+    d.appendChild(a); return d;
   }
   // The ONE species menu, used everywhere a species name (or dot/pin) is clicked
   // — a single tap on PC and mobile alike. Sectioned: Information (learn) · This
@@ -13341,7 +13553,10 @@
         el.appendChild(drmBtn(t("menu.appmig"), function () { closeDetRowMenu(); showSpeciesMigration(key, d && d.date); }));
       }
       if (isBird) el.appendChild(drmBtn(t("menu.macaulay"), function () { closeDetRowMenu(); openExternal(macaulayUrl(key, sci, d && d.date)); }));   // Images (Macaulay Library) — birds only
-      if (!isPlant && !isFungi) el.appendChild(drmBtn(t("menu.xeno"), function () { closeDetRowMenu(); openExternal(xenoCantoUrl(sci)); }));   // Audio (Xeno-canto) — animals only
+      if (!isPlant && !isFungi) {   // Audio — the preselected Xeno-canto clips, then the Xeno-canto link (owner, 2026-10-29); animals only
+        var audBtn = drmBtn(t("menu.xeno"), function () { var r = audBtn.getBoundingClientRect(); closeDetRowMenu(); openAudioMenu(key, lbl ? speciesName(lbl) : (sci || ""), sci, Math.round(r.left), Math.round(r.top)); });
+        el.appendChild(audBtn);
+      }
       var moreBtn = drmBtn(t("menu.recent"), function () {
         closeDetRowMenu();
         var la = hasLoc ? +d.lat : (marker ? marker.getLatLng().lat : map.getCenter().lat);
@@ -13591,7 +13806,7 @@
       if (typeof speciesPanelPopulated === "function" && speciesPanelPopulated()) refilterSpTable();
       if (allFiltersPane) renderAllFiltersPane();   // keep the "all filters" pane in sync
     });
-    // the pane's filters reach imported list pins too (mpVisible → listPointPasses)
+    // (since v2194 the pane's searches leave list pins alone — the lists have their own text box)
     try { if (mpState && mpState.mpFilterRefresh) mpState.mpFilterRefresh(); } catch (e) {}
   }
   // A filter change re-scopes the rows of the EXISTING table (one pass, then the sort when a
@@ -14560,7 +14775,7 @@
       e.group.addTo(map);
     });
     if (dotDC && dotDC.clusters.length) renderDotClusters(dotDC.clusters);
-    // A filter change reaches the list pins too (mpVisible → listPointPasses); coalesced to
+    // A filter change used to reach the list pins too (not since v2194); still coalesced to
     // one redraw per frame inside mpFilterRefresh, and guarded against re-entry.
     try { if (mpState && mpState.mpFilterRefresh) mpState.mpFilterRefresh(); } catch (e) {}
   }
@@ -15099,7 +15314,7 @@
   // recency days / date range.) Drives the black × (clear all) in both the legend
   // and the detections-list filter bar.
   function detHasFilter() {
-    return detTextActive() || detBflyFilter || detSelectionActive() || detExclusionActive() || detDaySelActive() || detStarFilter || detRareFilter || detYearFilter || detLifeFilter || detAlertFilter || (detLegendRows !== "all") || detNewFilter || !!detObsFilter || !!detLocFilter || !!detSrcFilter || (detRecencyDays() !== 0) || !!detDateRange() || detMonths().length > 0 || countFilterActive() || probFilterActive() || (detRegionMode !== "off");
+    return detTextActive() || detBflyFilter || detSelectionActive() || detExclusionActive() || detDaySelActive() || detStarFilter || detRareFilter || detYearFilter || detLifeFilter || detAlertFilter || (detLegendRows !== "all") || detNewFilter || !!detObsFilter || !!detLocFilter || !!detSrcFilter || (detRecencyDays() !== 0) || !!detDateRange() || detMonths().length > 0 || countFilterActive() || probFilterActive() || (detRegionMode !== "off") || !!(mpState && (mpState.ptSelActive() || mpState.mpTextActive()));
   }
   // Reset every legend filter at once (the black ×): the species selection, the
   // ★/◉/🟡 mode filter, the observer filter, and the recency (days) window → All.
@@ -15120,6 +15335,7 @@
     spObsSort = { col: "", dir: "" };                                         // observation-list sort → its natural (rarest-first) order
     detDaySel = Object.create(null); detDayHover = null;                      // histogram day selection → off
     detLegendRows = "all";                                                    // legend "Total" back to listing every species (the default); sort order is left as-is
+    if (mpState) { mpState.setPtSel(null); mpState.setMpText(""); }           // the points legend's picks and the lists' text box → none
     spHeadPanel = null; spHeadPanelDate = null;                              // close any open header panel
     document.getElementById("prob-min").value = 0; document.getElementById("prob-max").value = 100;   // probability range → 0–100
     var pmv0 = document.getElementById("prob-min-val"), pxv0 = document.getElementById("prob-max-val");
@@ -15344,7 +15560,7 @@
   window.addEventListener("pagehide", flushLegendState);
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") flushLegendState(); });
   function saveLegendStateNow() {
-    window.GeoState.save({ mapLegend: { mini: detLegendMini, bflyFilter: detBflyFilter, starFilter: detStarFilter, rareFilter: detRareFilter, yearFilter: detYearFilter, lifeFilter: detLifeFilter, alertFilter: detAlertFilter, selected: Object.keys(detSelected), excluded: Object.keys(detExcluded), selBase: { sel: Object.keys(detSelBase.sel), exc: Object.keys(detSelBase.exc) }, obsFilter: detObsFilter ? Array.from(detObsFilter) : null, locFilter: detLocFilter ? Array.from(detLocFilter) : null, srcFilter: detSrcFilter ? Array.from(detSrcFilter) : null, areaExcl: detAreaExcl ? Array.from(detAreaExcl) : null, deleted: deletedSpecies, countMin: spCountMin, countMax: spCountMax, countMetric: spCountMetric, ageDays: speciesAgeFilterDays, newFilter: detNewFilter, newSince: detNewSince, todayFilter: detTodayFilter, textInc: detTextInc, textExc: detTextExc, daySel: Object.keys(detDaySel), rows: detLegendRows, sort: detLegendSort, regionMode: detRegionMode, regionPick: detRegionPick } });
+    window.GeoState.save({ mapLegend: { mini: detLegendMini, bflyFilter: detBflyFilter, starFilter: detStarFilter, rareFilter: detRareFilter, yearFilter: detYearFilter, lifeFilter: detLifeFilter, alertFilter: detAlertFilter, selected: Object.keys(detSelected), excluded: Object.keys(detExcluded), selBase: { sel: Object.keys(detSelBase.sel), exc: Object.keys(detSelBase.exc) }, obsFilter: detObsFilter ? Array.from(detObsFilter) : null, locFilter: detLocFilter ? Array.from(detLocFilter) : null, srcFilter: detSrcFilter ? Array.from(detSrcFilter) : null, areaExcl: detAreaExcl ? Array.from(detAreaExcl) : null, deleted: deletedSpecies, countMin: spCountMin, countMax: spCountMax, countMetric: spCountMetric, ageDays: speciesAgeFilterDays, newFilter: detNewFilter, newSince: detNewSince, todayFilter: detTodayFilter, textInc: detTextInc, textExc: detTextExc, daySel: Object.keys(detDaySel), rows: detLegendRows, sort: detLegendSort, regionMode: detRegionMode, regionPick: detRegionPick, view: detLegendView, ptDim: mpState ? mpState.ptDim() : "list", ptSel: mpState ? mpState.ptSel() : null } });
   }
   function loadDetections(atStart) {
     // Self-heal a store left over-quota by an older build: cap the stored
@@ -15376,7 +15592,7 @@
     // preferences (minimised legend, sort order) and deleted species are kept.
     // A reload after a sync (reloadPlottedFromStore) still restores the live state as it was.
     if (atStart) {
-      ls = { mini: ls.mini, sort: ls.sort, deleted: ls.deleted, countMetric: ls.countMetric };   // row set, age window, every filter → defaults
+      ls = { mini: ls.mini, sort: ls.sort, deleted: ls.deleted, countMetric: ls.countMetric, view: ls.view, ptDim: ls.ptDim };   // row set, age window, every filter (the points selection too) → defaults
       // The filters kept outside the legend state too — the same ones the black × resets (without
       // its map fit or species-list re-render: opening the app must not move or fetch anything).
       window.GeoState.save({ detRecencyDays: 0, detDateRange: null, detMonths: [], probMin: 0, probMax: 100 });
@@ -15386,6 +15602,8 @@
       if (pmv) pmv.textContent = "0%"; if (pxv) pxv.textContent = "100%";
     }
     detLegendMini = !!ls.mini;
+    detLegendView = ls.view === "points" ? "points" : "species";   // the legend view last used
+    if (mpState) { mpState.setPtDim(ls.ptDim); mpState.setPtSel(ls.ptSel); }   // the points view's grouping and (not at start) its selection
     detBflyFilter = !!ls.bflyFilter;   // butterflies-only
     if (detBflyFilter) ensureButterflyGenera().then(function () { try { rebuildDetLayers(); updateDetLegend(); applyAgeFilter(); } catch (e) {} });
     detLegendRows = DET_ROWS_STATES.indexOf(ls.rows) >= 0 ? ls.rows : "all";   // legend "Total" row-set (default: All)
@@ -15466,6 +15684,10 @@
   }
   // Collapsed/expanded state for the detection legend (persisted in mapLegend).
   var detLegendMini = false;
+  // Which view the ONE legend shows (owner, 2026-10-24: "a toggle on the legend … not a second section"):
+  // the plotted species, or the shown lists' site points (see renderPtLegend). Remembered; the points
+  // view also takes over by itself while the species view would be empty.
+  var detLegendView = "species";
   // Legend "Total" row-set: which species the legend lists — cycled by tapping "Total".
   var DET_ROWS_STATES = ["all", "selected", "starred", "rare", "year"];
   var detLegendRows = "all";
@@ -16843,6 +17065,245 @@
       if (!ind) { ind = document.createElement("span"); ind.className = "stale-ind"; ind.textContent = "⏳"; ind.setAttribute("aria-hidden", "true"); tt.appendChild(ind); }
     } else if (ind && ind.parentNode) ind.parentNode.removeChild(ind);
   }
+  // One wiring for every legend row, species or points view. ⚠ CONFIRMED BEHAVIOUR — keep as-is
+  // (user-approved 2026-06-26). Do NOT revert to a plain mouseenter/mouseleave hover on touch (it
+  // sticks and breaks multi-select). The contract: mouse = hover-to-isolate (debounced ~110 ms, so
+  // sliding down the list does not rebuild the markers per row); touch quick tap = multi-select
+  // toggle; press-and-hold on the NAME (or right-click) = the row's menu, with the synthesized
+  // click after a touch long-press suppressed. `cb`: hover(key) · unhover() · menu(key, x, y) →
+  // false when nothing opened · tap(key).
+  var legendCanHover = !window.matchMedia || window.matchMedia("(hover: hover)").matches;
+  function wireLegendRowCb(row, cb) {
+    if (legendCanHover) {
+      row.addEventListener("mouseenter", function () {
+        var key = this.getAttribute("data-key");
+        clearTimeout(detHoverTimer);
+        detHoverTimer = setTimeout(function () { cb.hover(key); }, 110);
+      });
+      row.addEventListener("mouseleave", function () { clearTimeout(detHoverTimer); cb.unhover(); });
+    }
+    var lpTimer = null, suppressClick = false, lpY = 0;
+    function openMenu(x, y, fromTouch) {
+      var key = row.getAttribute("data-key"); if (key == null) return;
+      if (cb.menu(key, x, y) !== false && fromTouch) suppressClick = true;
+    }
+    row.addEventListener("touchstart", function (e) {
+      suppressClick = false;
+      var onName = !!(e.target.closest && e.target.closest(".det-nm"));   // only the name opens the menu
+      lpY = (e.touches && e.touches[0]) ? e.touches[0].clientY : 0;
+      var sx = (e.touches && e.touches[0]) ? e.touches[0].clientX : 0, sy = lpY;
+      clearTimeout(lpTimer);
+      if (onName) lpTimer = setTimeout(function () { holdFeedback(row); openMenu(sx, sy, true); }, holdDelay());
+    }, { passive: true });
+    row.addEventListener("touchmove", function (e) {
+      var y = (e.touches && e.touches[0]) ? e.touches[0].clientY : lpY;
+      if (Math.abs(y - lpY) > 10) clearTimeout(lpTimer);   // scrolling → not a long-press
+    }, { passive: true });
+    var lpEnd = function () { clearTimeout(lpTimer); };
+    row.addEventListener("touchend", lpEnd);
+    row.addEventListener("touchcancel", lpEnd);
+    row.addEventListener("contextmenu", function (e) {   // desktop parity: right-click the name → the same menu
+      if (!(e.target.closest && e.target.closest(".det-nm"))) return;
+      e.preventDefault(); e.stopPropagation(); clearTimeout(lpTimer);
+      openMenu(e.clientX, e.clientY, false);
+    });
+    // Click a row to toggle its selection: the picks stick — click several to show them together;
+    // clearing the last one shows all again. Stopped here so it cannot leak to the map.
+    row.addEventListener("click", function (e) {
+      e.stopPropagation();
+      mapClickGuardUntil = Date.now() + 250;
+      if (suppressClick) { suppressClick = false; return; }   // the long-press opened the menu, not a select
+      cb.tap(this.getAttribute("data-key"));
+    });
+  }
+  // The species view's callbacks: hover isolates the species on the map; the name's menu is the
+  // unified species menu; a tap toggles the species in the selection.
+  var spRowCb = {
+    hover: function (key) { focusDetSpecies(key); },
+    unhover: function () { unfocusDetSpecies(); },
+    menu: function (key, x, y) {
+      var en = detPlot[key]; if (!en) return false;
+      var lbl = labelsByKey[key];
+      showDetRowMenu({ key: key, name: detName(en), sci: (lbl && lbl.sci) || "" }, x, y, function () { try { updateDetLegend(); } catch (e2) {} });
+      return true;
+    },
+    tap: function (k) {
+      detFocusKey = null;   // a tap commits a selection — clear any transient hover-focus
+      if (detSelected[k]) delete detSelected[k]; else detSelected[k] = true;
+      saveLegendState();
+      rebuildDetLayers();
+      updateDetLegend();
+    }
+  };
+  // ---- the legend's POINTS view (owner, 2026-10-24) ------------------------------------------
+  // The same control, row markup and wiring, listing the shown lists' points grouped by one dimension
+  // (mpState.ptLegendData): their lists, tags, species or any kept attribute. The head row's dots button
+  // swaps the two views. A list point is never a species row: this view is the lists' own legend.
+  function legendViewBtnHtml(on) {
+    var tip = escapeHtml(t(on ? "det.viewSpecies" : "det.viewPoints"));
+    return '<button type="button" class="det-view-pts' + (on ? " is-on" : "") + '" title="' + tip + '" aria-label="' + tip + '" aria-pressed="' + (on ? "true" : "false") + '">' + ico("dots") + "</button>";
+  }
+  function wireLegendViewBtn(el, to) {
+    var b = el.querySelector(".det-view-pts"); if (!b) return;
+    b.addEventListener("click", function (e) {
+      e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
+      detLegendView = to; saveLegendState(); updateDetLegend();   // (the pins recolour by themselves when the view flips — setPtViewOn)
+    });
+  }
+  var ptRowCb = {
+    hover: function (v) { mpState.setPtFocus(mpState.ptDim(), v); },
+    unhover: function () { mpState.setPtFocus(null); },
+    menu: function (v, x, y) { showPtRowMenu(v, x, y); return true; },
+    tap: function (v) { mpState.ptToggle(v); saveLegendState(); mpState.mpFilterRefresh(); }
+  };
+  // Hold a row's name: zoom to its points · show only these.
+  function showPtRowMenu(v, x, y) {
+    var el = openAnchoredMenu("detrow-menu");
+    var hdr = document.createElement("div");
+    hdr.className = "detrow-menu-hdr detrow-menu-name";
+    hdr.textContent = (mpState.ptLegendData(null).rows.filter(function (r) { return r.v === v; })[0] || { label: v }).label;
+    el.appendChild(hdr);
+    el.appendChild(drmBtn(t("det.ptZoom"), function () {
+      closeAnchoredMenu();
+      var b = L.latLngBounds([]);
+      mpState.ptValuePoints(v).forEach(function (p) { b.extend([+p.lat, +p.lon]); });
+      if (b.isValid()) { try { fitBoundsMin(b, 0.1); } catch (e) {} }
+    }, "target"));
+    el.appendChild(drmBtn(t("det.ptOnly"), function () { closeAnchoredMenu(); mpState.ptOnly(v); saveLegendState(); mpState.mpFilterRefresh(); }, "funnel"));
+    var dim = mpState.ptDim();
+    if ((dim === "year" || dim === "month") && v) el.appendChild(drmBtn(t("det.ptThrough"), function () { closeAnchoredMenu(); mpState.ptPickThrough(v); saveLegendState(); mpState.mpFilterRefresh(); }, "calendar"));
+    ensureAnchClose(el);
+    positionAnchoredMenu(el, x, y);
+  }
+  // The dimension menu (a tap on the heading): every field the shown points carry, with its number of
+  // distinct values; a dot marks one that holds picks. Hold the heading instead to step to the next.
+  function showPtDimMenu(anchor) {
+    var el = openAnchoredMenu("detrow-menu det-ptdim-menu", anchor);
+    var hdr = document.createElement("div");
+    hdr.className = "detrow-menu-hdr"; hdr.textContent = t("det.ptDimMenu");
+    el.appendChild(hdr);
+    var cur = mpState.ptDim();
+    mpState.ptDimStats().forEach(function (st) {
+      var b = drmBtn(st.label + " (" + st.n + ")" + (st.picked ? " \u2022" : ""), function () {
+        closeAnchoredMenu(); mpState.setPtDim(st.dim); saveLegendState(); mpState.renderMapPoints();
+      }, st.dim === cur ? "check" : "");
+      if (st.dim === cur) b.classList.add("is-on");
+      el.appendChild(b);
+    });
+    ensureAnchClose(el);
+    var br = anchor.getBoundingClientRect();
+    positionAnchoredMenu(el, br.left, br.bottom + 4);
+  }
+  // The strip under the heading: what is picked on the dimensions NOT shown (tap the name to go there,
+  // × to clear that dimension) — so a pick never hides pins without saying so.
+  function ptSelStripHtml(curDim) {
+    var items = mpState.ptSelSummary().filter(function (x) { return x.dim !== curDim; });
+    if (!items.length) return "";
+    return '<div class="det-ptsel">' + items.map(function (x) {
+      return '<span class="det-ptsel-chip" data-dim="' + escapeHtml(x.dim) + '"><button type="button" class="det-ptsel-nm" title="' + escapeHtml(t("det.ptChipHint")) + '">' +
+        escapeHtml(x.label) + ": " + escapeHtml(x.text) + '</button><button type="button" class="det-ptsel-x" aria-label="' + escapeHtml(t("det.clearFilters")) + '">\u00d7</button></span>';
+    }).join("") + "</div>";
+  }
+  function renderPtLegend(el, hasSpecies) {
+    if (!el) return;
+    el.classList.remove("det-counts-stale"); setListStaleInd(false);
+    if (mpState.ptFocusOn()) mpState.setPtFocus(null);   // a redraw replaces the hovered row: never leave the map isolated
+    var vb = map ? map.getBounds() : null;
+    var d = mpState.ptLegendData(vb ? [vb.getSouth(), vb.getWest(), vb.getNorth(), vb.getEast()] : null);
+    var showMini = detLegendMini && d.rows.length > 0;
+    el.classList.toggle("det-legend-mini", showMini);
+    if (showMini) {   // the corner pill: the dots glyph and the row count
+      el.innerHTML = '<button type="button" class="det-restore ico-btn" title="' + escapeHtml(t("det.expand")) + '">' + ico("dots") + "<span>" + d.rows.length + "</span></button>";
+      el.querySelector(".det-restore").addEventListener("click", function () { mapClickGuardUntil = Date.now() + 250; detLegendMini = false; saveLegendState(); updateDetLegend(); });
+      return;
+    }
+    var sumCt = (d.shownN === d.total) ? String(d.shownN) : (d.shownN + "/" + d.total);   // pins on screen passing the filters / all list points shown
+    el.innerHTML = '<div class="det-legend-head" data-help="maphelp.legend">' +
+        '<button type="button" class="det-min" title="' + escapeHtml(t("det.minimise")) + '" aria-label="' + escapeHtml(t("det.minimise")) + '">−</button>' +
+        (hasSpecies ? legendViewBtnHtml(true) : "") +   // back to the species view (only when there is one)
+      "</div>" +
+      // The heading is the DIMENSION chooser: tap opens the menu of fields, hold steps to the next one.
+      '<div class="det-row det-legend-total"><span class="det-nm det-total-toggle" role="button" tabindex="0" title="' + escapeHtml(t("det.ptDimHint")) + '">' + escapeHtml(mpState.ptDimLabel(d.dim)) + '</span><span class="det-ct">' + sumCt + "</span></div>" +
+      ptSelStripHtml(d.dim) +
+      (d.rows.length ? d.rows.map(function (r) {
+        var nm = escapeHtml(r.label);
+        return '<div class="det-row det-row-click' + (r.sel ? " det-row-on" : "") + (r.off ? " det-row-off" : "") + '" data-key="' + escapeHtml(r.v) + '">' +
+          '<span class="det-sw det-sw-shape">' + mpState.mpShapeSvg(r.shape, r.color, 12) + '</span><span class="det-nm" title="' + nm + '">' + nm + '</span><span class="det-ct">' + r.n + "</span></div>";
+      }).join("") : '<div class="det-empty">' + escapeHtml(t("det.ptNone")) + "</div>");
+    el.querySelector(".det-min").addEventListener("click", function () { mapClickGuardUntil = Date.now() + 250; detLegendMini = true; saveLegendState(); updateDetLegend(); });
+    wireLegendViewBtn(el, "species");
+    var tg = el.querySelector(".det-total-toggle");
+    tg.addEventListener("click", function (e) { e.stopPropagation(); mapClickGuardUntil = Date.now() + 250; showPtDimMenu(tg); });
+    wireHoldButton(tg, function () {
+      mapClickGuardUntil = Date.now() + 250;
+      mpState.cyclePtDim(d.dims); saveLegendState();
+      mpState.renderMapPoints();   // recolours the pins and re-renders this view
+    });
+    el.querySelectorAll(".det-ptsel-chip").forEach(function (ch) {
+      var dim = ch.getAttribute("data-dim");
+      ch.querySelector(".det-ptsel-nm").addEventListener("click", function (e) {
+        e.stopPropagation(); mapClickGuardUntil = Date.now() + 250;
+        if (dim === "text") {   // the text filter has no rows: open the Points panel on its box
+          var pn = document.getElementById("mp-panel"), tg = document.getElementById("mp-toggle");
+          if ((!pn || pn.offsetParent === null) && tg) tg.click();
+          wireMpText._focus = true; var inp = document.getElementById("mp-text-in"); if (inp) inp.focus();
+          return;
+        }
+        mpState.setPtDim(dim); saveLegendState(); mpState.renderMapPoints();
+      });
+      ch.querySelector(".det-ptsel-x").addEventListener("click", function (e) { e.stopPropagation(); mapClickGuardUntil = Date.now() + 250; mpState.ptClearDim(dim); saveLegendState(); mpState.mpFilterRefresh(); });
+    });
+    el.querySelectorAll(".det-row-click").forEach(function (row) { wireLegendRowCb(row, ptRowCb); });
+  }
+  // The legend control itself — one for both views, created on first need.
+  function ensureDetLegendCtrl() {
+    if (detLegend) return;
+      detLegend = L.control({ position: "bottomleft" });
+      detLegend.onAdd = function () {
+        var d = L.DomUtil.create("div", "det-legend"); d.id = "det-legend";
+        d.title = t("legend.fitTip");   // surfaces the double-click zoom-to-fit on hover
+        L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d);
+        // Double-click anywhere on the legend → frame every detection the current
+        // filters leave visible, with ~5% margin. (The pair of clicks it rides on
+        // toggles a species row twice = a net no-op, so nothing else changes.)
+        d.addEventListener("dblclick", function (e) { e.preventDefault(); e.stopPropagation(); fitVisibleDetections(); });
+        // Any legend interaction other than the red × itself cancels the armed
+        // per-area delete mode (closing/minimising the legend, or using another
+        // control). Capture-phase + attached ONCE (d persists across re-renders),
+        // so it disarms before the clicked control's own handler runs — without a
+        // re-render here that would detach that control mid-click.
+        d.addEventListener("click", function (e) {
+          if (!detAreaDeleteMode) return;
+          if (e.target.closest && e.target.closest(".det-clear")) return;   // the red × runs its own two-stage logic
+          exitAreaDeleteMode();
+          var x = d.querySelector(".det-clear"); if (x) x.classList.remove("armed");
+        }, true);
+        // Long-press (or right-click) the COLLAPSED pill or an EMPTY legend → pan/zoom
+        // so the view frames every fetched point (falling back to the fetched-area
+        // outlines when the filters hide all dots). Expanded legends with species rows
+        // keep their own per-row long-press menus — this only fires when "idle".
+        function legendIdle() { return d.classList.contains("det-legend-mini") || !d.querySelector(".det-row"); }
+        function fitFetched() {
+          mapClickGuardUntil = Date.now() + 300;
+          if (fitAllDetectionPoints()) return;
+          var b = L.latLngBounds([]);
+          (fetchedAreas || []).forEach(function (a) { if (a.bounds) b.extend(a.bounds); });
+          if (b.isValid()) { try { fitBoundsMin(b, 0.1); } catch (e) {} }
+        }
+        var lgT = null, lgFired = false, lgX = 0, lgY = 0;
+        d.addEventListener("click", function (e) { if (lgFired) { lgFired = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+        function lgStart(x, y) { if (!legendIdle()) return; lgFired = false; clearTimeout(lgT); lgX = x; lgY = y; lgT = setTimeout(function () { lgFired = true; holdFeedback(d); fitFetched(); }, holdDelay()); }
+        d.addEventListener("touchstart", function (e) { var tt = e.touches && e.touches[0]; lgStart(tt ? tt.clientX : 0, tt ? tt.clientY : 0); }, { passive: true });
+        d.addEventListener("touchmove", function (e) { var tt = e.touches && e.touches[0]; if (tt && (Math.abs(tt.clientX - lgX) > 12 || Math.abs(tt.clientY - lgY) > 12)) clearTimeout(lgT); }, { passive: true });
+        d.addEventListener("touchend", function () { clearTimeout(lgT); });
+        d.addEventListener("mousedown", function (e) { if (e.button === 0) lgStart(e.clientX, e.clientY); });
+        d.addEventListener("mouseup", function () { clearTimeout(lgT); });
+        d.addEventListener("mouseleave", function () { clearTimeout(lgT); });
+        d.addEventListener("contextmenu", function (e) { if (!legendIdle()) return; e.preventDefault(); e.stopPropagation(); fitFetched(); });
+        return d;
+      };
+      detLegend.addTo(map);
+  }
   function updateDetLegend() {
     syncAlertPlot();   // surface rarity-alert species as legend rows (empty unless subscribed)
     var allKeys = unionDetKeys();
@@ -16850,7 +17311,13 @@
     updateFilterClearBtn();   // reveal/hide the funnel-× with the active-filter state
     updateHdrHisto();      // the header's per-day bars track the same plotted/filtered set
     var delKeys = Object.keys(deletedSpecies);
-    if (!allKeys.length && !delKeys.length) { if (detLegend) { map.removeControl(detLegend); detLegend = null; } return; }
+    // The POINTS view (owner, 2026-10-24): the shown lists' points keep the legend up with nothing
+    // plotted, and take the legend over by themselves while the species view would be empty.
+    var ptAvail = !!(mpState && mpState.ptAvail()), hasSp = !!(allKeys.length || delKeys.length);
+    if (!hasSp && !ptAvail) { if (detLegend) { map.removeControl(detLegend); detLegend = null; } if (mpState) mpState.setPtViewOn(false); return; }
+    var ptView = ptAvail && (detLegendView === "points" || !hasSp);
+    if (mpState) mpState.setPtViewOn(ptView);
+    if (ptView) { ensureDetLegendCtrl(); renderPtLegend(document.getElementById("det-legend"), hasSp); return; }
     ensureDedup();
     maybeComputeDetProbs();   // (re)compute habitat probabilities when the plotted set changed
     // The dropdown's "Starred only" narrows which species the legend lists (and
@@ -16927,53 +17394,7 @@
     nDet += dotClusterHiddenN;   // rows shown merged inside declutter clusters still count as shown
     var fetched = detDrawableCount(), capped = fetched > detMaxPoints();
     var capTip = capped ? t("det.cappedTip", { shown: nDet, total: fetched }) : "";
-    if (!detLegend) {
-      detLegend = L.control({ position: "bottomleft" });
-      detLegend.onAdd = function () {
-        var d = L.DomUtil.create("div", "det-legend"); d.id = "det-legend";
-        d.title = t("legend.fitTip");   // surfaces the double-click zoom-to-fit on hover
-        L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d);
-        // Double-click anywhere on the legend → frame every detection the current
-        // filters leave visible, with ~5% margin. (The pair of clicks it rides on
-        // toggles a species row twice = a net no-op, so nothing else changes.)
-        d.addEventListener("dblclick", function (e) { e.preventDefault(); e.stopPropagation(); fitVisibleDetections(); });
-        // Any legend interaction other than the red × itself cancels the armed
-        // per-area delete mode (closing/minimising the legend, or using another
-        // control). Capture-phase + attached ONCE (d persists across re-renders),
-        // so it disarms before the clicked control's own handler runs — without a
-        // re-render here that would detach that control mid-click.
-        d.addEventListener("click", function (e) {
-          if (!detAreaDeleteMode) return;
-          if (e.target.closest && e.target.closest(".det-clear")) return;   // the red × runs its own two-stage logic
-          exitAreaDeleteMode();
-          var x = d.querySelector(".det-clear"); if (x) x.classList.remove("armed");
-        }, true);
-        // Long-press (or right-click) the COLLAPSED pill or an EMPTY legend → pan/zoom
-        // so the view frames every fetched point (falling back to the fetched-area
-        // outlines when the filters hide all dots). Expanded legends with species rows
-        // keep their own per-row long-press menus — this only fires when "idle".
-        function legendIdle() { return d.classList.contains("det-legend-mini") || !d.querySelector(".det-row"); }
-        function fitFetched() {
-          mapClickGuardUntil = Date.now() + 300;
-          if (fitAllDetectionPoints()) return;
-          var b = L.latLngBounds([]);
-          (fetchedAreas || []).forEach(function (a) { if (a.bounds) b.extend(a.bounds); });
-          if (b.isValid()) { try { fitBoundsMin(b, 0.1); } catch (e) {} }
-        }
-        var lgT = null, lgFired = false, lgX = 0, lgY = 0;
-        d.addEventListener("click", function (e) { if (lgFired) { lgFired = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
-        function lgStart(x, y) { if (!legendIdle()) return; lgFired = false; clearTimeout(lgT); lgX = x; lgY = y; lgT = setTimeout(function () { lgFired = true; holdFeedback(d); fitFetched(); }, holdDelay()); }
-        d.addEventListener("touchstart", function (e) { var tt = e.touches && e.touches[0]; lgStart(tt ? tt.clientX : 0, tt ? tt.clientY : 0); }, { passive: true });
-        d.addEventListener("touchmove", function (e) { var tt = e.touches && e.touches[0]; if (tt && (Math.abs(tt.clientX - lgX) > 12 || Math.abs(tt.clientY - lgY) > 12)) clearTimeout(lgT); }, { passive: true });
-        d.addEventListener("touchend", function () { clearTimeout(lgT); });
-        d.addEventListener("mousedown", function (e) { if (e.button === 0) lgStart(e.clientX, e.clientY); });
-        d.addEventListener("mouseup", function () { clearTimeout(lgT); });
-        d.addEventListener("mouseleave", function () { clearTimeout(lgT); });
-        d.addEventListener("contextmenu", function (e) { if (!legendIdle()) return; e.preventDefault(); e.stopPropagation(); fitFetched(); });
-        return d;
-      };
-      detLegend.addTo(map);
-    }
+    ensureDetLegendCtrl();
     var el = document.getElementById("det-legend");
     if (el) el.classList.remove("det-counts-stale");   // a full render = fresh counts, so drop any "stale" greying
     setListStaleInd(false);                            // recalculated → drop the ⏳ by the list title
@@ -17029,6 +17450,7 @@
         '<button type="button" class="det-min" title="' + escapeHtml(t("det.minimise")) + '" aria-label="' + escapeHtml(t("det.minimise")) + '">−</button>' +
         // The filter funnel and the red × live ONLY on the map's lower-right bar (owner, 2026-10-24:
         // "sufficient that they are on the map"); the legend head keeps − and the selection-only ×.
+        (ptAvail ? legendViewBtnHtml(false) : "") +   // → the points view (only while a list is shown)
         (selOverride ? '<button type="button" class="det-clear-selonly" title="' + escapeHtml(t("det.clearSel")) + '" aria-label="' + escapeHtml(t("det.clearSel")) + '">' + X_MARK_SVG + '</button>' : "") +
         (capped ? '<span class="det-cap-warn" role="img" title="' + escapeHtml(capTip) + '" aria-label="' + escapeHtml(capTip) + '">⚠</span>' : "") +
       "</div>" +
@@ -17075,6 +17497,7 @@
       detFiltersRefresh();
     });
     el.querySelector(".det-min").addEventListener("click", function () { mapClickGuardUntil = Date.now() + 250; detLegendMini = true; saveLegendState(); updateDetLegend(); });
+    wireLegendViewBtn(el, "points");
     var wireLegendRows = function (root) {
     root.querySelectorAll(".det-del").forEach(function (b) { b.addEventListener("click", function (e) { e.stopPropagation(); removeDetection(this.getAttribute("data-key")); }); });
     root.querySelectorAll(".det-row-click").forEach(wireLegendRow);
@@ -17100,70 +17523,7 @@
     // does — so it would stick and break multi-select. Instead, touch gets an
     // explicit PRESS-AND-HOLD: hold a row to isolate its species while held, lift
     // to restore. A quick tap stays a multi-select toggle.
-    var canHover = !window.matchMedia || window.matchMedia("(hover: hover)").matches;
-    var wireLegendRow = function (row) {
-      if (canHover) {
-        // Hover previews a species by isolating it on the map (transiently) — the same
-        // whether or not a selection is active; leaving restores the selection view.
-        // Debounced: sliding the pointer down the list would otherwise rebuild every
-        // marker for each row passed over (very slow with a big set). Isolate only once
-        // the pointer rests on a row (~110 ms); a leave cancels a pending isolate.
-        row.addEventListener("mouseenter", function () {
-          var key = this.getAttribute("data-key");
-          clearTimeout(detHoverTimer);
-          detHoverTimer = setTimeout(function () { focusDetSpecies(key); }, 110);
-        });
-        row.addEventListener("mouseleave", function () { clearTimeout(detHoverTimer); unfocusDetSpecies(); });
-      }
-      // Long-press the species NAME → the unified species menu (info · lists &
-      // actions), the same one a species-list name opens. Isolate-on-hold was
-      // retired for this: a plain tap already isolates by selecting the one species,
-      // and mouse devices still hover-isolate (above). suppressClick stops the
-      // synthesized click after a touch long-press from also toggling the selection.
-      var lpTimer = null, suppressClick = false, lpY = 0;
-      function openLegendSpMenu(x, y, fromTouch) {
-        var key = row.getAttribute("data-key"); if (!key) return;
-        var en = detPlot[key]; if (!en) return;
-        var lbl = labelsByKey[key];
-        if (fromTouch) suppressClick = true;
-        showDetRowMenu({ key: key, name: detName(en), sci: (lbl && lbl.sci) || "" }, x, y, function () { try { updateDetLegend(); } catch (e2) {} });
-      }
-      row.addEventListener("touchstart", function (e) {
-        suppressClick = false;
-        var onName = !!(e.target.closest && e.target.closest(".det-nm"));   // only the name opens the menu
-        lpY = (e.touches && e.touches[0]) ? e.touches[0].clientY : 0;
-        var sx = (e.touches && e.touches[0]) ? e.touches[0].clientX : 0, sy = lpY;
-        clearTimeout(lpTimer);
-        if (onName) lpTimer = setTimeout(function () { holdFeedback(row); openLegendSpMenu(sx, sy, true); }, holdDelay());
-      }, { passive: true });
-      row.addEventListener("touchmove", function (e) {
-        var y = (e.touches && e.touches[0]) ? e.touches[0].clientY : lpY;
-        if (Math.abs(y - lpY) > 10) clearTimeout(lpTimer);   // scrolling → not a long-press
-      }, { passive: true });
-      var lpEnd = function () { clearTimeout(lpTimer); };
-      row.addEventListener("touchend", lpEnd);
-      row.addEventListener("touchcancel", lpEnd);
-      // Desktop parity: right-click the name → the same menu (no trailing click to suppress).
-      row.addEventListener("contextmenu", function (e) {
-        if (!(e.target.closest && e.target.closest(".det-nm"))) return;
-        e.preventDefault(); e.stopPropagation(); clearTimeout(lpTimer);
-        openLegendSpMenu(e.clientX, e.clientY, false);
-      });
-      row.addEventListener("click", function (e) {
-        e.stopPropagation();
-        mapClickGuardUntil = Date.now() + 250;
-        if (suppressClick) { suppressClick = false; return; }   // the long-press opened the menu, not a select
-        detFocusKey = null;   // a tap commits a selection — clear any transient hover-focus
-        var k = this.getAttribute("data-key");
-        // Multi-select: each click toggles that species, and the picks stick —
-        // click several to show them together. Clicking a selected species
-        // deselects it; clearing the last one shows all species again.
-        if (detSelected[k]) delete detSelected[k]; else detSelected[k] = true;
-        saveLegendState();
-        rebuildDetLayers();
-        updateDetLegend();
-      });
-    };
+    var wireLegendRow = function (row) { wireLegendRowCb(row, spRowCb); };   // the species callbacks; the points view shares the wiring
     wireLegendRows(el);
     if (legNow < keys.length) {
       var legI = legNow, legMark = el.querySelector(".det-more");
@@ -17907,13 +18267,17 @@
       renderMpPin = mpState.renderMpPin, onMpPinClick = mpState.onMpPinClick,
       setMpDistOrigin = mpState.setMpDistOrigin;
   window.AppPoints.init({
-    clearSpider: clearSpider, detRenderer: detRenderer, detStarMarker: detStarMarker,
+    clearSpider: clearSpider,
     downloadCsv: downloadCsv, escapeHtml: escapeHtml, haversineKm: haversineKm, ico: ico,
     looksLikeHtml: looksLikeHtml, makePopupBtn: makePopupBtn, modalPrompt: modalPrompt,
-    mpTipHtml: mpTipHtml, listPointPasses: listPointPasses, openExternal: openExternal, openPointEditor: openPointEditor,
+    mpTipHtml: mpTipHtml, openExternal: openExternal, openPointEditor: openPointEditor,
     copyPointToList: copyPointToList, deleteListPoint: deleteListPoint,
     refreshMpPanel: refreshMpPanel, renderMpAdmin: renderMpAdmin, setStatus: setStatus,
-    showDetRowMenu: showDetRowMenu, syncListDetections: syncListDetections, labelForSci: labelForSci,
+    showDetRowMenu: showDetRowMenu, syncListDetections: syncListDetections, labelForSci: labelForSci, updateDetLegend: updateDetLegend, speciesColor: speciesColor,
+    detClassOf: detClassOf,
+    onListLoaded: function () {   // a stub's records arrived: search pins it already holds go, the panel (if open) redraws — once per burst
+      clearTimeout(onListLoaded._t); onListLoaded._t = setTimeout(function () { try { mpDedupeSearchPins(); refreshMpPanel(); } catch (e) {} }, 150);
+    }, obsRealNames: detObsRealNames, uiLang: function () { return lang; },   // the points legend's Group / Observer / Month dimensions
     updateDetSetOverlays: updateDetSetOverlays, updateMpBadge: updateMpBadge,
     pulseFunnels: pulseFunnels, tagDisplay: tagDisplay,
     updateSpDistances: updateSpDistances, t: t,
@@ -18096,15 +18460,6 @@
     try { if (mpHasUnsaved()) return true; } catch (e) {}
     return false;
   }
-  function listPointPasses(p) {
-    if (!p) return true;
-    if (p.date && !detDatePasses(p.date)) return false;
-    if (p.observer && !detObsPasses({ observer: p.observer })) return false;
-    var q = spNameQuery.trim();
-    if (q && !pointNameMatches(p, q)) return false;
-    if (detTextActive() && !textPasses(p, [p.note, p.desc, p.name, (p.tags || []).join(" "), p.place, p.act, p.observer])) return false;
-    return true;
-  }
   // A pin's species, as the app knows it: the file's scientific name looked up in the
   // model's index, so the LOCAL name (and the second language) match too — typing
   // "kattugle" finds a pin whose file only ever said "Strix aluco".
@@ -18125,22 +18480,6 @@
     var nm = speciesName(l);
     return nm || tag;
   }
-  function pointNameMatches(p, q) {
-    q = String(q).toLowerCase();
-    if (String(p.name || "").toLowerCase().indexOf(q) >= 0) return true;
-    var sci = p.sci || "";
-    if (sci && sci.toLowerCase().indexOf(q) >= 0) return true;
-    var l = labelForSci(sci) || (p.spKey ? labelsByKey[p.spKey] : null);
-    if (l) {
-      if (String(speciesName(l) || "").toLowerCase().indexOf(q) >= 0) return true;
-      if (secondLang) { var n2 = secondName(l); if (n2 && n2.toLowerCase().indexOf(q) >= 0) return true; }
-      if (String(l.sci || "").toLowerCase().indexOf(q) >= 0) return true;
-    }
-    // A pin with no species at all is never hidden by a species search — the
-    // backward-compatibility rule, same as for dates and observers.
-    if (!sci && !p.spKey) return true;
-    return false;
-  }
   // Re-injection is skipped outright when nothing that decides it changed: the ticked lists
   // (and their sizes), the tag chips, the list funnels. The pane filters (date, observer …)
   // are NOT part of it — list rows get them at draw time like fetched rows — so a filter
@@ -18150,14 +18489,7 @@
   // species' array — dedup only against FETCHED rows of the same species.
   var _listSyncSig = "", _listSyncN = 0, _listRowOf = (typeof WeakMap === "function") ? new WeakMap() : null;
   function listSyncSig() {
-    var parts = [mpState.mpFilter().join("\u0001"), mpState.mpExclude().join("\u0001"), mpState.mpNone() ? "none" : ""];
-    mpState.mpCollections().forEach(function (c) {
-      if (!mpState.shownColls()[c.name]) return;
-      var lf = mpState.listFilter(c.name);
-      parts.push(c.name + "#" + ((c.points || []).length) + "#" + (lf ? JSON.stringify(lf) : ""));
-    });
-    parts.push("search#" + mpSearchPins().length);
-    return parts.join("\u0002");
+    return "search#" + mpSearchPins().length;   // only the search pins are injected now (lists are drawn as pins)
   }
   function countListRows() {
     var n = 0, ks = Object.keys(detPlot);
@@ -18180,40 +18512,8 @@
       // that truly left is harmless: detSelectionActive only counts keys in detPlot.
       if (!e.rows.length) { if (e.group) { map.removeLayer(e.group); } delete detPlot[k]; }
     });
-    // 2. Inject the current shown lists' records, grouped by species key.
-    var fetchedIds = Object.create(null);   // species key → Set of its fetched rows' ids (built lazily)
-    function rid(r) { return r.lat + "," + r.lon + "|" + (r.date || "") + "|" + (r.url || "") + "|" + (r.src || ""); }
-    mpState.mpCollections().forEach(function (c) {
-      if (!mpState.shownColls()[c.name]) return;
-      var col = collColor(c), lf = mpState.listFilter(c.name), pts = c.points || [];
-      for (var i = 0; i < pts.length; i++) {
-        var p = pts[i]; if (!p) continue;
-        var key = mpState.detKeyOf(p);   // stored key, model species by sci, or an "x:" extra (old KMZ lists too)
-        if (!key || !isFinite(p.lat) || !isFinite(p.lon)) continue;
-        if (!mpState.mpTagPasses(p) || !mpState.listOwnFilterPasses(p, lf)) { skipped++; continue; }
-        // The whole record rides along (observer, note, place, flags …) so a list made from an
-        // observation file — a .share person list, a KMZ with ExtendedData — reads like a fetch.
-        var row = _listRowOf && _listRowOf.get(p);
-        if (!row) {
-          row = { lat: +p.lat, lon: +p.lon, date: p.date || "", url: p.url || "", count: p.count, act: p.act || "", src: p.src || "list",
-            observer: p.observer || "", note: p.note || "", place: p.place || "", flags: p.flags || "", origin: p.origin || "",
-            placeCoarse: !!p.placeCoarse, posFuzzM: +p.posFuzzM || 0, _list: true, listColor: col, _listName: c.name, _mpId: p.id, _vo: !!c.viewOnly };
-          if (p.prob != null && +p.prob >= 0) { row._prob = +p.prob; seedObsProb(key, row); }   // probability stored on the list point → no inference again
-          if (_listRowOf) _listRowOf.set(p, row);
-        } else { row.listColor = col; row._listName = c.name; }
-        var e = detPlot[key];
-        if (!e) e = detPlot[key] = { key: key, name: (key.indexOf("x:") === 0 ? (p.sci || p.name) : p.name) || key, color: p.spColor || "#888", rows: [], group: null, cls: p.spCls || (taxByCode[key] && taxByCode[key].class_name) || "" };
-        else if (e.rows.length) {
-          // The species also has FETCHED rows → skip a list row that duplicates one of them.
-          var ids = fetchedIds[key];
-          if (!ids) { ids = fetchedIds[key] = Object.create(null); for (var q = 0; q < e.rows.length; q++) if (!e.rows[q]._list) ids[rid(e.rows[q])] = 1; }
-          if (ids[rid(row)]) { skipped++; continue; }
-        }
-        if (row._ts == null) row._ts = Date.now();
-        e.rows.push(row);
-        changed = true; injected++;
-      }
-    });
+    // Shown LISTS are not injected any more (owner, 2026-10-24: point lists are separate from the fetched
+    // species — the legend's points view is their legend); only the pins a search put on the map are.
     // Map points put there by a search, with a species (owner, 2026-10-11: "the species names should be
     // parsed correctly and added to legend"): they join the legend like a shown list's records, drawn as
     // one circle per point in their SEARCH's colour (see the _search branch of the dot drawing).
@@ -18598,6 +18898,9 @@
   }
   function mpTipHtml(p) {
     var name = escapeHtml(p.name || "(point)");
+    // the kept attributes (status, type, year …) as "name: value" on their own line (owner, 2026-10-24)
+    var attrKeys = p.attrs ? Object.keys(p.attrs).filter(function (k) { return p.attrs[k] != null && p.attrs[k] !== ""; }) : [];
+    var attrsLine = attrKeys.length ? '<span class="mp-card-attrs">' + attrKeys.map(function (k) { return escapeHtml(k) + ": " + escapeHtml(p.attrs[k]); }).join(" · ") + "</span>" : "";
     // A pin saved from a detection hovers exactly like the live plotted dot: the
     // full species swatch (colour disc + ★ + rare centre-dot + need-ring) then the
     // name and the same "×N (nd)" meta, with the recorded date / activity below.
@@ -18610,7 +18913,7 @@
         (meta.length ? ' <span class="dh-meta">' + escapeHtml(meta.join(" ")) + "</span>" : "");
       var subL = String(p.note || "").split("\n").map(function (s) { return s.trim(); })
         .filter(function (s) { return s && !/^https?:\/\//i.test(s); });
-      return head + (subL.length ? '<span class="area-tip-note">' + subL.map(escapeHtml).join("<br>") + "</span>" : "");
+      return head + (subL.length ? '<span class="area-tip-note">' + subL.map(escapeHtml).join("<br>") + "</span>" : "") + attrsLine;
     }
     // Don't repeat a tag that just duplicates the name (detection pins tag the
     // species, which is also the name) — nor the activity, which now has its own line.
@@ -18651,7 +18954,7 @@
         .filter(function (s) { return s && !/^https?:\/\//i.test(s); });
       note = noteLines.length ? '<span class="area-tip-note">' + noteLines.map(escapeHtml).join("<br>") + "</span>" : "";
     }
-    return "<b>" + name + "</b>" + tags + meta + actLine + note + by;
+    return "<b>" + name + "</b>" + tags + meta + actLine + note + by + attrsLine;
   }
   function updateMpBadge() {
     // Badge = number of saved point-lists (not the count of loose working pins).
@@ -19032,6 +19335,24 @@
     wrap.appendChild(makePopupBtn(t("nav.here"), "btn-light", function () { map.closePopup(); navigatePoints([{ lat: lat, lon: lon }]); }, "nav"));
     // Add this spot as the next stop of the in-progress route (named after the place if known).
     wrap.appendChild(makePopupBtn(tLabel("route.add"), "btn-light", function () { map.closePopup(); addToRoute(lat, lon, nameHdr.textContent || ""); }, "navplus"));
+    // Radar → Migration Aloft (owner, 2026-10-27: "Move the Radar button to the long-click/right-click popup menu"):
+    // Europe only, Experimental features on — as before in the click popup. Its own repo / Pages site.
+    if (continentFor(AppGeo.countryAt(lat, lon)) === "EU" && experimentalOn()) {
+      wrap.appendChild(makePopupBtn(t("link.aloft") + " ↗", "btn-light", function () {
+        map.closePopup(); openExternal("https://pcmoan70.github.io/BirdsWhere-aloft/");
+      }, "radar"));
+    }
+    // 3-D terrain (owner, 2026-10-26: "move 3d-terrain to the double click/long click map point menu above Offline maps"):
+    // Norway only (Kartverket's 1 m model) with Experimental features on, as before in the click popup; opens
+    // pcmoan70.github.io/3d_terrain 2 km around the point, the map's dots inside that square along in the hash.
+    if (AppGeo.countryAt(lat, lon) === "NO" && experimentalOn()) {
+      wrap.appendChild(makePopupBtn(t("link.terrain3d") + " ↗", "btn-light", function () {
+        map.closePopup();
+        var pts = terrain3dPoints(lat, lon, 2000);
+        openExternal("https://pcmoan70.github.io/3d_terrain/?lat=" + lat.toFixed(5) + "&lon=" + lon.toFixed(5) + "&r=2000" +
+          (pts.length ? "#pts=" + encodeURIComponent(JSON.stringify(pts)) : ""));
+      }, "globe"));
+    }
     // Offline maps: opens the saved-areas panel, which carries the ⬇ Download map button.
     wrap.appendChild(makePopupBtn(t("offline.maps"), "btn-light", function () { map.closePopup(); openOfflineManager(); }, "folder"));
     L.popup({ className: "choose-popup", closeButton: true, autoClose: true, autoPan: true, offset: [0, -2] })
@@ -19209,6 +19530,24 @@
       setStatus(t("points.searchToMapDone", { n: added }));
     });
   }
+  // The lists' own text filter (owner, 2026-10-25): fuzzy over every field of the shown points and their
+  // lists' name and note (mpTextPasses); the legend's strip shows it as a chip. Session state only.
+  function mpTextBoxHtml() {
+    return '<div class="mp-textfilt"><input type="search" id="mp-text-in" autocomplete="off" spellcheck="false" placeholder="' + escapeHtml(t("points.textFilter")) +
+      '" title="' + escapeHtml(t("points.textFilterHint")) + '" value="' + escapeHtml(mpState.mpText()) + '" /></div>';
+  }
+  var mpTextT = null;
+  function wireMpText(panel) {
+    var inp = panel.querySelector("#mp-text-in"); if (!inp) return;
+    if (wireMpText._focus) { try { inp.focus({ preventScroll: true }); } catch (e) { inp.focus(); } try { inp.setSelectionRange(inp.value.length, inp.value.length); } catch (e2) {} }   // the panel was rebuilt under the typing
+    inp.addEventListener("focus", function () { wireMpText._focus = true; });
+    inp.addEventListener("blur", function () { setTimeout(function () { if (document.activeElement !== inp) wireMpText._focus = false; }, 0); });
+    inp.addEventListener("click", function (e) { e.stopPropagation(); });
+    inp.addEventListener("input", function () {
+      mpState.setMpText(inp.value);
+      clearTimeout(mpTextT); mpTextT = setTimeout(function () { mpState.mpFilterRefresh(inp); }, 250);
+    });
+  }
   function wireMpSearch(panel) {
     var inp = panel.querySelector("#mp-search-in"); if (!inp) return;
     if (mpSearchRes && mpSearchRes.q === mpSearchQ.trim()) mpSearchPaint();          // the panel was rebuilt: put the results back
@@ -19270,9 +19609,7 @@
     return gone;
   }
   function mpFromSearchHtml() {
-    mpDedupeSearchPins();
-    // a list still loading cannot be matched yet → redraw once they all are
-    if (mpState.anyLazy && mpState.anyLazy() && !mpFromSearchHtml._wait) { mpFromSearchHtml._wait = true; mpState.whenAllLoaded().then(function () { mpFromSearchHtml._wait = false; refreshMpPanel(); }); }
+    mpDedupeSearchPins();   // a list still on disk cannot be matched yet; onListLoaded dedupes again when one is read
     var groups = Object.create(null), order = [];
     mpState.mapPoints().forEach(function (q) { var k = mpSearchKey(q); if (k == null) k = MP_OTHER; if (!groups[k]) { groups[k] = 0; order.push(k); } groups[k]++; });
     order.sort(function (a, b) { return (a === MP_OTHER) - (b === MP_OTHER); });   // "other map points" last
@@ -19468,7 +19805,7 @@
       grp[i].order = j; grp[j].order = i;
       saveMapPoints(); refreshMpPanel(); keepMpPanelOpen();
     }
-    function mpCollRowHtml(type, name, count, swatch, checked, delTip, isProt, isRoute) {
+    function mpCollRowHtml(type, name, count, swatch, checked, delTip, isProt, isRoute, note, coll) {
       // Protected point-lists show a 🔒 instead of the delete × (manage protection
       // in the lists-admin popup — press-and-hold the Points button).
       var del = isProt
@@ -19478,7 +19815,9 @@
       // list, the navigation arrow for a route/navigation list. Detection sets keep the
       // folder swatch passed in.
       var swIcon = (type === "p")
-        ? '<span class="mp-sw-ico ' + (isRoute ? "mp-sw-nav" : "mp-sw-pin") + '">' + ico(isRoute ? "nav" : "pin") + "</span>"
+        ? (isRoute || !coll
+          ? '<span class="mp-sw-ico ' + (isRoute ? "mp-sw-nav" : "mp-sw-pin") + '">' + ico(isRoute ? "nav" : "pin") + "</span>"
+          : '<span class="mp-sw-ico mp-sw-shape">' + mpState.mpShapeSvg(mpState.collShape(coll), mpState.collColor(coll), 14) + "</span>")   // the list's dot, as drawn on the map
         : swatch;
       var navTip = isRoute ? t("nav.title") : t("nav.send");
       var navBtn = '<button type="button" class="mp-coll-nav ico-btn" data-type="' + type + '" data-name="' + escapeHtml(name) + '" title="' + escapeHtml(navTip) + '" aria-label="' + escapeHtml(navTip) + '">' + ico("nav") + "</button>";
@@ -19506,7 +19845,8 @@
         '<label class="mp-coll-lbl' + (hidStash ? " mp-hidden" : "") + '"><input type="checkbox" class="mp-coll-cb" data-type="' + type + '" data-name="' + escapeHtml(name) + '"' + ((hidStash ? hidStash[type].indexOf(name) >= 0 : checked) ? " checked" : "") + (hidStash ? " disabled" : "") + ">" +
           swIcon + '<span class="mp-coll-name">' + escapeHtml(name) + ' <span class="mp-coll-n">(' + count + ")</span></span></label>" +
         filtBtn + moreBtn +
-        "</div>";
+        "</div>" +
+        (note ? '<div class="mp-coll-note" title="' + escapeHtml(note) + '">' + escapeHtml(String(note).split("\n")[0]) + "</div>" : "");   // the list's own note, first line
     }
     // Lists in the user's own order, grouped in folders (owner, 2026-10-02): a list carries
     // `folder` (name, "" = loose) and `order` (set by Move up / Move down); folders come
@@ -19516,7 +19856,7 @@
     mpSortedColls().forEach(function (c) {
       var f = String(c.folder || "");
       if (!(f in groups)) { groups[f] = []; groupNames.push(f); }
-      groups[f].push({ c: c, html: mpCollRowHtml("p", c.name, mpState.collCount(c), "", !!mpState.shownColls()[c.name], t("points.deleteColl"), isCollProtected(c.name), isRouteColl(c)) });
+      groups[f].push({ c: c, html: mpCollRowHtml("p", c.name, mpState.collCount(c), "", !!mpState.shownColls()[c.name], t("points.deleteColl"), isCollProtected(c.name), isRouteColl(c), c.note, c) });
     });
     var collItems = [];
     groupNames.filter(Boolean).sort(function (a, b) { return a.localeCompare(b); }).forEach(function (f) {
@@ -19559,6 +19899,7 @@
         '<span id="mp-search-busy" class="mp-search-busy" aria-hidden="true"' + (mpSearchBusyOn ? "" : " hidden") + '>\u231B</span></div>' +
         '<div id="mp-search-res" class="mp-search-res"></div></div>' +
       collSection +
+      (Object.keys(mpState.shownColls()).length ? mpTextBoxHtml() : "") +
       (chipsHtml ? '<div class="mp-chips">' + chipsHtml + "</div>" : "") +
       (unionPts.length > 1 ?
         '<div class="mp-sort"><span class="mp-sort-lbl">⇅</span>' +
@@ -19570,6 +19911,7 @@
           : "") + "</div>";
     // Wire interactions
     wireMpSearch(panel);
+    wireMpText(panel);
     panel.querySelectorAll(".mp-fs-del").forEach(function (b) {
       b.addEventListener("click", function (e) {
         e.stopPropagation();
@@ -21394,6 +21736,7 @@
         spImgCache = null; window.GeoState.save({ spImages: null });
         p = window.caches ? caches.delete("species-images") : Promise.resolve();   // an open gallery keeps its loaded pictures; the next render re-resolves
       }
+      else if (what === "clips") p = window.caches ? caches.delete("xc-clips") : Promise.resolve();   // the Xeno-canto clips and sonograms kept for offline play
       else p = Promise.resolve();
       var restore = btn ? btn.innerHTML : "";   // keep the label + count markup to restore after the ✓
       if (btn) btn.disabled = true;
@@ -21434,8 +21777,7 @@
         var sz = fmtCacheBytes(bytes);
         c.textContent = (n != null && n > 0) ? String(n) + (sz ? " · " + (approx ? "~" : "") + sz : "") : "0";
       }
-      var hs = loadHotspotStore();
-      setCnt("hotspots", Object.keys(hs).length, jsonBytes(hs));
+      hydrateHotspotStore().then(function () { var hs = loadHotspotStore(); setCnt("hotspots", Object.keys(hs).length, jsonBytes(hs)); });   // read on first use (v2197)
       var sightN = 0, sightB = 0; Object.keys(sightIdx).forEach(function (k) { sightN++; sightB += +sightIdx[k].bytes || 0; });   // from the index: no record is read
       setCnt("obs", sightN, sightB);
       if (window.AppOffline && AppOffline.areaStats) AppOffline.areaStats().then(function (s) { setCnt("offline", s.n, s.bytes, true); }).catch(function () {});
@@ -21497,6 +21839,10 @@
         caches.open("species-images").then(function (c) { return c.matchAll(); }).then(function (rs) {   // photos are CORS responses → real sizes
           var by = 0; rs.forEach(function (r) { by += (+r.headers.get("content-length") || 0); });
           setCnt("images", rs.length, by);
+        }).catch(function () {});
+        caches.open("xc-clips").then(function (c) { return c.matchAll(); }).then(function (rs) {   // the audio is CORS (sized); the sonograms are opaque (counted, unsized)
+          var by = 0, opaque = false; rs.forEach(function (r) { var n = +r.headers.get("content-length") || 0; by += n; if (!n) opaque = true; });
+          setCnt("clips", rs.length, by, opaque);
         }).catch(function () {});
         caches.keys().then(function (names) {
           return Promise.all(names.filter(function (n) { return n.indexOf("api-") === 0 || n.indexOf("rc-api-") === 0; })
@@ -25240,37 +25586,15 @@
     // Experimental gate any more — the collapsed section keeps the popup tidy).
     AppGeo.countryInfo(lat, lon).then(function (info) {
       var cc = (info && info.cc) || "", cname = (info && info.name) || "";
-      // Radar → Migration Aloft (European weather-radar migration map). A MAIN-level
-      // popup entry (not inside "More"), Europe only, Experimental-gated. Inserted before the More toggle.
-      if (continentFor(cc) === "EU" && experimentalOn()) {
-        wrap.insertBefore(
-          makePopupBtn(t("link.aloft") + " ↗", "", function () {
-            mk.closePopup(); openExternal("https://pcmoan70.github.io/BirdsWhere-aloft/");   // the Migration Aloft radar is its own repo/site now
-          }),
-          moreBtn
-        );
-        var _pp = mk.getPopup(); if (_pp && _pp.isOpen()) _pp.update();
-      }
+      // (The Radar → Migration Aloft entry lived here until v2207; it is in the long-press / right-click map menu now.)
       // MapAnt (Norway): the LiDAR-derived orienteering map of the whole country —
       // contours, boulders, marshes and vegetation density at up to ~0.5 m/px, which
       // reads terrain far better than any of our basemaps. It is published in UTM 33N
       // (EPSG:32633), not Web Mercator, so it cannot join the basemap list; this opens
       // mapant.no centred on the clicked point instead (their hash is #zoom/lat/lon).
-      // Norway-only by coverage, and Experimental-gated like the radar link.
+      // Norway-only by coverage, and Experimental-gated.
       if (cc === "NO" && experimentalOn()) {
-        // 3-D terrain: the clicked point opens pcmoan70.github.io/3d_terrain, which builds a
-        // 1 m DTM view (Kartverket, Norway only) 2 km around it. MAIN-level, before More.
-        // The dots on the map inside that square go along in the link's hash (owner, 2026-10-18:
-        // "specify dots with descriptive text from BirdsWhere app to be drawn in 3d view").
-        wrap.insertBefore(
-          makePopupBtn(t("link.terrain3d") + " ↗", "", function () {
-            mk.closePopup();
-            var pts = terrain3dPoints(lat, lon, 2000);
-            openExternal("https://pcmoan70.github.io/3d_terrain/?lat=" + lat.toFixed(5) + "&lon=" + lon.toFixed(5) + "&r=2000" +
-              (pts.length ? "#pts=" + encodeURIComponent(JSON.stringify(pts)) : ""));
-          }),
-          moreBtn
-        );
+        // (The 3-D terrain button lived here until v2199; it is in the long-press / double-click map menu now.)
         moreSub.appendChild(makePopupBtn(t("link.mapant") + " ↗", "btn-light", function () {
           mk.closePopup();
           openExternal("https://mapant.no/#8/" + lat.toFixed(5) + "/" + lon.toFixed(5));
