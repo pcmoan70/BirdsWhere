@@ -2,7 +2,7 @@
 
 **Live app:** <https://thebirding.site/> (formerly `pcmoan70.github.io/BirdsWhere`, which now redirects; an app installed from the old address shows a *Move to thebirding.site* button that carries your lists and settings across)
 
-**Licence:** the application code is **public domain, CC0 1.0 Universal** (`LICENSE`; basis: the code is AI-generated — the idea, concept and UI design are Per Christian Moan's, credit appreciated; suggestions and improvements sent through the app's **Feedback** form will be implemented, so that effort is not spent twice and we build one useful tool together); the BirdsWhere name and icons, the thebirding.site domain and service, and the datasets based on modelling by Per Christian Moan (**Best sites** with its weekly rankings; the **confusion-species** lists and traits) are **reserved** — the defining text, with the exact file list and the terms of use, is [`NOTICE.md`](NOTICE.md); third-party licences are in `THIRD-PARTY-NOTICES.md`.
+**Licence:** the application code is **public domain, CC0 1.0 Universal** (`LICENSE`; basis: the software has been made using AI tools, based on ideas by Per Christian Moan — the idea, concept and UI design are his, credit appreciated; suggestions and improvements sent through the app's **Feedback** form will be implemented, so that effort is not spent twice and we build one useful tool together); the BirdsWhere name and icons, the thebirding.site domain and service, and the datasets based on modelling by Per Christian Moan (**Best sites** with its weekly rankings; the **confusion-species** lists and traits) are **reserved** — the defining text, with the exact file list and the terms of use, is [`NOTICE.md`](NOTICE.md); third-party licences are in `THIRD-PARTY-NOTICES.md`.
 
 An interactive, **100% in-browser** explorer of species **distribution, migration and live
 observations**. Everything runs on your device — there is **no server and no backend of our own**;
@@ -157,7 +157,7 @@ holding a button:
 | the **Settings ⚙** gear | the full **Settings** panel (a *tap* gives the quick panel instead) |
 | the **⤓ offline-maps** button | the offline-areas manager |
 | the **Points** button | the point-lists admin |
-| any **species photo** (confusion / family cards, the Images layout) | the picture **full screen** with its credit (right-click on a desktop, long press on a phone) |
+| any **species photo** (confusion / family cards, the Images layout) | the picture **full screen** with its credit (right-click on a desktop, long press on a phone); scroll, pinch or double-tap to zoom, drag to pan (v2224) |
 | the **funnel / ×** | the all-filters pane |
 | the **collapsed legend pill** | pan/zoom to frame **all fetched points** |
 | the **rarity bell 🔔** | poll eBird's notable sightings at all 🔔 locations right now |
@@ -227,6 +227,11 @@ lists only what has been observed, **[?]** weaves in the species the model predi
 and where nothing has been observed the predictions are shown on their own. Every other column
 still sorts from its own header in the table.
 
+**Looking a species up.** Under the filters, just above the table, sits the **species search box**
+(v2236): type a few letters in your language, your second language or Latin (a letter or two off is
+fine), the matches within the selected group come in order of likelihood here, and a pick opens
+that species' menu.
+
 The fetch can be shown three ways (layout dropdown above the list — the choice is remembered on the
 device; a `layout=` link parameter applies to that visit only; changing the UI or second-name language
 relabels the open list in place): the ranked **Species list** table,
@@ -243,8 +248,13 @@ opens the usual species menu and the scientific name the Family menu, as in the 
 button on a card shows the species' record sub-list: on a computer, hovering it opens the list in a
 small popover and clicking it jumps to the Species list table (expanded on that species, scrolled into
 view); on a phone, a short tap opens the popover (tapping the button again closes it) and a long press
-jumps to the table. Tapping a bird's **photo** opens its **Macaulay Library** catalogue narrowed to the month
-it was last seen (±1 month — the same link as the species menu's *Photos*); tapping the
+jumps to the table. Tapping a bird's **photo** opens its **Wikimedia Commons** pictures as a labelled grid
+(v2222): one section per Commons sub-category of the species — male, female, juvenile first, then eggs, flocks,
+in flight, nests … (wild birds only: illustrations, museum specimens, ringing, captive, dead and historical categories are left out, v2223) — the four best free-licence pictures each (Commons' Featured / Quality / Valued assessments first, then resolution); male, female and juvenile are always there and iNaturalist tops them up to at least two (research-grade observations annotated by sex / life stage, open licences only) — credit under every one,
+tap a picture for it full size (scroll, pinch or double-tap to zoom, drag to pan, v2224); distribution maps and other non-photo files are left out; the **Macaulay Library** link for the current month (±1) sits at the popup's
+bottom (before v2222 the photo opened that catalogue directly); the name on top of the grid is a search box
+(v2232: tap it, type a few letters in your language, your second language or Latin, fuzzy, and pick another species — the matches
+within the selected species group, in order of likelihood at the map centre, v2233–v2235); tapping the
 **Probability** opens the **Migration** view (Location analysis → Timeline) for that species, and on
 a mouse device hovering it previews the same 48-week probability bars at the fetch point (current
 week outlined, the last-seen week in blue). That chart is reachable two ways on **every**
@@ -651,19 +661,22 @@ filter funnel and the red × are **not** in the legend — they sit on the map a
 the minimised legend, sort order — and deleted species are kept), and the observations fetched last
 time are **not** put back unless Settings → Fetching & detections → **Show the last session's
 observations on open** is on (off by default); their fetched-area squares (and the ✓ update button)
-stay away with them. Shown point lists still appear; "Fetch on open" is the only start-up fetch.
+stay away with them. The saved point lists come back exactly as they were: the ticked lists, their tag
+chips and per-list funnels, and the legend's points-view selection (an isolated list or value) are all
+kept, so the map shows the same dots as when it was closed; "Fetch on open" is the only start-up fetch.
 
 The red **×** sits at the **lower right of the map** (above the 🔍 search and locate buttons; the filter
 **funnel** sits under it in the same bar), shown while fetched observations or fetched-area squares are on the
 map. It clears the **fetched observations only** — or, when fetched-area outlines exist, first arms
 **per-area delete** (a red × on each area removes just that area's detections; a second tap clears every
-fetched detection). The points of shown saved lists, detection sets and the pins a search put on the map are
+fetched detection). Either way the **stored downloads go too** (v2237: the area's records, or all of them),
+so the next fetch there asks the sources afresh instead of reopening the copy on the device. The points of shown saved lists, detection sets and the pins a search put on the map are
 **never** touched by it: take those off from the Points panel (un-tick the list, or the × on its "On the map" row).
 
 A **✓ Update** button (also on the right of the map, shown only when you have fetched areas) brings
 **every area you've already fetched up to today's latest observations** in one tap: each area is
-re-fetched from a couple of days before its own last fetch (so nothing is missed) and its end-date
-rolls forward. **Press-and-hold** it for two settings — how many **overlap days** to re-fetch
+re-fetched **from the sources** (v2237: never served from the copy kept on the device, which it replaces)
+from a couple of days before its own last fetch (so nothing is missed) and its end-date rolls forward. **Press-and-hold** it for two settings — how many **overlap days** to re-fetch
 before each area's last fetch (default 2) and whether to update **only the areas currently in
 view**.
 
@@ -954,7 +967,12 @@ shared payload is all that is shown.
 ## The species menu
 
 Right-click / long-press / tap any species name for a menu **led by the species name in bold**
-(wrapping when long), followed by the record's *Open source* link when opened from an observation, then:
+(wrapping when long; a × top right closes any popup), followed by the record's *Open source* link when opened from an observation, then:
+
+- **The name itself** opens the **Names popup**: what iNaturalist calls the species in every UI
+  language beside the app's own name (a row switches the app to that language), and under the name a
+  **species search box** (v2234) — type a few letters in your language, your second language or Latin
+  and pick a bird: its menu opens in the popup's place.
 
 - The **Yr column** (beside Season, in the species list, the observation list, the picture-card bars
   and the family/look-alike cards) shows whatever **Settings → Compare to** names: the annual peak
@@ -994,6 +1012,9 @@ Right-click / long-press / tap any species name for a menu **led by the species 
   or interact with something outside it — never on its own because the pointer moved away. A popup
   opened from inside another (a picture from a record list, a ⓘ note) sits *on* it rather than
   replacing it, so closing the picture puts you back in the list. The ⓘ note opens at your pointer.
+  A popup *window* — one taller than about half the screen (the Audio panel, a record card, a compare
+  table) and every picture popup — opens at the **top of the map area**, whatever row opened it, so it
+  never hangs below the fold; a short menu stays beside the row or button it came from.
 
 - A species' **record list** shows Probability, Season and Yr peak on every row, as the observation
   list does (blank for species the model does not cover).
@@ -1038,7 +1059,7 @@ Right-click / long-press / tap any species name for a menu **led by the species 
   **Settings → Distribution**
   picks which opens first, model by default, each falling back to the other when it has nothing for the
   species, Wikipedia also when offline; the Wikipedia dialog links to the model map), **Migration**,
-  **Images** (Macaulay Library, birds), **Audio** (v2210: the bird's preselected Xeno-canto clips in the app — up to two A-grade recordings per kind of voice, tap a sonogram to play — with the link to all its recordings on Xeno-canto at the bottom; animals; v2215: the clips you play and their sonograms are kept on the device — a 160-entry, version-independent service-worker cache, Settings → Storage → *Recordings (Xeno-canto)* — so they play offline; on the compare card the recordings sit in a row of the trait table, the clips in columns under the two pinned names), **More of these**, **Wikipedia**,
+  **Images** (Macaulay Library, birds), **Audio** (v2210: the bird's preselected Xeno-canto clips in the app — up to two A-grade recordings per kind of voice, tap a sonogram to play, hold it (or shift-click / right-click / two-finger click on a desktop) to play on repeat (↻ badge; v2220–v2221), any tap or hold stops it — with the link to all its recordings on Xeno-canto at the bottom; animals; v2215: the clips you play and their sonograms are kept on the device — a 160-entry, version-independent service-worker cache, Settings → Storage → *Recordings (Xeno-canto)* — so they play offline; v2219: the name line with its × stays pinned while the panel scrolls; v2232: that name is a search box — tap it, type a few letters of a name in your language, your second language or Latin (fuzzy: a letter or two off still hits) and pick another species, and the panel reopens for it; on the compare card the recordings sit in a row of the trait table, the clips in columns under the two pinned names), **More of these**, **Wikipedia**,
   then **Family** and the group-specific references: **Macaulay Library** photos/audio (narrowed to the
   observation's season — a ±1-month `beginMonth`/`endMonth` window — so images match the time of
   year) and **eBird photos** for birds, **Kew POWO** for plants, **Animal Diversity Web** for
@@ -1052,7 +1073,9 @@ Right-click / long-press / tap any species name for a menu **led by the species 
 - **This observation** (bottom, when opened from a record with a location) — **Show on map**,
   **Navigate here** and **Add to route**.
 - **Uncertainty circles** — a point whose file carries `uncertainty_m` (also `radius_m`, `radius`,
-  `coordinateUncertaintyInMeters`, `accuracy`) is drawn with a see-through circle of that
+  `coordinateUncertaintyInMeters`, `accuracy`), or whose **Uncertainty (m)** field was typed into the point
+  editor (*Add point* / the pin's own popup, v2225; its ▲▼ and the arrow keys step 1, 5, 25, 50, 100, 150, 200, 300, 400,
+  500, 750, 1000, 1500, 2000 … rather than 1 m at a time, v2226), is drawn with a see-through circle of that
   radius in metres around it: a thin black edge and a faint fill in the list's colour. A point with
   `unc_edge` (px) draws its edge that much thicker — the map-dot lists use it for their best-estimate sites.
 - **Hide / Show lists** — the toggle at the end of the Points panel's top row: **Hide lists** takes every
@@ -1286,7 +1309,7 @@ an **eBird Record Format CSV** ready for [ebird.org/import](https://ebird.org/im
   then the map jumps to your position and opens the **map-point popup** there for a quick fetch —
   even when a saved point or plotted dot sits at that spot); **hold** (or right-click) = continuous **GPS-follow /
   tracking** — the button **pulses blue**, the blue cross at your position **blinks once a second**, and the map re-centres (keeping your zoom) as you move,
-  live-updating distance sorts; hold again for the **red read cursor** (a fixed centre cursor: pan
+  live-updating distance sorts; the legend re-renders **once a minute** for the observations in view (the usual "2 s after the map stands still" rule is off while the map follows you, v2240); hold again for the **red read cursor** (a fixed centre cursor: pan
   a plotted dot, map point or eBird hotspot under it to open it); a tap in either state turns it off.
 - **GPS track** — Settings → Lists & sharing → **Record a track while GPS tracking**: while GPS-follow is
   on, your route is drawn on the map (a fix counts when it is within 50 m accuracy and 5 m from the
@@ -1335,7 +1358,9 @@ failed, try again in a minute* and the next check tries again.
 Areas are colour-coded frames you can delete individually; the panel lists the areas that
 overlap the current view first (tinted, marked *in view*) and follows the map as you pan — tap
 an area's name to show it on the map (switching to its basemap if needed). If the browser evicts
-tiles, the app detects it and offers to re-download. Pinned areas are never auto-purged. A download
+tiles, the app detects it and offers to re-download. Pinned areas are never auto-purged, and the list of
+areas is **this device's own**: it never travels in a sync, export or import, so another device's copy
+can never remove it (v2241) — an area goes only when you delete it. A download
 covers the zoom levels from the current view down to the chosen max, **plus a few zoomed-out levels**
 so the area still draws when you zoom out, and it is stored against the basemap actually on screen (a
 key-less Voyager/MapTiler choice draws Streets). Offline the map keeps working for every basemap the
@@ -1347,7 +1372,9 @@ points) and **one direction** (two-way merge — the default — upload-only, or
 signs in (`drive.file` + `drive.appdata` — per-file access to what the app itself creates, and
 nothing else in your Drive), does one pull → merge → push, and disconnects (token kept in memory
 only; no background sync). Collections always merge, so no direction can delete data on the other
-device.
+device. API keys, the TinyURL token and the alert e-mail address only ever **fill a gap** — a synced or
+imported copy never replaces the one this device holds — and a source's endpoint from another copy is
+accepted only on that source's own host (v2241).
 
 Everything lands in a folder called **BirdsWhere** in your Drive, which you can open like any
 other; each sync that changes something writes a dated subfolder (the ten newest are kept).
@@ -1458,6 +1485,11 @@ the one thing left out by default — they are much the largest thing the app ho
   a large privacy padding and can read tens of GB for a few hundred MB of real data; the per-row
   sizes are the measured ones. *Reuse downloads* (Settings) defaults to 0 = a stored location is
   reused until cleared; set minutes there to have a reopen refetch after that long.
+  **Force reload** (the last button in Settings) is for when an update seems not to have arrived:
+  it unregisters the service worker, drops this channel's app-shell, API and model caches,
+  downloads every file in `files.json` afresh with the browser's HTTP cache bypassed (about 30 MB,
+  the model included, with a running count on the button) and restarts — whatever the cache hashes
+  say. Map tiles, offline areas, photos, recordings, lists and settings stay.
 - **Languages** — the **UI is fully translated into 15 languages** (en, sv, de, es, fr, nl, it, pt,
   pl, cs, no, da, fi, et, lt); other languages fall back to English UI text while still showing
   localised species names. **Species common names are available in ~45 languages**, loaded as
@@ -1492,6 +1524,11 @@ Your data leaves the device only when **you** act:
 - a **🔗 share link** or **Share map** — packs the points / detections you pick into a URL you hand out;
 - an **export** — CSV, KML/KMZ, GeoJSON or PDF, or the full backup file;
 - the optional one-tap **Google Drive backup**, into a **BirdsWhere** folder in your *own* Drive.
+
+What comes **in** is checked too: a share link, migration link, imported file or Drive copy is decoded with a
+size cap, its keys cannot alter the app's own objects, its links must be http(s), and its colours are
+plain colour values (v2241). The migration hand-over from the old github.io address is accepted only
+when you actually arrive from there.
 
 Separately, simply using the app sends the **map coordinates you are viewing** to the third-party
 observation databases (GBIF, eBird, iNaturalist…) and the map / place-name provider, so they can
@@ -1548,7 +1585,7 @@ alerts, lists, offline use — plus the data sources and the responsible-birding
 `tools/about-content.json` by `node tools/gen-about-pages.mjs` (edit the JSON, re-run, commit).
 `robots.txt` allows everything and points at `sitemap.xml` (root + all about pages); `index.html`
 carries a canonical URL, description, Open Graph tags and a `<noscript>` intro linking to the pages,
-and an **About ↗** link (on the welcome screen, and in Settings beside **How it works**) opens the page in the current UI language. The service worker leaves
+and an **About ↗** link (on the welcome screen, and in Settings beside **How?**, the explanation-page button) opens the page in the current UI language. The service worker leaves
 `/about/`, `robots.txt` and `sitemap.xml` to the network so an installed app never swallows them.
 The RC channel is deployed with `noindex` on every page and without the crawler files, so only
 thebirding.site is indexed.
@@ -1567,6 +1604,13 @@ app/
   site-overlays.js      Viewpoints / best sites / eBird hotspots layers (AppSites)
   share-links.js        Shareable links: encode, share, import (AppShare)
   field-checklist.js    Field checklist: live entry, review, eBird/CSV/PDF (AppField)
+  app-shell.js          The root HTML template init() pours into the page (AppShell)
+  species-images.js     Species photos, fallbacks, lightbox, Commons category grid (AppSpImages)
+  species-compare.js    Look-alike views, compare card, Audio panel + their data loaders (AppSpCompare)
+  ref-links.js          Wikipedia / Macaulay / Xeno-canto / portal and blog links (AppRefLinks)
+  sync-data.js          Export / Import, Drive payload + merge, window.AppData (AppSyncData)
+  inference.js          Model worker, prediction cache, Season cells, range/richness overlays (AppInference)
+  place-search.js       Place / coordinate / species search box (AppPlaceSearch)
   sources.js            Data-source registry + enabled/keys config (AppSources)
   fetch.js              Per-source HTTP adapters + shared retry/backoff (AppFetch)
   normalize.js          Each source's JSON → one uniform record shape (AppNormalize)

@@ -290,6 +290,19 @@ select:focus, textarea:focus { outline: none; border-color: var(--brand); box-sh
   background: var(--brand);
   color: var(--on-brand);
 }
+/* Species picker: the name on top of the Audio panel / Commons grid is a search box (owner, 2026-10-31). */
+.sp-pick-name { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.sp-pick { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: var(--fs-b); }
+.sp-pick-inp { width: 100%; box-sizing: border-box; font: inherit; padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius-xs); background: var(--surface); color: var(--ink); }
+.sp-pick-res { max-height: 40vh; overflow-y: auto; }
+.detrow-menu .sp-pick { padding: 0 8px 4px; }   /* the inline box in the names popup */
+#species-panel > .sp-pick { margin: 0 0 8px; }   /* the box on top of the species list */
+.sp-pick-item, .sp-pick-none { padding: 6px 8px; border-bottom: 1px solid var(--border); color: var(--ink); }
+.sp-pick-item { cursor: pointer; }
+.sp-pick-item:hover { background: var(--brand); color: var(--on-brand); }
+.sp-pick-n2 { color: var(--ink-muted); }
+.sp-pick-sci { font-style: italic; opacity: 0.75; font-size: var(--fs-s); }
+.sp-pick-none { color: var(--ink-muted); }
 /* "Recent searches" heading + rows in the place-search dropdown. */
 #place-results .sr-recent-head {
   padding: 6px 10px 4px; font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase;
@@ -1975,6 +1988,18 @@ button.dd-name:hover { text-decoration: underline; }
 .ui-modal-msg { font-size: var(--fs-b); line-height: 1.4; white-space: pre-wrap; }
 
 /* "All filters" pane (long-press the legend's filter-clear ×). */
+/* Wikimedia Commons category grid (a tap on an Images-layout photo): header and the Macaulay link stay, the grids scroll. */
+.ui-modal.cm-box { width: min(760px, 96vw); max-height: 90vh; max-height: 90dvh; padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.cm-hdr { padding: 10px 44px 6px 12px; font-size: var(--fs-b); line-height: 1.3; border-bottom: 1px solid var(--border); }
+.cm-hdr span { display: block; font-size: var(--fs-xs); color: var(--ink-muted); }
+.cm-body { flex: 1 1 auto; min-height: 60px; overflow-y: auto; padding: 4px 12px 8px; }
+.cm-lbl { font-size: 13.5px; font-weight: 700; padding: 8px 0 3px; margin-bottom: 4px; border-bottom: 2px solid var(--brand); }
+.cm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.cm-tile { min-width: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.cm-tile .spg-img { cursor: zoom-in; }
+.cm-tile .spg-credit { padding: 2px 6px 4px; }
+.cm-more { display: block; padding: 8px 12px 10px; border-top: 1px solid var(--border); font-size: var(--fs-s); color: var(--brand-deep, var(--brand)); text-decoration: none; }
+.cm-more:hover { text-decoration: underline; }
 .aff-modal { width: min(440px, 94vw); max-height: 88vh; max-height: 88dvh; padding: 0; display: flex; flex-direction: column; overflow: hidden; }
 /* Desktop: the funnel's All-filters window docks at the RIGHT edge of the
    window, as narrow as its content allows, instead of popping up centred. */
@@ -2227,6 +2252,10 @@ button.offline-name:hover { text-decoration: underline; }
   background: var(--surface); color: var(--ink);
 }
 .mp-form textarea { resize: vertical; min-height: 32px; }
+.mp-radius-row { gap: 3px; flex-wrap: nowrap; }
+.mp-radius-row input { flex: 1 1 0; width: 0; min-width: 0; }   /* no intrinsic width: the ▼ ▲ sit beside the field on one row */
+.mp-step { flex: 0 0 auto; width: 26px; height: 26px; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-xs); background: var(--surface-2); color: var(--ink-muted); font-size: 9px; line-height: 1; cursor: pointer; }   /* the uncertainty ladder: ▼ ▲ */
+.mp-step:hover { background: var(--brand-soft); color: var(--ink); }
 /* Per-point colour row (live + saved-point editors): checkbox · label · swatch. */
 .mp-color-row { display: flex; flex-direction: row; align-items: center; gap: 6px; font-size: var(--fs-xs); font-weight: 600; color: var(--ink-muted); }
 .mp-color-row .mp-color-lbl { text-transform: uppercase; letter-spacing: .02em; }
@@ -2679,10 +2708,11 @@ button.offline-name:hover { text-decoration: underline; }
 /* Bordered button look (.feedback-open is otherwise a text link). */
 .settings-toprow > .settings-feedback { background: var(--surface); border: 1px solid var(--border); color: var(--ink); text-decoration: none; font-weight: 600; padding: 6px 9px; }
 .settings-toprow > .settings-feedback:hover { background: var(--surface-2); color: var(--ink); }
-/* "About ↗" (web summary) beside "How it works" (in-app panel), under the intro text. */
-.settings-aboutrow { display: flex; gap: 4px; }
-.settings-aboutrow > .settings-about { flex: 0 1 auto; width: auto; text-decoration: none; }
-.settings-aboutrow > a.settings-about::before { content: none; }
+/* "About ↗", "How?" (in-app panel) and "Model compare ↗" as three plain words on ONE line, under the
+   intro text: no ℹ, nothing shrinks or wraps, so each ↗ stays glued to its word (owner, 2026-11-01). */
+.settings-aboutrow { display: flex; gap: 0; }
+.settings-aboutrow > .settings-about { flex: 0 0 auto; width: auto; padding: 8px 4px; white-space: nowrap; text-decoration: none; }
+.settings-aboutrow > .settings-about::before { content: none; }
 .perf-about { margin: 2px 0 6px; }
 .perf-about a, a.perf-about { color: var(--brand); font-weight: 600; text-decoration: none; }
 .perf-about a:hover, a.perf-about:hover { text-decoration: underline; }
@@ -5003,7 +5033,8 @@ tr.sp-flash > td { animation: spFlash 1.6s ease-in-out 1; }
 .mp-chip-n { opacity: .7; font-size: .9em; }
 /* Press-and-hold on a card photo → the picture full screen. */
 #photo-lightbox { position: fixed; inset: 0; z-index: 9500; background: rgba(0,0,0,.93); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 10px; box-sizing: border-box; cursor: zoom-out; }
-#photo-lightbox img { max-width: 100%; max-height: calc(100vh - 70px); max-height: calc(100dvh - 70px); object-fit: contain; border-radius: 6px; box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+#photo-lightbox img { max-width: 100%; max-height: calc(100vh - 70px); max-height: calc(100dvh - 70px); object-fit: contain; border-radius: 6px; box-shadow: 0 8px 40px rgba(0,0,0,.6); touch-action: none; user-select: none; -webkit-user-select: none; cursor: zoom-in; }   /* zoom: wheel / pinch / double-tap, drag to pan (transform set by the code) */
+#photo-lightbox { overflow: hidden; }
 #photo-lightbox .lb-credit { color: var(--border); font-size: 5px; text-align: center; max-width: 100%; }   /* every credit line the same small size: photos, lightbox, clips (owner, 2026-10-29) */
 #photo-lightbox .lb-credit a { color: var(--ink-faint); }
 #photo-lightbox .lb-close { position: absolute; top: 8px; right: 12px; background: rgba(255,255,255,.15); color: var(--on-brand); border: 0; border-radius: 50%; width: 40px; height: 40px; font-size: 26px; line-height: 40px; cursor: pointer; }
@@ -5040,7 +5071,7 @@ tr.sp-flash > td { animation: spFlash 1.6s ease-in-out 1; }
 #gbif-box, #natdb-box, #offline-box, #sources-box, #det-sets-box, #lists-box, #blogs-box,
 #distmap-box, #detlist-box, #recent-box, #feedback-modal > div, #perf-modal > div {
   max-height: calc(100vh - 16px); max-height: calc(100dvh - 16px); overflow-y: auto; overscroll-behavior: contain; }
-.aff-modal, #detlist-box { overflow-y: hidden; }   /* these scroll an inner list themselves */
+.aff-modal, #detlist-box, .cm-box { overflow-y: hidden; }   /* these scroll an inner list themselves */
 /* The × of the header dropdowns, the stored-locations panel and the place-search box (ensureDdClose): sticky in the
    top-right corner while the panel scrolls under it. */
 .dd-x { position: sticky; top: 0; float: right; z-index: 6; margin: 0 0 0 6px; border: 0; background: var(--surface); cursor: pointer; font-size: var(--fs-glyph); line-height: 1; color: var(--ink-muted); padding: 2px 7px; border-radius: var(--radius-xs); }
@@ -5103,9 +5134,10 @@ tr.sp-flash > td { animation: spFlash 1.6s ease-in-out 1; }
 .xc-col { min-width: 0; padding: 3px 7px 0; border-top: 2px solid var(--border); }
 .xc-col-a { border-top-color: var(--brand); }
 .xc-col-b { border-top-color: var(--warn); }
-.xc-clip { display: block; width: 100%; margin: 2px 0 4px; border: 1px solid var(--border); border-radius: var(--radius-xs, 4px); overflow: hidden; cursor: pointer; background: #fff; }   /* data colour */
+.xc-clip { display: block; position: relative; width: 100%; margin: 2px 0 4px; border: 1px solid var(--border); border-radius: var(--radius-xs, 4px); overflow: hidden; cursor: pointer; background: #fff; }   /* data colour */
 .xc-clip img { display: block; width: 100%; height: auto; min-height: 24px; }
 .xc-clip.playing { outline: 2px solid var(--brand-strong); outline-offset: -2px; }
+.xc-clip.xc-loop::after { content: "\21bb"; position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; border-radius: 50%; background: var(--brand-strong); color: var(--on-brand); font-size: 15px; line-height: 20px; text-align: center; pointer-events: none; }   /* on repeat (a press-and-hold): a circular arrow on the clip */
 .xc-a.playing { outline-color: var(--brand); }
 .xc-b.playing { outline-color: var(--warn); }
 .xc-clip.xc-noimg img { display: none; }
@@ -5116,3 +5148,4 @@ tr.sp-flash > td { animation: spFlash 1.6s ease-in-out 1; }
 .xc-more:hover { text-decoration: underline; }
 .xc-menu .xc-vlbl { font-size: 13.5px; font-weight: 700; color: var(--ink); padding: 8px 0 3px; }   /* the single-species Audio panel: voice headings read as headings (owner, 2026-10-29) */
 .xc-menu .xc-col-a { border-top: 3px solid var(--warn); }   /* ...and a thicker amber rule under each heading */
+.xc-menu .detrow-menu-hdr { position: sticky; top: -4px; z-index: 2; background: var(--surface); padding: 7px 30px 5px 12px; }   /* the species name and its × stay pinned while the clip list scrolls (owner, 2026-10-29) */

@@ -17,7 +17,7 @@ window.AppShare = (function () {
 
   // ---- injected by app.js (init) -----------------------------------------
   // Plain function aliases (stable references) …
-  var clearAllFilters, clearDetections, closeModals, detName, detSets, modalConfirm,
+  var clearAllFilters, clearDetections, closeModals, detName, detRowCount, detSets, modalConfirm,
       navClose, onListView, plotSightingsResult, recordFamily, refreshGroupModeOptions,
       saveFamIndex, selectMapPoint, serializeVisibleDetPlot, setPointMarker, setStatus,
       showListView, t, uiDialog, updateSettingsIcon, updateViewToggle, wrapLon,
@@ -27,7 +27,7 @@ window.AppShare = (function () {
   var getCurrentSpView, getWeek, setWeek, seedSightingsCache, renderSpeciesList, getFam, hasBundledFam;
 
   function init(ctx) {
-    clearAllFilters = ctx.clearAllFilters; clearDetections = ctx.clearDetections;
+    clearAllFilters = ctx.clearAllFilters; clearDetections = ctx.clearDetections; detRowCount = ctx.detRowCount;
     closeModals = ctx.closeModals; detName = ctx.detName; detSets = ctx.detSets;
     modalConfirm = ctx.modalConfirm; navClose = ctx.navClose; onListView = ctx.onListView;
     plotSightingsResult = ctx.plotSightingsResult; recordFamily = ctx.recordFamily;
@@ -74,14 +74,30 @@ window.AppShare = (function () {
     }
     return Promise.resolve("0" + b64urlFromBytes(bytes));
   }
+  // Decoding runs BEFORE any confirm, so a crafted link or file must not be able to take the
+  // tab down: the encoded text is capped, and the inflate stops at a byte budget — a few
+  // hundred kB of deflate can hold gigabytes (security review, 2026-11-01).
+  var DECODE_MAX_CHARS = 4000000, INFLATE_MAX = 64 * 1048576;
+  function inflateCapped(bytes, max) {
+    var rd = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw")).getReader(), parts = [], n = 0;
+    return (function pump() {
+      return rd.read().then(function (r) {
+        if (r.done) { var out = new Uint8Array(n), o = 0; parts.forEach(function (p) { out.set(p, o); o += p.length; }); return out; }
+        n += r.value.length;
+        if (n > max) { rd.cancel().catch(function () {}); throw new Error("too big"); }
+        parts.push(r.value); return pump();
+      });
+    })();
+  }
   function decodeShare(str) {
-    var tag = String(str).charAt(0), bytes = bytesFromB64url(String(str).slice(1));
+    str = String(str);
+    if (str.length > DECODE_MAX_CHARS) return Promise.reject(new Error("too big"));
+    var tag = str.charAt(0), bytes = bytesFromB64url(str.slice(1));
     if (tag === "1") {
       if (typeof DecompressionStream === "undefined") return Promise.reject(new Error("no-decompress"));
-      return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer()
-        .then(function (buf) { return JSON.parse(new TextDecoder().decode(new Uint8Array(buf))); });
+      return inflateCapped(bytes, INFLATE_MAX).then(function (out) { return window.GeoState.safeParse(new TextDecoder().decode(out)); });
     }
-    return Promise.resolve(JSON.parse(new TextDecoder().decode(bytes)));
+    return Promise.resolve(window.GeoState.safeParse(new TextDecoder().decode(bytes)));
   }
   // Fallback for shares too big for a URL: hand the encoded payload over as a small
   // file (native share sheet if available, else download). The recipient opens it
@@ -516,9 +532,7 @@ window.AppShare = (function () {
     });
     return pts;
   }
-  function detRowCount(detections) {
-    var n = 0; Object.keys(detections || {}).forEach(function (k) { n += ((detections[k] || {}).rows || []).length; }); return n;
-  }
+  // detRowCount is injected (sync-data.js holds the one copy since round 4).
   // Plot shared detections EXACTLY like a self-fetch: rebuild the same `result`
   // shape that a live fetch produces ({agg, extras, …}) and run it through the very
   // same plotSightingsResult pipeline — so the legend and the co-located list build
@@ -776,9 +790,9 @@ window.AppShare = (function () {
     detSetToPoints: detSetToPoints,
     maybeImportShared: maybeImportShared,
     maybeOpenSharedPoint: maybeOpenSharedPoint,
-    detRowCount: detRowCount,
     fmtDateFile: fmtDateFile,
     encodeShare: encodeShare,   // also used by the domain-move handoff (app.js moveToNewHome)
     decodeShare: decodeShare,
+    inflateCapped: inflateCapped,
   };
 })();
