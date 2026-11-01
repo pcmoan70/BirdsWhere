@@ -1370,11 +1370,11 @@ app can draw.
 dialog to pick **which categories** travel (Settings · Point lists · Trips · Checklists · Fetched
 points) and **one direction** (two-way merge — the default — upload-only, or download-only), then
 signs in (`drive.file` + `drive.appdata` — per-file access to what the app itself creates, and
-nothing else in your Drive), does one pull → merge → push, and disconnects (token kept in memory
+nothing else in your Drive), does one pull → merge → push, and disconnects (token kept in memory; the button names each step — reading, downloading file 3/8, merging, storing lists 3/8, uploading — over a green transfer bar, and an **orange second bar** runs while the lists are merged and stored on the device after the files are in, v2244–v2245
 only; no background sync). Collections always merge, so no direction can delete data on the other
 device. API keys, the TinyURL token and the alert e-mail address only ever **fill a gap** — a synced or
 imported copy never replaces the one this device holds — and a source's endpoint from another copy is
-accepted only on that source's own host (v2241).
+accepted only on that source's own host (v2241). A sync refuses with a clear ⚠ message when a stored list cannot be read or the browser's list store (IndexedDB) is unavailable — and the app itself reports an unopenable list store at start (the lists are unreadable, not lost; v2246). A Drive-folder JSON imported as a **file** names its lists but does not hold their points; the import says so and points to the `Points - <name>.kmz` files beside it (v2248). Every format an earlier version wrote — stored lists, list files, exports, share links — stays readable; the check that proves it lives in `tools/compat/` (private workspace).
 
 Everything lands in a folder called **BirdsWhere** in your Drive, which you can open like any
 other; each sync that changes something writes a dated subfolder (the ten newest are kept).

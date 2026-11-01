@@ -682,7 +682,7 @@ window.AppPoints = (function () {
       if (ptsKeys.length) askPersist();
       orphans.forEach(function (c) { writeIfChanged(c, false); });   // the kept in-memory lists, now stored
     } catch (e) {
-      mpIdbReady = false;
+      mpIdbReady = false; mpStoreErr = (e && e.message) || String(e);
       // IndexedDB can refuse to open for reasons that pass: another tab holding the
       // database during a version upgrade makes open() fire `onblocked`. Giving up for
       // the session then showed NO lists at all — the blob no longer carries them, it was
@@ -691,9 +691,13 @@ window.AppPoints = (function () {
       scheduleMpStoreRetry();
     }
   }
-  var mpRetryLeft = 4, mpRetryT = null;
+  var mpRetryLeft = 4, mpRetryT = null, mpStoreErr = "";
   function scheduleMpStoreRetry() {
-    if (mpIdbReady || mpRetryLeft <= 0 || mpRetryT) return;
+    if (mpIdbReady || mpRetryT) return;
+    if (mpRetryLeft <= 0) {   // out of retries: SAY so — the lists look lost when they are only unreadable (owner's phone, 2026-11-01)
+      try { setStatus(t("points.storeUnavailable", { msg: mpStoreErr || "?" }), true); } catch (e) {}
+      return;
+    }
     mpRetryT = setTimeout(function () {
       mpRetryT = null; mpRetryLeft--;
       initMpSetStore().then(function () {
@@ -701,6 +705,19 @@ window.AppPoints = (function () {
         try { loadMapPoints(); renderMapPoints(); if (typeof refreshMpPanel === "function") refreshMpPanel(); } catch (e) {}
       }, function () {});
     }, (5 - mpRetryLeft) * 1500);
+  }
+  // The Drive sync's store step: one list at a time with a yield between them, reporting
+  // onProgress(done, total, name) → "Storing lists 3/8 · name". Signing and cloning a big list is
+  // seconds of work on a phone, and doing every list in one synchronous pass left the page frozen
+  // on "Merging…" with nothing moving (owner, 2026-11-01). The ordinary pass runs at the end for
+  // the index and the retired records — cheap then, every list is signed already.
+  function persistMpSetsStepwise(list, onProgress) {
+    var items = (list || []).filter(function (c) { return c && c.name && !c._lazy; }), total = items.length, done = 0;
+    onProgress(0, total, "");
+    return items.reduce(function (p, c) {
+      return p.then(function () { return new Promise(function (r) { setTimeout(r, 0); }); })   // let the count paint
+        .then(function () { var w = writeIfChanged(c, false), tick = function () { onProgress(++done, total, c.name); }; return Promise.resolve(w).then(tick, tick); });
+    }, Promise.resolve()).then(function () { return persistMpSets(list, { fast: true, noVerify: true }); });
   }
   // Write the current lists to IndexedDB and retire the records of any that are gone.
   // Only the lists that actually CHANGED are written: these run to megabytes, and
@@ -768,6 +785,7 @@ window.AppPoints = (function () {
   }
   function persistMpSets(list, opts) {
     if (!mpIdbReady || !window.AppIDB) return Promise.resolve();
+    if (opts && typeof opts.onProgress === "function") return persistMpSetsStepwise(list, opts.onProgress);
     var fast = !!(opts && opts.fast), keep = Object.create(null), gone = false, writes = [];
     (list || []).forEach(function (c) {
       if (!c || !c.name) return;
@@ -1221,7 +1239,9 @@ window.AppPoints = (function () {
     var start = target.lho + 30 + lFnLen + lExLen, comp = bytes.subarray(start, start + target.cSize);
     if (target.method === 0) return td.decode(comp);
     if (target.method !== 8 || typeof DecompressionStream === "undefined") throw new Error("kmz compression");
-    var raw = await window.AppShare.inflateCapped(comp, 128 * 1048576);   // byte budget: a zip bomb must not take the tab down
+    // Byte budget against a zip bomb — set far above any real list: a 74 000-point list's own Drive
+    // file inflates past 128 MB, and that cap made the whole sync fail with "too big" (owner, 2026-11-01).
+    var raw = await window.AppShare.inflateCapped(comp, 1024 * 1048576);
     return td.decode(raw);
   }
   function downloadBlob(filename, blob) {

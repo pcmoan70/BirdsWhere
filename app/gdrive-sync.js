@@ -595,15 +595,20 @@ window.GDriveSync = (function () {
   // checklists, fetched } truthy = include. Omitted → full two-way (default).
   async function sync(options) {
     if (!connected || syncing || !clientId() || !navigator.onLine) return;
-    await window.AppPoints.whenAllLoaded();   // lists load lazily: a sync must see them whole
-    if (window.AppPoints.anyLazy()) return;   // one could not be read → never merge / upload a partial set
-    if (window.AppData.cachesReady) await window.AppData.cachesReady();   // the name caches too (read on first use)
     var dir = (options && options.direction) || "two";
     // Fetched observation dots are excluded unless asked for: re-fetchable, bulky, and
     // not something the user made. Anything already on Drive is left as it is.
     var inc = (options && options.cats) || { settings: 1, lists: 1, trips: 1, checklists: 1, fetched: 0 };
     syncing = true; lastPhase = "signin"; lastPhaseName = ""; lastDone = lastTotal = 0; emit("syncing");
     try {
+      // The list store must be whole and writable before anything is merged. These used to be silent
+      // returns before the try — the sync looked finished with nothing done; and with the store
+      // unavailable the merge fell back to the localStorage blob, where 150 MB of lists can never fit:
+      // nine full serialisations and a quota error each, which looked like a hang (owner's phone, 2026-11-01).
+      await window.AppPoints.whenAllLoaded();   // lists load lazily: a sync must see them whole
+      if (window.AppPoints.anyLazy()) throw new Error("a stored list could not be read \u2014 not syncing a partial set");
+      if (window.AppPoints.mpIdbReady && !window.AppPoints.mpIdbReady()) throw new Error("the list store (IndexedDB) is unavailable on this device \u2014 restart the browser; if it persists, clear this site's data in the browser and restore the lists from Drive");
+      if (window.AppData.cachesReady) await window.AppData.cachesReady();   // the name caches too (read on first use)
       // Each step now says WHAT it is doing, not just which step it is: the folder it found,
       // the size it is pulling, what arrived, how big the upload is. "Reading Drive…" for
       // twenty seconds with no detail is indistinguishable from a hang.
@@ -683,7 +688,13 @@ window.GDriveSync = (function () {
       // device's copy of it. Lists not in the folder are always kept — the user deletes them by
       // hand if wanted (owner, 2026-10-06). Two-way: union.
       var replaceL = dir === "download" && options && options.merge === false;
-      if (toApply) window.AppData.applyRemote(toApply, { incomingWins: incomingWins, interactive: false, replaceLists: replaceL });
+      // The merge itself is synchronous and blocks the page; let "Merging…" paint first, then
+      // report the list records as they reach the store ("Storing lists 3/8 · name").
+      if (toApply) {
+        await new Promise(function (r) { setTimeout(r, 30); });
+        window.AppData.applyRemote(toApply, { incomingWins: incomingWins, interactive: false, replaceLists: replaceL,
+          onProgress: function (done, total, name) { phase("store", name || "", done, total); } });
+      }
       // Changed = a real difference, judged key by key with the self-stamps excluded — a raw
       // string compare saw `updatedAt` move on every write and called every sync "changed" (S6).
       var changed = stateDiffers(localState, window.GeoState.snapshot());
@@ -693,14 +704,20 @@ window.GDriveSync = (function () {
       // `updatedAt` excluded: every local write bumps that timestamp, so a
       // bare stringify would treat an otherwise-unchanged sync as dirty and
       // trigger a full resumable upload on every sync. Download is pull-only.
-      if (window.AppData.loadFetchedForSync) { try { await window.AppData.loadFetchedForSync(); } catch (e) {} }   // fetched records live one per location now
-      var merged = window.AppData.buildPayload();
-      if (dir !== "upload") window.AppData.overlayExcludedForPush(merged, remote, inc, localState);
-      // From here the payload names each list's file instead of holding its points.
-      var listFiles = window.AppData.splitListsForDrive(merged, prevLists && prevLists.refs);
-      var needPush = dir === "upload" || (dir !== "download" && (!remote ||
-        stateDiffers(merged.state, remoteCmp) ||
-        (merged.ebirdKey && merged.ebirdKey !== (remote.ebirdKey || ""))));
+      // A download pushes nothing, so it builds no payload: serialising and hashing every list
+      // (hundreds of MB of points on a phone) for a comparison whose answer was already "no
+      // push" kept the phone on "Synchronizing" for minutes after the files had arrived
+      // (owner, 2026-11-01).
+      var merged = null, listFiles = null, needPush = false;
+      if (dir !== "download") {
+        if (window.AppData.loadFetchedForSync) { try { await window.AppData.loadFetchedForSync(); } catch (e) {} }   // fetched records live one per location now
+        merged = window.AppData.buildPayload();
+        if (dir !== "upload") window.AppData.overlayExcludedForPush(merged, remote, inc, localState);
+        // From here the payload names each list's file instead of holding its points.
+        listFiles = window.AppData.splitListsForDrive(merged, prevLists && prevLists.refs);
+        needPush = dir === "upload" || !remote || stateDiffers(merged.state, remoteCmp) ||
+          !!(merged.ebirdKey && merged.ebirdKey !== (remote.ebirdKey || ""));
+      }
       if (needPush) {
         var str = JSON.stringify(merged);
         // Each sync gets its own dated folder holding that run's payload AND its readable
