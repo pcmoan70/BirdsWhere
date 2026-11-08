@@ -92,7 +92,7 @@
     t: t, weekOfDate: weekOfDate,
     fcState: window.AppField, renderRangeMap: window.AppInference.renderRangeMap, runInference: window.AppInference.runInference,
     getAnalysisTab: function () { return analysisTab; }, getCurrentMode: function () { return currentMode; }, getLabels: function () { return labels; },
-    getLabelsByKey: function () { return labelsByKey; }, getLang: function () { return lang; }, getMap: function () { return map; },
+    getLabelsByKey: function () { return labelsByKey; }, getMap: function () { return map; },
     getMarker: function () { return marker; }, getPlaceMarker: function () { return placeMarker; }, getFEATURED_SPECIES: function () { return FEATURED_SPECIES; },
     setAnalysisTab: function (v) { analysisTab = v; },
   });
@@ -163,7 +163,7 @@
   });
   // Species images (species-images.js): the Images-layout photos, the lightbox,
   // the photo fallbacks and the Wikimedia Commons category grid.
-  var buildSpGalleryHtml = window.AppSpImages.buildSpGalleryHtml,
+  var buildSpGalleryHtml = window.AppSpImages.buildSpGalleryHtml, spGalleryBuild = window.AppSpImages.spGalleryBuild,
       loadSpPhoto = window.AppSpImages.loadSpPhoto,
       openCommonsGrid = window.AppSpImages.openCommonsGrid,
       spImagesPrefetch = window.AppSpImages.spImagesPrefetch,
@@ -172,7 +172,7 @@
   window.AppSpImages.init({
     createModal: createModal, escapeHtml: escapeHtml, holdDelay: holdDelay, holdFeedback: holdFeedback,
     isBirdKey: isBirdKey, macaulayUrl: macaulayUrl, openExternal: openExternal, powoUrl: powoUrl, safeHref: safeHref,
-    spMissingOn: spMissingOn, t: t, wireSpeciesPicker: wireSpeciesPicker, ytopLabel: ytopLabel,
+    spFetchLanding: spFetchLanding, spMissingOn: spMissingOn, t: t, wireSpeciesPicker: wireSpeciesPicker, ytopLabel: ytopLabel,
     getDetPlot: function () { return detPlot; }, getLabelsByKey: function () { return labelsByKey; },
     getSecondLang: function () { return secondLang; }, getShowSci: function () { return showSci; },
   });
@@ -1909,6 +1909,9 @@
   // that fetch only and leaves the user's own [?] setting (spShowMissing) alone.
   var spMissingAuto = false;
   function spMissingOn() { return spShowMissing || spMissingAuto; }
+  // A per-point / historic list whose observation fetch has not settled yet (a model-only
+  // list — Predicted, a restored view — never fetches, so it is never "landing").
+  function spFetchLanding() { return !!(currentSpView && (currentSpView.mode === "point" || currentSpView.mode === "historic") && !currentSpView._noFetch && !currentSpView._final); }
   var spCountMin = 1, spCountMax = null;   // Total-column lower/upper bounds (inclusive; null = open). Default: Total ≥ 1 — list only species actually observed.
   var spCountMetric = "total";                // which count the bounds restrict: "total" (specimens) or "pairs" (observations)
   var spNameQuery = "";                       // species-list name filter (raw text; lowercased at compare time)
@@ -3285,7 +3288,7 @@
     if (document.querySelector(".leaflet-popup")) return true;
     if (spiderLayer) return true;   // a fanned-out cluster is showing
     if (detDaysPanelOpen || detModePanelOpen || detObsPanelOpen) return true;
-    if (_anchMenuEl) return true;   // an anchored row menu is up
+    for (var a = 0; a < _anchStack.length; a++) if (!_anchStack[a]._anchPinned) return true;   // an anchored row menu is up (a pinned window does not count: the map stays usable under it)
     var ps = document.querySelector(".place-search-panel"); if (ps && ps.style && ps.style.display !== "none") return true;   // the Search-place box is open
     var ids = ["checklists-panel", "settings-panel", "mp-panel", "stored-loc-panel", "group-quick-panel"];
     for (var i = 0; i < ids.length; i++) { var p = document.getElementById(ids[i]); if (p && p.style && p.style.display !== "none") return true; }
@@ -10568,14 +10571,19 @@
   function anchMenuOpen(el) { return !!el && _anchStack.indexOf(el) >= 0; }
   // No argument: close every anchored popup — what choosing an action from one means.
   // With one: close that popup and anything stacked above it, leaving its parent up.
+  // A PINNED popup (el._anchPinned — the Audio window, owner 2026-11-08: "closes by itself.. user must
+  // close through X") survives outside clicks and the close-all that another popup's opening runs;
+  // only its own × (closeAnchoredMenu(thatEl)) takes it down.
   function closeAnchoredMenu(el) {
     var from = el ? _anchStack.indexOf(el) : 0;
     if (from < 0) return;   // already gone
-    for (var i = _anchStack.length - 1; i >= from; i--) {
+    var keep = _anchStack.slice(0, from);
+    for (var i = from; i < _anchStack.length; i++) {
       var m = _anchStack[i];
+      if (m && m._anchPinned && m !== el) { keep.push(m); continue; }
       if (m && m.parentNode) m.parentNode.removeChild(m);
     }
-    _anchStack.length = from;
+    _anchStack.length = 0; Array.prototype.push.apply(_anchStack, keep);
     _anchMenuEl = _anchStack.length ? _anchStack[_anchStack.length - 1] : null;
     if (!_anchStack.length && _anchMenuOutside) { document.removeEventListener("click", _anchMenuOutside, true); _anchMenuOutside = null; }
   }
@@ -10605,6 +10613,7 @@
         if (_anchOpening) return;   // this very click just opened one of them
         for (var k = _anchStack.length - 1; k >= 0; k--) {
           if (_anchStack[k].contains(e.target)) return;
+          if (_anchStack[k]._anchPinned) continue;   // a pinned window ignores outside clicks
           closeAnchoredMenu(_anchStack[k]);
         }
       };
@@ -13076,8 +13085,11 @@
     // Owner, 2026-10-11: "No implicit running of load Detections unless specified in settings" — at
     // START the last session's observations come back only with Settings → "Show the last session's
     // observations on open". Skipped, they stay in storage untouched until a new fetch replaces them.
-    var saved = (atStart && window.GeoState.get("restoreDetOnOpen", false) !== true) ? {} : (window.GeoState.get("mapDetections", {}) || {});
-    if (atStart && window.GeoState.get("restoreDetOnOpen", false) !== true) detRestoreSkipped = true;
+    // Owner, 2026-11-07: "fetched dots and active lists should be remembered between restarts … fetched
+    // points should only disappear when user clicks red X" — the setting now defaults to ON.
+    var skipRestore = atStart && window.GeoState.get("restoreDetOnOpen", true) === false;
+    var saved = skipRestore ? {} : (window.GeoState.get("mapDetections", {}) || {});
+    if (skipRestore) detRestoreSkipped = true;
     Object.keys(saved).forEach(function (sk) {
       var d = saved[sk]; if (!d || !d.rows || !d.rows.length) return;
       var key = d.key || sk;   // older builds keyed by display name and had no .key
@@ -14884,6 +14896,10 @@
       });
     }
     keys.sort(function (a, b) {
+      // Selected species first (owner, 2026-11-06: "move selected species to the top of the list for
+      // easy toggling"), then the chosen order within each group.
+      var sa = !!detSelected[a], sb = !!detSelected[b];
+      if (sa !== sb) return sa ? -1 : 1;
       if (detLegendSort === "az") return detNameByKey[a].localeCompare(detNameByKey[b]);
       if (detLegendSort === "count") { var dc = (visCount[b] || 0) - (visCount[a] || 0); return dc || detNameByKey[a].localeCompare(detNameByKey[b]); }
       if (detLegendSort === "date") { if (latestByKey[a] !== latestByKey[b]) return latestByKey[a] < latestByKey[b] ? 1 : -1; return detNameByKey[a].localeCompare(detNameByKey[b]); }
@@ -16864,7 +16880,10 @@
     wrap.appendChild(makePopupBtn(tLabel("route.add"), "btn-light", function () { map.closePopup(); addToRoute(lat, lon, nameHdr.textContent || ""); }, "navplus"));
     // Radar → Migration Aloft (owner, 2026-10-27: "Move the Radar button to the long-click/right-click popup menu"):
     // Europe only, Experimental features on — as before in the click popup. Its own repo / Pages site.
-    if (continentFor(AppGeo.countryAt(lat, lon)) === "EU" && experimentalOn()) {
+    // countryNear: islands, skerries and the sea near the coast count as the nearest country (the simplified
+    // borders leave small islands out — owner, 2026-11-02: neither button on an island in the ocean).
+    var ccNear = AppGeo.countryNear(lat, lon);
+    if (continentFor(ccNear) === "EU" && experimentalOn()) {
       wrap.appendChild(makePopupBtn(t("link.aloft") + " ↗", "btn-light", function () {
         map.closePopup(); openExternal("https://pcmoan70.github.io/BirdsWhere-aloft/");
       }, "radar"));
@@ -16872,7 +16891,7 @@
     // 3-D terrain (owner, 2026-10-26: "move 3d-terrain to the double click/long click map point menu above Offline maps"):
     // Norway only (Kartverket's 1 m model) with Experimental features on, as before in the click popup; opens
     // pcmoan70.github.io/3d_terrain 2 km around the point, the map's dots inside that square along in the hash.
-    if (AppGeo.countryAt(lat, lon) === "NO" && experimentalOn()) {
+    if (ccNear === "NO" && experimentalOn()) {
       wrap.appendChild(makePopupBtn(t("link.terrain3d") + " ↗", "btn-light", function () {
         map.closePopup();
         var pts = terrain3dPoints(lat, lon, 2000);
@@ -17419,6 +17438,9 @@
         // off the map but remembers them (their boxes stay ticked, greyed out); Show puts them back.
         ((hidStash || Object.keys(mpState.shownColls()).length || Object.keys(mpState.shownDetSets()).length)
           ? '<button type="button" id="mp-hide-toggle" class="btn btn-light mp-hide-toggle' + (hidStash ? " on" : "") + '">' + escapeHtml(t(hidStash ? "points.showLists" : "points.hideLists")) + "</button>" : "") +
+        // Untick all (owner, 2026-11-06): every ticked list and trip off, nothing remembered.
+        ((!hidStash && (Object.keys(mpState.shownColls()).length || Object.keys(mpState.shownDetSets()).length))
+          ? '<button type="button" id="mp-untick-all" class="btn btn-light">' + escapeHtml(t("points.untickAll")) + "</button>" : "") +
       "</div>" +
       '<div id="mp-backup-line" class="mp-backup-line"></div>' +
       mpFromSearchHtml() +
@@ -17462,6 +17484,12 @@
         window.GeoState.save({ mpHiddenStash: { p: Object.keys(mpState.shownColls()), d: Object.keys(mpState.shownDetSets()) } });
         mpState.setShownColls({}); mpState.setShownDetSets({});
       }
+      saveShownState(); updateDetSetOverlays(); renderMapPoints(); refreshMpPanel(); keepMpPanelOpen();
+    });
+    var untickAll = panel.querySelector("#mp-untick-all");
+    if (untickAll) untickAll.addEventListener("click", function (e) {
+      e.stopPropagation();
+      mpState.setShownColls({}); mpState.setShownDetSets({});
       saveShownState(); updateDetSetOverlays(); renderMapPoints(); refreshMpPanel(); keepMpPanelOpen();
     });
     var importShareBtn = panel.querySelector("#mp-import-share"), shareFileInput = panel.querySelector("#share-file-input");
@@ -19731,7 +19759,7 @@
     wireNumSetting("sight-ttl", sightTtlMin, 0, 10080, 0, function (v) { window.GeoState.save({ sightTtlMin: v }); }, null);
     var rdEl = document.getElementById("restore-det-toggle");
     if (rdEl) {
-      rdEl.checked = window.GeoState.get("restoreDetOnOpen", false) === true;
+      rdEl.checked = window.GeoState.get("restoreDetOnOpen", true) !== false;
       rdEl.addEventListener("change", function () { window.GeoState.save({ restoreDetOnOpen: !!this.checked }); });
     }
     var fooEl = document.getElementById("fetchonopen-toggle");
@@ -20989,7 +21017,7 @@
         spSortBeforeMissing = null;
       }
       updateSortIndicators();
-      renderSpControls();   // relabels the button ("?" ↔ "!") and rebuilds the body (table rows / Images cards)
+      renderSpControls();   // lights / dims the P toggle and rebuilds the body (table rows / Images cards)
     });
     var psBtn = document.getElementById("sp-probsort-btn");
     if (psBtn) psBtn.addEventListener("click", function (e) {
@@ -23133,17 +23161,23 @@
     if (!currentSpView || !isFinite(+currentSpView.lat) || !isFinite(+currentSpView.lon)) return;
     var lat = +currentSpView.lat, lon = +currentSpView.lon;
     var weekEl = document.getElementById("week-select"), week = weekEl ? +weekEl.value : weekOfToday();
+    rec._spgSeason = null;   // a new list: cards built before the prediction is in wait for it
     predictAllWeeks(lat, lon).then(function (cell) {
       if (!document.body.contains(rec)) return;   // re-rendered meanwhile
-      var idxMap = ensureSeasonKeyIdx();
-      Array.prototype.forEach.call(rec.querySelectorAll(".spg-bar.sp-season[data-key]"), function (el) {
-        var key = el.getAttribute("data-key"), idx = idxMap[key]; if (idx == null) return;
-        var s = classifySeason(cell, idx, week), k = el.querySelector(".spg-k");
-        el.innerHTML = (k ? k.outerHTML : "") + seasonCellHtml(s);
-        var yt = el.parentNode && el.parentNode.querySelector(".spg-bar.sp-ytop"), yk = yt && yt.querySelector(".spg-k");
-        if (yt) yt.innerHTML = (yk ? yk.outerHTML : "") + ytopCellHtml(s);
-      });
+      rec._spgSeason = { cell: cell, week: week, idxMap: ensureSeasonKeyIdx() };
+      paintSpGalleryBars(rec, rec._spgSeason);
     }).catch(function () {});
+  }
+  // The Season + Yr-peak bars of every card under `root` (the whole gallery once the
+  // prediction lands; one card as it is built after that).
+  function paintSpGalleryBars(root, sn) {
+    Array.prototype.forEach.call(root.querySelectorAll(".spg-bar.sp-season[data-key]"), function (el) {
+      var key = el.getAttribute("data-key"), idx = sn.idxMap[key]; if (idx == null) return;
+      var s = classifySeason(sn.cell, idx, sn.week), k = el.querySelector(".spg-k");
+      el.innerHTML = (k ? k.outerHTML : "") + seasonCellHtml(s);
+      var yt = el.parentNode && el.parentNode.querySelector(".spg-bar.sp-ytop"), yk = yt && yt.querySelector(".spg-k");
+      if (yt) yt.innerHTML = (yk ? yk.outerHTML : "") + ytopCellHtml(s);
+    });
   }
   var spGalleryObs = null;
   // The card's ☰ button: switch to the Table layout with that species' record sub-list
@@ -23394,19 +23428,45 @@
       loadSpPhoto(card.querySelector(".spg-img"), card.querySelector(".spg-none"), card.querySelector(".spg-credit"), card.getAttribute("data-sci"))
         .then(function (ok) { if (ok === null) card._spgDone = false; });   // network trouble: retried when it scrolls in again
     }
-    var cards = rec.querySelectorAll(".spg-card");
-    // Need-to-fetch: the first cards load at once (a first screen), the rest only as they
-    // come into view while scrolling (a small look-ahead so the next row is ready when it
-    // appears). Every photo is served from the on-device cache when it is already there.
-    var SPG_PRELOAD = 8;
-    Array.prototype.forEach.call(cards, function (c, i) { if (i < SPG_PRELOAD) fill(c); });
+    // Photos need-to-fetch: a card's picture loads as the card comes within 300 px of the
+    // view (observed the moment the card is built, so a card built in view loads at once).
+    // Every photo is served from the on-device cache when it is already there.
     if (window.IntersectionObserver) {
       spGalleryObs = new IntersectionObserver(function (entries) {
         entries.forEach(function (en) { if (en.isIntersecting) { fill(en.target); spGalleryObs.unobserve(en.target); } });
       }, { root: null, rootMargin: "300px 0px" });
-      Array.prototype.forEach.call(cards, function (c, i) { if (i >= SPG_PRELOAD) spGalleryObs.observe(c); });
-    } else Array.prototype.forEach.call(cards, fill);
+    }
+    // The cards themselves (owner, 2026-11-04): the gallery arrives as empty shells; the
+    // shells near the view become cards first — those in or within 800 px of it the moment
+    // they get there (an observer), the rest in idle slices working outward from the last
+    // one seen, so the far ends of a long list are built last and nothing blocks the page.
+    if (spgBuildObs) { spgBuildObs.disconnect(); spgBuildObs = null; }
+    clearTimeout(spgBuildTimer);
+    var shells = rec.querySelectorAll(".spg-shell"), n = shells.length, done = [], gen = rec._spgGen = (rec._spgGen || 0) + 1;
+    var anchor = 0, lo = -1, hi = 0;
+    function build(i) {
+      if (done[i]) return; done[i] = true;
+      var card = spGalleryBuild(shells[i]); if (!card) return;
+      if (rec._spgSeason) paintSpGalleryBars(card, rec._spgSeason);
+      if (spGalleryObs) spGalleryObs.observe(card); else fill(card);
+    }
+    function slice() {
+      spgBuildTimer = null;
+      if (rec._spgGen !== gen || !rec.isConnected) return;
+      for (var k = 0; k < 12 && (lo >= 0 || hi < n); k++) build((hi < n && (lo < 0 || hi - anchor <= anchor - lo)) ? hi++ : lo--);
+      if (lo >= 0 || hi < n) spgBuildTimer = setTimeout(slice, 16);
+    }
+    if (window.IntersectionObserver) {
+      spgBuildObs = new IntersectionObserver(function (entries) {
+        var near = -1;
+        entries.forEach(function (en) { if (!en.isIntersecting) return; var i = +en.target.getAttribute("data-i"); spgBuildObs.unobserve(en.target); build(i); if (near < 0 || i < near) near = i; });
+        if (near >= 0) { anchor = near; lo = near - 1; hi = near + 1; }   // the idle work resumes around what is on screen now
+      }, { root: null, rootMargin: "800px 0px" });
+      Array.prototype.forEach.call(shells, function (sh) { spgBuildObs.observe(sh); });
+    }
+    slice();
   }
+  var spgBuildObs = null, spgBuildTimer = null;
   // The funnel's own state: orange + kept/removed bar. Run AFTER the rows have been
   // re-filtered — on a model-only list the stats are counted from the listed rows, so
   // reading them first would show the previous render's answer.
@@ -23452,12 +23512,12 @@
     renderSpLayoutSelect();
     // The observation filter bar (day/date · mode · observer) applies to the detailed
     // record layouts; the prediction table keeps its own flag columns + age cycle.
-    // [?] (table + Images layouts; the observation list has no predictions): also show the
-    // species the model predicts here. While on it reads [!] — tap to go back to observed only.
+    // The P toggle (table + Images layouts; the observation list has no predictions): lit = the
+    // species the model predicts here are woven in with the observed ones, grey = observed only.
+    // (Owner, 2026-11-04: one constant label instead of the old "?" / "!" relabelling.)
     var mb = document.getElementById("sp-missing-btn");
     if (mb) {
       mb.classList.toggle("on", spMissingOn());
-      mb.textContent = spMissingOn() ? "!" : "?";
       mb.title = t(spMissingOn() ? "sp.missingOff" : "sp.missingBtn"); mb.setAttribute("aria-label", mb.title);
       mb.style.display = (spLayout === "table" || spLayout === "gallery") ? "" : "none";
     }

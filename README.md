@@ -140,8 +140,10 @@ with several on, the legends stack as separate cards you can individually **mini
 
 *Best Sites coverage by country — green is live, amber is queued to download. [Interactive version.](app/coverage.html)*
 
-**Place search (🔍)** — type two or more letters to find a place name (OpenStreetMap's Nominatim,
-biased to the current view; recent searches are listed under the empty box). The box also takes
+**Place search (🔍)** — type two or more letters to find a place name (v2250: the same two services as
+the 3-D viewer's map search — Kartverket's place-name register for Norway, fuzzy, each hit with the kind
+of place and its municipality, and Photon/OpenStreetMap for the rest of the world, typo-tolerant and ranked
+from the map centre; the exact name comes first; recent searches are listed under the empty box). The box also takes
 **coordinates** in any common form — decimal `59.9139, 10.7522` (decimal commas too), degrees-minutes-seconds UTM with the zone band is accepted as well (33V 357344 6731644, a plus code such as 9F7V2JX8+QF or a short one with its place, 2JX8+QF Elverum).
 `59°54'50"N 10°45'08"E`, `N59.91 E10.75`, or a pasted Google Maps / BirdsWhere `?lat=&lon=` / `geo:` link —
 shown as one **📍** result; **Enter** flies straight there and drops the pin.
@@ -221,10 +223,12 @@ is cleared by the funnel's clear-all.
 
 **Sorting and what the list contains.** Beside the funnel sit two buttons, in the species table and
 the Images view alike: a **probability sort toggle** (↓ commonest first, ↑ rarest first — one tap
-each way; ⇅ while the list is ordered by something else), and the **[!] / [?]** switch — **[!]**
-lists only what has been observed, **[?]** weaves in the species the model predicts here as well
-(down to a probability of 0.5 %, or the filter pane's own floor when higher),
-and where nothing has been observed the predictions are shown on their own. Every other column
+each way; ⇅ while the list is ordered by something else), and the **P** toggle (v2251; before, a
+**[?]** / **[!]** button) — grey, the list holds only what has been observed; lit, the species the
+model predicts here are woven in as well (down to a probability of 0.5 %, or the filter pane's own
+floor when higher), and where nothing has been observed it lights by itself and the predictions
+are shown on their own. The Images cards wait for the observations to land before they are drawn,
+with P lit too — until v2251 they appeared mid-fetch as the prediction list alone. Every other column
 still sorts from its own header in the table.
 
 **Looking a species up.** Under the filters, just above the table, sits the **species search box**
@@ -241,8 +245,11 @@ table — by name, total, last seen, probability, distance, season or scientific
 own list, where nothing has been fetched, only the orders that have values are offered): photo, name
 with the scientific name in parentheses, a compact
 "#total(n) · last seen · distance" line, then **Probability · Season · Yr peak** as three bar cells on one line (the same cells as the
-lists; any of them opens the Migration view, and hovering shows the year curve). Photos are the lead image of the species' Wikipedia article, loaded from
-Wikimedia Commons as cards scroll into view (nothing bundled or stored beyond the browser cache) and
+lists; any of them opens the Migration view, and hovering shows the year curve). The cards are
+built outward from what is on screen (v2252): the gallery arrives as empty shells, the shells in
+or near the view become cards at once, the rest in idle slices working away from the view, so a
+long list never blocks the page and its far ends are built last. Photos are the lead image of the species' Wikipedia article, loaded from
+Wikimedia Commons as cards come within reach of the view (nothing bundled or stored beyond the browser cache) and
 credited under each picture to their author and licence, linked to the Commons file page. The name
 opens the usual species menu and the scientific name the Family menu, as in the table. The small **☰**
 button on a card shows the species' record sub-list: on a computer, hovering it opens the list in a
@@ -354,7 +361,7 @@ model's species for the **placed pin — or, with no pin, the middle of the map*
 so the list is useful before you have fetched anything. **When a spot has no observations at all**
 the list fills with the model's own expectation for that place instead of coming back empty — **likeliest first**, everything it puts
 at 0.5 % or better (and, where even that is empty, its best 25 anyway), with a line saying so. The
-**[!]** button switches back to observed-only; your own **[?]** setting is left as you had it. **Filtering** lives in the **filter pane** (funnel button next to the layout
+**P** toggle, lit by itself, switches back to observed-only when tapped; your own P setting is left as you had it. **Filtering** lives in the **filter pane** (funnel button next to the layout
 selector; it keeps its scroll position as you tick things). Every section **folds** — tap its
 heading (▾ / ▸); which sections are folded is remembered, and a folded section with a filter set inside shows a **blue** triangle. (The count section is called **Counts**.) **Species lists** shows the lists straight
 away — *Your lists* with the ✎ (manage / edit) beside them, then the premade *Groups*. The **name search** — in the
@@ -365,7 +372,9 @@ together, and lists the **matching species** under the box, each with a three-st
 **include** (green +), again for **exclude** (red −), again for neither — on the same selection the
 legend and the species lists use. Below it the section lists **every species currently included or
 excluded** — however it was chosen (legend tap, a species list, the search) — with the same box, so a
-legend selection can be changed or cleared from the pane. **Words in notes** searches the records'
+legend selection can be changed or cleared from the pane. In the legend the **selected species sit at
+the top** of the list, in the chosen sort order among themselves, so they are one tap away to toggle
+off again. **Words in notes** searches the records'
 own text — note, place, activity, observer (and a plain pin's name, tags and note) — for fetched data
 and imported lists alike: type a word and press **Include** (or Enter) or **Exclude**; each becomes a
 chip (+ green, − red, × removes it). A record shows when it holds **any** include word and **none** of
@@ -607,7 +616,7 @@ far and that one (a range). **Picks on different fields combine**: years 2019–
 points matching both. A **strip under the heading** lists the picks on the fields you are not looking at
 (`Years: 2019–2021 ×`) — tap a name to go to that field, × to clear its picks; a row's own count ignores the
 picks on its own field, so an unpicked row stays listed, greyed, for a tap to bring it back.
-The Tags grouping *is* the Points panel's tag chips — a tap here ticks the chip there. The funnel
+The Tags grouping *is* the Points panel's tag chips — a tap here ticks the chip there (v2253: the chips run ordinary tags first, then the years in order, then the months January to December, so a list tagged by year and month filters chronologically). The funnel
 clears every points pick like any other filter. The fetched-species filters (date, observer, mode) never
 touch list points; a list's own observer / date funnel sits in the Points panel. **Text (v2194):** the Points
 panel's **filter box** narrows the shown points by text — fuzzy, as the observer filter is: every word must
@@ -657,11 +666,11 @@ Plus **−** minimise (to a corner pill) and, while a species selection is activ
 drops just that selection. A **⚠** appears when the *Max points on map* draw cap is hiding dots. The
 filter funnel and the red × are **not** in the legend — they sit on the map at the lower right (below).
 
-**Opening the app starts clean**: no species selection and no filters (only display preferences —
-the minimised legend, sort order — and deleted species are kept), and the observations fetched last
-time are **not** put back unless Settings → Fetching & detections → **Show the last session's
-observations on open** is on (off by default); their fetched-area squares (and the ✓ update button)
-stay away with them. The saved point lists come back exactly as they were: the ticked lists, their tag
+**Opening the app**: no species selection and no filters are restored (only display preferences —
+the minimised legend, sort order — and deleted species are kept), but the observations fetched last
+time **come back on the map**, with their fetched-area squares and the ✓ update button, and stay until
+the red × removes them (Settings → Fetching & detections → **Show the last session's observations on
+open**, on by default; off = the app opens with no fetched observations). The saved point lists come back exactly as they were: the ticked lists, their tag
 chips and per-list funnels, and the legend's points-view selection (an isolated list or value) are all
 kept, so the map shows the same dots as when it was closed; "Fetch on open" is the only start-up fetch.
 
@@ -781,7 +790,7 @@ and re-filters as you pan or zoom, the same way the legend counts only what is o
   paste the share link into *Load from file* and press **🔗 App link** — it copies a BirdsWhere link
   (`…/?drive=<share link>`) that opens the file for them after they sign in. Opening the app with
   `?drive=<share link>` asks once (Sign in & open / Cancel) and drops the parameter.
-- **Saved and shared lists keep everything.** A downloaded KML / KMZ carries each list exactly (a `birdswhere-list` JSON block per list folder — every point field: colour, uncertainty radius, ring marker, circle edge, species, observer, count, place, link, notes, tags — plus the list's areas, tracks, colour and route flag) and, for other apps, each point's colour as an icon style and its fields as ExtendedData (`uncertainty_m`, `unc_edge`, `marker`, …). A GeoJSON download carries the same lists as a `birdswhere-lists` member. Loading such a file (Load from file, drag and drop, several at once, a link, or a Drive share) restores the lists **exactly as saved** — no field-mapping dialog. A share link carries every point field plus the list's areas and tracks on screen.
+- **Saved and shared lists keep everything.** A downloaded KML / KMZ carries each list exactly (a `birdswhere-list` JSON block per list folder — every point field: colour, uncertainty radius, ring marker, circle edge, species, observer, count, place, link, notes, tags — plus the list's areas, tracks, colour and route flag) and, for other apps, each point's colour as an icon style and its fields as ExtendedData (`uncertainty_m`, `unc_edge`, `marker`, …). A GeoJSON download carries the same lists as a `birdswhere-lists` member. Loading such a file (Load from file, drag and drop, several at once, a link, or a Drive share) restores the lists **exactly as saved** — no field-mapping dialog. A share link carries every point field plus the list's areas and tracks on screen. Reading a dropped file is fast (v2254): a 250 000-point KMZ is scanned in seconds, in steps that keep the page responsive, with the progress shown while the points are read and then added; the old XML-DOM reader remains as the fallback for anything the scanner does not recognise.
   **Someone else's file opens view-only:** a file you own (or may edit) on Drive imports as your own
   list; any other — a file shared *with* you — becomes a **read-only shared list**: on the map, in the
   legend and the record popups, and **never** written to the device's store, synced, exported
@@ -1059,7 +1068,7 @@ Right-click / long-press / tap any species name for a menu **led by the species 
   **Settings → Distribution**
   picks which opens first, model by default, each falling back to the other when it has nothing for the
   species, Wikipedia also when offline; the Wikipedia dialog links to the model map), **Migration**,
-  **Images** (Macaulay Library, birds), **Audio** (v2210: the bird's preselected Xeno-canto clips in the app — up to two A-grade recordings per kind of voice, tap a sonogram to play, hold it (or shift-click / right-click / two-finger click on a desktop) to play on repeat (↻ badge; v2220–v2221), any tap or hold stops it — with the link to all its recordings on Xeno-canto at the bottom; animals; v2215: the clips you play and their sonograms are kept on the device — a 160-entry, version-independent service-worker cache, Settings → Storage → *Recordings (Xeno-canto)* — so they play offline; v2219: the name line with its × stays pinned while the panel scrolls; v2232: that name is a search box — tap it, type a few letters of a name in your language, your second language or Latin (fuzzy: a letter or two off still hits) and pick another species, and the panel reopens for it; on the compare card the recordings sit in a row of the trait table, the clips in columns under the two pinned names), **More of these**, **Wikipedia**,
+  **Images** (Macaulay Library, birds), **Audio** (v2210: the bird's preselected Xeno-canto clips in the app — up to two A-grade recordings per kind of voice, tap a sonogram to play, hold it (or shift-click / right-click / two-finger click on a desktop) to play on repeat (↻ badge; v2220–v2221), any tap or hold stops it — with the link to all its recordings on Xeno-canto at the bottom; animals; v2215: the clips you play and their sonograms are kept on the device — a 160-entry, version-independent service-worker cache, Settings → Storage → *Recordings (Xeno-canto)* — so they play offline; v2219: the name line with its × stays pinned while the panel scrolls; v2232: that name is a search box — tap it, type a few letters of a name in your language, your second language or Latin (fuzzy: a letter or two off still hits) and pick another species, and the panel reopens for it; v2257: the Audio window stays up through map taps and other menus — only its × closes it; on the compare card the recordings sit in a row of the trait table, the clips in columns under the two pinned names), **More of these**, **Wikipedia**,
   then **Family** and the group-specific references: **Macaulay Library** photos/audio (narrowed to the
   observation's season — a ±1-month `beginMonth`/`endMonth` window — so images match the time of
   year) and **eBird photos** for birds, **Kew POWO** for plants, **Animal Diversity Web** for
@@ -1081,6 +1090,8 @@ Right-click / long-press / tap any species name for a menu **led by the species 
 - **Hide / Show lists** — the toggle at the end of the Points panel's top row: **Hide lists** takes every
   ticked list and trip off the map but remembers them — their checkboxes stay ticked, greyed out and
   locked — and **Show lists** puts exactly those back. The hidden state survives a reopen.
+- **Untick all** — next to it while anything is ticked: every ticked list and trip comes off the map
+  and its box is cleared (nothing remembered — tick them again one by one).
 - **Search all lists** — the box at the top of the Points panel searches every saved list and trip by
   **notes** and **species via the model's labels** — exact words (no typo-guessing), but case- and
   accent-insensitive and blind to spaces / hyphens, so "Slagugle-kasse" finds "slaguglekasse" and
@@ -1280,7 +1291,8 @@ an **eBird Record Format CSV** ready for [ebird.org/import](https://ebird.org/im
 - **Map right-click / long-press menu** — *Add point*, *Share point*, *Save location*, *Navigate
   here*, *Add to route*, **Radar** (Europe, with *Experimental features* on — opens
   [Migration Aloft](https://pcmoan70.github.io/BirdsWhere-aloft/), the weather-radar migration map),
-  **3-D terrain** (Norway, with *Experimental features* on — see below) and
+  **3-D terrain** (Norway, with *Experimental features* on — see below; for both, a point on an
+  island, a skerry or the sea near the coast counts as the nearest country within 100 km) and
   *Offline maps* (the coordinates line copies them); the click popup adds
   a **Birdingplaces** link (birdingplaces.eu at the point),
   and, for Sweden & Norway, a **Fågelkartan** link to that point's county / fylke page. In Norway,

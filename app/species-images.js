@@ -16,14 +16,14 @@ window.AppSpImages = (function () {
 
   // ---- injected by app.js (init) -----------------------------------------
   // Plain function aliases (stable references) …
-  var createModal, escapeHtml, holdDelay, holdFeedback, isBirdKey, macaulayUrl, openExternal, powoUrl, safeHref, spMissingOn, t, wireSpeciesPicker, ytopLabel;
+  var createModal, escapeHtml, holdDelay, holdFeedback, isBirdKey, macaulayUrl, openExternal, powoUrl, safeHref, spFetchLanding, spMissingOn, t, wireSpeciesPicker, ytopLabel;
   // … and getters for app state that changes at runtime.
   var getDetPlot, getLabelsByKey, getSecondLang, getShowSci;
 
   function init(ctx) {
     createModal = ctx.createModal; escapeHtml = ctx.escapeHtml; holdDelay = ctx.holdDelay; holdFeedback = ctx.holdFeedback;
     isBirdKey = ctx.isBirdKey; macaulayUrl = ctx.macaulayUrl; openExternal = ctx.openExternal; powoUrl = ctx.powoUrl; safeHref = ctx.safeHref;
-    spMissingOn = ctx.spMissingOn; t = ctx.t; wireSpeciesPicker = ctx.wireSpeciesPicker; ytopLabel = ctx.ytopLabel;
+    spFetchLanding = ctx.spFetchLanding; spMissingOn = ctx.spMissingOn; t = ctx.t; wireSpeciesPicker = ctx.wireSpeciesPicker; ytopLabel = ctx.ytopLabel;
     getDetPlot = ctx.getDetPlot; getLabelsByKey = ctx.getLabelsByKey; getSecondLang = ctx.getSecondLang; getShowSci = ctx.getShowSci;
   }
 
@@ -487,22 +487,42 @@ window.AppSpImages = (function () {
     var tbody = document.getElementById("sp-tbody"); if (!tbody) return "";
     // Before the observations have landed the table holds the model's whole prediction list
     // (default sort: rarest first) — as cards that would be a wall of exotic species whose
-    // photos start downloading. Wait for the fetch instead; [?] (predictions wanted) still shows.
+    // photos start downloading. Wait for the fetch instead — with P on as well: the cards built
+    // mid-fetch were that prediction wall and nothing else, and on a slow fetch that is all the
+    // user saw (owner, 2026-11-04: "the app shows only predictions"); the first data that lands
+    // rebuilds them with the observations woven in.
     // …but rows that came FROM observations (a fetched species, or an extra — which is
     // every plant, fungus and most insects, none of which the model predicts) are not
     // that wall: they are the result. Waiting on `_sightingsAgg`, which only a per-point
     // fetch attaches, left those layouts on a permanent spinner — plants and fungi never
     // appeared in the Images view at all.
     var anyObserved = tbody.querySelector("tr.sp-has-det, tr.sp-extra");
-    if (!tbody._sightingsAgg && !spMissingOn() && !anyObserved) return '<div class="dl-empty spg-wait"><div class="spinner"></div>' + escapeHtml(t("status.loadingDet")) + "</div>";
+    if (!tbody._sightingsAgg && (spFetchLanding() || (!spMissingOn() && !anyObserved))) return '<div class="dl-empty spg-wait"><div class="spinner"></div>' + escapeHtml(t("status.loadingDet")) + "</div>";
     // The name search hides table rows with a CLASS (it composes with the inline
     // show/hide) — the cards are built from the rows, so they must honour it too.
     var rows = Array.prototype.filter.call(tbody.children, function (tr) {
       return tr.style.display !== "none" && !tr.classList.contains("sp-hide-search") && !tr.classList.contains("sp-detail-row");
     });
     if (!rows.length) return '<div class="dl-empty">' + escapeHtml(t("detlist.empty")) + "</div>";
-    var lbl = { total: t("th.total"), last: t("th.last"), dist: t("th.dist"), prob: t("th.prob") };
-    return '<div class="sp-gallery">' + rows.map(function (tr) {
+    // Shells first, cards on demand (owner, 2026-11-04: "cards close to being in view should be
+    // fetched first … the building should not be blocking"): the gallery is one empty shell per
+    // row — cheap to parse however long the list — and wireSpGallery turns the shells into cards
+    // outward from the viewport in idle slices (spGalleryBuild below).
+    spgRows = rows; spgLbl = { total: t("th.total"), last: t("th.last"), dist: t("th.dist"), prob: t("th.prob") };
+    return '<div class="sp-gallery">' + rows.map(function (tr, i) { return '<div class="spg-card spg-shell" data-i="' + i + '"></div>'; }).join("") + "</div>";
+  }
+  var spgRows = [], spgLbl = {};
+  // Replace a shell by its card; null when the shell is gone or the list has been rebuilt since.
+  function spGalleryBuild(shell) {
+    var tr = spgRows[+shell.getAttribute("data-i")];
+    if (!tr || !shell.parentNode) return null;
+    var tpl = document.createElement("template"); tpl.innerHTML = spGalleryCardHtml(tr, spgLbl);
+    var card = tpl.content.firstElementChild;
+    shell.parentNode.replaceChild(card, shell);
+    return card;
+  }
+  function spGalleryCardHtml(tr, lbl) {
+    {
       // .sp-link is the MODEL species' name (clickable → species menu). An extra row —
       // every plant, fungus and most insects — carries its name in .sp-extra-name instead,
       // and without this the card showed a scientific name and nothing else.
@@ -576,7 +596,7 @@ window.AppSpImages = (function () {
         barsRow +
         '<div class="spg-credit"></div>' +
       "</div>";
-    }).join("") + "</div>";
+    }
   }
   // Load a species' photo into a card: the picture into `box`, the author/licence line
   // into `cr` (linked to the Commons file page), or reveal `none`. Resolves true when
@@ -829,7 +849,7 @@ window.AppSpImages = (function () {
 
   return {
     init: init,
-    buildSpGalleryHtml: buildSpGalleryHtml,
+    buildSpGalleryHtml: buildSpGalleryHtml, spGalleryBuild: spGalleryBuild,
     loadSpPhoto: loadSpPhoto,
     openCommonsGrid: openCommonsGrid,
     spImagesPrefetch: spImagesPrefetch,
